@@ -1,0 +1,39 @@
+package com.quantjumpstock.core.adapter.output.notification
+
+import com.quantjumpstock.core.domain.economic.port.output.NotificationSender
+import com.quantjumpstock.core.adapter.output.notification.slack.SlackApiClient
+import org.springframework.stereotype.Component
+
+/**
+ * Slack Notification Adapter (Output Adapter)
+ * NotificationSender 인터페이스를 구현하여 Slack과 연동합니다.
+ */
+@Component
+class SlackNotificationAdapter(
+    private val slackApiClient: SlackApiClient
+) : NotificationSender {
+
+    override fun notifyEconomicDataUpdateRequest(requestId: String, targetDate: String?): String? {
+        return slackApiClient.notifyEconomicDataUpdateRequest(requestId, targetDate)
+    }
+
+    override fun notifyEconomicDataCollectionError(requestId: String, error: String) {
+        slackApiClient.notifyEconomicDataCollectionError(requestId, error)
+    }
+
+    override fun notifyTechnicalAnalysisRequest(requestId: String, targetDate: String?): String? {
+        return slackApiClient.notifyTechnicalAnalysisRequest(requestId, targetDate)
+    }
+
+    override fun notifySentimentAnalysisRequest(requestId: String, targetDate: String?): String? {
+        return slackApiClient.notifySentimentAnalysisRequest(requestId, targetDate)
+    }
+
+    override fun notifyCombinedAnalysisRequest(requestId: String, targetDate: String?): String? {
+        return slackApiClient.notifyCombinedAnalysisRequest(requestId, targetDate)
+    }
+
+    override fun notifyAnalysisError(requestId: String, analysisType: String, error: String) {
+        slackApiClient.notifyAnalysisError(requestId, analysisType, error)
+    }
+}

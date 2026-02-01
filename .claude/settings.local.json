@@ -40,7 +40,11 @@
       "Bash(xargs kill:*)",
       "Bash(python scripts/sync_from_prod_mongodb.py:*)",
       "Bash(wc:*)",
-      "Bash(grep초기)"
+      "Bash(grep초기)",
+      "Bash(git remote:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(cat:*)"
     ]
   }
 }

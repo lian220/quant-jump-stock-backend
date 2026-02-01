@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Quantiq Stop Script
+# Quant Jump Stock Stop Script
 set -e
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,7 +14,7 @@ NC='\033[0m'
 
 echo ""
 echo -e "${BLUE}=========================================="
-echo " 🛑 Quantiq Stop"
+echo " 🛑 Quant Jump Stock Stop"
 echo "==========================================${NC}"
 echo ""
 
@@ -23,7 +23,7 @@ cd "$PROJECT_ROOT"
 # Check for --clean flag
 if [ "$1" == "--clean" ]; then
     echo -e "${RED}⚠️  Stopping and removing application containers...${NC}"
-    docker compose rm -s -f quantiq-core quantiq-data-engine
+    docker compose rm -s -f quant-jump-stock-core quant-jump-stock-data-engine
     echo -e "${GREEN}✅ Application containers removed!${NC}"
     echo ""
     echo -e "${YELLOW}💡 Infrastructure services (DB, Kafka) are still running${NC}"
@@ -34,13 +34,13 @@ elif [ "$1" == "--all" ]; then
 else
     # Stop only application services (quantiq-core and quantiq-data-engine)
     echo -e "${YELLOW}📦 Stopping application services...${NC}"
-    docker compose stop quantiq-core quantiq-data-engine
+    docker compose stop quant-jump-stock-core quant-jump-stock-data-engine
 
     echo ""
     echo -e "${GREEN}=========================================="
     echo "✅ Application services stopped!"
-    echo "  - quantiq-core"
-    echo "  - quantiq-data-engine"
+    echo "  - quant-jump-stock-core"
+    echo "  - quant-jump-stock-data-engine"
     echo "==========================================${NC}"
     echo ""
     echo -e "${BLUE}💡 Infrastructure services still running:${NC}"

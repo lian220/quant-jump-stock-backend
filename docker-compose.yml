@@ -3,7 +3,7 @@ version: '3.8'
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
-    container_name: quantiq-zookeeper
+    container_name: qjs-zookeeper
     ports:
       - "2181:2181"
     environment:
@@ -17,11 +17,11 @@ services:
         reservations:
           memory: 256M
     networks:
-      - quantiq-network
+      - qjs-network
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
-    container_name: quantiq-kafka
+    container_name: qjs-kafka
     ports:
       - "9092:9092"
     depends_on:
@@ -43,17 +43,17 @@ services:
         reservations:
           memory: 512M
     networks:
-      - quantiq-network
+      - qjs-network
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
-    container_name: quantiq-kafka-ui
+    container_name: qjs-kafka-ui
     ports:
       - "8089:8080"
     depends_on:
       - kafka
     environment:
-      KAFKA_CLUSTERS_0_NAME: quantiq-cluster
+      KAFKA_CLUSTERS_0_NAME: qjs-cluster
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
       KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
       DYNAMIC_CONFIG_ENABLED: "true"
@@ -65,11 +65,11 @@ services:
         reservations:
           memory: 256M
     networks:
-      - quantiq-network
+      - qjs-network
 
   postgresql:
     image: postgres:15-alpine
-    container_name: quantiq-postgres
+    container_name: qjs-postgres
     environment:
       POSTGRES_DB: quantiq
       POSTGRES_USER: quantiq_user
@@ -93,11 +93,11 @@ services:
           memory: 512M
     shm_size: 256M
     networks:
-      - quantiq-network
+      - qjs-network
 
   mongodb:
     image: mongo:latest
-    container_name: quantiq-mongodb
+    container_name: qjs-mongodb
     ports:
       - "27017:27017"
     environment:
@@ -115,13 +115,13 @@ services:
         reservations:
           memory: 512M
     networks:
-      - quantiq-network
+      - qjs-network
 
-  quantiq-data-engine:
+  quant-jump-stock-data-engine:
     build:
-      context: ./quantiq-data-engine
+      context: ./quant-jump-stock-data-engine
       dockerfile: Dockerfile
-    container_name: quantiq-data-engine
+    container_name: qjs-data-engine
     ports:
       - "10020:8000"
     depends_on:
@@ -144,7 +144,7 @@ services:
       GCP_PROJECT_ID: ${GCP_PROJECT_ID:-arboreal-path-479202-c5}
       GCP_REGION: ${GCP_REGION:-us-central1}
     volumes:
-      - ./quantiq-data-engine:/app
+      - ./quant-jump-stock-data-engine:/app
       - ./credentials:/app/credentials
     deploy:
       resources:
@@ -154,13 +154,13 @@ services:
         reservations:
           memory: 512M
     networks:
-      - quantiq-network
+      - qjs-network
 
-  quantiq-core:
+  quant-jump-stock-core:
     build:
-      context: ./quantiq-core
+      context: ./quant-jump-stock-core
       dockerfile: Dockerfile
-    container_name: quantiq-core
+    container_name: qjs-core
     ports:
       - "10010:10010"
     depends_on:
@@ -174,7 +174,7 @@ services:
       - .env.local
     volumes:
       - ./credentials:/app/credentials
-      - ./quantiq-data-engine:/quantiq-data-engine
+      - ./quant-jump-stock-data-engine:/quant-jump-stock-data-engine
       - ./.env.prod:/app/.env.prod:ro
     environment:
       TZ: "Asia/Seoul"
@@ -214,8 +214,8 @@ services:
         reservations:
           memory: 768M
     networks:
-      - quantiq-network
+      - qjs-network
 
 networks:
-  quantiq-network:
+  qjs-network:
     driver: bridge

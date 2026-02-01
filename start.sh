@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Quantiq Start Script
+# Quant Jump Stock Start Script
 set -e
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -14,15 +14,15 @@ NC='\033[0m'
 
 echo ""
 echo -e "${BLUE}=========================================="
-echo " 🚀 Quantiq Start"
+echo " 🚀 Quant Jump Stock Start"
 echo "==========================================${NC}"
 echo ""
 
 cd "$PROJECT_ROOT"
 
-# Build Quantiq Core
-echo -e "${YELLOW}🔨 Building Quantiq Core...${NC}"
-cd quantiq-core
+# Build Quant Jump Stock Core
+echo -e "${YELLOW}🔨 Building Quant Jump Stock Core...${NC}"
+cd quant-jump-stock-core
 ./gradlew clean build -x test
 if [ $? -ne 0 ]; then
     echo -e "${RED}❌ Build failed!${NC}"
@@ -38,7 +38,7 @@ docker compose up -d zookeeper kafka kafka-ui postgresql mongodb
 # Wait for PostgreSQL
 echo -e "${YELLOW}⏳ Waiting for PostgreSQL...${NC}"
 for i in {1..30}; do
-    if docker exec quantiq-postgres pg_isready -U quantiq_user &> /dev/null; then
+    if docker exec qjs-postgres pg_isready -U quantiq_user &> /dev/null; then
         echo -e "${GREEN}✓ PostgreSQL ready${NC}"
         break
     fi
@@ -52,11 +52,11 @@ echo -e "${GREEN}✓ Kafka ready${NC}"
 
 # Rebuild and start applications
 echo -e "${YELLOW}🎯 Rebuilding and starting applications...${NC}"
-docker compose up -d --build quantiq-data-engine quantiq-core
+docker compose up -d --build quant-jump-stock-data-engine quant-jump-stock-core
 
 echo ""
 echo -e "${GREEN}=========================================="
-echo "✅ Quantiq Started!"
+echo "✅ Quant Jump Stock Started!"
 echo "==========================================${NC}"
 echo ""
 echo "📊 Endpoints:"
