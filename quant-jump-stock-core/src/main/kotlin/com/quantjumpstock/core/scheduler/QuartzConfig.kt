@@ -4,13 +4,17 @@ import com.quantjumpstock.core.adapter.input.scheduler.*
 import org.quartz.*
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.context.annotation.DependsOn
 import java.util.*
 
 /**
  * Quartz 스케줄러 설정
  * 모든 Job과 Trigger를 등록합니다.
+ *
+ * @DependsOn - Flyway 마이그레이션이 완료된 후 Quartz가 초기화되도록 보장
  */
 @Configuration
+@DependsOn("flywayInitializer")
 class QuartzConfig {
 
     // ========================
