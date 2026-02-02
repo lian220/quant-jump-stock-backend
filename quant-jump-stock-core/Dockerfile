@@ -12,7 +12,7 @@ RUN apt-get update && \
 RUN pip3 install --no-cache-dir google-cloud-aiplatform google-cloud-storage pymongo
 
 # Copy pre-built JAR
-COPY build/libs/quantiq-core-*.jar app.jar
+COPY build/libs/quant-jump-stock-core-*.jar app.jar
 
 EXPOSE 8080
 
