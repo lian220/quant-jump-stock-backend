@@ -172,6 +172,7 @@ services:
         condition: service_started
     env_file:
       - .env.local
+      - .env.prod
     volumes:
       - ./credentials:/app/credentials
       - ./quant-jump-stock-data-engine:/quant-jump-stock-data-engine
