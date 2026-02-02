@@ -1,8 +1,11 @@
-"""Economic Data Repository - MongoDB 데이터 접근"""
+"""Economic Data Repository - MongoDB 및 PostgreSQL 데이터 접근"""
 import logging
 from typing import Dict, Any, List
 from datetime import datetime
+import psycopg2
+from psycopg2.extras import RealDictCursor
 from src.core.database import MongoDB
+from src.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -111,3 +114,86 @@ class EconomicDataRepository:
         except Exception as e:
             logger.error(f"Daily data upsert 실패 (date={date}): {e}")
             return False
+
+    def _get_postgres_connection(self):
+        """PostgreSQL 연결을 생성합니다."""
+        try:
+            return psycopg2.connect(
+                host=settings.POSTGRES_HOST,
+                port=settings.POSTGRES_PORT,
+                database=settings.POSTGRES_DB,
+                user=settings.POSTGRES_USER,
+                password=settings.POSTGRES_PASSWORD
+            )
+        except Exception as e:
+            logger.error(f"PostgreSQL 연결 실패: {e}")
+            raise
+
+    def find_active_fred_indicators(self) -> List[Dict[str, Any]]:
+        """PostgreSQL에서 활성화된 FRED 지표를 조회합니다."""
+        try:
+            conn = self._get_postgres_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            cursor.execute("""
+                SELECT code, name, description, category, unit, frequency
+                FROM fred_indicators
+                WHERE is_active = true
+                ORDER BY code
+            """)
+
+            results = cursor.fetchall()
+            cursor.close()
+            conn.close()
+
+            return [dict(row) for row in results]
+
+        except Exception as e:
+            logger.error(f"FRED 지표 조회 실패 (PostgreSQL): {e}")
+            return []
+
+    def find_active_yfinance_indicators(self) -> List[Dict[str, Any]]:
+        """PostgreSQL에서 활성화된 Yahoo Finance 지표를 조회합니다."""
+        try:
+            conn = self._get_postgres_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            cursor.execute("""
+                SELECT ticker, name, description, indicator_type
+                FROM yfinance_indicators
+                WHERE is_active = true
+                ORDER BY ticker
+            """)
+
+            results = cursor.fetchall()
+            cursor.close()
+            conn.close()
+
+            return [dict(row) for row in results]
+
+        except Exception as e:
+            logger.error(f"Yahoo Finance 지표 조회 실패 (PostgreSQL): {e}")
+            return []
+
+    def find_active_stocks_from_postgres(self) -> List[Dict[str, Any]]:
+        """PostgreSQL에서 활성화된 종목을 조회합니다."""
+        try:
+            conn = self._get_postgres_connection()
+            cursor = conn.cursor(cursor_factory=RealDictCursor)
+
+            cursor.execute("""
+                SELECT ticker, stock_name, stock_name_en, is_etf, exchange, sector, industry
+                FROM stocks
+                WHERE is_active = true
+                ORDER BY ticker
+            """)
+
+            results = cursor.fetchall()
+            cursor.close()
+            conn.close()
+
+            return [dict(row) for row in results]
+
+        except Exception as e:
+            logger.error(f"종목 조회 실패 (PostgreSQL): {e}")
+            return []

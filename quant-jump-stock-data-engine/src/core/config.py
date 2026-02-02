@@ -17,6 +17,13 @@ class Settings:
     MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
     MONGODB_DB_NAME = os.getenv("MONGODB_DB_NAME", "stock_trading")
 
+    # PostgreSQL (기존 DB_* 환경변수 사용)
+    POSTGRES_HOST = os.getenv("DB_HOST", "localhost")
+    POSTGRES_PORT = int(os.getenv("DB_PORT", "5432"))
+    POSTGRES_DB = os.getenv("DB_NAME", "quantiq")
+    POSTGRES_USER = os.getenv("DB_USER", "postgres")
+    POSTGRES_PASSWORD = os.getenv("DB_PASSWORD", "")
+
     # Kafka - Local
     KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
     KAFKA_TOPIC_ANALYSIS_REQUEST = "quantiq.analysis.request"

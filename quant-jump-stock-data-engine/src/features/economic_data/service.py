@@ -99,10 +99,10 @@ class EconomicDataService:
             }
 
     def _load_fred_indicators(self) -> Dict[str, str]:
-        """FRED 지표를 조회합니다."""
+        """PostgreSQL에서 FRED 지표를 조회합니다."""
         indicators = {}
         try:
-            docs = self.repository.find_active_indicators("fred_indicators")
+            docs = self.repository.find_active_fred_indicators()
             for doc in docs:
                 if "code" in doc and "name" in doc:
                     indicators[doc["code"]] = doc["name"]
@@ -111,10 +111,10 @@ class EconomicDataService:
         return indicators
 
     def _load_yfinance_indicators(self) -> Dict[str, str]:
-        """Yahoo Finance 지표를 조회합니다."""
+        """PostgreSQL에서 Yahoo Finance 지표를 조회합니다."""
         indicators = {}
         try:
-            docs = self.repository.find_active_indicators("yfinance_indicators")
+            docs = self.repository.find_active_yfinance_indicators()
             for doc in docs:
                 if "ticker" in doc and "name" in doc:
                     indicators[doc["name"]] = doc["ticker"]
@@ -272,11 +272,11 @@ class EconomicDataService:
         """
         success_count = 0
 
-        # 활성 종목 조회
-        active_stocks = self.repository.find_active_stocks()
+        # PostgreSQL에서 활성 종목 조회
+        active_stocks = self.repository.find_active_stocks_from_postgres()
         tickers = [s["ticker"] for s in active_stocks if "ticker" in s]
 
-        logger.info(f"📊 개별 종목 데이터 수집 시작: {len(tickers)}개 종목")
+        logger.info(f"📊 개별 종목 데이터 수집 시작: {len(tickers)}개 종목 (PostgreSQL)")
 
         for ticker in tickers:
             try:

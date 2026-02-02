@@ -34,8 +34,9 @@ dependencies {
     // PostgreSQL
     implementation("org.postgresql:postgresql:42.7.1")
 
-    // Flyway for database migration - 비활성화 (수동 마이그레이션 사용)
-    // implementation("org.flywaydb:flyway-core:9.22.3")
+    // Flyway for database migration
+    implementation("org.flywaydb:flyway-core:10.8.1")
+    implementation("org.flywaydb:flyway-database-postgresql:10.8.1")
 
     // Connection Pool
     implementation("com.zaxxer:HikariCP:5.1.0")

@@ -28,7 +28,7 @@ spring:
   # ============================================
   jpa:
     hibernate:
-      ddl-auto: validate  # ⚠️  자동 생성 불가: Flyway로 관리
+      ddl-auto: validate  # Flyway가 스키마 관리, JPA는 검증만
     generate-ddl: false
     open-in-view: false  # N+1 문제 방지
     properties:
@@ -41,10 +41,16 @@ spring:
         format_sql: false
 
   # ============================================
-  # Flyway 비활성화 (수동 마이그레이션 사용)
+  # Flyway Configuration
   # ============================================
   flyway:
-    enabled: false
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true  # 기존 DB에 Flyway 적용 시 필요
+    baseline-version: 0
+    validate-on-migrate: true
+    out-of-order: false
+    clean-disabled: true  # 프로덕션 안전장치
 
   # ============================================
   # MongoDB Configuration (분석 데이터)
