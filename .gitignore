@@ -131,3 +131,8 @@ test_*.py
 
 # SQL scripts with credentials
 update_kis_credentials.sql
+
+# Local configuration files
+*.local.json
+settings.local.json
+.settings.local.json
