@@ -21,6 +21,9 @@ topics=(
     "quantiq.analysis.completed"
     "economic.data.update.request"
     "economic.data.updated"
+    "analysis.technical.request"
+    "analysis.sentiment.request"
+    "analysis.combined.request"
 )
 
 # Docker compose를 통해 실행하는 경우
@@ -31,7 +34,7 @@ if command -v docker &> /dev/null; then
         echo ""
         echo "토픽 생성: $topic"
 
-        docker exec quantiq-kafka kafka-topics.sh \
+        docker exec quantiq-kafka kafka-topics \
             --bootstrap-server localhost:9092 \
             --create \
             --if-not-exists \
@@ -42,7 +45,7 @@ if command -v docker &> /dev/null; then
 
     echo ""
     echo "생성된 토픽 목록:"
-    docker exec quantiq-kafka kafka-topics.sh \
+    docker exec quantiq-kafka kafka-topics \
         --bootstrap-server localhost:9092 \
         --list
 else

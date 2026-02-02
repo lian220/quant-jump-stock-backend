@@ -70,17 +70,19 @@ services:
   postgresql:
     image: postgres:15-alpine
     container_name: qjs-postgres
+    env_file:
+      - .env.local
     environment:
-      POSTGRES_DB: quantiq
-      POSTGRES_USER: quantiq_user
-      POSTGRES_PASSWORD: quantiq_password
+      POSTGRES_DB: ${POSTGRES_DB:-quantiq}
+      POSTGRES_USER: ${POSTGRES_USER:-quantiq_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-quantiq_password}
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
-      - "5433:5432"
+      - "5432:5432"
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U quantiq_user"]
+      test: [ "CMD-SHELL", "pg_isready -U quantiq_user" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -129,13 +131,25 @@ services:
         condition: service_started
       mongodb:
         condition: service_started
+      postgresql:
+        condition: service_healthy
     env_file:
-      - .env.local
+      - ${ENV_FILE:-.env.local}
     environment:
       TZ: "Asia/Seoul"
+      # PostgreSQL
+      DB_HOST: "postgresql"
+      DB_PORT: "5432"
+      DB_NAME: ${POSTGRES_DB:-quantiq}
+      DB_USER: ${POSTGRES_USER:-quantiq_user}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-quantiq_password}
+      # MongoDB
       MONGODB_URI: "mongodb://quantiq_user:quantiq_password@mongodb:27017/stock_trading?authSource=admin"
+      # Kafka
       KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
+      # APIs
       FRED_API_KEY: ${FRED_API_KEY}
+      # Slack
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL_SCHEDULER}
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
       SLACK_CHANNEL: "C0A1XASTLH2"
@@ -171,23 +185,23 @@ services:
       mongodb:
         condition: service_started
     env_file:
-      - .env.local
-      - .env.prod
+      - ${ENV_FILE:-.env.local} # 로컬 환경 설정 (PostgreSQL, Kafka 등)
     volumes:
       - ./credentials:/app/credentials
       - ./quant-jump-stock-data-engine:/quant-jump-stock-data-engine
       - ./.env.prod:/app/.env.prod:ro
     environment:
       TZ: "Asia/Seoul"
-      # PostgreSQL
-      DB_HOST: postgresql
-      DB_PORT: 5432
-      DB_NAME: quantiq
-      DB_USER: quantiq_user
-      DB_PASSWORD: quantiq_password
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgresql:5432/quantiq
-      SPRING_DATASOURCE_USERNAME: quantiq_user
-      SPRING_DATASOURCE_PASSWORD: quantiq_password
+      # PostgreSQL - Main DataSource (Spring Boot default)
+      SPRING_DATASOURCE_URL: jdbc:postgresql://${DB_HOST:-postgresql}:${DB_PORT:-5432}/${DB_NAME:-quantiq}
+      SPRING_DATASOURCE_USERNAME: ${DB_USER:-quantiq_user}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-quantiq_password}
+      # PostgreSQL - for application.yml (Quartz uses these)
+      DB_HOST: ${DB_HOST:-postgresql}
+      DB_PORT: ${DB_PORT:-5432}
+      DB_NAME: ${DB_NAME:-quantiq}
+      DB_USER: ${DB_USER:-quantiq_user}
+      DB_PASSWORD: ${DB_PASSWORD:-quantiq_password}
       # MongoDB
       SPRING_DATA_MONGODB_URI: "mongodb://quantiq_user:quantiq_password@mongodb:27017/stock_trading?authSource=admin"
       # Kafka

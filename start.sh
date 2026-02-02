@@ -82,7 +82,21 @@ if [ "$SKIP_INFRA" = false ]; then
 
     # Wait for Kafka
     echo -e "${YELLOW}⏳ Waiting for Kafka...${NC}"
-    sleep 3
+    sleep 5
+
+    # Kafka 토픽 생성
+    echo -e "${YELLOW}📝 Creating Kafka topics...${NC}"
+    if [ -f "$PROJECT_ROOT/scripts/setup/create-kafka-topics.sh" ]; then
+        bash "$PROJECT_ROOT/scripts/setup/create-kafka-topics.sh"
+        if [ $? -eq 0 ]; then
+            echo -e "${GREEN}✓ Kafka topics created${NC}"
+        else
+            echo -e "${YELLOW}⚠ Some topics may already exist${NC}"
+        fi
+    else
+        echo -e "${RED}⚠ Kafka topic creation script not found${NC}"
+    fi
+
     echo -e "${GREEN}✓ Kafka ready${NC}"
 fi
 

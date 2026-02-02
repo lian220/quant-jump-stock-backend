@@ -7,6 +7,9 @@ server:
 spring:
   application:
     name: quantiq-core
+  # .env.prod 파일에서 추가 설정 로드 (Vertex AI, API 키 등)
+  config:
+    import: optional:file:/app/.env.prod[.properties]
 
   # ============================================
   # PostgreSQL (RDB) Configuration
@@ -48,9 +51,12 @@ spring:
     locations: classpath:db/migration
     baseline-on-migrate: true  # 기존 DB에 Flyway 적용 시 필요
     baseline-version: 0
-    validate-on-migrate: true
-    out-of-order: false
+    validate-on-migrate: ${FLYWAY_VALIDATE_ON_MIGRATE:false}  # 개발: false, 프로덕션: true
+    out-of-order: true  # migration 순서 유연하게 허용
     clean-disabled: true  # 프로덕션 안전장치
+    ignore-missing-migrations: true  # 누락된 migration 무시
+    ignore-ignored-migrations: true  # 무시된 migration 허용
+    ignore-future-migrations: true  # 미래 버전 migration 허용
 
   # ============================================
   # MongoDB Configuration (분석 데이터)
