@@ -25,8 +25,22 @@ data class UserEntity(
     val passwordHash: String? = null,
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "oauth_provider", length = 20)
+    val oauthProvider: OAuthProvider? = null,
+
+    @Column(name = "oauth_provider_id", length = 255)
+    val oauthProviderId: String? = null,
+
+    @Column(name = "profile_image_url", length = 500)
+    val profileImageUrl: String? = null,
+
+    @Enumerated(EnumType.STRING)
     @Column(length = 20)
     val status: UserStatus = UserStatus.ACTIVE,
+
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    val role: UserRole = UserRole.USER,
 
     @OneToOne(mappedBy = "user", cascade = [CascadeType.ALL], fetch = FetchType.LAZY)
     var tradingConfig: TradingConfigEntity? = null,
@@ -51,4 +65,12 @@ data class UserEntity(
 
 enum class UserStatus {
     ACTIVE, INACTIVE, SUSPENDED
+}
+
+enum class UserRole {
+    ADMIN, USER, MODERATOR
+}
+
+enum class OAuthProvider {
+    GOOGLE, NAVER
 }
