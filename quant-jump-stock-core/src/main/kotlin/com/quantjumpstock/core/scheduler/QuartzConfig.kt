@@ -110,31 +110,7 @@ class QuartzConfig {
     }
 
     // ========================
-    // 5. 감정 분석 (02:30) - 검증용
-    // ========================
-    // 뉴스 감정 분석 결과로 매수 결정 검증
-    @Bean
-    fun sentimentAnalysisJobDetail(): JobDetail {
-        return JobBuilder.newJob(ParallelAnalysisJob::class.java)
-            .withIdentity("sentimentAnalysisJob")
-            .storeDurably()
-            .build()
-    }
-
-    @Bean
-    fun sentimentAnalysisTrigger(): Trigger {
-        return TriggerBuilder.newTrigger()
-            .forJob(sentimentAnalysisJobDetail())
-            .withIdentity("sentimentAnalysisTrigger")
-            .withSchedule(
-                CronScheduleBuilder.cronSchedule("0 30 2 * * ?")
-                    .inTimeZone(TimeZone.getTimeZone("Asia/Seoul"))
-            )
-            .build()
-    }
-
-    // ========================
-    // 6. 주문 정리 (06:30)
+    // 5. 주문 정리 (06:30)
     // ========================
     @Bean
     fun cleanupOrdersJobDetail(): JobDetail {
@@ -157,7 +133,7 @@ class QuartzConfig {
     }
 
     // ========================
-    // 7. 포트폴리오 수익 보고 (07:00)
+    // 6. 포트폴리오 수익 보고 (07:00)
     // ========================
     @Bean
     fun portfolioProfitReportJobDetail(): JobDetail {
@@ -180,7 +156,7 @@ class QuartzConfig {
     }
 
     // ========================
-    // 8. 자동 매도 체크 (매 1분)
+    // 7. 자동 매도 체크 (매 1분)
     // ========================
     @Bean
     fun autoSellJobDetail(): JobDetail {
