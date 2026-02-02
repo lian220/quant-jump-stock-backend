@@ -2,13 +2,11 @@ package com.quantjumpstock.core
 
 import io.github.cdimascio.dotenv.Dotenv
 import org.springframework.boot.autoconfigure.SpringBootApplication
-import org.springframework.boot.context.properties.ConfigurationPropertiesScan
 import org.springframework.boot.runApplication
 import org.slf4j.LoggerFactory
 import java.io.File
 
 @SpringBootApplication
-@ConfigurationPropertiesScan
 class QuantJumpStockCoreApplication
 
 private val logger = LoggerFactory.getLogger(QuantJumpStockCoreApplication::class.java)

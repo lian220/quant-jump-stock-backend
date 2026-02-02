@@ -100,67 +100,6 @@ class AuthService(
     }
 
     /**
-     * 회원가입 처리
-     */
-    fun signup(request: SignupRequest): SignupResponse {
-        // 1. 아이디 중복 확인
-        if (userRepository.existsByUserId(request.userId)) {
-            return SignupResponse(
-                success = false,
-                message = "이미 사용 중인 아이디입니다"
-            )
-        }
-
-        // 2. 이메일 중복 확인
-        if (userRepository.existsByEmail(request.email)) {
-            return SignupResponse(
-                success = false,
-                message = "이미 사용 중인 이메일입니다"
-            )
-        }
-
-        // 3. 비밀번호 유효성 검사
-        if (request.password.length < 6) {
-            return SignupResponse(
-                success = false,
-                message = "비밀번호는 6자 이상이어야 합니다"
-            )
-        }
-
-        // 4. 사용자 생성
-        val user = UserEntity(
-            userId = request.userId,
-            email = request.email,
-            name = request.name,
-            passwordHash = passwordEncoder.encode(request.password),
-            status = UserStatus.ACTIVE,
-            role = UserRole.USER
-        )
-
-        userRepository.save(user)
-
-        return SignupResponse(
-            success = true,
-            message = "회원가입이 완료되었습니다"
-        )
-    }
-
-    /**
-     * OAuth 로그인을 위한 세션 토큰 생성
-     */
-    fun createSessionToken(user: UserEntity): String {
-        val token = generateToken()
-        val tokenInfo = TokenInfo(
-            userId = user.userId,
-            role = user.role,
-            createdAt = LocalDateTime.now(),
-            expiresAt = LocalDateTime.now().plusHours(24)
-        )
-        tokenStore[token] = tokenInfo
-        return token
-    }
-
-    /**
      * 사용자 조회 (userId 또는 email)
      */
     private fun findUser(userIdOrEmail: String): UserEntity? {
@@ -220,25 +159,6 @@ data class UserInfo(
     val email: String?,
     val role: String,
     val status: String
-)
-
-/**
- * 회원가입 요청
- */
-data class SignupRequest(
-    val userId: String,
-    val email: String,
-    val password: String,
-    val name: String? = null
-)
-
-/**
- * 회원가입 응답
- */
-data class SignupResponse(
-    val success: Boolean,
-    val message: String? = null,
-    val error: String? = null
 )
 
 /**
