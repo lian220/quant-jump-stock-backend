@@ -5,6 +5,7 @@ import com.google.cloud.storage.Storage
 import com.quantjumpstock.core.adapter.output.notification.slack.SlackApiClient
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value as SpringValue
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -13,6 +14,7 @@ import java.util.UUID
  * GCS에 업로드된 패키지를 사용하여 Vertex AI CustomJob 실행
  */
 @Service
+@ConditionalOnProperty(name = ["gcp.enabled"], havingValue = "true", matchIfMissing = false)
 class VertexAIService(
     private val jobServiceClient: JobServiceClient,
     private val storageClient: Storage,

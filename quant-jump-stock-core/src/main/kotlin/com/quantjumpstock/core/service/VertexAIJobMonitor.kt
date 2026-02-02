@@ -5,6 +5,7 @@ import com.google.cloud.aiplatform.v1.JobState
 import com.quantjumpstock.core.adapter.output.notification.slack.SlackApiClient
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value as SpringValue
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.scheduling.annotation.Async
 import org.springframework.stereotype.Service
 
@@ -13,6 +14,7 @@ import org.springframework.stereotype.Service
  * @Async가 제대로 동작하도록 별도 클래스로 분리
  */
 @Service
+@ConditionalOnProperty(name = ["gcp.enabled"], havingValue = "true", matchIfMissing = false)
 class VertexAIJobMonitor(
     private val jobServiceClient: JobServiceClient,
     private val slackApiClient: SlackApiClient,

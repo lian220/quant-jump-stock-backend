@@ -4,6 +4,7 @@ import com.google.cloud.aiplatform.v1.JobState
 import com.quantjumpstock.core.adapter.input.api.VertexAIApi
 import com.quantjumpstock.core.service.VertexAIService
 import org.slf4j.LoggerFactory
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController
  */
 @RestController
 @RequestMapping("/api/v1/vertex-ai")
+@ConditionalOnProperty(name = ["gcp.enabled"], havingValue = "true", matchIfMissing = false)
 class VertexAIController(
     private val vertexAIService: VertexAIService
 ) : VertexAIApi {
