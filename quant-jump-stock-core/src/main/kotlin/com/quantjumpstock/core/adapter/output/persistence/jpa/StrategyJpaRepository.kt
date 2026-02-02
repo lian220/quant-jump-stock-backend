@@ -1,0 +1,111 @@
+package com.quantjumpstock.core.adapter.output.persistence.jpa
+
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
+import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Modifying
+import org.springframework.data.jpa.repository.Query
+import org.springframework.stereotype.Repository
+import java.math.BigDecimal
+import java.util.Optional
+
+@Repository
+interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
+
+    fun findByStatus(status: StrategyStatus): List<StrategyEntity>
+
+    fun findByCategory(category: StrategyCategory): List<StrategyEntity>
+
+    fun findByOwnerId(ownerId: Long): List<StrategyEntity>
+
+    fun findByOwnerIdAndStatus(ownerId: Long, status: StrategyStatus): List<StrategyEntity>
+
+    // 공개 전략 조회
+    fun findByIsPublicTrueAndStatus(status: StrategyStatus, pageable: Pageable): Page<StrategyEntity>
+
+    @Query("""
+        SELECT s FROM StrategyEntity s
+        WHERE s.isPublic = true AND s.status = 'ACTIVE'
+        ORDER BY s.subscriberCount DESC
+    """)
+    fun findPopularStrategies(pageable: Pageable): Page<StrategyEntity>
+
+    @Query("""
+        SELECT s FROM StrategyEntity s
+        WHERE s.isPublic = true AND s.status = 'ACTIVE'
+        ORDER BY s.averageRating DESC
+    """)
+    fun findTopRatedStrategies(pageable: Pageable): Page<StrategyEntity>
+
+    @Query("""
+        SELECT s FROM StrategyEntity s
+        WHERE s.isPublic = true AND s.status = 'ACTIVE'
+        ORDER BY s.createdAt DESC
+    """)
+    fun findNewestStrategies(pageable: Pageable): Page<StrategyEntity>
+
+    // 카테고리별 공개 전략
+    @Query("""
+        SELECT s FROM StrategyEntity s
+        WHERE s.isPublic = true AND s.status = 'ACTIVE' AND s.category = :category
+        ORDER BY s.subscriberCount DESC
+    """)
+    fun findPublicByCategory(category: StrategyCategory, pageable: Pageable): Page<StrategyEntity>
+
+    // 무료 전략만
+    @Query("""
+        SELECT s FROM StrategyEntity s
+        WHERE s.isPublic = true AND s.status = 'ACTIVE' AND s.isPremium = false
+        ORDER BY s.subscriberCount DESC
+    """)
+    fun findFreeStrategies(pageable: Pageable): Page<StrategyEntity>
+
+    // 프리미엄 전략만
+    @Query("""
+        SELECT s FROM StrategyEntity s
+        WHERE s.isPublic = true AND s.status = 'ACTIVE' AND s.isPremium = true
+        ORDER BY s.subscriberCount DESC
+    """)
+    fun findPremiumStrategies(pageable: Pageable): Page<StrategyEntity>
+
+    // 검색
+    @Query("""
+        SELECT s FROM StrategyEntity s
+        WHERE s.isPublic = true AND s.status = 'ACTIVE'
+        AND (LOWER(s.name) LIKE LOWER(CONCAT('%', :keyword, '%'))
+             OR LOWER(s.description) LIKE LOWER(CONCAT('%', :keyword, '%')))
+        ORDER BY s.subscriberCount DESC
+    """)
+    fun searchByKeyword(keyword: String, pageable: Pageable): Page<StrategyEntity>
+
+    // 상세 조회 (백테스트 결과 포함)
+    @Query("""
+        SELECT s FROM StrategyEntity s
+        LEFT JOIN FETCH s.backtestResults
+        WHERE s.id = :id
+    """)
+    fun findByIdWithBacktestResults(id: Long): Optional<StrategyEntity>
+
+    // 구독자 수 업데이트
+    @Modifying
+    @Query("UPDATE StrategyEntity s SET s.subscriberCount = s.subscriberCount + 1 WHERE s.id = :strategyId")
+    fun incrementSubscriberCount(strategyId: Long): Int
+
+    @Modifying
+    @Query("UPDATE StrategyEntity s SET s.subscriberCount = s.subscriberCount - 1 WHERE s.id = :strategyId AND s.subscriberCount > 0")
+    fun decrementSubscriberCount(strategyId: Long): Int
+
+    @Modifying
+    @Query("UPDATE StrategyEntity s SET s.averageRating = :rating WHERE s.id = :strategyId")
+    fun updateAverageRating(strategyId: Long, rating: BigDecimal): Int
+
+    // 통계
+    @Query("SELECT COUNT(s) FROM StrategyEntity s WHERE s.owner.id = :ownerId")
+    fun countByOwnerId(ownerId: Long): Long
+
+    @Query("SELECT COUNT(s) FROM StrategyEntity s WHERE s.isPublic = true AND s.status = 'ACTIVE'")
+    fun countActivePublicStrategies(): Long
+
+    @Query("SELECT COUNT(s) FROM StrategyEntity s WHERE s.status = 'ACTIVE'")
+    fun countActiveStrategies(): Long
+}

@@ -1,5 +1,6 @@
 package com.quantjumpstock.core.adapter.input
 
+import com.quantjumpstock.core.application.auth.AuthException
 import com.quantjumpstock.core.infrastructure.security.AccessDeniedException
 import com.quantjumpstock.core.infrastructure.security.UnauthorizedException
 import org.slf4j.LoggerFactory
@@ -15,6 +16,22 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
 class GlobalExceptionHandler {
 
     private val logger = LoggerFactory.getLogger(javaClass)
+
+    /**
+     * 인증 실패 예외 처리 (로그인 실패 등)
+     */
+    @ExceptionHandler(AuthException::class)
+    fun handleAuthException(ex: AuthException): ResponseEntity<ErrorResponse> {
+        logger.warn("🔐 Authentication failed: {}", ex.message)
+
+        return ResponseEntity
+            .status(HttpStatus.UNAUTHORIZED)
+            .body(ErrorResponse(
+                error = "Authentication Failed",
+                message = ex.message ?: "Authentication failed",
+                status = HttpStatus.UNAUTHORIZED.value()
+            ))
+    }
 
     /**
      * 인증 필요 예외 처리

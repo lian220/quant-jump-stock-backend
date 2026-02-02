@@ -34,4 +34,10 @@ interface UserJpaRepository : JpaRepository<UserEntity, Long> {
     fun existsByUserId(userId: String): Boolean
 
     fun existsByEmail(email: String): Boolean
+
+    // OAuth 관련 쿼리 (V14)
+    fun findByOauthProviderAndOauthProviderId(
+        oauthProvider: OAuthProvider,
+        oauthProviderId: String
+    ): UserEntity?
 }

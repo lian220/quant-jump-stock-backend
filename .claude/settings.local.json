@@ -44,7 +44,14 @@
       "Bash(git remote:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "Bash(docker compose:*)",
+      "Bash(PGPASSWORD=quantiq_password psql:*)",
+      "Bash(docker run:*)",
+      "Bash(quant-jump-stock-core/src/main/kotlin/com/quantjumpstock/core/service/VertexAIJobMonitor.kt )",
+      "Bash(quant-jump-stock-core/src/main/kotlin/com/quantjumpstock/core/service/VertexAIService.kt )",
+      "Bash(quant-jump-stock-core/src/main/resources/application.yml)",
+      "Bash(git push:*)"
     ]
   }
 }
