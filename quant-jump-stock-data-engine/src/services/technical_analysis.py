@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import logging
-from src.core.database import MongoDB
+from src.core.database import MongoDB, PostgreSQL
 
 logger = logging.getLogger(__name__)
 
@@ -34,13 +34,18 @@ class TechnicalAnalysisService:
         logger.info(f"Starting technical analysis (target_date={target_date})...")
         db = MongoDB.get_db()
 
-        # Get active stocks
+        # Get active stocks from PostgreSQL
         stock_names = []
+        ticker_to_name = {}
         try:
-            active_stocks = list(db.stocks.find({"is_active": True}))
+            active_stocks = PostgreSQL.execute_query(
+                "SELECT ticker, stock_name FROM stocks WHERE is_active = TRUE",
+                fetch_all=True
+            )
             stock_names = [s["stock_name"] for s in active_stocks if s.get("stock_name")]
+            ticker_to_name = {s["ticker"]: s["stock_name"] for s in active_stocks if s.get("ticker")}
         except Exception as e:
-            logger.error(f"Failed to fetch active stocks: {e}")
+            logger.error(f"Failed to fetch active stocks from PostgreSQL: {e}")
             return []
 
         if not stock_names:
@@ -89,10 +94,8 @@ class TechnicalAnalysisService:
                         if ticker not in data_dict:
                             data_dict[ticker] = {}
                         data_dict[ticker][date] = float(price)
-            
-            # Map Ticker to Stock Name for reporting
-            ticker_to_name = {s["ticker"]: s["stock_name"] for s in active_stocks if s.get("ticker")}
-            
+
+            # ticker_to_name already created from PostgreSQL query above
             recommendations = []
             
             for ticker, dates_prices in data_dict.items():

@@ -2,7 +2,7 @@ import logging
 import requests
 import time
 from datetime import datetime, timedelta
-from src.core.database import MongoDB
+from src.core.database import MongoDB, PostgreSQL
 from src.core.config import settings
 
 logger = logging.getLogger(__name__)
@@ -16,13 +16,15 @@ class SentimentAnalysisService:
         logger.info(f"Starting sentiment analysis... ({start_date} ~ {end_date})")
         db = MongoDB.get_db()
         
-        # 1. Get Tickers (Union of Active Stocks and Holdings)
-        # For MVP, just get active stocks
+        # 1. Get Tickers from PostgreSQL
         try:
-            active_stocks = list(db.stocks.find({"is_active": True}))
+            active_stocks = PostgreSQL.execute_query(
+                "SELECT ticker FROM stocks WHERE is_active = TRUE",
+                fetch_all=True
+            )
             tickers = [s["ticker"] for s in active_stocks if s.get("ticker")]
         except Exception as e:
-            logger.error(f"Failed to fetch active stocks: {e}")
+            logger.error(f"Failed to fetch active stocks from PostgreSQL: {e}")
             return []
 
         if not tickers:

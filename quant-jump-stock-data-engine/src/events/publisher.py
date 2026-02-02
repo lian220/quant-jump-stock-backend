@@ -7,10 +7,18 @@ Kafka로 이벤트를 발행하는 범용 서비스입니다.
 from confluent_kafka import Producer
 import json
 import logging
+from datetime import datetime
 from src.core.config import settings
 from src.events.schema import BaseEvent
 
 logger = logging.getLogger(__name__)
+
+
+def json_serializer(obj):
+    """JSON 직렬화 헬퍼: datetime 객체를 ISO 형식 문자열로 변환"""
+    if isinstance(obj, datetime):
+        return obj.isoformat()
+    raise TypeError(f"Type {type(obj)} not serializable")
 
 
 class EventPublisher:
@@ -64,7 +72,7 @@ class EventPublisher:
         """
         try:
             p = cls.get_producer()
-            message = json.dumps(event.to_dict()).encode('utf-8')
+            message = json.dumps(event.to_dict(), default=json_serializer).encode('utf-8')
 
             logger.info(f"📤 Publishing event to topic [{topic}]: eventId={event.eventId}, type={event.eventType}")
             logger.debug(f"Event payload: {message}")
