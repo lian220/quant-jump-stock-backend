@@ -1,6 +1,8 @@
-version: '3.8'
-
+name: quant-jump-stock
 services:
+  # ========================================
+  # Infrastructure (Always needed)
+  # ========================================
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
     container_name: qjs-zookeeper
@@ -17,7 +19,7 @@ services:
         reservations:
           memory: 256M
     networks:
-      - qjs-network
+      - quantiq-network
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
@@ -43,7 +45,7 @@ services:
         reservations:
           memory: 512M
     networks:
-      - qjs-network
+      - quantiq-network
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -65,13 +67,17 @@ services:
         reservations:
           memory: 256M
     networks:
-      - qjs-network
+      - quantiq-network
 
+  # ========================================
+  # Local Database Services (profile: local)
+  # ========================================
   postgresql:
     image: postgres:15-alpine
     container_name: qjs-postgres
+    profiles: [ "local" ]
     env_file:
-      - .env.local
+      - ${ENV_FILE:-.env.local}
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-quantiq}
       POSTGRES_USER: ${POSTGRES_USER:-quantiq_user}
@@ -95,11 +101,12 @@ services:
           memory: 512M
     shm_size: 256M
     networks:
-      - qjs-network
+      - quantiq-network
 
   mongodb:
     image: mongo:latest
     container_name: qjs-mongodb
+    profiles: [ "local" ]
     ports:
       - "27017:27017"
     environment:
@@ -117,8 +124,11 @@ services:
         reservations:
           memory: 512M
     networks:
-      - qjs-network
+      - quantiq-network
 
+  # ========================================
+  # Application Services
+  # ========================================
   quant-jump-stock-data-engine:
     build:
       context: ./quant-jump-stock-data-engine
@@ -129,22 +139,12 @@ services:
     depends_on:
       kafka:
         condition: service_started
-      mongodb:
-        condition: service_started
-      postgresql:
-        condition: service_healthy
     env_file:
       - ${ENV_FILE:-.env.local}
     environment:
       TZ: "Asia/Seoul"
-      # PostgreSQL
-      DB_HOST: "postgresql"
-      DB_PORT: "5432"
-      DB_NAME: ${POSTGRES_DB:-quantiq}
-      DB_USER: ${POSTGRES_USER:-quantiq_user}
-      DB_PASSWORD: ${POSTGRES_PASSWORD:-quantiq_password}
-      # MongoDB
-      MONGODB_URI: "mongodb://quantiq_user:quantiq_password@mongodb:27017/stock_trading?authSource=admin"
+      # MongoDB - Docker 내부에서는 서비스 이름 사용
+      MONGODB_URI: ${MONGODB_URI:-mongodb://quantiq_user:quantiq_password@mongodb:27017/stock_trading?authSource=admin}
       # Kafka
       KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
       # APIs
@@ -157,9 +157,12 @@ services:
       GOOGLE_APPLICATION_CREDENTIALS: "/app/credentials/vertex-ai-key.json"
       GCP_PROJECT_ID: ${GCP_PROJECT_ID:-arboreal-path-479202-c5}
       GCP_REGION: ${GCP_REGION:-us-central1}
+      # ML Scripts path
+      ML_SCRIPTS_DIR: "/scripts/ml"
     volumes:
       - ./quant-jump-stock-data-engine:/app
       - ./credentials:/app/credentials
+      - ./scripts:/scripts
     deploy:
       resources:
         limits:
@@ -168,7 +171,7 @@ services:
         reservations:
           memory: 512M
     networks:
-      - qjs-network
+      - quantiq-network
 
   quant-jump-stock-core:
     build:
@@ -178,21 +181,18 @@ services:
     ports:
       - "10010:10010"
     depends_on:
-      postgresql:
-        condition: service_healthy
       kafka:
         condition: service_started
-      mongodb:
-        condition: service_started
     env_file:
-      - ${ENV_FILE:-.env.local} # 로컬 환경 설정 (PostgreSQL, Kafka 등)
+      - ${ENV_FILE:-.env.local}
     volumes:
       - ./credentials:/app/credentials
       - ./quant-jump-stock-data-engine:/quant-jump-stock-data-engine
       - ./.env.prod:/app/.env.prod:ro
+      - ./scripts:/scripts
     environment:
       TZ: "Asia/Seoul"
-      # PostgreSQL - Main DataSource (Spring Boot default)
+      # PostgreSQL - Use env vars from env_file
       SPRING_DATASOURCE_URL: jdbc:postgresql://${DB_HOST:-postgresql}:${DB_PORT:-5432}/${DB_NAME:-quantiq}
       SPRING_DATASOURCE_USERNAME: ${DB_USER:-quantiq_user}
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-quantiq_password}
@@ -202,8 +202,8 @@ services:
       DB_NAME: ${DB_NAME:-quantiq}
       DB_USER: ${DB_USER:-quantiq_user}
       DB_PASSWORD: ${DB_PASSWORD:-quantiq_password}
-      # MongoDB
-      SPRING_DATA_MONGODB_URI: "mongodb://quantiq_user:quantiq_password@mongodb:27017/stock_trading?authSource=admin"
+      # MongoDB - use env vars (supports both local and prod)
+      SPRING_DATA_MONGODB_URI: ${MONGODB_URI:-mongodb://quantiq_user:quantiq_password@mongodb:27017/stock_trading?authSource=admin}
       # Kafka
       SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
       # Slack
@@ -219,6 +219,12 @@ services:
       RUN_MIGRATION: "true"
       # Google Cloud (override .env.local path for container)
       GOOGLE_APPLICATION_CREDENTIALS: "/app/credentials/vertex-ai-key.json"
+      # Vertex AI용 PostgreSQL (Supabase - 외부 접근 가능)
+      VERTEX_AI_DB_HOST: ${VERTEX_AI_DB_HOST}
+      VERTEX_AI_DB_PORT: ${VERTEX_AI_DB_PORT:-5432}
+      VERTEX_AI_DB_NAME: ${VERTEX_AI_DB_NAME}
+      VERTEX_AI_DB_USER: ${VERTEX_AI_DB_USER}
+      VERTEX_AI_DB_PASSWORD: ${VERTEX_AI_DB_PASSWORD}
       # JVM Heap Settings
       JAVA_OPTS: "-Xmx768m -Xms512m -XX:MaxMetaspaceSize=256m"
     deploy:
@@ -229,8 +235,9 @@ services:
         reservations:
           memory: 768M
     networks:
-      - qjs-network
+      - quantiq-network
 
 networks:
-  qjs-network:
-    driver: bridge
+  quantiq-network:
+    external: true
+    name: quant-jump-stock_quantiq-network
