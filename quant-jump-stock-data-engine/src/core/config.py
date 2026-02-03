@@ -2,15 +2,22 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# .env.local 파일 우선 로드 (루트 디렉토리)
-env_local_path = Path(__file__).parent.parent.parent / ".env.local"
-if env_local_path.exists():
-    load_dotenv(env_local_path)
-    print(f"✅ 환경변수 로드: {env_local_path}")
+# Docker 환경 감지 (/.dockerenv 파일 존재 여부 또는 KUBERNETES_SERVICE_HOST 환경 변수)
+is_docker = os.path.exists('/.dockerenv') or os.getenv('KUBERNETES_SERVICE_HOST') is not None
+
+if not is_docker:
+    # 로컬 개발 환경: .env.local 파일 우선 로드
+    env_local_path = Path(__file__).parent.parent.parent / ".env.local"
+    if env_local_path.exists():
+        load_dotenv(env_local_path)
+        print(f"✅ 환경변수 로드: {env_local_path}")
+    else:
+        # Fallback: .env 파일 로드
+        load_dotenv()
+        print("⚠️ .env.local 파일 없음, .env 사용")
 else:
-    # Fallback: .env 파일 로드
-    load_dotenv()
-    print("⚠️ .env.local 파일 없음, .env 사용")
+    # Docker/Kubernetes 환경: 환경 변수는 이미 주입됨
+    print("✅ Docker 환경 감지: 주입된 환경 변수 사용")
 
 class Settings:
     # MongoDB
