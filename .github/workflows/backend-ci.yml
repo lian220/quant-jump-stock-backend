@@ -14,6 +14,12 @@ on:
       - 'quant-jump-stock-data-engine/**'
       - '.github/workflows/backend-ci.yml'
 
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+  statuses: write
+
 jobs:
   # ============================================
   # Kotlin/Spring Boot Core API 테스트
