@@ -97,3 +97,11 @@ build/
 # ============================================
 pip-log.txt
 pip-delete-this-directory.txt
+
+# ============================================
+# Claude Code
+# ============================================
+.claude/
+*.local.json
+settings.local.json
+.settings.local.json
