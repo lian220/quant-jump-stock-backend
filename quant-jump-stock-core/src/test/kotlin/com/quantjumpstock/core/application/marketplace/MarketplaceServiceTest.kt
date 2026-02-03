@@ -8,9 +8,9 @@ import org.junit.jupiter.api.extension.ExtendWith
 import org.mockito.InjectMocks
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
-import org.mockito.ArgumentMatchers.any as mockAny
-import org.mockito.ArgumentMatchers.isNull as mockIsNull
-import org.mockito.Mockito.`when` as whenever
+import org.mockito.kotlin.any
+import org.mockito.kotlin.isNull
+import org.mockito.kotlin.whenever
 import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.PageRequest
@@ -87,7 +87,7 @@ class MarketplaceServiceTest {
         val pageable = PageRequest.of(0, 20)
         val page = PageImpl(listOf(testStrategy), pageable, 1)
 
-        whenever(strategyRepository.findMarketplaceStrategies(mockIsNull(), mockIsNull(), mockIsNull(), mockAny(Pageable::class.java)))
+        whenever(strategyRepository.findMarketplaceStrategies(isNull(), isNull(), isNull(), any()))
             .thenReturn(page)
 
         // When
@@ -114,7 +114,7 @@ class MarketplaceServiceTest {
         )
         val page = PageImpl(listOf(testStrategy), PageRequest.of(0, 20), 1)
 
-        whenever(strategyRepository.findMarketplaceStrategies(mockAny(StrategyCategory::class.java), mockIsNull(), mockIsNull(), mockAny(Pageable::class.java)))
+        whenever(strategyRepository.findMarketplaceStrategies(any(), isNull(), isNull(), any()))
             .thenReturn(page)
 
         // When
@@ -138,7 +138,7 @@ class MarketplaceServiceTest {
         )
         val page = PageImpl(listOf(testStrategy), PageRequest.of(0, 20), 1)
 
-        whenever(strategyRepository.findMarketplaceStrategies(mockIsNull(), mockAny(BigDecimal::class.java), mockIsNull(), mockAny(Pageable::class.java)))
+        whenever(strategyRepository.findMarketplaceStrategies(isNull(), any(), isNull(), any()))
             .thenReturn(page)
 
         // When
@@ -162,7 +162,7 @@ class MarketplaceServiceTest {
         )
         val page = PageImpl(listOf(testStrategy), PageRequest.of(0, 20), 1)
 
-        whenever(strategyRepository.findMarketplaceStrategiesByCagr(mockIsNull(), mockIsNull(), mockIsNull(), mockAny(Pageable::class.java)))
+        whenever(strategyRepository.findMarketplaceStrategiesByCagr(isNull(), isNull(), isNull(), any()))
             .thenReturn(page)
 
         // When
@@ -185,7 +185,7 @@ class MarketplaceServiceTest {
         )
         val page = PageImpl(listOf(testStrategy), PageRequest.of(0, 20), 1)
 
-        whenever(strategyRepository.findMarketplaceStrategiesBySharpe(mockIsNull(), mockIsNull(), mockIsNull(), mockAny(Pageable::class.java)))
+        whenever(strategyRepository.findMarketplaceStrategiesBySharpe(isNull(), isNull(), isNull(), any()))
             .thenReturn(page)
 
         // When
@@ -204,7 +204,7 @@ class MarketplaceServiceTest {
         val request = StrategyListRequest()
         val page = PageImpl(listOf(testStrategy), PageRequest.of(0, 20), 1)
 
-        whenever(strategyRepository.findMarketplaceStrategies(mockIsNull(), mockIsNull(), mockIsNull(), mockAny(Pageable::class.java)))
+        whenever(strategyRepository.findMarketplaceStrategies(isNull(), isNull(), isNull(), any()))
             .thenReturn(page)
 
         // When
@@ -228,7 +228,7 @@ class MarketplaceServiceTest {
         val request = StrategyListRequest(page = 1, size = 10)
         val page = PageImpl(listOf(testStrategy), PageRequest.of(1, 10), 25)
 
-        whenever(strategyRepository.findMarketplaceStrategies(mockIsNull(), mockIsNull(), mockIsNull(), mockAny(Pageable::class.java)))
+        whenever(strategyRepository.findMarketplaceStrategies(isNull(), isNull(), isNull(), any()))
             .thenReturn(page)
 
         // When

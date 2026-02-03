@@ -72,23 +72,23 @@ class MarketplaceControllerTest {
         )
 
         // 백테스트 결과 1
-        backtestResultRepository.save(
-            BacktestResultEntity(
-                strategy = testStrategy1,
-                user = testUser,
-                startDate = LocalDate.of(2020, 1, 1),
-                endDate = LocalDate.of(2023, 12, 31),
-                initialCapital = BigDecimal("10000000"),
-                finalValue = BigDecimal("15000000"),
-                totalReturn = BigDecimal("50.0"),
-                cagr = BigDecimal("15.5"),
-                mdd = BigDecimal("-12.3"),
-                sharpeRatio = BigDecimal("1.8"),
-                volatility = BigDecimal("18.5"),
-                winRate = BigDecimal("65.0"),
-                status = BacktestStatus.COMPLETED
-            )
+        val backtest1 = BacktestResultEntity(
+            strategy = testStrategy1,
+            user = testUser,
+            startDate = LocalDate.of(2020, 1, 1),
+            endDate = LocalDate.of(2023, 12, 31),
+            initialCapital = BigDecimal("10000000"),
+            finalValue = BigDecimal("15000000"),
+            totalReturn = BigDecimal("50.0"),
+            cagr = BigDecimal("15.5"),
+            mdd = BigDecimal("-12.3"),
+            sharpeRatio = BigDecimal("1.8"),
+            volatility = BigDecimal("18.5"),
+            winRate = BigDecimal("65.0"),
+            status = BacktestStatus.COMPLETED
         )
+        testStrategy1.backtestResults.add(backtest1)
+        backtestResultRepository.save(backtest1)
 
         // 테스트 전략 2 (MOMENTUM, 낮은 CAGR)
         testStrategy2 = strategyRepository.save(
@@ -107,23 +107,23 @@ class MarketplaceControllerTest {
         )
 
         // 백테스트 결과 2
-        backtestResultRepository.save(
-            BacktestResultEntity(
-                strategy = testStrategy2,
-                user = testUser,
-                startDate = LocalDate.of(2020, 1, 1),
-                endDate = LocalDate.of(2023, 12, 31),
-                initialCapital = BigDecimal("10000000"),
-                finalValue = BigDecimal("12000000"),
-                totalReturn = BigDecimal("20.0"),
-                cagr = BigDecimal("8.5"),
-                mdd = BigDecimal("-20.0"),
-                sharpeRatio = BigDecimal("1.2"),
-                volatility = BigDecimal("25.0"),
-                winRate = BigDecimal("55.0"),
-                status = BacktestStatus.COMPLETED
-            )
+        val backtest2 = BacktestResultEntity(
+            strategy = testStrategy2,
+            user = testUser,
+            startDate = LocalDate.of(2020, 1, 1),
+            endDate = LocalDate.of(2023, 12, 31),
+            initialCapital = BigDecimal("10000000"),
+            finalValue = BigDecimal("12000000"),
+            totalReturn = BigDecimal("20.0"),
+            cagr = BigDecimal("8.5"),
+            mdd = BigDecimal("-20.0"),
+            sharpeRatio = BigDecimal("1.2"),
+            volatility = BigDecimal("25.0"),
+            winRate = BigDecimal("55.0"),
+            status = BacktestStatus.COMPLETED
         )
+        testStrategy2.backtestResults.add(backtest2)
+        backtestResultRepository.save(backtest2)
     }
 
     @Test
