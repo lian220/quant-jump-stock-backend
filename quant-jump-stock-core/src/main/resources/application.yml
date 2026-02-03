@@ -236,7 +236,7 @@ db:
 # ============================================
 app:
   security:
-    encryption-key: ${APP_ENCRYPTION_KEY:CHANGE_THIS_TO_32_CHAR_SECRET}
+    encryption-key: ${APP_ENCRYPTION_KEY:CHANGE_THIS_TO_32_CHARACTERS_KEY}
 
 # ============================================
 # OAuth2 Configuration
