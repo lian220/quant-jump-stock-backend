@@ -4,7 +4,12 @@ version = "0.1.0"
 description = "Data processing engine for Quantiq"
 authors = ["Quantiq Team"]
 readme = "README.md"
-packages = [{include = "quantiq_data_engine", from = "src"}]
+packages = [
+    {include = "core", from = "src"},
+    {include = "events", from = "src"},
+    {include = "features", from = "src"},
+    {include = "services", from = "src"}
+]
 
 [tool.poetry.dependencies]
 python = "^3.11"
