@@ -108,4 +108,63 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
 
     @Query("SELECT COUNT(s) FROM StrategyEntity s WHERE s.status = 'ACTIVE'")
     fun countActiveStrategies(): Long
+
+    // Marketplace: 필터링 및 정렬이 적용된 공개 전략 조회
+    @Query("""
+        SELECT DISTINCT s FROM StrategyEntity s
+        LEFT JOIN s.backtestResults br
+        WHERE s.isPublic = true AND s.status = 'ACTIVE'
+        AND (:category IS NULL OR s.category = :category)
+        AND (:minCagr IS NULL OR EXISTS (
+            SELECT 1 FROM BacktestResultEntity br2
+            WHERE br2.strategy = s AND br2.status = 'COMPLETED' AND br2.cagr >= :minCagr
+        ))
+        AND (:maxMdd IS NULL OR EXISTS (
+            SELECT 1 FROM BacktestResultEntity br3
+            WHERE br3.strategy = s AND br3.status = 'COMPLETED' AND br3.mdd <= :maxMdd
+        ))
+    """)
+    fun findMarketplaceStrategies(
+        category: StrategyCategory?,
+        minCagr: BigDecimal?,
+        maxMdd: BigDecimal?,
+        pageable: Pageable
+    ): Page<StrategyEntity>
+
+    // Marketplace: CAGR로 정렬된 전략 조회
+    @Query("""
+        SELECT DISTINCT s FROM StrategyEntity s
+        LEFT JOIN s.backtestResults br
+        WHERE s.isPublic = true AND s.status = 'ACTIVE'
+        AND (:category IS NULL OR s.category = :category)
+        AND br.status = 'COMPLETED'
+        AND (:minCagr IS NULL OR br.cagr >= :minCagr)
+        AND (:maxMdd IS NULL OR br.mdd <= :maxMdd)
+        ORDER BY br.cagr DESC
+    """)
+    fun findMarketplaceStrategiesByCagr(
+        category: StrategyCategory?,
+        minCagr: BigDecimal?,
+        maxMdd: BigDecimal?,
+        pageable: Pageable
+    ): Page<StrategyEntity>
+
+    // Marketplace: Sharpe Ratio로 정렬된 전략 조회
+    @Query("""
+        SELECT DISTINCT s FROM StrategyEntity s
+        LEFT JOIN s.backtestResults br
+        WHERE s.isPublic = true AND s.status = 'ACTIVE'
+        AND (:category IS NULL OR s.category = :category)
+        AND br.status = 'COMPLETED'
+        AND br.sharpeRatio IS NOT NULL
+        AND (:minCagr IS NULL OR br.cagr >= :minCagr)
+        AND (:maxMdd IS NULL OR br.mdd <= :maxMdd)
+        ORDER BY br.sharpeRatio DESC
+    """)
+    fun findMarketplaceStrategiesBySharpe(
+        category: StrategyCategory?,
+        minCagr: BigDecimal?,
+        maxMdd: BigDecimal?,
+        pageable: Pageable
+    ): Page<StrategyEntity>
 }
