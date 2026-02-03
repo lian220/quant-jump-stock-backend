@@ -77,7 +77,8 @@ enum class StrategyCategory {
     ASSET_ALLOCATION,
     QUANT_COMPOSITE,
     SEASONAL,
-    CUSTOM
+    CUSTOM,
+    ML_PREDICTION  // AI/ML 기반 예측 전략
 }
 
 enum class StrategyStatus {

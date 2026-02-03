@@ -2,6 +2,7 @@
 ML 패키지 관리 라우터
 """
 import logging
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -11,6 +12,11 @@ from datetime import datetime
 from pytz import timezone
 
 KST = timezone('Asia/Seoul')
+
+# ML 스크립트 경로 (환경변수 또는 기본값)
+# Docker: /scripts/ml/
+# Local: backend/scripts/ml/ (상대경로로 계산)
+ML_SCRIPTS_DIR = os.getenv("ML_SCRIPTS_DIR", "")
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +44,14 @@ async def upload_package():
 
     try:
         # upload_to_gcs.py 스크립트 경로
-        script_dir = Path(__file__).parent.parent.parent / "scripts" / "utils"
+        # Docker: /scripts/ml/ (볼륨 마운트)
+        # Local: backend/scripts/ml/ (상대경로)
+        if ML_SCRIPTS_DIR:
+            script_dir = Path(ML_SCRIPTS_DIR)
+        else:
+            # 로컬 개발환경: router.py 기준 상대경로 계산
+            script_dir = Path(__file__).parent.parent.parent.parent.parent / "scripts" / "ml"
+
         upload_script = script_dir / "upload_to_gcs.py"
 
         if not upload_script.exists():

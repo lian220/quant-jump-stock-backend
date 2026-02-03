@@ -1,7 +1,7 @@
 package com.quantjumpstock.core.adapter.input.scheduler
 
+import com.quantjumpstock.core.adapter.output.gcp.vertexai.VertexAIJobService
 import com.quantjumpstock.core.domain.economic.port.input.EconomicDataUseCase
-import com.quantjumpstock.core.service.VertexAIService
 import org.quartz.Job
 import org.quartz.JobExecutionContext
 import org.quartz.JobExecutionException
@@ -28,7 +28,7 @@ import org.springframework.stereotype.Component
 )
 class EconomicDataUpdate2JobAdapter(
     private val economicDataUseCase: EconomicDataUseCase,
-    private val vertexAIService: VertexAIService
+    private val vertexAIJobService: VertexAIJobService
 ) : Job {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
@@ -53,7 +53,7 @@ class EconomicDataUpdate2JobAdapter(
 
             // 2단계: Vertex AI 예측 실행
             logger.info("[2/2] Vertex AI 예측 실행 중...")
-            val jobId = vertexAIService.createAndRunCustomJob()
+            val jobId = vertexAIJobService.createAndRunCustomJob()
             logger.info("✅ Vertex AI Job 실행 완료: $jobId")
 
             logger.info("=".repeat(80))

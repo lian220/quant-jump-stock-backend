@@ -123,6 +123,26 @@ spring:
   # ============================================
   # Configuration moved to top-level kafka section for consistency
 
+# ============================================
+# Actuator Configuration
+# ============================================
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: when-authorized
+      probes:
+        enabled: true
+  health:
+    db:
+      enabled: true
+    mongo:
+      enabled: true
+
 logging:
   level:
     root: INFO
@@ -155,6 +175,7 @@ springdoc:
 # ============================================
 slack:
   webhook-url: ${SLACK_WEBHOOK_URL:}
+  webhook-url-error: ${SLACK_WEBHOOK_URL_ERROR:}
   bot-token: ${SLACK_BOT_TOKEN:}
   channel: ${SLACK_CHANNEL:#trading-alerts}
 
@@ -176,6 +197,7 @@ gcp:
   vertex-ai:
     staging-bucket: ${GCP_STAGING_BUCKET:}
     model-bucket: ${GCS_BUCKET:quantiq-ml-models}
+    package-base-path: ${GCS_PACKAGE_BASE_PATH:ml-packages}
     package-uri: ${VERTEX_AI_PACKAGE_URI:}
     job-name: ${VERTEX_AI_JOB_NAME:quantiq-stock-prediction-job}
     machine-type: ${VERTEX_AI_MACHINE_TYPE:n1-standard-4}
@@ -184,6 +206,19 @@ gcp:
     max-wait-duration: ${VERTEX_AI_MAX_WAIT_DURATION:1800}  # 30 minutes
     timeout: ${VERTEX_AI_TIMEOUT:3600}  # 1 hour
     container-uri: ${VERTEX_AI_CONTAINER_URI:us-docker.pkg.dev/vertex-ai/training/tf-gpu.2-11.py310:latest}
+
+# ============================================
+# ML Scripts Configuration
+# ============================================
+ml:
+  scripts:
+    base-path: ${ML_SCRIPTS_BASE_PATH:}  # 로컬: backend 루트 경로, Docker: /scripts
+
+# ============================================
+# Data Engine Configuration
+# ============================================
+data-engine:
+  base-url: ${DATA_ENGINE_BASE_URL:http://localhost:10020}
 
 # ============================================
 # Custom Properties

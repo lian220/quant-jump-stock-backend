@@ -28,6 +28,9 @@ class SlackApiClient(
     @Value("\${slack.webhook-url:}")
     private lateinit var slackWebhookUrl: String
 
+    @Value("\${slack.webhook-url-error:}")
+    private lateinit var slackWebhookUrlError: String
+
     private fun getCurrentTimeKST(): String = ZonedDateTime.now(kst).toString()
 
     /**
@@ -506,48 +509,79 @@ class SlackApiClient(
     }
 
     /**
-     * Vertex AI Job 실패 알림 (스레드 답글)
+     * Vertex AI Job 실패 알림 (Error Webhook으로 전송)
      */
     fun notifyVertexAIJobFailed(requestId: String, jobName: String, error: String, threadTs: String?) {
-        if (slackBotToken.isBlank()) {
-            logger.warn("⚠️ Slack Bot Token 없음 - 알림 발송 불가")
-            return
-        }
-
-        try {
-            val message = SlackApiMessage(
-                channel = slackChannel,
-                text = "❌ Vertex AI 예측 작업 실패",
-                attachments = listOf(
-                    SlackAttachment(
-                        color = "dc3545",
-                        title = "주가 예측 모델 실행 실패",
-                        text = "Vertex AI CustomJob 실행 중 오류가 발생했습니다.",
-                        fields = listOf(
-                            SlackField("Request ID", requestId, true),
-                            SlackField("Job Name", jobName, true),
-                            SlackField("Error", error, false),
-                            SlackField("Timestamp", getCurrentTimeKST(), true),
-                            SlackField("Action", "로그 확인 후 재시도 필요", false)
+        // 1. Error Webhook으로 에러 알림 전송
+        if (slackWebhookUrlError.isNotBlank()) {
+            try {
+                val message = SlackMessage(
+                    text = "❌ Vertex AI 예측 작업 실패",
+                    attachments = listOf(
+                        SlackAttachment(
+                            color = "dc3545",
+                            title = "주가 예측 모델 실행 실패",
+                            text = "Vertex AI CustomJob 실행 중 오류가 발생했습니다.",
+                            fields = listOf(
+                                SlackField("Request ID", requestId, true),
+                                SlackField("Job Name", jobName, true),
+                                SlackField("Error", error, false),
+                                SlackField("Timestamp", getCurrentTimeKST(), true),
+                                SlackField("Action", "로그 확인 후 재시도 필요", false)
+                            )
                         )
                     )
-                ),
-                threadTs = threadTs
-            )
+                )
+                sendToSlackWebhook(message, slackWebhookUrlError)
+                logger.info("❌ Vertex AI Job 실패 알림 발송 완료 (Error Webhook): requestId=$requestId")
+            } catch (e: Exception) {
+                logger.error("❌ Vertex AI Job 실패 알림 발송 실패 (Error Webhook)", e)
+            }
+        }
 
-            sendToSlackApi(message)
-            logger.info("❌ Vertex AI Job 실패 알림 발송 완료: requestId=$requestId, threadTs=$threadTs")
-        } catch (e: Exception) {
-            logger.error("❌ Vertex AI Job 실패 알림 발송 실패", e)
+        // 2. 스레드가 있으면 스레드에도 답글 (기존 채널)
+        if (slackBotToken.isNotBlank() && threadTs != null) {
+            try {
+                val message = SlackApiMessage(
+                    channel = slackChannel,
+                    text = "❌ Vertex AI 예측 작업 실패",
+                    attachments = listOf(
+                        SlackAttachment(
+                            color = "dc3545",
+                            title = "주가 예측 모델 실행 실패",
+                            text = "Vertex AI CustomJob 실행 중 오류가 발생했습니다.",
+                            fields = listOf(
+                                SlackField("Request ID", requestId, true),
+                                SlackField("Job Name", jobName, true),
+                                SlackField("Error", error, false),
+                                SlackField("Timestamp", getCurrentTimeKST(), true),
+                                SlackField("Action", "로그 확인 후 재시도 필요", false)
+                            )
+                        )
+                    ),
+                    threadTs = threadTs
+                )
+                sendToSlackApi(message)
+                logger.info("❌ Vertex AI Job 실패 알림 발송 완료 (Thread): requestId=$requestId, threadTs=$threadTs")
+            } catch (e: Exception) {
+                logger.error("❌ Vertex AI Job 실패 알림 발송 실패 (Thread)", e)
+            }
         }
     }
 
     /**
-     * Slack Webhook으로 메시지 전송
+     * Slack Webhook으로 메시지 전송 (기본 Webhook)
      */
     private fun sendToSlackWebhook(message: SlackMessage) {
+        sendToSlackWebhook(message, slackWebhookUrl)
+    }
+
+    /**
+     * Slack Webhook으로 메시지 전송 (지정된 URL)
+     */
+    private fun sendToSlackWebhook(message: SlackMessage, webhookUrl: String) {
         webClient.post()
-            .uri(slackWebhookUrl)
+            .uri(webhookUrl)
             .bodyValue(message)
             .retrieve()
             .bodyToMono(String::class.java)

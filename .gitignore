@@ -136,3 +136,6 @@ update_kis_credentials.sql
 *.local.json
 settings.local.json
 .settings.local.json
+
+# Local SQL scripts (contains sensitive data)
+**/db/local/

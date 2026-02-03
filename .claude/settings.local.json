@@ -51,7 +51,21 @@
       "Bash(quant-jump-stock-core/src/main/kotlin/com/quantjumpstock/core/service/VertexAIJobMonitor.kt )",
       "Bash(quant-jump-stock-core/src/main/kotlin/com/quantjumpstock/core/service/VertexAIService.kt )",
       "Bash(quant-jump-stock-core/src/main/resources/application.yml)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(ls:*)",
+      "Bash(set -a)",
+      "Bash(source ../.env.prod)",
+      "Bash(set +a)",
+      "Bash(echo:*)",
+      "Bash(./gradlew bootRun:*)",
+      "Bash(/usr/libexec/java_home:*)",
+      "Bash(./start.sh:*)",
+      "Bash(export JAVA_HOME:*)",
+      "Bash(./gradlew build:*)",
+      "Bash(gcloud ai custom-jobs describe:*)",
+      "Bash(export GOOGLE_APPLICATION_CREDENTIALS:*)",
+      "Bash(pip3 install:*)",
+      "Bash(find:*)"
     ]
   }
 }

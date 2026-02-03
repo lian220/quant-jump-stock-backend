@@ -11,8 +11,8 @@ RUN apt-get update && \
 # Install Python dependencies for Vertex AI
 RUN pip3 install --no-cache-dir google-cloud-aiplatform google-cloud-storage pymongo
 
-# Copy pre-built JAR
-COPY build/libs/quant-jump-stock-core-*.jar app.jar
+# Copy Spring Boot fat JAR (not the -plain.jar)
+COPY build/libs/quant-jump-stock-core-0.0.1-SNAPSHOT.jar app.jar
 
 EXPOSE 8080
 

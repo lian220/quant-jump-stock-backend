@@ -6,13 +6,13 @@ import com.google.cloud.aiplatform.v1.JobServiceClient
 import com.google.cloud.aiplatform.v1.JobServiceSettings
 import com.google.cloud.storage.Storage
 import com.google.cloud.storage.StorageOptions
+import com.quantjumpstock.core.adapter.output.gcp.GcpProperties
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.boot.context.properties.EnableConfigurationProperties
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.scheduling.annotation.EnableAsync
-import java.io.FileInputStream
 
 /**
  * Google Cloud Platform 설정
@@ -20,12 +20,13 @@ import java.io.FileInputStream
  */
 @Configuration
 @EnableAsync
+@EnableConfigurationProperties(GcpProperties::class)
 @ConditionalOnProperty(name = ["gcp.enabled"], havingValue = "true", matchIfMissing = false)
 class GcpConfig(
-    @Value("\${gcp.project-id}") private val projectId: String,
-    @Value("\${gcp.region}") private val region: String,
-    @Value("\${gcp.credentials-path:}") private val credentialsPath: String?
+    private val gcpProperties: GcpProperties
 ) {
+    private val projectId: String get() = gcpProperties.projectId
+    private val region: String get() = gcpProperties.region
     private val logger = LoggerFactory.getLogger(this::class.java)
 
     init {
@@ -33,7 +34,7 @@ class GcpConfig(
         logger.info("GCP Configuration Initialized")
         logger.info("Project ID: $projectId")
         logger.info("Region: $region")
-        logger.info("Credentials Path: ${credentialsPath ?: "Application Default Credentials (ADC)"}")
+        logger.info("Credentials Path: ${gcpProperties.credentialsPath ?: "Application Default Credentials (ADC)"}")
         logger.info("=".repeat(60))
     }
 
