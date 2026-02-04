@@ -3,7 +3,6 @@ package com.quantjumpstock.core.adapter.input.rest.marketplace
 import com.quantjumpstock.core.application.marketplace.MarketplaceService
 import com.quantjumpstock.core.application.marketplace.StrategyListRequest
 import com.quantjumpstock.core.application.marketplace.StrategyListResponse
-import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyCategory
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
@@ -50,8 +49,8 @@ class MarketplaceController(
         """
     )
     fun getPublicStrategies(
-        @Parameter(description = "카테고리 필터")
-        @RequestParam(required = false) category: StrategyCategory?,
+        @Parameter(description = "카테고리 코드 필터 (VALUE, MOMENTUM, ASSET_ALLOCATION, QUANT_COMPOSITE, SEASONAL, CUSTOM, ML_PREDICTION)")
+        @RequestParam(required = false) categoryCode: String?,
 
         @Parameter(description = "최소 CAGR (%)", example = "10.0")
         @RequestParam(required = false) minCagr: BigDecimal?,
@@ -69,7 +68,7 @@ class MarketplaceController(
         @RequestParam(required = false, defaultValue = "20") size: Int
     ): ResponseEntity<StrategyListResponse> {
         val request = StrategyListRequest(
-            category = category,
+            categoryCode = categoryCode,
             minCagr = minCagr,
             maxMdd = maxMdd,
             sortBy = sortBy,

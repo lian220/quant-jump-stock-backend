@@ -570,6 +570,51 @@ class SlackApiClient(
     }
 
     /**
+     * API 에러 알림 (GlobalExceptionHandler용)
+     * Error Webhook으로 전송
+     */
+    fun notifyApiError(
+        errorType: String,
+        errorMessage: String,
+        requestPath: String?,
+        stackTrace: String?
+    ) {
+        if (slackWebhookUrlError.isBlank()) {
+            logger.debug("Slack error webhook URL not configured, skipping error notification")
+            return
+        }
+
+        try {
+            val truncatedStackTrace = stackTrace?.take(500)?.let {
+                if (stackTrace.length > 500) "$it..." else it
+            }
+
+            val message = SlackMessage(
+                text = "🚨 API 에러 발생",
+                attachments = listOf(
+                    SlackAttachment(
+                        color = "dc3545",
+                        title = "서버 에러 알림",
+                        text = "API 호출 중 예기치 않은 에러가 발생했습니다.",
+                        fields = listOfNotNull(
+                            SlackField("Error Type", errorType, true),
+                            SlackField("Timestamp", getCurrentTimeKST(), true),
+                            requestPath?.let { SlackField("Request Path", it, false) },
+                            SlackField("Error Message", errorMessage.take(200), false),
+                            truncatedStackTrace?.let { SlackField("Stack Trace", "```$it```", false) }
+                        )
+                    )
+                )
+            )
+
+            sendToSlackWebhook(message, slackWebhookUrlError)
+            logger.info("🚨 API 에러 알림 발송 완료: $errorType")
+        } catch (e: Exception) {
+            logger.error("❌ API 에러 알림 발송 실패", e)
+        }
+    }
+
+    /**
      * Slack Webhook으로 메시지 전송 (기본 Webhook)
      */
     private fun sendToSlackWebhook(message: SlackMessage) {

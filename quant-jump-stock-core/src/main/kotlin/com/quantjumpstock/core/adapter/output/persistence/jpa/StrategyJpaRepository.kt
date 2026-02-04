@@ -14,7 +14,9 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
 
     fun findByStatus(status: StrategyStatus): List<StrategyEntity>
 
-    fun findByCategory(category: StrategyCategory): List<StrategyEntity>
+    fun findByCategoryId(categoryId: Long): List<StrategyEntity>
+
+    fun findByCategory_Code(categoryCode: String): List<StrategyEntity>
 
     fun findByOwnerId(ownerId: Long): List<StrategyEntity>
 
@@ -47,10 +49,10 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     // 카테고리별 공개 전략
     @Query("""
         SELECT s FROM StrategyEntity s
-        WHERE s.isPublic = true AND s.status = 'ACTIVE' AND s.category = :category
+        WHERE s.isPublic = true AND s.status = 'ACTIVE' AND s.category.code = :categoryCode
         ORDER BY s.subscriberCount DESC
     """)
-    fun findPublicByCategory(category: StrategyCategory, pageable: Pageable): Page<StrategyEntity>
+    fun findPublicByCategoryCode(categoryCode: String, pageable: Pageable): Page<StrategyEntity>
 
     // 무료 전략만
     @Query("""
@@ -109,12 +111,34 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     @Query("SELECT COUNT(s) FROM StrategyEntity s WHERE s.status = 'ACTIVE'")
     fun countActiveStrategies(): Long
 
+    // === 관리자용 쿼리 ===
+
+    // 상태별 페이징 조회
+    fun findByStatus(status: StrategyStatus, pageable: Pageable): Page<StrategyEntity>
+
+    // 카테고리별 페이징 조회
+    fun findByCategory_Code(categoryCode: String, pageable: Pageable): Page<StrategyEntity>
+
+    // 상태 + 카테고리 필터 페이징 조회
+    @Query("""
+        SELECT s FROM StrategyEntity s
+        WHERE s.status = :status AND s.category.code = :categoryCode
+    """)
+    fun findByStatusAndCategoryCode(status: StrategyStatus, categoryCode: String, pageable: Pageable): Page<StrategyEntity>
+
+    // 상태별 개수 조회
+    fun countByStatus(status: StrategyStatus): Long
+
+    // 총 구독자 수 합계
+    @Query("SELECT COALESCE(SUM(s.subscriberCount), 0) FROM StrategyEntity s")
+    fun sumSubscriberCount(): Long?
+
     // Marketplace: 필터링 및 정렬이 적용된 공개 전략 조회
     @Query("""
         SELECT DISTINCT s FROM StrategyEntity s
         LEFT JOIN FETCH s.backtestResults br
         WHERE s.isPublic = true AND s.status = 'ACTIVE'
-        AND (:category IS NULL OR s.category = :category)
+        AND (:categoryCode IS NULL OR s.category.code = :categoryCode)
         AND (:minCagr IS NULL OR EXISTS (
             SELECT 1 FROM BacktestResultEntity br2
             WHERE br2.strategy = s AND br2.status = 'COMPLETED' AND br2.cagr >= :minCagr
@@ -127,7 +151,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     countQuery = """
         SELECT COUNT(DISTINCT s) FROM StrategyEntity s
         WHERE s.isPublic = true AND s.status = 'ACTIVE'
-        AND (:category IS NULL OR s.category = :category)
+        AND (:categoryCode IS NULL OR s.category.code = :categoryCode)
         AND (:minCagr IS NULL OR EXISTS (
             SELECT 1 FROM BacktestResultEntity br
             WHERE br.strategy = s AND br.status = 'COMPLETED' AND br.cagr >= :minCagr
@@ -138,7 +162,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
         ))
     """)
     fun findMarketplaceStrategies(
-        category: StrategyCategory?,
+        categoryCode: String?,
         minCagr: BigDecimal?,
         maxMdd: BigDecimal?,
         pageable: Pageable
@@ -149,7 +173,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
         SELECT DISTINCT s FROM StrategyEntity s
         LEFT JOIN FETCH s.backtestResults br
         WHERE s.isPublic = true AND s.status = 'ACTIVE'
-        AND (:category IS NULL OR s.category = :category)
+        AND (:categoryCode IS NULL OR s.category.code = :categoryCode)
         AND EXISTS (
             SELECT 1 FROM BacktestResultEntity br2
             WHERE br2.strategy = s AND br2.status = 'COMPLETED'
@@ -160,7 +184,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     countQuery = """
         SELECT COUNT(DISTINCT s) FROM StrategyEntity s
         WHERE s.isPublic = true AND s.status = 'ACTIVE'
-        AND (:category IS NULL OR s.category = :category)
+        AND (:categoryCode IS NULL OR s.category.code = :categoryCode)
         AND EXISTS (
             SELECT 1 FROM BacktestResultEntity br
             WHERE br.strategy = s AND br.status = 'COMPLETED'
@@ -169,7 +193,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
         )
     """)
     fun findMarketplaceStrategiesByCagr(
-        category: StrategyCategory?,
+        categoryCode: String?,
         minCagr: BigDecimal?,
         maxMdd: BigDecimal?,
         pageable: Pageable
@@ -180,7 +204,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
         SELECT DISTINCT s FROM StrategyEntity s
         LEFT JOIN FETCH s.backtestResults br
         WHERE s.isPublic = true AND s.status = 'ACTIVE'
-        AND (:category IS NULL OR s.category = :category)
+        AND (:categoryCode IS NULL OR s.category.code = :categoryCode)
         AND EXISTS (
             SELECT 1 FROM BacktestResultEntity br2
             WHERE br2.strategy = s AND br2.status = 'COMPLETED'
@@ -192,7 +216,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     countQuery = """
         SELECT COUNT(DISTINCT s) FROM StrategyEntity s
         WHERE s.isPublic = true AND s.status = 'ACTIVE'
-        AND (:category IS NULL OR s.category = :category)
+        AND (:categoryCode IS NULL OR s.category.code = :categoryCode)
         AND EXISTS (
             SELECT 1 FROM BacktestResultEntity br
             WHERE br.strategy = s AND br.status = 'COMPLETED'
@@ -202,7 +226,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
         )
     """)
     fun findMarketplaceStrategiesBySharpe(
-        category: StrategyCategory?,
+        categoryCode: String?,
         minCagr: BigDecimal?,
         maxMdd: BigDecimal?,
         pageable: Pageable

@@ -1,6 +1,5 @@
 package com.quantjumpstock.core.application.marketplace
 
-import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyCategory
 import io.swagger.v3.oas.annotations.Parameter
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Pageable
@@ -11,8 +10,8 @@ import java.math.BigDecimal
  * 공개 전략 목록 조회 요청
  */
 data class StrategyListRequest(
-    @Parameter(description = "카테고리 필터 (VALUE, MOMENTUM, ASSET_ALLOCATION, QUANT_COMPOSITE, SEASONAL, ML_PREDICTION)")
-    val category: StrategyCategory? = null,
+    @Parameter(description = "카테고리 코드 필터 (VALUE, MOMENTUM, ASSET_ALLOCATION, QUANT_COMPOSITE, SEASONAL, CUSTOM, ML_PREDICTION)")
+    val categoryCode: String? = null,
 
     @Parameter(description = "최소 CAGR (%)")
     val minCagr: BigDecimal? = null,

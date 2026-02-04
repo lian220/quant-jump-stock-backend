@@ -21,9 +21,9 @@ data class StrategyEntity(
     @Column(columnDefinition = "TEXT")
     val description: String? = null,
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 50)
-    val category: StrategyCategory,
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "category_id", nullable = false)
+    val category: StrategyCategoryEntity,
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "owner_id")
@@ -71,20 +71,14 @@ data class StrategyEntity(
     var updatedAt: LocalDateTime = LocalDateTime.now()
 )
 
-enum class StrategyCategory {
-    VALUE,
-    MOMENTUM,
-    ASSET_ALLOCATION,
-    QUANT_COMPOSITE,
-    SEASONAL,
-    CUSTOM,
-    ML_PREDICTION  // AI/ML 기반 예측 전략
-}
-
 enum class StrategyStatus {
-    DRAFT,
-    ACTIVE,
-    ARCHIVED
+    DRAFT,           // 초안 - 사용자가 생성 후 아직 제출하지 않음
+    PENDING_REVIEW,  // 검토 대기 - 관리자 승인 대기 중
+    APPROVED,        // 승인됨 - 관리자가 승인, 발행 가능
+    PUBLISHED,       // 발행됨 - 마켓플레이스에 공개
+    REJECTED,        // 반려됨 - 관리자가 반려
+    ACTIVE,          // 활성 (레거시 호환)
+    ARCHIVED         // 보관됨 - 비활성화
 }
 
 enum class RebalanceFrequency {

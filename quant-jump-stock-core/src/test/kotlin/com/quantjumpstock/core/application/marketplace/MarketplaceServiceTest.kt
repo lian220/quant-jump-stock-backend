@@ -35,15 +35,24 @@ class MarketplaceServiceTest {
 
     private lateinit var testStrategy: StrategyEntity
     private lateinit var testBacktestResult: BacktestResultEntity
+    private lateinit var testCategory: StrategyCategoryEntity
 
     @BeforeEach
     fun setUp() {
+        // 테스트 카테고리 생성
+        testCategory = StrategyCategoryEntity(
+            id = 1L,
+            code = "VALUE",
+            name = "가치투자",
+            description = "저평가 종목 투자 전략"
+        )
+
         // 테스트 전략 생성
         testStrategy = StrategyEntity(
             id = 1L,
             name = "테스트 전략",
             description = "테스트 설명",
-            category = StrategyCategory.VALUE,
+            category = testCategory,
             isPublic = true,
             isPremium = false,
             status = StrategyStatus.ACTIVE,
@@ -107,7 +116,7 @@ class MarketplaceServiceTest {
     fun testGetPublicStrategies_WithCategoryFilter() {
         // Given
         val request = StrategyListRequest(
-            category = StrategyCategory.VALUE,
+            categoryCode = "VALUE",
             sortBy = "subscribers",
             page = 0,
             size = 20
@@ -123,7 +132,7 @@ class MarketplaceServiceTest {
         // Then
         assertNotNull(response)
         assertEquals(1, response.strategies.size)
-        assertEquals(StrategyCategory.VALUE, response.strategies[0].category)
+        assertEquals("VALUE", response.strategies[0].category.code)
     }
 
     @Test

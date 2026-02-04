@@ -1,6 +1,8 @@
 package com.quantjumpstock.core.application.strategy
 
 import com.quantjumpstock.core.adapter.output.persistence.jpa.BacktestStatus
+import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyCategoryEntity
+import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyCategoryRepository
 import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyEntity
 import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyStatus
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserJpaRepository
@@ -17,7 +19,8 @@ import org.springframework.transaction.annotation.Transactional
 @Transactional(readOnly = true)
 class StrategyService(
     private val strategyRepository: StrategyRepository,
-    private val userRepository: UserJpaRepository
+    private val userRepository: UserJpaRepository,
+    private val categoryRepository: StrategyCategoryRepository
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -33,11 +36,15 @@ class StrategyService(
             StrategyException("사용자를 찾을 수 없습니다: $userId")
         }
 
+        // 카테고리 조회
+        val category = categoryRepository.findByCode(request.categoryCode)
+            ?: throw StrategyException("유효하지 않은 카테고리입니다: ${request.categoryCode}")
+
         // 전략 생성
         val strategy = StrategyEntity(
             name = request.name,
             description = request.description,
-            category = request.category,
+            category = category,
             owner = user,
             isPublic = request.isPublic,
             isPremium = request.isPremium,
@@ -90,11 +97,17 @@ class StrategyService(
             throw StrategyException("이 전략을 수정할 권한이 없습니다")
         }
 
+        // 카테고리 조회 (변경 시)
+        val newCategory = request.categoryCode?.let {
+            categoryRepository.findByCode(it)
+                ?: throw StrategyException("유효하지 않은 카테고리입니다: $it")
+        }
+
         // 필드 업데이트 (null이 아닌 값만)
         val updated = strategy.copy(
             name = request.name ?: strategy.name,
             description = request.description ?: strategy.description,
-            category = request.category ?: strategy.category,
+            category = newCategory ?: strategy.category,
             isPublic = request.isPublic ?: strategy.isPublic,
             isPremium = request.isPremium ?: strategy.isPremium,
             status = request.status ?: strategy.status,
@@ -189,7 +202,7 @@ class StrategyService(
             id = this.id!!,
             name = this.name,
             description = this.description,
-            category = this.category,
+            category = this.category.toCategoryInfo(),
             ownerId = this.owner?.id,
             ownerName = this.owner?.name,
             isPublic = this.isPublic,
@@ -216,7 +229,7 @@ class StrategyService(
         return StrategySummary(
             id = this.id!!,
             name = this.name,
-            category = this.category,
+            category = this.category.toCategoryInfo(),
             status = this.status,
             isPublic = this.isPublic,
             isPremium = this.isPremium,
@@ -227,4 +240,13 @@ class StrategyService(
             createdAt = this.createdAt
         )
     }
+
+    /**
+     * StrategyCategoryEntity를 CategoryInfo로 변환
+     */
+    private fun StrategyCategoryEntity.toCategoryInfo() = CategoryInfo(
+        id = this.id!!,
+        code = this.code,
+        name = this.name
+    )
 }

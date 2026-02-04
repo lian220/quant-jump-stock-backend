@@ -3,7 +3,7 @@ package com.quantjumpstock.core.application.marketplace
 import com.quantjumpstock.core.adapter.output.persistence.jpa.BacktestStatus
 import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyEntity
 import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyJpaRepository
-import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyStatus
+import com.quantjumpstock.core.application.strategy.CategoryInfo
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.stereotype.Service
@@ -25,23 +25,23 @@ class MarketplaceService(
      * 필터링 및 정렬 지원
      */
     fun getPublicStrategies(request: StrategyListRequest): StrategyListResponse {
-        logger.info("공개 전략 목록 조회: category=${request.category}, minCagr=${request.minCagr}, maxMdd=${request.maxMdd}, sortBy=${request.sortBy}")
+        logger.info("공개 전략 목록 조회: categoryCode=${request.categoryCode}, minCagr=${request.minCagr}, maxMdd=${request.maxMdd}, sortBy=${request.sortBy}")
 
         val page = when (request.sortBy?.lowercase()) {
             "cagr" -> strategyRepository.findMarketplaceStrategiesByCagr(
-                request.category,
+                request.categoryCode,
                 request.minCagr,
                 request.maxMdd,
                 request.toPageable()
             )
             "sharpe" -> strategyRepository.findMarketplaceStrategiesBySharpe(
-                request.category,
+                request.categoryCode,
                 request.minCagr,
                 request.maxMdd,
                 request.toPageable()
             )
             else -> strategyRepository.findMarketplaceStrategies(
-                request.category,
+                request.categoryCode,
                 request.minCagr,
                 request.maxMdd,
                 request.toPageable()
@@ -71,7 +71,11 @@ class MarketplaceService(
             id = this.id!!,
             name = this.name,
             description = this.description,
-            category = this.category,
+            category = CategoryInfo(
+                id = this.category.id!!,
+                code = this.category.code,
+                name = this.category.name
+            ),
             isPremium = this.isPremium,
             subscriberCount = this.subscriberCount,
             averageRating = this.averageRating,

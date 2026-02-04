@@ -37,14 +37,35 @@ class MarketplaceControllerTest {
     private lateinit var backtestResultRepository: BacktestResultJpaRepository
 
     @Autowired
+    private lateinit var categoryRepository: StrategyCategoryRepository
+
+    @Autowired
     private lateinit var marketplaceService: MarketplaceService
 
     private lateinit var testUser: UserEntity
     private lateinit var testStrategy1: StrategyEntity
     private lateinit var testStrategy2: StrategyEntity
+    private lateinit var valueCategory: StrategyCategoryEntity
+    private lateinit var momentumCategory: StrategyCategoryEntity
 
     @BeforeEach
     fun setUp() {
+        // 테스트 카테고리 생성
+        valueCategory = categoryRepository.findByCode("VALUE") ?: categoryRepository.save(
+            StrategyCategoryEntity(
+                code = "VALUE",
+                name = "가치투자",
+                description = "저평가 종목 투자 전략"
+            )
+        )
+        momentumCategory = categoryRepository.findByCode("MOMENTUM") ?: categoryRepository.save(
+            StrategyCategoryEntity(
+                code = "MOMENTUM",
+                name = "모멘텀",
+                description = "상승 추세 종목 투자 전략"
+            )
+        )
+
         // 테스트 사용자 생성
         testUser = userRepository.save(
             UserEntity(
@@ -60,7 +81,7 @@ class MarketplaceControllerTest {
             StrategyEntity(
                 name = "가치투자 전략",
                 description = "저평가 종목 투자",
-                category = StrategyCategory.VALUE,
+                category = valueCategory,
                 owner = testUser,
                 isPublic = true,
                 isPremium = false,
@@ -95,7 +116,7 @@ class MarketplaceControllerTest {
             StrategyEntity(
                 name = "모멘텀 전략",
                 description = "상승 추세 종목 투자",
-                category = StrategyCategory.MOMENTUM,
+                category = momentumCategory,
                 owner = testUser,
                 isPublic = true,
                 isPremium = false,
@@ -142,11 +163,11 @@ class MarketplaceControllerTest {
     fun testGetPublicStrategies_FilterByCategory() {
         mockMvc.perform(
             get("/api/v1/marketplace/strategies")
-                .param("category", "VALUE")
+                .param("categoryCode", "VALUE")
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.strategies").isArray)
-            .andExpect(jsonPath("$.strategies[0].category").value("VALUE"))
+            .andExpect(jsonPath("$.strategies[0].category.code").value("VALUE"))
             .andExpect(jsonPath("$.strategies[0].name").value("가치투자 전략"))
     }
 

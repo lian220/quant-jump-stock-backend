@@ -1,6 +1,6 @@
 package com.quantjumpstock.core.application.marketplace
 
-import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyCategory
+import com.quantjumpstock.core.application.strategy.CategoryInfo
 import io.swagger.v3.oas.annotations.media.Schema
 import java.math.BigDecimal
 import java.time.LocalDateTime
@@ -27,7 +27,7 @@ data class StrategyDto(
     val description: String?,
 
     @Schema(description = "카테고리")
-    val category: StrategyCategory,
+    val category: CategoryInfo,
 
     @Schema(description = "프리미엄 여부")
     val isPremium: Boolean,

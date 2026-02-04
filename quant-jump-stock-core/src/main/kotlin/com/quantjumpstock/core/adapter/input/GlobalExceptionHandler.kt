@@ -1,11 +1,15 @@
 package com.quantjumpstock.core.adapter.input
 
+import com.quantjumpstock.core.adapter.output.notification.slack.SlackApiClient
 import com.quantjumpstock.core.application.auth.AuthException
 import com.quantjumpstock.core.infrastructure.security.AccessDeniedException
 import com.quantjumpstock.core.infrastructure.security.UnauthorizedException
+import jakarta.servlet.http.HttpServletRequest
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
+import org.springframework.http.converter.HttpMessageNotReadableException
+import org.springframework.web.bind.MissingRequestHeaderException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
 
@@ -13,7 +17,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice
  * 전역 예외 처리 핸들러
  */
 @RestControllerAdvice
-class GlobalExceptionHandler {
+class GlobalExceptionHandler(
+    private val slackApiClient: SlackApiClient
+) {
 
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -66,6 +72,38 @@ class GlobalExceptionHandler {
     }
 
     /**
+     * 필수 헤더 누락 예외 처리 (Authorization 등)
+     */
+    @ExceptionHandler(MissingRequestHeaderException::class)
+    fun handleMissingRequestHeaderException(ex: MissingRequestHeaderException): ResponseEntity<ErrorResponse> {
+        logger.warn("🔒 Missing required header: {}", ex.headerName)
+
+        return ResponseEntity
+            .status(HttpStatus.UNAUTHORIZED)
+            .body(ErrorResponse(
+                error = "Unauthorized",
+                message = "인증이 필요합니다",
+                status = HttpStatus.UNAUTHORIZED.value()
+            ))
+    }
+
+    /**
+     * JSON 파싱 에러 처리
+     */
+    @ExceptionHandler(HttpMessageNotReadableException::class)
+    fun handleHttpMessageNotReadableException(ex: HttpMessageNotReadableException): ResponseEntity<ErrorResponse> {
+        logger.warn("⚠️ Invalid request body: {}", ex.message)
+
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(
+                error = "Bad Request",
+                message = "잘못된 요청 형식입니다",
+                status = HttpStatus.BAD_REQUEST.value()
+            ))
+    }
+
+    /**
      * 일반 예외 처리
      */
     @ExceptionHandler(IllegalArgumentException::class)
@@ -85,8 +123,20 @@ class GlobalExceptionHandler {
      * 모든 예외 처리 (최종 fallback)
      */
     @ExceptionHandler(Exception::class)
-    fun handleGenericException(ex: Exception): ResponseEntity<ErrorResponse> {
+    fun handleGenericException(ex: Exception, request: HttpServletRequest): ResponseEntity<ErrorResponse> {
         logger.error("❌ Unexpected error occurred", ex)
+
+        // Slack 에러 알림 전송 (비동기적으로 처리, 실패해도 응답에 영향 없음)
+        try {
+            slackApiClient.notifyApiError(
+                errorType = ex.javaClass.simpleName,
+                errorMessage = ex.message ?: "Unknown error",
+                requestPath = "${request.method} ${request.requestURI}",
+                stackTrace = ex.stackTrace.take(10).joinToString("\n") { it.toString() }
+            )
+        } catch (e: Exception) {
+            logger.warn("Failed to send Slack error notification", e)
+        }
 
         return ResponseEntity
             .status(HttpStatus.INTERNAL_SERVER_ERROR)

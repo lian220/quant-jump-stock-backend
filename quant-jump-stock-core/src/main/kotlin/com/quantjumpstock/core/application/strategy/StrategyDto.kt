@@ -1,11 +1,24 @@
 package com.quantjumpstock.core.application.strategy
 
 import com.quantjumpstock.core.adapter.output.persistence.jpa.RebalanceFrequency
-import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyCategory
 import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyStatus
 import io.swagger.v3.oas.annotations.media.Schema
 import java.math.BigDecimal
 import java.time.LocalDateTime
+
+/**
+ * 카테고리 정보 (응답용)
+ */
+data class CategoryInfo(
+    @Schema(description = "카테고리 ID")
+    val id: Long,
+
+    @Schema(description = "카테고리 코드", example = "MOMENTUM")
+    val code: String,
+
+    @Schema(description = "카테고리 이름", example = "모멘텀")
+    val name: String
+)
 
 /**
  * 전략 생성 요청
@@ -17,8 +30,8 @@ data class CreateStrategyRequest(
     @Schema(description = "전략 설명", example = "최근 3개월 수익률 상위 종목 투자")
     val description: String? = null,
 
-    @Schema(description = "카테고리", example = "MOMENTUM", required = true)
-    val category: StrategyCategory,
+    @Schema(description = "카테고리 코드", example = "MOMENTUM", required = true)
+    val categoryCode: String,
 
     @Schema(description = "공개 여부", example = "false")
     val isPublic: Boolean = false,
@@ -43,8 +56,8 @@ data class UpdateStrategyRequest(
     @Schema(description = "전략 설명")
     val description: String? = null,
 
-    @Schema(description = "카테고리")
-    val category: StrategyCategory? = null,
+    @Schema(description = "카테고리 코드", example = "VALUE")
+    val categoryCode: String? = null,
 
     @Schema(description = "공개 여부")
     val isPublic: Boolean? = null,
@@ -76,7 +89,7 @@ data class StrategyDetailResponse(
     val description: String?,
 
     @Schema(description = "카테고리")
-    val category: StrategyCategory,
+    val category: CategoryInfo,
 
     @Schema(description = "소유자 ID")
     val ownerId: Long?,
@@ -166,7 +179,7 @@ data class StrategySummary(
     val name: String,
 
     @Schema(description = "카테고리")
-    val category: StrategyCategory,
+    val category: CategoryInfo,
 
     @Schema(description = "상태")
     val status: StrategyStatus,
