@@ -14,6 +14,9 @@ interface AccountBalanceJpaRepository : JpaRepository<AccountBalanceEntity, Long
     @Query("SELECT ab FROM AccountBalanceEntity ab WHERE ab.user.id = :userId")
     fun findByUserId(userId: Long): Optional<AccountBalanceEntity>
 
+    @Query("SELECT ab FROM AccountBalanceEntity ab WHERE ab.user.id = :userId")
+    fun findByUserIdNullable(userId: Long): AccountBalanceEntity?
+
     @Query("SELECT ab FROM AccountBalanceEntity ab JOIN FETCH ab.user WHERE ab.user.userId = :userId")
     fun findByUserUserId(userId: String): Optional<AccountBalanceEntity>
 
@@ -46,4 +49,7 @@ interface AccountBalanceJpaRepository : JpaRepository<AccountBalanceEntity, Long
 
     @Query("SELECT SUM(ab.cash) FROM AccountBalanceEntity ab")
     fun getTotalCashInSystem(): BigDecimal?
+
+    @Query("SELECT CASE WHEN COUNT(ab) > 0 THEN true ELSE false END FROM AccountBalanceEntity ab WHERE ab.user.id = :userId")
+    fun existsByUserId(userId: Long): Boolean
 }

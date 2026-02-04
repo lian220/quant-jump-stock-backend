@@ -63,6 +63,24 @@ dependencies {
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
     testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.1")
+
+    // Testing Frameworks (Hexagonal Refactor - Week 1)
+    testImplementation("io.kotest:kotest-runner-junit5:5.8.0")
+    testImplementation("io.kotest:kotest-assertions-core:5.8.0")
+    testImplementation("io.kotest:kotest-property:5.8.0")  // Property-Based Testing
+    testImplementation("io.mockk:mockk:1.13.9")
+    testImplementation("com.ninja-squad:springmockk:4.0.2")  // Spring MockK 통합
+    testImplementation("com.tngtech.archunit:archunit-junit5:1.2.1")
+
+    // Testcontainers - 실제 데이터베이스 테스트
+    testImplementation("org.testcontainers:testcontainers:1.19.3")
+    testImplementation("org.testcontainers:postgresql:1.19.3")
+    testImplementation("org.testcontainers:mongodb:1.19.3")
+    testImplementation("org.testcontainers:kafka:1.19.3")
+    testImplementation("org.testcontainers:junit-jupiter:1.19.3")
+
+    // Embedded MongoDB (경량 테스트용)
+    testImplementation("de.flapdoodle.embed:de.flapdoodle.embed.mongo:4.11.0")
 }
 
 tasks.withType<KotlinCompile> {

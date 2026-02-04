@@ -76,4 +76,14 @@ interface TradeJpaRepository : JpaRepository<TradeEntity, Long> {
         ORDER BY tradeCount DESC
     """)
     fun getTradeCountByTicker(userId: Long): List<Array<Any>>
+
+    fun findByUserId(userId: Long): List<TradeEntity>
+
+    fun findByTicker(ticker: String): List<TradeEntity>
+
+    fun findByUserIdAndCreatedAtBetween(
+        userId: Long,
+        startDate: LocalDateTime,
+        endDate: LocalDateTime
+    ): List<TradeEntity>
 }
