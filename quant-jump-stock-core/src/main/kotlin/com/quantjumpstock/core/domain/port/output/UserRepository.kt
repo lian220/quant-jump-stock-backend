@@ -1,5 +1,6 @@
 package com.quantjumpstock.core.domain.port.output
 
+import com.quantjumpstock.core.domain.model.user.OAuthProvider
 import com.quantjumpstock.core.domain.model.user.User
 
 /**
@@ -22,4 +23,9 @@ interface UserRepository {
     fun existsByEmail(email: String): Boolean
 
     fun deleteById(id: Long)
+
+    /**
+     * OAuth 제공자와 제공자 ID로 사용자 조회
+     */
+    fun findByOAuthProviderAndProviderId(provider: OAuthProvider, providerId: String): User?
 }

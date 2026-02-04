@@ -4,7 +4,7 @@ import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.stereotype.Repository
 
 @Repository
-interface StrategyCategoryRepository : JpaRepository<StrategyCategoryEntity, Long> {
+interface StrategyCategoryJpaRepository : JpaRepository<StrategyCategoryEntity, Long> {
 
     fun findByCode(code: String): StrategyCategoryEntity?
 

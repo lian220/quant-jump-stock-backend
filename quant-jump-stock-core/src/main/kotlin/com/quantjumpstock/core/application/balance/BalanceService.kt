@@ -4,11 +4,10 @@ import com.quantjumpstock.core.domain.trading.port.output.TradingApiPort
 import com.quantjumpstock.core.domain.model.BalanceWithProfitResponse
 import com.quantjumpstock.core.domain.model.HoldingPosition
 import com.quantjumpstock.core.domain.model.AccountSummary
-import com.quantjumpstock.core.adapter.output.persistence.jpa.AccountBalanceEntity
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserEntity
-import com.quantjumpstock.core.adapter.output.persistence.jpa.AccountBalanceJpaRepository
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserJpaRepository
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserKisAccountJpaRepository
+import com.quantjumpstock.core.domain.model.trading.Account
+import com.quantjumpstock.core.domain.port.output.AccountRepository
+import com.quantjumpstock.core.domain.port.output.UserRepository
+import com.quantjumpstock.core.domain.port.output.UserKisAccountRepository
 import java.math.BigDecimal
 import java.time.LocalDateTime
 import org.slf4j.LoggerFactory
@@ -18,9 +17,9 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 class BalanceService(
     private val tradingApiPort: TradingApiPort,
-    private val accountBalanceJpaRepository: AccountBalanceJpaRepository,
-    private val userJpaRepository: UserJpaRepository,
-    private val userKisAccountJpaRepository: UserKisAccountJpaRepository
+    private val accountRepository: AccountRepository,
+    private val userRepository: UserRepository,
+    private val userKisAccountRepository: UserKisAccountRepository
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -48,7 +47,7 @@ class BalanceService(
      */
     @Transactional(readOnly = true)
     fun getAvailableCash(userId: Long): BigDecimal {
-        return accountBalanceJpaRepository.getAvailableCash(userId) ?: BigDecimal.ZERO
+        return accountRepository.findByUserId(userId)?.availableCash() ?: BigDecimal.ZERO
     }
 
     /**
@@ -56,24 +55,25 @@ class BalanceService(
      */
     @Transactional(readOnly = true)
     fun getAvailableCashByUserId(userId: String): BigDecimal {
-        val balance = accountBalanceJpaRepository.findByUserUserId(userId)
-        return balance.map { it.getAvailableCash() }.orElse(BigDecimal.ZERO)
+        val user = userRepository.findByUserId(userId) ?: return BigDecimal.ZERO
+        return user.id?.let { accountRepository.findByUserId(it)?.availableCash() } ?: BigDecimal.ZERO
     }
 
     /**
      * 사용자 잔액 전체 조회
      */
     @Transactional(readOnly = true)
-    fun getAccountBalance(userId: Long): AccountBalanceEntity? {
-        return accountBalanceJpaRepository.findByUserId(userId).orElse(null)
+    fun getAccountBalance(userId: Long): Account? {
+        return accountRepository.findByUserId(userId)
     }
 
     /**
      * 사용자 잔액 전체 조회 (userId: String)
      */
     @Transactional(readOnly = true)
-    fun getAccountBalanceByUserId(userId: String): AccountBalanceEntity? {
-        return accountBalanceJpaRepository.findByUserUserId(userId).orElse(null)
+    fun getAccountBalanceByUserId(userId: String): Account? {
+        val user = userRepository.findByUserId(userId) ?: return null
+        return user.id?.let { accountRepository.findByUserId(it) }
     }
 
     /**
@@ -85,13 +85,10 @@ class BalanceService(
             logger.warn("Invalid amount for addCash: $amount")
             return false
         }
-        val updated = accountBalanceJpaRepository.addCash(userId, amount)
-        if (updated > 0) {
-            logger.info("Added $amount cash to user $userId")
-            return true
-        }
-        logger.warn("Failed to add cash to user $userId")
-        return false
+        val account = accountRepository.findByUserId(userId) ?: return false
+        accountRepository.save(account.deposit(amount))
+        logger.info("Added $amount cash to user $userId")
+        return true
     }
 
     /**
@@ -103,13 +100,14 @@ class BalanceService(
             logger.warn("Invalid amount for lockCash: $amount")
             return false
         }
-        val updated = accountBalanceJpaRepository.lockCash(userId, amount)
-        if (updated > 0) {
-            logger.info("Locked $amount cash for user $userId")
-            return true
+        val account = accountRepository.findByUserId(userId) ?: return false
+        if (!account.canPlaceOrder(amount)) {
+            logger.warn("Failed to lock cash for user $userId (insufficient funds?)")
+            return false
         }
-        logger.warn("Failed to lock cash for user $userId (insufficient funds?)")
-        return false
+        accountRepository.save(account.lockCash(amount))
+        logger.info("Locked $amount cash for user $userId")
+        return true
     }
 
     /**
@@ -121,13 +119,14 @@ class BalanceService(
             logger.warn("Invalid amount for unlockCash: $amount")
             return false
         }
-        val updated = accountBalanceJpaRepository.unlockCash(userId, amount)
-        if (updated > 0) {
-            logger.info("Unlocked $amount cash for user $userId")
-            return true
+        val account = accountRepository.findByUserId(userId) ?: return false
+        if (account.lockedCash < amount) {
+            logger.warn("Failed to unlock cash for user $userId")
+            return false
         }
-        logger.warn("Failed to unlock cash for user $userId")
-        return false
+        accountRepository.save(account.unlockCash(amount))
+        logger.info("Unlocked $amount cash for user $userId")
+        return true
     }
 
     /**
@@ -137,24 +136,19 @@ class BalanceService(
      */
     @Transactional
     fun executeTradeBalance(userId: Long, amount: BigDecimal, isBuy: Boolean): Boolean {
-        val balance = accountBalanceJpaRepository.findByUserId(userId).orElse(null)
-            ?: return false
+        val account = accountRepository.findByUserId(userId) ?: return false
 
-        if (isBuy) {
-            // 매수: locked cash에서 차감, 실제 cash도 차감
-            if (balance.lockedCash < amount) {
+        val updatedAccount = if (isBuy) {
+            if (account.lockedCash < amount) {
                 logger.warn("Insufficient locked cash for trade execution")
                 return false
             }
-            balance.lockedCash = balance.lockedCash - amount
-            balance.cash = balance.cash - amount
+            account.executeBuy(amount)
         } else {
-            // 매도: cash 증가
-            balance.cash = balance.cash + amount
+            account.executeSell(amount)
         }
 
-        balance.totalValue = balance.cash  // 단순화 (실제로는 holdings 가치도 계산)
-        accountBalanceJpaRepository.save(balance)
+        accountRepository.save(updatedAccount)
         logger.info("Trade balance updated for user $userId: isBuy=$isBuy, amount=$amount")
         return true
     }
@@ -163,14 +157,9 @@ class BalanceService(
      * 신규 사용자 잔액 초기화
      */
     @Transactional
-    fun initializeBalance(user: UserEntity, initialCash: BigDecimal = BigDecimal("1000000")): AccountBalanceEntity {
-        val balance = AccountBalanceEntity(
-            user = user,
-            cash = initialCash,
-            totalValue = initialCash,
-            lockedCash = BigDecimal.ZERO
-        )
-        return accountBalanceJpaRepository.save(balance)
+    fun initializeBalance(userId: Long, initialCash: BigDecimal = BigDecimal("1000000")): Account {
+        val account = Account.createNew(userId, initialCash)
+        return accountRepository.save(account)
     }
 
     /**
@@ -186,14 +175,6 @@ class BalanceService(
     }
 
     /**
-     * 시스템 전체 현금 총액 (관리용)
-     */
-    @Transactional(readOnly = true)
-    fun getTotalCashInSystem(): BigDecimal {
-        return accountBalanceJpaRepository.getTotalCashInSystem() ?: BigDecimal.ZERO
-    }
-
-    /**
      * User 기준 잔고 및 수익률 조회 (KIS API)
      * @param userId 사용자 ID (String)
      * @return 보유 종목, 수익률, 계좌 요약 정보
@@ -204,8 +185,8 @@ class BalanceService(
         logger.info("💰 Fetching balance and profit for user: $userId")
 
         // 1. 사용자 KIS 계정 정보 조회
-        val kisAccount = userKisAccountJpaRepository.findActiveByUserUserId(userId)
-            .orElseThrow { IllegalArgumentException("User KIS account not found or not active: $userId") }
+        val kisAccount = userKisAccountRepository.findActiveByUserUserId(userId)
+            ?: throw IllegalArgumentException("User KIS account not found or not active: $userId")
 
         // 2. KIS API 호출 (사용자별 인증 정보 사용)
         val kisResponse = tradingApiPort.getOverseasBalance(userId)

@@ -1,6 +1,8 @@
 package com.quantjumpstock.core.application.stock
 
-import com.quantjumpstock.core.adapter.output.persistence.mongodb.*
+import com.quantjumpstock.core.domain.port.output.StockRecommendationRepository
+import com.quantjumpstock.core.domain.port.output.StockAnalysisRepository
+import com.quantjumpstock.core.domain.port.output.SentimentAnalysisRepository
 import java.time.LocalDate
 import org.springframework.stereotype.Service
 

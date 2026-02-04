@@ -1,7 +1,7 @@
 package com.quantjumpstock.core.application.category
 
-import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyCategoryEntity
-import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyCategoryRepository
+import com.quantjumpstock.core.domain.model.strategy.StrategyCategory
+import com.quantjumpstock.core.domain.port.output.StrategyCategoryRepository
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -15,7 +15,7 @@ class CategoryService(
      */
     @Transactional(readOnly = true)
     fun getAllCategories(): CategoriesResponse {
-        val categories = categoryRepository.findByIsActiveTrueOrderBySortOrderAsc()
+        val categories = categoryRepository.findAllActive()
             .map { it.toDto() }
 
         return CategoriesResponse(
@@ -37,10 +37,10 @@ class CategoryService(
      */
     @Transactional(readOnly = true)
     fun getCategoryById(id: Long): CategoryDto? {
-        return categoryRepository.findById(id).orElse(null)?.toDto()
+        return categoryRepository.findById(id)?.toDto()
     }
 
-    private fun StrategyCategoryEntity.toDto() = CategoryDto(
+    private fun StrategyCategory.toDto() = CategoryDto(
         id = this.id!!,
         code = this.code,
         name = this.name,

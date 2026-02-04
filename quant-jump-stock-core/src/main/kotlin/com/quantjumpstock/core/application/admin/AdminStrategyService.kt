@@ -1,9 +1,8 @@
 package com.quantjumpstock.core.application.admin
 
-import com.quantjumpstock.core.adapter.output.persistence.jpa.BacktestStatus
-import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyEntity
-import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyJpaRepository
-import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyStatus
+import com.quantjumpstock.core.domain.model.strategy.Strategy
+import com.quantjumpstock.core.domain.model.strategy.StrategyStatus
+import com.quantjumpstock.core.domain.port.output.StrategyRepository
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
@@ -17,7 +16,7 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 @Transactional(readOnly = true)
 class AdminStrategyService(
-    private val strategyJpaRepository: StrategyJpaRepository
+    private val strategyRepository: StrategyRepository
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -43,16 +42,16 @@ class AdminStrategyService(
 
         val strategiesPage = when {
             status != null && categoryCode != null -> {
-                strategyJpaRepository.findByStatusAndCategoryCode(status, categoryCode, pageable)
+                strategyRepository.findByStatusAndCategoryCode(status, categoryCode, pageable)
             }
             status != null -> {
-                strategyJpaRepository.findByStatus(status, pageable)
+                strategyRepository.findByStatus(status, pageable)
             }
             categoryCode != null -> {
-                strategyJpaRepository.findByCategory_Code(categoryCode, pageable)
+                strategyRepository.findByCategoryCode(categoryCode, pageable)
             }
             else -> {
-                strategyJpaRepository.findAll(pageable)
+                strategyRepository.findAll(pageable)
             }
         }
 
@@ -77,25 +76,17 @@ class AdminStrategyService(
     ): ChangeStrategyStatusResponse {
         logger.info("전략 상태 변경: strategyId=$strategyId, newStatus=${request.status}")
 
-        val strategy = strategyJpaRepository.findById(strategyId).orElseThrow {
-            IllegalArgumentException("전략을 찾을 수 없습니다: $strategyId")
-        }
+        val strategy = strategyRepository.findById(strategyId)
+            ?: throw IllegalArgumentException("전략을 찾을 수 없습니다: $strategyId")
 
         val previousStatus = strategy.status
 
         // 상태 전환 유효성 검사
         validateStatusTransition(previousStatus, request.status)
 
-        // 상태 변경
-        strategy.status = request.status
-
-        // 발행 시 공개 설정
-        if (request.status == StrategyStatus.PUBLISHED) {
-            // isPublic은 val이므로 새 엔티티로 복사 필요할 수 있음
-            // 현재 구조에서는 status만 변경
-        }
-
-        strategyJpaRepository.save(strategy)
+        // 상태 변경 (도메인 모델의 비즈니스 메서드 사용)
+        val updatedStrategy = strategy.transitionTo(request.status)
+        strategyRepository.save(updatedStrategy)
 
         logger.info("전략 상태 변경 완료: $strategyId, $previousStatus -> ${request.status}")
 
@@ -114,10 +105,10 @@ class AdminStrategyService(
     fun getStats(): AdminStrategyStatsResponse {
         logger.info("관리자 전략 통계 조회")
 
-        val total = strategyJpaRepository.count()
-        val pendingReview = strategyJpaRepository.countByStatus(StrategyStatus.PENDING_REVIEW)
-        val published = strategyJpaRepository.countByStatus(StrategyStatus.PUBLISHED)
-        val totalSubscribers = strategyJpaRepository.sumSubscriberCount() ?: 0L
+        val total = strategyRepository.count()
+        val pendingReview = strategyRepository.countByStatus(StrategyStatus.PENDING_REVIEW)
+        val published = strategyRepository.countByStatus(StrategyStatus.PUBLISHED)
+        val totalSubscribers = strategyRepository.sumSubscriberCount()
 
         return AdminStrategyStatsResponse(
             total = total,
@@ -131,18 +122,7 @@ class AdminStrategyService(
      * 상태 전환 유효성 검사
      */
     private fun validateStatusTransition(from: StrategyStatus, to: StrategyStatus) {
-        val validTransitions = mapOf(
-            StrategyStatus.DRAFT to listOf(StrategyStatus.PENDING_REVIEW, StrategyStatus.ARCHIVED),
-            StrategyStatus.PENDING_REVIEW to listOf(StrategyStatus.APPROVED, StrategyStatus.REJECTED),
-            StrategyStatus.APPROVED to listOf(StrategyStatus.PUBLISHED, StrategyStatus.REJECTED, StrategyStatus.ARCHIVED),
-            StrategyStatus.PUBLISHED to listOf(StrategyStatus.ARCHIVED),
-            StrategyStatus.REJECTED to listOf(StrategyStatus.DRAFT, StrategyStatus.PENDING_REVIEW),
-            StrategyStatus.ACTIVE to listOf(StrategyStatus.ARCHIVED, StrategyStatus.PUBLISHED), // 레거시 호환
-            StrategyStatus.ARCHIVED to listOf(StrategyStatus.DRAFT)
-        )
-
-        val allowed = validTransitions[from] ?: emptyList()
-        if (to !in allowed) {
+        if (!from.canTransitionTo(to)) {
             throw IllegalStateException("상태 전환이 허용되지 않습니다: $from -> $to")
         }
     }
@@ -161,30 +141,30 @@ class AdminStrategyService(
     }
 
     /**
-     * StrategyEntity를 AdminStrategySummary로 변환
+     * Strategy 도메인 모델을 AdminStrategySummary로 변환
+     *
+     * 참고: 도메인 모델에는 category 정보가 categoryId만 있으므로,
+     * 상세 정보가 필요한 경우 별도 조회가 필요합니다.
+     * 현재는 Admin용 요약 정보만 제공합니다.
      */
-    private fun StrategyEntity.toAdminSummary(): AdminStrategySummary {
-        val latestBacktest = this.backtestResults
-            .filter { it.status == BacktestStatus.COMPLETED }
-            .maxByOrNull { it.createdAt }
-
+    private fun Strategy.toAdminSummary(): AdminStrategySummary {
         return AdminStrategySummary(
             id = this.id!!,
             name = this.name,
             description = this.description,
-            categoryCode = this.category.code,
-            categoryName = this.category.name,
-            ownerId = this.owner?.id,
-            ownerName = this.owner?.name,
-            ownerEmail = this.owner?.email,
+            categoryCode = this.categoryId.toString(),  // TODO: Category 조회로 개선
+            categoryName = "Category ${this.categoryId}",  // TODO: Category 조회로 개선
+            ownerId = this.ownerId,
+            ownerName = null,  // TODO: User 조회로 개선
+            ownerEmail = null,  // TODO: User 조회로 개선
             status = this.status,
             isPublic = this.isPublic,
             isPremium = this.isPremium,
             rebalanceFrequency = this.rebalanceFrequency,
             subscriberCount = this.subscriberCount,
             averageRating = this.averageRating,
-            latestCagr = latestBacktest?.cagr,
-            latestMdd = latestBacktest?.mdd,
+            latestCagr = null,  // TODO: BacktestResult 조회로 개선
+            latestMdd = null,   // TODO: BacktestResult 조회로 개선
             createdAt = this.createdAt,
             updatedAt = this.updatedAt
         )

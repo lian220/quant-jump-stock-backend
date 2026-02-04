@@ -1,11 +1,11 @@
 package com.quantjumpstock.core.application.auth
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import com.quantjumpstock.core.adapter.output.persistence.jpa.OAuthProvider
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserEntity
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserJpaRepository
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserRole
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserStatus
+import com.quantjumpstock.core.domain.model.user.OAuthProvider
+import com.quantjumpstock.core.domain.model.user.User
+import com.quantjumpstock.core.domain.model.user.UserRole
+import com.quantjumpstock.core.domain.model.user.UserStatus
+import com.quantjumpstock.core.domain.port.output.UserRepository
 import com.quantjumpstock.core.config.OAuth2Config
 import org.slf4j.LoggerFactory
 import org.springframework.http.*
@@ -20,7 +20,7 @@ import java.util.UUID
 @Service
 class OAuthService(
     private val oAuth2Config: OAuth2Config,
-    private val userJpaRepository: UserJpaRepository,
+    private val userRepository: UserRepository,
     private val authService: AuthService
 ) {
     private val logger = LoggerFactory.getLogger(OAuthService::class.java)
@@ -232,9 +232,9 @@ class OAuthService(
         email: String?,
         name: String?,
         profileImageUrl: String?
-    ): UserEntity {
+    ): User {
         // 기존 OAuth 사용자 찾기
-        val existingUser = userJpaRepository.findByOauthProviderAndOauthProviderId(provider, providerId)
+        val existingUser = userRepository.findByOAuthProviderAndProviderId(provider, providerId)
         if (existingUser != null) {
             logger.info("기존 OAuth 사용자 로그인: ${existingUser.userId}")
             return existingUser
@@ -242,22 +242,22 @@ class OAuthService(
 
         // 이메일로 기존 사용자 찾기 (계정 연결)
         if (email != null) {
-            val userByEmail = userJpaRepository.findByEmail(email).orElse(null)
+            val userByEmail = userRepository.findByEmail(email)
             if (userByEmail != null) {
                 // 기존 계정에 OAuth 정보 연결
-                val updatedUser = userByEmail.copy(
-                    oauthProvider = provider,
-                    oauthProviderId = providerId,
-                    profileImageUrl = profileImageUrl ?: userByEmail.profileImageUrl
+                val updatedUser = userByEmail.linkOAuth(
+                    provider = provider,
+                    providerId = providerId,
+                    profileImage = profileImageUrl
                 )
                 logger.info("기존 계정에 OAuth 연결: ${userByEmail.userId}")
-                return userJpaRepository.save(updatedUser)
+                return userRepository.save(updatedUser)
             }
         }
 
         // 새 사용자 생성
         val userId = generateUniqueUserId(provider, name)
-        val newUser = UserEntity(
+        val newUser = User(
             userId = userId,
             email = email,
             name = name,
@@ -270,7 +270,7 @@ class OAuthService(
         )
 
         logger.info("새 OAuth 사용자 생성: $userId")
-        return userJpaRepository.save(newUser)
+        return userRepository.save(newUser)
     }
 
     private fun generateUniqueUserId(provider: OAuthProvider, name: String?): String {

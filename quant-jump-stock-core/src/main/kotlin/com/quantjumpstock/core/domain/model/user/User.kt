@@ -10,6 +10,9 @@ data class User(
     val userId: String,
     val name: String? = null,
     val email: String? = null,
+    val passwordHash: String? = null,
+    val oauthProvider: OAuthProvider? = null,
+    val oauthProviderId: String? = null,
     val profileImageUrl: String? = null,
     val status: UserStatus = UserStatus.ACTIVE,
     val role: UserRole = UserRole.USER,
@@ -44,4 +47,26 @@ data class User(
      * 사용자 활성화
      */
     fun activate(): User = copy(status = UserStatus.ACTIVE, updatedAt = LocalDateTime.now())
+
+    /**
+     * OAuth 사용자 여부
+     */
+    fun isOAuthUser(): Boolean = oauthProvider != null
+
+    /**
+     * 비밀번호 기반 로그인 사용자 여부
+     */
+    fun hasPassword(): Boolean = passwordHash != null
+
+    /**
+     * OAuth 정보 연결
+     */
+    fun linkOAuth(provider: OAuthProvider, providerId: String, profileImage: String? = null): User {
+        return copy(
+            oauthProvider = provider,
+            oauthProviderId = providerId,
+            profileImageUrl = profileImage ?: this.profileImageUrl,
+            updatedAt = LocalDateTime.now()
+        )
+    }
 }

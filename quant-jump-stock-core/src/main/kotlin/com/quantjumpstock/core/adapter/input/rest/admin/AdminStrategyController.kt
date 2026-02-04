@@ -1,6 +1,6 @@
 package com.quantjumpstock.core.adapter.input.rest.admin
 
-import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyStatus
+import com.quantjumpstock.core.domain.model.strategy.StrategyStatus
 import com.quantjumpstock.core.application.admin.AdminStrategyListResponse
 import com.quantjumpstock.core.application.admin.AdminStrategyService
 import com.quantjumpstock.core.application.admin.AdminStrategyStatsResponse

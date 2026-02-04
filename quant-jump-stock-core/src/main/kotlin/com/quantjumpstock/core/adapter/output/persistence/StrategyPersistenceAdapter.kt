@@ -2,48 +2,192 @@ package com.quantjumpstock.core.adapter.output.persistence
 
 import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyEntity
 import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyJpaRepository
-import com.quantjumpstock.core.domain.strategy.port.output.StrategyRepository
+import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyCategoryJpaRepository
+import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyStatus as JpaStrategyStatus
+import com.quantjumpstock.core.adapter.output.persistence.jpa.RebalanceFrequency as JpaRebalanceFrequency
+import com.quantjumpstock.core.domain.model.strategy.Strategy
+import com.quantjumpstock.core.domain.model.strategy.StrategyStatus
+import com.quantjumpstock.core.domain.model.strategy.RebalanceFrequency
+import com.quantjumpstock.core.domain.port.output.StrategyRepository
 import org.slf4j.LoggerFactory
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Component
-import java.util.Optional
 
 /**
  * Strategy Persistence Adapter (Output Adapter)
  * StrategyRepository 인터페이스를 구현하여 JPA와 연동합니다.
+ *
+ * 특징:
+ * - 도메인 모델(Strategy)과 JPA Entity(StrategyEntity) 간 변환
+ * - JPA enum과 Domain enum 간 변환
  */
-@Component
+@Component("strategyPersistenceAdapterV2")
 class StrategyPersistenceAdapter(
-    private val strategyJpaRepository: StrategyJpaRepository
+    private val strategyJpaRepository: StrategyJpaRepository,
+    private val categoryJpaRepository: StrategyCategoryJpaRepository
 ) : StrategyRepository {
 
     private val logger = LoggerFactory.getLogger(this::class.java)
 
-    override fun save(strategy: StrategyEntity): StrategyEntity {
+    override fun save(strategy: Strategy): Strategy {
         logger.debug("전략 저장: name=${strategy.name}")
-        return strategyJpaRepository.save(strategy)
+        val entity = toEntity(strategy)
+        val saved = strategyJpaRepository.save(entity)
+        return toDomain(saved)
     }
 
-    override fun findById(id: Long): Optional<StrategyEntity> {
+    override fun findById(id: Long): Strategy? {
         logger.debug("전략 조회: id=$id")
-        return strategyJpaRepository.findById(id)
+        return strategyJpaRepository.findById(id).orElse(null)?.let { toDomain(it) }
     }
 
-    override fun findByIdWithBacktestResults(id: Long): Optional<StrategyEntity> {
+    override fun findByIdWithBacktestResults(id: Long): Strategy? {
         logger.debug("전략 조회 (백테스트 포함): id=$id")
-        return strategyJpaRepository.findByIdWithBacktestResults(id)
+        return strategyJpaRepository.findByIdWithBacktestResults(id).orElse(null)?.let { toDomain(it) }
     }
 
-    override fun findByOwnerId(ownerId: Long): List<StrategyEntity> {
+    override fun findByOwnerId(ownerId: Long): List<Strategy> {
         logger.debug("소유자별 전략 목록 조회: ownerId=$ownerId")
-        return strategyJpaRepository.findByOwnerId(ownerId)
+        return strategyJpaRepository.findByOwnerId(ownerId).map { toDomain(it) }
     }
 
-    override fun delete(strategy: StrategyEntity) {
-        logger.debug("전략 삭제: id=${strategy.id}")
-        strategyJpaRepository.delete(strategy)
+    override fun findByStatus(status: StrategyStatus): List<Strategy> {
+        return strategyJpaRepository.findByStatus(mapStatus(status)).map { toDomain(it) }
+    }
+
+    override fun findByStatus(status: StrategyStatus, pageable: Pageable): Page<Strategy> {
+        return strategyJpaRepository.findByStatus(mapStatus(status), pageable).map { toDomain(it) }
+    }
+
+    override fun findByStatusAndCategoryCode(status: StrategyStatus, categoryCode: String, pageable: Pageable): Page<Strategy> {
+        return strategyJpaRepository.findByStatusAndCategoryCode(mapStatus(status), categoryCode, pageable).map { toDomain(it) }
+    }
+
+    override fun findByCategoryCode(categoryCode: String, pageable: Pageable): Page<Strategy> {
+        return strategyJpaRepository.findByCategory_Code(categoryCode, pageable).map { toDomain(it) }
+    }
+
+    override fun findAll(pageable: Pageable): Page<Strategy> {
+        return strategyJpaRepository.findAll(pageable).map { toDomain(it) }
+    }
+
+    override fun findByCategoryId(categoryId: Long): List<Strategy> {
+        return strategyJpaRepository.findByCategoryId(categoryId).map { toDomain(it) }
+    }
+
+    override fun findPublishedAndPublic(): List<Strategy> {
+        return strategyJpaRepository.findByStatus(JpaStrategyStatus.PUBLISHED)
+            .filter { it.isPublic }
+            .map { toDomain(it) }
+    }
+
+    override fun findAll(): List<Strategy> {
+        return strategyJpaRepository.findAll().map { toDomain(it) }
+    }
+
+    override fun deleteById(id: Long) {
+        logger.debug("전략 삭제: id=$id")
+        strategyJpaRepository.deleteById(id)
     }
 
     override fun existsById(id: Long): Boolean {
         return strategyJpaRepository.existsById(id)
+    }
+
+    override fun count(): Long {
+        return strategyJpaRepository.count()
+    }
+
+    override fun countByStatus(status: StrategyStatus): Long {
+        return strategyJpaRepository.countByStatus(mapStatus(status))
+    }
+
+    override fun sumSubscriberCount(): Long {
+        return strategyJpaRepository.sumSubscriberCount() ?: 0L
+    }
+
+    // ===== Mapping Functions =====
+
+    private fun toDomain(entity: StrategyEntity): Strategy {
+        return Strategy(
+            id = entity.id,
+            name = entity.name,
+            description = entity.description,
+            categoryId = entity.category.id!!,
+            ownerId = entity.owner?.id,
+            isPublic = entity.isPublic,
+            isPremium = entity.isPremium,
+            status = mapStatus(entity.status),
+            conditions = entity.conditions,
+            rebalanceFrequency = mapRebalanceFrequency(entity.rebalanceFrequency),
+            subscriberCount = entity.subscriberCount,
+            averageRating = entity.averageRating,
+            createdAt = entity.createdAt,
+            updatedAt = entity.updatedAt
+        )
+    }
+
+    private fun toEntity(domain: Strategy): StrategyEntity {
+        val category = categoryJpaRepository.findById(domain.categoryId)
+            .orElseThrow { IllegalArgumentException("Category not found: ${domain.categoryId}") }
+
+        // 기존 Entity가 있으면 조회하여 연관관계 유지
+        val existingEntity = domain.id?.let { strategyJpaRepository.findById(it).orElse(null) }
+
+        return StrategyEntity(
+            id = domain.id,
+            name = domain.name,
+            description = domain.description,
+            category = category,
+            owner = existingEntity?.owner,  // 기존 owner 관계 유지
+            isPublic = domain.isPublic,
+            isPremium = domain.isPremium,
+            status = mapStatus(domain.status),
+            conditions = domain.conditions,
+            rebalanceFrequency = mapRebalanceFrequency(domain.rebalanceFrequency),
+            subscriberCount = domain.subscriberCount,
+            averageRating = domain.averageRating,
+            createdAt = domain.createdAt,
+            updatedAt = domain.updatedAt
+        )
+    }
+
+    private fun mapStatus(jpaStatus: JpaStrategyStatus): StrategyStatus = when (jpaStatus) {
+        JpaStrategyStatus.DRAFT -> StrategyStatus.DRAFT
+        JpaStrategyStatus.PENDING_REVIEW -> StrategyStatus.PENDING_REVIEW
+        JpaStrategyStatus.APPROVED -> StrategyStatus.APPROVED
+        JpaStrategyStatus.PUBLISHED -> StrategyStatus.PUBLISHED
+        JpaStrategyStatus.REJECTED -> StrategyStatus.REJECTED
+        JpaStrategyStatus.ACTIVE -> StrategyStatus.ACTIVE
+        JpaStrategyStatus.ARCHIVED -> StrategyStatus.ARCHIVED
+    }
+
+    private fun mapStatus(domainStatus: StrategyStatus): JpaStrategyStatus = when (domainStatus) {
+        StrategyStatus.DRAFT -> JpaStrategyStatus.DRAFT
+        StrategyStatus.PENDING_REVIEW -> JpaStrategyStatus.PENDING_REVIEW
+        StrategyStatus.APPROVED -> JpaStrategyStatus.APPROVED
+        StrategyStatus.PUBLISHED -> JpaStrategyStatus.PUBLISHED
+        StrategyStatus.REJECTED -> JpaStrategyStatus.REJECTED
+        StrategyStatus.ACTIVE -> JpaStrategyStatus.ACTIVE
+        StrategyStatus.ARCHIVED -> JpaStrategyStatus.ARCHIVED
+    }
+
+    private fun mapRebalanceFrequency(jpaFreq: JpaRebalanceFrequency): RebalanceFrequency = when (jpaFreq) {
+        JpaRebalanceFrequency.DAILY -> RebalanceFrequency.DAILY
+        JpaRebalanceFrequency.WEEKLY -> RebalanceFrequency.WEEKLY
+        JpaRebalanceFrequency.MONTHLY -> RebalanceFrequency.MONTHLY
+        JpaRebalanceFrequency.QUARTERLY -> RebalanceFrequency.QUARTERLY
+        JpaRebalanceFrequency.YEARLY -> RebalanceFrequency.YEARLY
+        JpaRebalanceFrequency.NONE -> RebalanceFrequency.NONE
+    }
+
+    private fun mapRebalanceFrequency(domainFreq: RebalanceFrequency): JpaRebalanceFrequency = when (domainFreq) {
+        RebalanceFrequency.DAILY -> JpaRebalanceFrequency.DAILY
+        RebalanceFrequency.WEEKLY -> JpaRebalanceFrequency.WEEKLY
+        RebalanceFrequency.MONTHLY -> JpaRebalanceFrequency.MONTHLY
+        RebalanceFrequency.QUARTERLY -> JpaRebalanceFrequency.QUARTERLY
+        RebalanceFrequency.YEARLY -> JpaRebalanceFrequency.YEARLY
+        RebalanceFrequency.NONE -> JpaRebalanceFrequency.NONE
     }
 }
