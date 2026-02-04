@@ -14,6 +14,47 @@
 ## 목표 아키텍처(권장)
 Hexagonal Architecture(Ports/Adapters) 기반.
 
+## 운영 시나리오 가정(추가)
+- 현재는 분석 전용 성격이 강함.
+- 향후 분석 모듈만 별도 서비스 또는 AWS Lambda로 분리될 가능성 높음.
+
+## 분리 대비 설계 원칙
+- 분석 유스케이스를 **독립 패키지**로 분리한다.
+- 외부 시스템(DB, Kafka, 외부 API)을 **어댑터로만 접근**한다.
+- 런타임별 진입점을 분리한다.
+  - 로컬/서버: FastAPI + Kafka Consumer
+  - 서버리스: Lambda Handler(단일 유스케이스 호출)
+
+## Lambda 분리를 고려한 권장 패키지 분리
+```
+src/
+├── domain/
+├── application/
+│   └── analysis/
+│       ├── technical_analysis_usecase.py
+│       ├── sentiment_analysis_usecase.py
+│       └── combined_analysis_usecase.py
+├── adapters/
+│   ├── input/
+│   │   ├── kafka/
+│   │   └── lambda/
+│   │       ├── technical_handler.py
+│   │       ├── sentiment_handler.py
+│   │       └── combined_handler.py
+│   └── output/
+│       ├── persistence/
+│       ├── external_api/
+│       └── messaging/
+├── bootstrap/
+└── main.py
+```
+
+## Lambda 분리 시 유의사항
+- 패키지 크기 최소화: 분석 모듈만 배포되도록 의존성 분리.
+- I/O 표준화: 입력 이벤트 스키마를 Kafka/Lambda 공통으로 정리.
+- 시간 제한 고려: 외부 API 호출에 타임아웃 및 재시도 전략 적용.
+- 상태 비저장: 캐시가 필요하면 Redis 등 외부 캐시로 분리.
+
 ### 권장 디렉터리 구조
 ```
 src/
