@@ -2,9 +2,9 @@ package com.quantjumpstock.core.application.strategy
 
 import com.quantjumpstock.core.adapter.output.persistence.jpa.BacktestStatus
 import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyEntity
-import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyJpaRepository
 import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyStatus
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserJpaRepository
+import com.quantjumpstock.core.domain.strategy.port.output.StrategyRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -16,7 +16,7 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 @Transactional(readOnly = true)
 class StrategyService(
-    private val strategyRepository: StrategyJpaRepository,
+    private val strategyRepository: StrategyRepository,
     private val userRepository: UserJpaRepository
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
