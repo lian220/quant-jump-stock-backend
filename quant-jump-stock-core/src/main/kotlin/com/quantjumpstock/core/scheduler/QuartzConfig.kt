@@ -66,31 +66,7 @@ class QuartzConfig {
     }
 
     // ========================
-    // 3. 통합 분석 (01:30) - 검증용
-    // ========================
-    // 매수 후 기술적 분석 결과 검증
-    @Bean
-    fun combinedAnalysisJobDetail(): JobDetail {
-        return JobBuilder.newJob(CombinedAnalysisJobAdapter::class.java)
-            .withIdentity("combinedAnalysisJob")
-            .storeDurably()
-            .build()
-    }
-
-    @Bean
-    fun combinedAnalysisTrigger(): Trigger {
-        return TriggerBuilder.newTrigger()
-            .forJob(combinedAnalysisJobDetail())
-            .withIdentity("combinedAnalysisTrigger")
-            .withSchedule(
-                CronScheduleBuilder.cronSchedule("0 30 1 * * ?")
-                    .inTimeZone(TimeZone.getTimeZone("Asia/Seoul"))
-            )
-            .build()
-    }
-
-    // ========================
-    // 4. 자동 매수 (00:30) - 미국 정규장 개장 1시간 후
+    // 3. 자동 매수 (00:30) - 미국 정규장 개장 1시간 후
     // ========================
     // 초기 변동성 진정, 트렌드 확정 후 안전한 진입
     @Bean
