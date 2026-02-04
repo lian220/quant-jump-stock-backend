@@ -1,0 +1,127 @@
+# 백엔드 구조 분석 및 재설계 제안
+
+## 범위
+- 대상: `quant-jump-stock-backend` 전체 (core + data-engine)
+- 목표: 의존성 최소화, 변경 비용 감소, 배포 유연성 극대화
+
+## 현재 구조 요약
+
+### 시스템 흐름
+- data-engine(Python)에서 데이터 수집/분석 → Kafka 발행
+- core(Spring Boot)가 Kafka를 소비하여 비즈니스 로직 처리
+- 저장소는 PostgreSQL + MongoDB 병행
+
+```1:87:/Users/imdoyeong/Desktop/workSpace/quant-jump-stock/quant-jump-stock-backend/docs/architecture/ARCHITECTURE.md
+┌────────────────────────────────────────────────────────────────┐
+│                     Quantiq System Architecture                 │
+│  ┌──────────────────────────────────────────────────────────┐  │
+│  │        Data Layer (Python - quantiq-data-engine)         │  │
+│  └──────────────────────────────────────────────────────────┘  │
+│                            ↓                                     │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │            Message Broker (Kafka)                       │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                            ↓                                     │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │    Business Layer (Spring Boot - quantiq-core)           │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                            ↓                                     │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │          Data Storage (PostgreSQL + MongoDB)             │   │
+│  └──────────────────────────────────────────────────────────┘   │
+└────────────────────────────────────────────────────────────────┘
+```
+
+### core 내부 구조(핵심)
+- 포트/어댑터(헥사고날) 방식이 적용되어 입력/출력 어댑터와 애플리케이션/도메인이 분리됨
+
+```1:41:/Users/imdoyeong/Desktop/workSpace/quant-jump-stock/quant-jump-stock-backend/quant-jump-stock-core/src/main/kotlin/com/quantjumpstock/core/adapter/input/rest/strategy/StrategyController.kt
+@RestController
+@RequestMapping("/api/v1/strategies")
+class StrategyController(
+    private val strategyService: StrategyService,
+    private val authService: AuthService
+) {
+    // ...
+}
+```
+
+```1:41:/Users/imdoyeong/Desktop/workSpace/quant-jump-stock/quant-jump-stock-backend/quant-jump-stock-core/src/main/kotlin/com/quantjumpstock/core/domain/strategy/port/output/StrategyRepository.kt
+interface StrategyRepository {
+    fun save(strategy: StrategyEntity): StrategyEntity
+    fun findById(id: Long): Optional<StrategyEntity>
+    // ...
+}
+```
+
+## 진단: 구조상 병목/결합 지점
+
+### 1) core 내부 도메인 경계가 느슨함
+- 도메인별 패키지는 존재하지만, 애플리케이션/인프라가 모듈 단위로 분리되지 않아 변경 파급이 큼
+
+### 2) 계약(이벤트/DTO) 소유권이 명확하지 않음
+- data-engine ↔ core 간 Kafka 메시지 스키마가 명시적 모듈로 분리되어 있지 않아 변경 리스크가 높음
+
+### 3) 배포 결합
+- 분석/데이터 처리의 변경이 core 배포 부담으로 이어질 여지가 큼
+
+## 목표 구조 제안 (대규모 재설계)
+
+### 1) 멀티모듈 모놀리스 + 계약 모듈 분리
+- core를 도메인별 멀티모듈로 분해하고, 공통 계약을 별도 모듈로 분리
+
+예시 구조:
+```
+quant-jump-stock-core/
+├─ core-api/                 # REST/API 어댑터
+├─ core-application/         # 유스케이스 오케스트레이션
+├─ core-domain/              # 도메인 모델/포트
+├─ core-infra/               # 영속성/외부 API 어댑터
+├─ module-strategy/          # 전략 도메인
+├─ module-trading/           # 트레이딩 도메인
+├─ module-analysis/          # 분석 도메인
+├─ module-economic/          # 경제 데이터 도메인
+├─ module-auth/              # 인증/인가 도메인
+└─ contracts/                # 이벤트/DTO 스키마, 버전 관리
+```
+
+### 2) 의존성 방향 고정 (단방향)
+- `domain → application → adapter(infra)`만 허용
+- `contracts`는 모든 모듈에서 참조 가능하지만 역참조 금지
+
+### 3) data-engine 독립성 강화
+- Kafka 이벤트 스키마를 `contracts`로 이전해 버전 관리
+- core는 계약만 의존, data-engine과의 직접 결합 제거
+
+### 4) 도메인 간 직접 참조 최소화
+- 도메인 간 통신은 이벤트 기반으로 전환
+- 핵심 유스케이스만 application 계층에서 조합
+
+## 단계적 전환 로드맵
+
+### 1단계: 계약 모듈 추출
+- Kafka 이벤트/REST 응답 DTO를 `contracts`로 이전
+- 버전 규칙 수립 (예: `v1`, `v2` 이벤트 네임스페이스)
+
+### 2단계: 도메인 모듈 분리
+- 변경이 잦은 도메인부터 모듈화 (예: 전략/트레이딩)
+- 모듈 간 순환 참조 제거
+
+### 3단계: infra 분리 및 배포 선택지 확대
+- `core-infra`를 외부 API/DB 어댑터 전용으로 정리
+- 필요 시 도메인별 독립 배포로 확장 가능하게 설계
+
+## 기대 효과
+- 변경 영향 범위 축소 (도메인 단위)
+- 계약 기반 통신으로 data-engine과 core의 결합 감소
+- 배포 유연성 증가 (핫스팟 도메인만 독립 확장 가능)
+
+## 리스크 및 완화
+- 리팩토링 비용 증가 → 단계적 전환으로 분산
+- 계약 버전 관리 복잡도 증가 → `contracts` 모듈에 버저닝 규칙 고정
+
+## 출처
+- `/Users/imdoyeong/Desktop/workSpace/quant-jump-stock/quant-jump-stock-backend/docs/architecture/ARCHITECTURE.md`
+- `/Users/imdoyeong/Desktop/workSpace/quant-jump-stock/quant-jump-stock-backend/quant-jump-stock-core/src/main/kotlin/com/quantjumpstock/core/adapter/input/rest/strategy/StrategyController.kt`
+- `/Users/imdoyeong/Desktop/workSpace/quant-jump-stock/quant-jump-stock-backend/quant-jump-stock-core/src/main/kotlin/com/quantjumpstock/core/domain/strategy/port/output/StrategyRepository.kt`
+

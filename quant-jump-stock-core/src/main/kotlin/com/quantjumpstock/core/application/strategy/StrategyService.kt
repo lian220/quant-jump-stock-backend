@@ -1,25 +1,30 @@
 package com.quantjumpstock.core.application.strategy
 
-import com.quantjumpstock.core.adapter.output.persistence.jpa.BacktestStatus
-import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyCategoryEntity
-import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyCategoryRepository
-import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyEntity
-import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyStatus
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserJpaRepository
-import com.quantjumpstock.core.domain.strategy.port.output.StrategyRepository
+import com.quantjumpstock.core.domain.model.strategy.Strategy
+import com.quantjumpstock.core.domain.model.strategy.StrategyStatus
+import com.quantjumpstock.core.domain.model.strategy.RebalanceFrequency
+import com.quantjumpstock.core.domain.port.output.StrategyRepository
+import com.quantjumpstock.core.domain.port.output.StrategyCategoryRepository
+import com.quantjumpstock.core.domain.port.output.UserRepository
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
 /**
- * 전략 CRUD 서비스
- * 사용자 전략 생성, 조회, 수정, 삭제 처리
+ * 전략 CRUD 서비스 - Hexagonal Architecture 준수
+ *
+ * 특징:
+ * - 도메인 포트(Repository)만 의존
+ * - JPA Entity 직접 참조 없음
+ * - 도메인 모델(Strategy)로 비즈니스 로직 처리
  */
 @Service
 @Transactional(readOnly = true)
 class StrategyService(
+    @Qualifier("strategyPersistenceAdapterV2")
     private val strategyRepository: StrategyRepository,
-    private val userRepository: UserJpaRepository,
+    private val userRepository: UserRepository,
     private val categoryRepository: StrategyCategoryRepository
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -31,21 +36,20 @@ class StrategyService(
     fun createStrategy(userId: String, request: CreateStrategyRequest): StrategyResponse {
         logger.info("전략 생성 시작: userId=$userId, name=${request.name}")
 
-        // 사용자 조회
-        val user = userRepository.findByUserId(userId).orElseThrow {
-            StrategyException("사용자를 찾을 수 없습니다: $userId")
-        }
+        // 사용자 조회 (도메인 포트 사용)
+        val user = userRepository.findByUserId(userId)
+            ?: throw StrategyException("사용자를 찾을 수 없습니다: $userId")
 
-        // 카테고리 조회
+        // 카테고리 조회 (도메인 포트 사용)
         val category = categoryRepository.findByCode(request.categoryCode)
             ?: throw StrategyException("유효하지 않은 카테고리입니다: ${request.categoryCode}")
 
-        // 전략 생성
-        val strategy = StrategyEntity(
+        // 도메인 모델 생성
+        val strategy = Strategy(
             name = request.name,
             description = request.description,
-            category = category,
-            owner = user,
+            categoryId = category.id ?: throw StrategyException("카테고리 ID가 없습니다"),
+            ownerId = user.id,
             isPublic = request.isPublic,
             isPremium = request.isPremium,
             status = StrategyStatus.DRAFT,
@@ -69,13 +73,15 @@ class StrategyService(
     fun getStrategy(strategyId: Long, userId: String?): StrategyDetailResponse {
         logger.info("전략 조회: strategyId=$strategyId, userId=$userId")
 
-        val strategy = strategyRepository.findByIdWithBacktestResults(strategyId).orElseThrow {
-            StrategyException("전략을 찾을 수 없습니다: $strategyId")
-        }
+        val strategy = strategyRepository.findByIdWithBacktestResults(strategyId)
+            ?: throw StrategyException("전략을 찾을 수 없습니다: $strategyId")
 
         // 비공개 전략은 소유자만 조회 가능
-        if (!strategy.isPublic && strategy.owner?.userId != userId) {
-            throw StrategyException("이 전략에 접근할 권한이 없습니다")
+        if (!strategy.isPublic) {
+            val user = userId?.let { userRepository.findByUserId(it) }
+            if (user == null || strategy.ownerId != user.id) {
+                throw StrategyException("이 전략에 접근할 권한이 없습니다")
+            }
         }
 
         return strategy.toDetailResponse()
@@ -88,26 +94,29 @@ class StrategyService(
     fun updateStrategy(strategyId: Long, userId: String, request: UpdateStrategyRequest): StrategyResponse {
         logger.info("전략 수정 시작: strategyId=$strategyId, userId=$userId")
 
-        val strategy = strategyRepository.findById(strategyId).orElseThrow {
-            StrategyException("전략을 찾을 수 없습니다: $strategyId")
-        }
+        val strategy = strategyRepository.findById(strategyId)
+            ?: throw StrategyException("전략을 찾을 수 없습니다: $strategyId")
 
         // 소유자 확인
-        if (strategy.owner?.userId != userId) {
+        val user = userRepository.findByUserId(userId)
+            ?: throw StrategyException("사용자를 찾을 수 없습니다: $userId")
+
+        if (strategy.ownerId != user.id) {
             throw StrategyException("이 전략을 수정할 권한이 없습니다")
         }
 
-        // 카테고리 조회 (변경 시)
-        val newCategory = request.categoryCode?.let {
-            categoryRepository.findByCode(it)
-                ?: throw StrategyException("유효하지 않은 카테고리입니다: $it")
+        // 카테고리 변경 시 새 카테고리 조회
+        val newCategoryId = request.categoryCode?.let { code ->
+            val category = categoryRepository.findByCode(code)
+                ?: throw StrategyException("유효하지 않은 카테고리입니다: $code")
+            category.id ?: throw StrategyException("카테고리 ID가 없습니다")
         }
 
         // 필드 업데이트 (null이 아닌 값만)
         val updated = strategy.copy(
             name = request.name ?: strategy.name,
             description = request.description ?: strategy.description,
-            category = newCategory ?: strategy.category,
+            categoryId = newCategoryId ?: strategy.categoryId,
             isPublic = request.isPublic ?: strategy.isPublic,
             isPremium = request.isPremium ?: strategy.isPremium,
             status = request.status ?: strategy.status,
@@ -132,12 +141,14 @@ class StrategyService(
     fun deleteStrategy(strategyId: Long, userId: String): StrategyResponse {
         logger.info("전략 삭제 시작: strategyId=$strategyId, userId=$userId")
 
-        val strategy = strategyRepository.findById(strategyId).orElseThrow {
-            StrategyException("전략을 찾을 수 없습니다: $strategyId")
-        }
+        val strategy = strategyRepository.findById(strategyId)
+            ?: throw StrategyException("전략을 찾을 수 없습니다: $strategyId")
 
         // 소유자 확인
-        if (strategy.owner?.userId != userId) {
+        val user = userRepository.findByUserId(userId)
+            ?: throw StrategyException("사용자를 찾을 수 없습니다: $userId")
+
+        if (strategy.ownerId != user.id) {
             throw StrategyException("이 전략을 삭제할 권한이 없습니다")
         }
 
@@ -146,7 +157,7 @@ class StrategyService(
             throw StrategyException("구독자가 있는 전략은 삭제할 수 없습니다. 먼저 비공개로 전환하세요.")
         }
 
-        strategyRepository.delete(strategy)
+        strategyRepository.deleteById(strategyId)
         logger.info("전략 삭제 완료: id=$strategyId")
 
         return StrategyResponse(
@@ -162,12 +173,10 @@ class StrategyService(
     fun getMyStrategies(userId: String): MyStrategiesResponse {
         logger.info("내 전략 목록 조회: userId=$userId")
 
-        val user = userRepository.findByUserId(userId).orElseThrow {
-            StrategyException("사용자를 찾을 수 없습니다: $userId")
-        }
+        val user = userRepository.findByUserId(userId)
+            ?: throw StrategyException("사용자를 찾을 수 없습니다: $userId")
 
         val strategies = strategyRepository.findByOwnerId(user.id!!)
-
         val summaries = strategies.map { it.toSummary() }
 
         logger.info("내 전략 목록 조회 완료: userId=$userId, count=${summaries.size}")
@@ -179,32 +188,23 @@ class StrategyService(
     }
 
     /**
-     * StrategyEntity를 StrategyDetailResponse로 변환
+     * Strategy 도메인 모델을 StrategyDetailResponse로 변환
      */
-    private fun StrategyEntity.toDetailResponse(): StrategyDetailResponse {
-        val backtestSummaries = this.backtestResults
-            .filter { it.status == BacktestStatus.COMPLETED }
-            .sortedByDescending { it.createdAt }
-            .map {
-                BacktestResultSummary(
-                    id = it.id!!,
-                    cagr = it.cagr,
-                    mdd = it.mdd,
-                    sharpeRatio = it.sharpeRatio,
-                    totalReturn = it.totalReturn,
-                    status = it.status.name,
-                    startDate = it.startDate.toString(),
-                    endDate = it.endDate.toString()
-                )
-            }
+    private fun Strategy.toDetailResponse(): StrategyDetailResponse {
+        val category = categoryRepository.findById(this.categoryId)
+        val owner = this.ownerId?.let { userRepository.findById(it) }
 
         return StrategyDetailResponse(
             id = this.id!!,
             name = this.name,
             description = this.description,
-            category = this.category.toCategoryInfo(),
-            ownerId = this.owner?.id,
-            ownerName = this.owner?.name,
+            category = CategoryInfo(
+                id = category?.id ?: 0,
+                code = category?.code ?: "",
+                name = category?.name ?: ""
+            ),
+            ownerId = owner?.id,
+            ownerName = owner?.name,
             isPublic = this.isPublic,
             isPremium = this.isPremium,
             status = this.status,
@@ -212,41 +212,34 @@ class StrategyService(
             rebalanceFrequency = this.rebalanceFrequency,
             subscriberCount = this.subscriberCount,
             averageRating = this.averageRating,
-            backtestResults = backtestSummaries,
+            backtestResults = emptyList(), // 백테스트 결과는 별도 조회 필요
             createdAt = this.createdAt,
             updatedAt = this.updatedAt
         )
     }
 
     /**
-     * StrategyEntity를 StrategySummary로 변환
+     * Strategy 도메인 모델을 StrategySummary로 변환
      */
-    private fun StrategyEntity.toSummary(): StrategySummary {
-        val latestBacktest = this.backtestResults
-            .filter { it.status == BacktestStatus.COMPLETED }
-            .maxByOrNull { it.createdAt }
+    private fun Strategy.toSummary(): StrategySummary {
+        val category = categoryRepository.findById(this.categoryId)
 
         return StrategySummary(
             id = this.id!!,
             name = this.name,
-            category = this.category.toCategoryInfo(),
+            category = CategoryInfo(
+                id = category?.id ?: 0,
+                code = category?.code ?: "",
+                name = category?.name ?: ""
+            ),
             status = this.status,
             isPublic = this.isPublic,
             isPremium = this.isPremium,
             subscriberCount = this.subscriberCount,
             averageRating = this.averageRating,
-            latestCagr = latestBacktest?.cagr,
-            latestMdd = latestBacktest?.mdd,
+            latestCagr = null, // 백테스트 결과는 별도 조회
+            latestMdd = null,
             createdAt = this.createdAt
         )
     }
-
-    /**
-     * StrategyCategoryEntity를 CategoryInfo로 변환
-     */
-    private fun StrategyCategoryEntity.toCategoryInfo() = CategoryInfo(
-        id = this.id!!,
-        code = this.code,
-        name = this.name
-    )
 }

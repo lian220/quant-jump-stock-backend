@@ -5,6 +5,6 @@ import org.springframework.data.mongodb.repository.MongoRepository
 import org.springframework.stereotype.Repository
 
 @Repository
-interface StockAnalysisRepository : MongoRepository<StockAnalysis, String> {
+interface StockAnalysisMongoRepository : MongoRepository<StockAnalysis, String> {
     fun findByTicker(ticker: String): List<StockAnalysis>
 }

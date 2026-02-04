@@ -185,69 +185,6 @@ class AnalysisController(
     }
 
     @Operation(
-        summary = "통합 분석 실행 (기술적 + 감정)",
-        description = """
-            기술적 분석과 감정 분석을 순차적으로 실행하고 통합 점수를 계산합니다.
-
-            **3단계 분석 프로세스:**
-            1. 기술적 분석 (SMA, RSI, MACD)
-            2. 뉴스 감정 분석 (Alpha Vantage)
-            3. 통합 점수 계산
-
-            **통합 점수 계산식:**
-            ```
-            combined_score = (technical_score × 0.7) + (sentiment_score × 0.3)
-            ```
-
-            **추천 기준:**
-            - combined_score >= 0.6: 매수 추천
-            - combined_score < 0.6: 관망
-        """
-    )
-    @ApiResponses(
-        value = [
-            ApiResponse(responseCode = "200", description = "통합 분석 요청 성공"),
-            ApiResponse(responseCode = "500", description = "통합 분석 요청 실패")
-        ]
-    )
-    @PostMapping("/combined")
-    fun executeCombinedAnalysis(
-        @RequestParam(required = false) startDate: String?,
-        @RequestParam(required = false) endDate: String?
-    ): ResponseEntity<Map<String, Any>> {
-        return try {
-            val dates = generateDateRange(startDate, endDate)
-            logger.info("통합 분석 요청: ${dates.size}개 날짜 (${dates.first()} ~ ${dates.last()})")
-
-            val futures = dates.map { date ->
-                analysisUseCase.triggerCombinedAnalysis(date.toString())
-            }
-
-            CompletableFuture.allOf(*futures.toTypedArray()).get()
-
-            ResponseEntity.ok(
-                mapOf<String, Any>(
-                    "success" to true,
-                    "message" to "통합 분석 요청이 Kafka에 발행되었습니다.",
-                    "analysisType" to "COMBINED",
-                    "dates" to dates.map { it.toString() },
-                    "count" to dates.size,
-                    "timestamp" to Instant.now().toString()
-                )
-            )
-        } catch (e: Exception) {
-            logger.error("통합 분석 트리거 실패", e)
-            ResponseEntity.status(500).body(
-                mapOf<String, Any>(
-                    "success" to false,
-                    "message" to "통합 분석 요청 실패: ${e.message}",
-                    "timestamp" to Instant.now().toString()
-                )
-            )
-        }
-    }
-
-    @Operation(
         summary = "병렬 분석 실행 (기술적 + 감정 동시)",
         description = """
             기술적 분석과 감정 분석을 동시에 실행합니다.
@@ -335,17 +272,11 @@ class AnalysisController(
                             "name" to "parallelAnalysis",
                             "time" to "23:05 (KST)",
                             "description" to "병렬 분석 (기술적 + 감정 동시 실행)"
-                        ),
-                        mapOf(
-                            "name" to "combinedAnalysis",
-                            "time" to "23:45 (KST)",
-                            "description" to "통합 분석 (기술적 + 감정 + 경제 데이터 통합)"
                         )
                     ),
                     "availableEndpoints" to listOf(
                         "POST /api/v1/analyses/technical - 기술적 분석만 실행",
                         "POST /api/v1/analyses/sentiment - 감정 분석만 실행",
-                        "POST /api/v1/analyses/combined - 통합 분석 실행 (순차)",
                         "POST /api/v1/analyses/parallel - 병렬 분석 실행 (동시)",
                         "GET  /api/v1/analyses/status - 상태 조회"
                     )

@@ -1,7 +1,7 @@
 package com.quantjumpstock.core.application.admin
 
-import com.quantjumpstock.core.adapter.output.persistence.jpa.RebalanceFrequency
-import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyStatus
+import com.quantjumpstock.core.domain.model.strategy.RebalanceFrequency
+import com.quantjumpstock.core.domain.model.strategy.StrategyStatus
 import io.swagger.v3.oas.annotations.media.Schema
 import java.math.BigDecimal
 import java.time.LocalDateTime

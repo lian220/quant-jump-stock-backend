@@ -1,6 +1,9 @@
 package com.quantjumpstock.core.application.user
 
-import com.quantjumpstock.core.adapter.output.persistence.jpa.*
+import com.quantjumpstock.core.domain.model.user.KisAccountType
+import com.quantjumpstock.core.domain.model.user.UserKisAccount
+import com.quantjumpstock.core.domain.port.output.UserKisAccountRepository
+import com.quantjumpstock.core.domain.port.output.UserRepository
 import com.quantjumpstock.core.infrastructure.security.EncryptionService
 import java.time.LocalDateTime
 import org.slf4j.LoggerFactory
@@ -9,8 +12,8 @@ import org.springframework.transaction.annotation.Transactional
 
 @Service
 class UserKisAccountService(
-    private val userKisAccountJpaRepository: UserKisAccountJpaRepository,
-    private val userJpaRepository: UserJpaRepository,
+    private val userKisAccountRepository: UserKisAccountRepository,
+    private val userRepository: UserRepository,
     private val encryptionService: EncryptionService
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -21,38 +24,22 @@ class UserKisAccountService(
      * @param request KIS 계정 정보
      */
     @Transactional
-    fun registerOrUpdateKisAccount(userId: String, request: KisAccountRequest): UserKisAccountEntity {
+    fun registerOrUpdateKisAccount(userId: String, request: KisAccountRequest): UserKisAccount {
         logger.info("🔐 Registering/Updating KIS account for user: $userId")
 
         // 1. 사용자 조회
-        val user = userJpaRepository.findByUserIdWithDetails(userId)
-            .orElseThrow { IllegalArgumentException("User not found: $userId") }
+        val user = userRepository.findByUserId(userId)
+            ?: throw IllegalArgumentException("User not found: $userId")
 
         // 2. AppSecret 암호화
         val encryptedSecret = encryptionService.encrypt(request.appSecret)
 
         // 3. 기존 계정 확인
-        val existingAccount = userKisAccountJpaRepository.findByUserId(user.id!!)
+        val existingAccount = user.id?.let { userKisAccountRepository.findByUserId(it) }
 
-        return if (existingAccount.isPresent) {
+        return if (existingAccount != null) {
             // 업데이트
-            val account = existingAccount.get()
-            val updated = account.copy(
-                appKey = request.appKey,
-                appSecretEncrypted = encryptedSecret,
-                accountNumber = request.accountNumber,
-                accountProductCode = request.accountProductCode,
-                accountType = request.accountType,
-                enabled = request.enabled,
-                updatedAt = LocalDateTime.now()
-            )
-            userKisAccountJpaRepository.save(updated)
-            logger.info("✅ KIS account updated for user: $userId")
-            updated
-        } else {
-            // 신규 등록
-            val newAccount = UserKisAccountEntity(
-                user = user,
+            val updated = existingAccount.update(
                 appKey = request.appKey,
                 appSecretEncrypted = encryptedSecret,
                 accountNumber = request.accountNumber,
@@ -60,7 +47,21 @@ class UserKisAccountService(
                 accountType = request.accountType,
                 enabled = request.enabled
             )
-            userKisAccountJpaRepository.save(newAccount)
+            userKisAccountRepository.save(updated)
+            logger.info("✅ KIS account updated for user: $userId")
+            updated
+        } else {
+            // 신규 등록
+            val newAccount = UserKisAccount.createNew(
+                userId = user.id!!,
+                appKey = request.appKey,
+                appSecretEncrypted = encryptedSecret,
+                accountNumber = request.accountNumber,
+                accountProductCode = request.accountProductCode,
+                accountType = request.accountType,
+                enabled = request.enabled
+            )
+            userKisAccountRepository.save(newAccount)
             logger.info("✅ KIS account registered for user: $userId")
             newAccount
         }
@@ -73,8 +74,8 @@ class UserKisAccountService(
      */
     @Transactional(readOnly = true)
     fun getKisAccount(userId: String): KisAccountResponse {
-        val kisAccount = userKisAccountJpaRepository.findActiveByUserUserId(userId)
-            .orElseThrow { IllegalArgumentException("KIS account not found or not active: $userId") }
+        val kisAccount = userKisAccountRepository.findActiveByUserUserId(userId)
+            ?: throw IllegalArgumentException("KIS account not found or not active: $userId")
 
         return KisAccountResponse(
             appKey = kisAccount.appKey,
@@ -92,14 +93,14 @@ class UserKisAccountService(
      */
     @Transactional
     fun toggleKisAccount(userId: String, enabled: Boolean) {
-        val user = userJpaRepository.findByUserIdWithDetails(userId)
-            .orElseThrow { IllegalArgumentException("User not found: $userId") }
+        val user = userRepository.findByUserId(userId)
+            ?: throw IllegalArgumentException("User not found: $userId")
 
-        val kisAccount = userKisAccountJpaRepository.findByUserId(user.id!!)
-            .orElseThrow { IllegalArgumentException("KIS account not found: $userId") }
+        val kisAccount = user.id?.let { userKisAccountRepository.findByUserId(it) }
+            ?: throw IllegalArgumentException("KIS account not found: $userId")
 
-        val updated = kisAccount.copy(enabled = enabled, updatedAt = LocalDateTime.now())
-        userKisAccountJpaRepository.save(updated)
+        val updated = kisAccount.toggleEnabled(enabled)
+        userKisAccountRepository.save(updated)
 
         logger.info("✅ KIS account ${if (enabled) "enabled" else "disabled"} for user: $userId")
     }
@@ -111,8 +112,8 @@ class UserKisAccountService(
      */
     @Transactional(readOnly = true)
     fun getDecryptedAppSecret(userId: String): String {
-        val kisAccount = userKisAccountJpaRepository.findActiveByUserUserId(userId)
-            .orElseThrow { IllegalArgumentException("KIS account not found: $userId") }
+        val kisAccount = userKisAccountRepository.findActiveByUserUserId(userId)
+            ?: throw IllegalArgumentException("KIS account not found: $userId")
 
         return encryptionService.decrypt(kisAccount.appSecretEncrypted)
     }

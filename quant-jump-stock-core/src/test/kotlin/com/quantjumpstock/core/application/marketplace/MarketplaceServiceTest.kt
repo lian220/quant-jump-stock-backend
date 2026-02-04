@@ -1,6 +1,10 @@
 package com.quantjumpstock.core.application.marketplace
 
-import com.quantjumpstock.core.adapter.output.persistence.jpa.*
+import com.quantjumpstock.core.domain.model.backtest.BacktestStatus
+import com.quantjumpstock.core.domain.model.backtest.BacktestSummary
+import com.quantjumpstock.core.domain.model.marketplace.MarketplaceStrategy
+import com.quantjumpstock.core.domain.model.strategy.RebalanceFrequency
+import com.quantjumpstock.core.domain.port.output.MarketplaceRepository
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
@@ -11,7 +15,6 @@ import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.kotlin.any
 import org.mockito.kotlin.isNull
 import org.mockito.kotlin.whenever
-import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.PageRequest
 import java.math.BigDecimal
@@ -28,60 +31,45 @@ import org.junit.jupiter.api.Assertions.assertNotNull
 class MarketplaceServiceTest {
 
     @Mock
-    private lateinit var strategyRepository: StrategyJpaRepository
+    private lateinit var marketplaceRepository: MarketplaceRepository
 
     @InjectMocks
     private lateinit var marketplaceService: MarketplaceService
 
-    private lateinit var testStrategy: StrategyEntity
-    private lateinit var testBacktestResult: BacktestResultEntity
-    private lateinit var testCategory: StrategyCategoryEntity
+    private lateinit var testStrategy: MarketplaceStrategy
+    private lateinit var testBacktestSummary: BacktestSummary
 
     @BeforeEach
     fun setUp() {
-        // 테스트 카테고리 생성
-        testCategory = StrategyCategoryEntity(
-            id = 1L,
-            code = "VALUE",
-            name = "가치투자",
-            description = "저평가 종목 투자 전략"
-        )
-
-        // 테스트 전략 생성
-        testStrategy = StrategyEntity(
-            id = 1L,
-            name = "테스트 전략",
-            description = "테스트 설명",
-            category = testCategory,
-            isPublic = true,
-            isPremium = false,
-            status = StrategyStatus.ACTIVE,
-            subscriberCount = 100,
-            averageRating = BigDecimal("4.5"),
-            rebalanceFrequency = RebalanceFrequency.MONTHLY,
-            createdAt = LocalDateTime.now()
-        )
-
         // 테스트 백테스트 결과 생성
-        testBacktestResult = BacktestResultEntity(
+        testBacktestSummary = BacktestSummary(
             id = 1L,
-            strategy = testStrategy,
-            startDate = LocalDate.of(2020, 1, 1),
-            endDate = LocalDate.of(2023, 12, 31),
-            initialCapital = BigDecimal("10000000"),
-            finalValue = BigDecimal("15000000"),
-            totalReturn = BigDecimal("50.0"),
             cagr = BigDecimal("15.5"),
             mdd = BigDecimal("-12.3"),
             sharpeRatio = BigDecimal("1.8"),
+            totalReturn = BigDecimal("50.0"),
             volatility = BigDecimal("18.5"),
             winRate = BigDecimal("65.0"),
-            status = BacktestStatus.COMPLETED,
-            createdAt = LocalDateTime.now()
+            startDate = LocalDate.of(2020, 1, 1),
+            endDate = LocalDate.of(2023, 12, 31),
+            status = BacktestStatus.COMPLETED
         )
 
-        // 전략에 백테스트 결과 추가
-        testStrategy.backtestResults.add(testBacktestResult)
+        // 테스트 전략 생성
+        testStrategy = MarketplaceStrategy(
+            id = 1L,
+            name = "테스트 전략",
+            description = "테스트 설명",
+            categoryId = 1L,
+            categoryCode = "VALUE",
+            categoryName = "가치투자",
+            isPremium = false,
+            subscriberCount = 100,
+            averageRating = BigDecimal("4.5"),
+            rebalanceFrequency = RebalanceFrequency.MONTHLY,
+            latestBacktest = testBacktestSummary,
+            createdAt = LocalDateTime.now()
+        )
     }
 
     @Test
@@ -96,7 +84,7 @@ class MarketplaceServiceTest {
         val pageable = PageRequest.of(0, 20)
         val page = PageImpl(listOf(testStrategy), pageable, 1)
 
-        whenever(strategyRepository.findMarketplaceStrategies(isNull(), isNull(), isNull(), any()))
+        whenever(marketplaceRepository.findMarketplaceStrategies(isNull(), isNull(), isNull(), any()))
             .thenReturn(page)
 
         // When
@@ -123,7 +111,7 @@ class MarketplaceServiceTest {
         )
         val page = PageImpl(listOf(testStrategy), PageRequest.of(0, 20), 1)
 
-        whenever(strategyRepository.findMarketplaceStrategies(any(), isNull(), isNull(), any()))
+        whenever(marketplaceRepository.findMarketplaceStrategies(any(), isNull(), isNull(), any()))
             .thenReturn(page)
 
         // When
@@ -147,7 +135,7 @@ class MarketplaceServiceTest {
         )
         val page = PageImpl(listOf(testStrategy), PageRequest.of(0, 20), 1)
 
-        whenever(strategyRepository.findMarketplaceStrategies(isNull(), any(), isNull(), any()))
+        whenever(marketplaceRepository.findMarketplaceStrategies(isNull(), any(), isNull(), any()))
             .thenReturn(page)
 
         // When
@@ -171,7 +159,7 @@ class MarketplaceServiceTest {
         )
         val page = PageImpl(listOf(testStrategy), PageRequest.of(0, 20), 1)
 
-        whenever(strategyRepository.findMarketplaceStrategiesByCagr(isNull(), isNull(), isNull(), any()))
+        whenever(marketplaceRepository.findMarketplaceStrategiesByCagr(isNull(), isNull(), isNull(), any()))
             .thenReturn(page)
 
         // When
@@ -194,7 +182,7 @@ class MarketplaceServiceTest {
         )
         val page = PageImpl(listOf(testStrategy), PageRequest.of(0, 20), 1)
 
-        whenever(strategyRepository.findMarketplaceStrategiesBySharpe(isNull(), isNull(), isNull(), any()))
+        whenever(marketplaceRepository.findMarketplaceStrategiesBySharpe(isNull(), isNull(), isNull(), any()))
             .thenReturn(page)
 
         // When
@@ -213,7 +201,7 @@ class MarketplaceServiceTest {
         val request = StrategyListRequest()
         val page = PageImpl(listOf(testStrategy), PageRequest.of(0, 20), 1)
 
-        whenever(strategyRepository.findMarketplaceStrategies(isNull(), isNull(), isNull(), any()))
+        whenever(marketplaceRepository.findMarketplaceStrategies(isNull(), isNull(), isNull(), any()))
             .thenReturn(page)
 
         // When
@@ -237,7 +225,7 @@ class MarketplaceServiceTest {
         val request = StrategyListRequest(page = 1, size = 10)
         val page = PageImpl(listOf(testStrategy), PageRequest.of(1, 10), 25)
 
-        whenever(strategyRepository.findMarketplaceStrategies(isNull(), isNull(), isNull(), any()))
+        whenever(marketplaceRepository.findMarketplaceStrategies(isNull(), isNull(), isNull(), any()))
             .thenReturn(page)
 
         // When

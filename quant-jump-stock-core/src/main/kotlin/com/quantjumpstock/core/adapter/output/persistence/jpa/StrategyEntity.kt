@@ -1,6 +1,7 @@
 package com.quantjumpstock.core.adapter.output.persistence.jpa
 
 import jakarta.persistence.*
+import org.hibernate.annotations.BatchSize
 import java.math.BigDecimal
 import java.time.LocalDateTime
 import org.hibernate.annotations.CreationTimestamp
@@ -10,6 +11,13 @@ import org.hibernate.type.SqlTypes
 
 @Entity
 @Table(name = "strategies")
+@NamedEntityGraph(
+    name = "Strategy.withBacktestResults",
+    attributeNodes = [
+        NamedAttributeNode("backtestResults"),
+        NamedAttributeNode("category")
+    ]
+)
 data class StrategyEntity(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -57,6 +65,7 @@ data class StrategyEntity(
     val subscriptions: MutableList<StrategySubscriptionEntity> = mutableListOf(),
 
     @OneToMany(mappedBy = "strategy", cascade = [CascadeType.ALL], fetch = FetchType.LAZY)
+    @BatchSize(size = 20)
     val backtestResults: MutableList<BacktestResultEntity> = mutableListOf(),
 
     @OneToMany(mappedBy = "strategy", cascade = [CascadeType.ALL], fetch = FetchType.LAZY)

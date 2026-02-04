@@ -1,0 +1,763 @@
+# Backend Architecture Analysis & Improvement Plan
+
+> **작성일**: 2026-02-04
+> **대상**: quant-jump-stock-core (Kotlin/Spring Boot)
+> **목적**: Hexagonal Architecture 완성도 향상 및 기술 부채 해소
+
+---
+
+## 📋 목차
+
+1. [현황 분석](#1-현황-분석)
+2. [목표 아키텍처](#2-목표-아키텍처)
+3. [구현 로드맵](#3-구현-로드맵)
+4. [주요 패턴](#4-주요-패턴)
+5. [검증 방법](#5-검증-방법)
+
+---
+
+## 1. 현황 분석
+
+### 1.1 전체 구조 평가
+
+**아키텍처 점수**: 65/100
+
+**✅ 잘 구현된 부분**:
+- 145개 Kotlin 파일로 구성된 명확한 계층 분리
+- REST/Messaging/Scheduler 어댑터 명확히 분리
+- 도메인 포트 정의 (StrategyRepository, MessagePublisher, TradingApiPort)
+
+**❌ 개선 필요 부분**:
+- 의존성 방향 위반 (11개 서비스에서 JPA Entity 직접 참조)
+- 도메인 모델에 인프라 어노테이션 침투 (@Document, @Field)
+- 도메인 포트가 인프라 타입 사용 (StrategyEntity 반환)
+
+### 1.2 계층별 현황
+
+```
+adapter/
+├── input/rest/          # ✅ 11개 REST 컨트롤러 (깔끔)
+├── input/messaging/     # ✅ Kafka 컨슈머 (깔끔)
+├── input/scheduler/     # ✅ 8개 Quartz 잡 (깔끔)
+└── output/
+    ├── persistence/jpa/        # ⚠️ Application 계층으로 유출됨
+    ├── persistence/mongodb/    # ⚠️ Domain 계층으로 유출됨
+    ├── external/              # ✅ KIS, FRED API (깔끔)
+    └── notification/          # ✅ Slack (깔끔)
+
+application/
+├── 17개 서비스 클래스         # ❌ JPA Entity 직접 import
+└── DTOs                      # ❌ Adapter enum 직접 import
+
+domain/
+├── model/                    # ❌ @Document/@Field 어노테이션 존재
+├── port/output/              # ❌ StrategyEntity 등 인프라 타입 사용
+└── service/                  # ✅ 순수 비즈니스 로직
+```
+
+### 1.3 주요 위반 사항
+
+#### 위반 #1: Application → Infrastructure 의존성 (심각도: 높음)
+
+**영향받는 파일**: 11개 서비스
+- `StrategyService`
+- `AutoTradingService`
+- `MarketplaceService`
+- 기타 8개 서비스
+
+**문제 코드 예시**:
+```kotlin
+// ❌ 현재 - application/strategy/StrategyService.kt
+import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyEntity
+import com.quantjumpstock.core.adapter.output.persistence.jpa.BacktestStatus
+
+class StrategyService(
+    private val strategyJpaRepository: StrategyJpaRepository  // 직접 JPA 의존
+)
+```
+
+**영향**:
+- 데이터베이스 교체 불가능
+- 단위 테스트 어려움
+- 비즈니스 로직과 인프라 강결합
+
+#### 위반 #2: Domain 모델 인프라 오염 (심각도: 중간)
+
+**영향받는 파일**:
+- `domain/model/Stock.kt`
+- `domain/model/User.kt`
+- `domain/model/StockPrediction.kt`
+
+**문제 코드 예시**:
+```kotlin
+// ❌ 현재 - domain/model/Stock.kt
+@Document(collection = "stocks")  // MongoDB 어노테이션이 도메인에 존재
+data class Stock(
+    @Field("stock_name") val stockName: String
+)
+```
+
+**영향**:
+- 도메인 로직이 MongoDB 구현에 종속
+- 순수 도메인 모델이 아님
+- 테스트 시 MongoDB 필요
+
+#### 위반 #3: Domain Port가 Infrastructure 타입 사용 (심각도: 매우 높음)
+
+**영향받는 파일**: `domain/port/output/StrategyRepository.kt`
+
+**문제 코드 예시**:
+```kotlin
+// ❌ 현재 - 도메인 포트가 JPA Entity 사용
+interface StrategyRepository {
+    fun save(strategy: StrategyEntity): StrategyEntity  // JPA Entity 타입
+}
+```
+
+**영향**:
+- 헥사고날 아키텍처의 근본 원칙 위반
+- 도메인이 어댑터에 의존하는 역전된 구조
+
+### 1.4 의존성 및 설정 문제
+
+| 문제 | 심각도 | 영향 |
+|------|--------|------|
+| spring-boot-starter-webflux + web 동시 존재 | 높음 | 50-100MB 메모리 낭비, Netty+Tomcat 충돌 |
+| Redis 설정 존재하나 의존성 없음 | 중간 | 데드 코드, 혼란 유발 |
+| Security permitAll() | 높음 | 개발 전용, 프로덕션 배포 차단 |
+| CORS 비활성화 | 높음 | Frontend :3000/:4000 차단 |
+| Kafka auto-commit 활성화 | 중간 | 장애 시 메시지 손실 위험 |
+
+### 1.5 테스트 공백
+
+**현재 커버리지**:
+- ✅ 1개 통합 테스트 (MarketplaceControllerTest)
+- ❌ 0개 Application 서비스 단위 테스트
+- ❌ 0개 MongoDB 리포지토리 테스트
+- ❌ 0개 동시성 테스트 (계좌 잔액 등)
+- ❌ 0개 거래 실행 로직 테스트
+
+**테스트 피라미드 상태**: 역전됨 (통합 테스트만 존재)
+
+---
+
+## 2. 목표 아키텍처
+
+### 2.1 아키텍처 패턴 선정
+
+**추천**: Hexagonal Architecture + Domain-Driven Design 강화
+
+**Clean Architecture를 선택하지 않은 이유**:
+- Entity/Model 분리가 이 도메인에 추가 가치를 제공하지 않음
+- 금융 모델은 복잡한 변환 로직이 없음
+- Kotlin data class가 이미 불변성 제공
+
+**Modular Monolith를 아직 선택하지 않은 이유**:
+- 팀 규모가 Gradle 멀티모듈 오버헤드를 정당화하지 못함
+- Bounded Context가 아직 진화 중
+- 패키지 기반 분리 + ArchUnit 검증으로 충분
+- **향후 계획**: 팀이 5-7명 이상이 되면 멀티모듈로 마이그레이션
+
+### 2.2 목표 계층 구조
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                    ADAPTER LAYER                         │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
+│  │  REST API   │  │  Scheduler  │  │   Kafka     │     │
+│  │(Controllers)│  │   (Jobs)    │  │ (Consumer)  │     │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘     │
+└─────────┼─────────────────┼─────────────────┼───────────┘
+          │                 │                 │
+          ▼                 ▼                 ▼
+┌──────────────────────────────────────────────────────────┐
+│               APPLICATION LAYER (Use Cases)              │
+│         ⚠️ NO infrastructure imports allowed             │
+│         ✅ Only depends on domain ports                  │
+└──────────┼──────────────────────────────┬────────────────┘
+           │                              │
+           ▼ (Depends on)                 ▼ (Depends on)
+┌──────────────────────────────────────────────────────────┐
+│                    DOMAIN LAYER                          │
+│  ┌─────────────┐  ┌──────────────┐  ┌─────────────┐    │
+│  │   Models    │  │  Interfaces  │  │   Events    │    │
+│  │ (Pure Kotlin)│  │   (Ports)    │  │  (Domain)   │    │
+│  │ NO @Document │  │              │  │             │    │
+│  │ NO @Entity   │  │              │  │             │    │
+│  └─────────────┘  └──────────────┘  └─────────────┘    │
+└──────────────────────────────────────────────────────────┘
+           ▲                              ▲
+           │ (Implements)                 │ (Implements)
+┌──────────────────────────────────────────────────────────┐
+│              INFRASTRUCTURE LAYER                        │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐     │
+│  │JPA Adapters │  │MongoDB      │  │ External    │     │
+│  │ Entity+Repo │  │  Adapters   │  │ API Clients │     │
+│  │+ Mappers    │  │ + Mappers   │  │             │     │
+│  └─────────────┘  └─────────────┘  └─────────────┘     │
+└──────────────────────────────────────────────────────────┘
+```
+
+### 2.3 패키지 구조 (현재: 단일 모듈)
+
+```
+src/main/kotlin/com/quantjumpstock/core/
+├── domain/                           # 순수 Kotlin, 인프라 의존성 ZERO
+│   ├── model/                        # 엔티티, Value Objects
+│   │   ├── Strategy.kt               # 순수 도메인 모델
+│   │   ├── Account.kt
+│   │   └── Trade.kt
+│   ├── service/                      # 도메인 서비스 (비즈니스 로직)
+│   │   └── TechnicalIndicatorCalculator.kt
+│   ├── port/
+│   │   ├── input/                    # Use case 인터페이스 (선택적)
+│   │   └── output/                   # Repository 인터페이스
+│   │       ├── StrategyRepository.kt  # domain.model.Strategy 사용
+│   │       └── AccountRepository.kt
+│   └── event/                        # 도메인 이벤트
+│       └── TradeExecutedEvent.kt
+│
+├── application/                      # Use cases, 오케스트레이션
+│   ├── trading/
+│   │   └── TradingService.kt         # ✅ 도메인 포트에만 의존
+│   ├── strategy/
+│   │   └── StrategyService.kt        # ✅ JPA import 없음
+│   └── analysis/
+│       └── AnalysisService.kt
+│
+├── adapter/
+│   ├── input/
+│   │   ├── rest/
+│   │   │   ├── strategy/StrategyController.kt
+│   │   │   └── trading/TradingController.kt
+│   │   ├── messaging/
+│   │   │   └── KafkaEventListener.kt
+│   │   └── scheduler/
+│   │       └── EconomicDataUpdateJob.kt
+│   └── output/
+│       ├── persistence/
+│       │   ├── jpa/
+│       │   │   ├── entity/StrategyEntity.kt      # JPA 엔티티
+│       │   │   ├── repository/StrategyJpaRepo.kt
+│       │   │   └── adapter/StrategyPersistenceAdapter.kt  # 도메인 포트 구현
+│       │   └── mongodb/
+│       │       ├── document/StockDocument.kt     # MongoDB 도큐먼트
+│       │       ├── repository/StockMongoRepo.kt
+│       │       └── adapter/StockPersistenceAdapter.kt
+│       ├── external/
+│       │   └── kis/KisApiAdapter.kt
+│       └── notification/
+│           └── slack/SlackNotificationAdapter.kt
+│
+└── config/                           # Spring 설정
+    ├── SecurityConfig.kt
+    └── KafkaConfig.kt
+```
+
+### 2.4 ArchUnit 기반 아키텍처 강제
+
+```kotlin
+@AnalyzeClasses(packages = ["com.quantjumpstock.core"])
+class ArchitectureTest {
+
+    @ArchTest
+    val layeredArchitecture = layeredArchitecture()
+        .layer("Domain").definedBy("..domain..")
+        .layer("Application").definedBy("..application..")
+        .layer("Adapter").definedBy("..adapter..")
+
+        .whereLayer("Domain").mayOnlyBeAccessedByLayers("Application", "Adapter")
+        .whereLayer("Application").mayOnlyBeAccessedByLayers("Adapter")
+
+    @ArchTest
+    val noDomainDependenciesOnInfrastructure = noClasses()
+        .that().resideInAPackage("..domain..")
+        .should().dependOnClassesThat().resideInAPackage("..adapter..")
+
+    @ArchTest
+    val noApplicationDependenciesOnJPA = noClasses()
+        .that().resideInAPackage("..application..")
+        .should().dependOnClassesThat().resideInAPackage("..jpa..")
+}
+```
+
+---
+
+## 3. 구현 로드맵
+
+### Phase 1: 기반 구축 (1-4주) - 무중단 변경
+
+#### Week 1: 테스트 인프라 구축
+
+**작업 목록**:
+
+1. **build.gradle.kts 의존성 추가**:
+```kotlin
+// 제거: Netty+Tomcat 충돌 방지
+// implementation("org.springframework.boot:spring-boot-starter-webflux")
+
+// 추가: 테스트 프레임워크
+testImplementation("io.kotest:kotest-runner-junit5:5.8.0")
+testImplementation("io.kotest:kotest-assertions-core:5.8.0")
+testImplementation("io.mockk:mockk:1.13.9")
+testImplementation("com.tngtech.archunit:archunit-junit5:1.2.1")
+testImplementation("de.flapdoodle.embed:de.flapdoodle.embed.mongo:4.11.0")
+testImplementation("org.testcontainers:postgresql:1.19.3")
+```
+
+2. **ArchitectureTest.kt 생성**
+3. **테스트 픽스처 생성**: `TradingFixtures.kt`, `StrategyFixtures.kt`
+
+**산출물**:
+- ✅ ArchUnit 테스트 정의 (초기 실패 예상)
+- ✅ 테스트 인프라 준비 완료
+- ✅ 기준선 아키텍처 위반 건수 확립
+
+#### Week 2: 순수 도메인 모델 생성
+
+**작업 목록**:
+
+1. **순수 도메인 모델 생성** (`domain/model/`):
+```kotlin
+// domain/model/Strategy.kt (순수 - 어노테이션 없음)
+data class Strategy(
+    val id: Long?,
+    val name: String,
+    val type: StrategyType,
+    val parameters: Map<String, Any>,
+    val status: StrategyStatus
+) {
+    init {
+        require(name.isNotBlank()) { "Strategy name required" }
+    }
+}
+```
+
+2. **도메인 포트 생성** (`domain/port/output/`):
+```kotlin
+// domain/port/output/StrategyRepository.kt
+interface StrategyRepository {
+    fun save(strategy: Strategy): Strategy  // 도메인 타입 사용
+    fun findById(id: Long): Strategy?
+    fun findAllActive(): List<Strategy>
+}
+```
+
+3. **Enum을 adapter에서 domain으로 이동**:
+   - StrategyType
+   - StrategyStatus
+   - RebalanceFrequency
+
+**산출물**:
+- ✅ 10개 이상 순수 도메인 모델 생성
+- ✅ 5개 이상 도메인 포트 인터페이스 정의
+- ✅ 도메인 계층 단위 테스트 작성
+
+#### Week 3: Persistence Adapter 구현
+
+**작업 목록**:
+
+1. **JPA Persistence Adapter 생성**:
+```kotlin
+// adapter/output/persistence/jpa/adapter/StrategyPersistenceAdapter.kt
+@Repository
+class StrategyPersistenceAdapter(
+    private val jpaRepository: StrategyJpaRepository
+) : StrategyRepository {
+
+    override fun save(strategy: Strategy): Strategy {
+        val entity = strategy.toEntity()
+        val saved = jpaRepository.save(entity)
+        return saved.toDomain()
+    }
+}
+
+// 매핑 확장 함수
+fun Strategy.toEntity() = StrategyEntity(
+    id = id,
+    name = name,
+    strategyType = type,
+    // ... 매핑 로직
+)
+
+fun StrategyEntity.toDomain() = Strategy(
+    id = id,
+    name = name,
+    type = strategyType,
+    // ... 매핑 로직
+)
+```
+
+2. **MongoDB Adapter도 동일 패턴 적용**
+3. **Adapter 통합 테스트 작성**
+
+**산출물**:
+- ✅ 5개 이상 Persistence Adapter 구현
+- ✅ JPA ↔ Domain 매핑 함수
+- ✅ MongoDB ↔ Domain 매핑 함수
+- ✅ Adapter 통합 테스트 (70%+ 커버리지)
+
+#### Week 4: 파일럿 서비스 리팩토링
+
+**작업 목록**:
+
+1. **저위험 서비스 선택**: `AnalysisService`
+
+2. **도메인 포트 사용으로 리팩토링**:
+```kotlin
+// application/analysis/AnalysisService.kt (이전)
+class AnalysisService(
+    private val stockMongoRepository: StockMongoRepository  // ❌ 직접 MongoDB
+)
+
+// (이후)
+class AnalysisService(
+    private val stockRepository: StockRepository  // ✅ 도메인 포트
+)
+```
+
+3. **포괄적 단위 테스트 추가**:
+   - MockK로 도메인 포트 모킹
+   - 비즈니스 로직 격리 테스트
+   - Kotest Property-based testing
+
+4. **기존 통합 테스트 통과 확인**
+
+**산출물**:
+- ✅ 1개 서비스 완전 리팩토링
+- ✅ 리팩토링된 서비스 80%+ 단위 테스트 커버리지
+- ✅ 모든 기존 통합 테스트 통과
+- ✅ ArchUnit 위반 약 10% 감소
+
+**Phase 1 성공 지표**:
+- ArchUnit 테스트: 10% 개선
+- 단위 테스트 커버리지: 30%+ (0%에서 증가)
+- 통합 테스트: 100% 통과
+- 빌드 시간: < 2분
+
+---
+
+### Phase 2: 핵심 서비스 마이그레이션 (5-10주)
+
+#### Week 5-6: 거래 서비스 (중요 경로)
+
+**우선순위: 최고 - 핵심 비즈니스 로직**
+
+**작업 목록**:
+
+1. **AutoTradingService 리팩토링**:
+   - 직접 JPA 리포지토리 의존성 제거
+   - AccountRepository, TradeRepository 도메인 포트 사용
+   - Optimistic locking 동시성 테스트 추가
+
+2. **TradingService 리팩토링**:
+   - 거래 로직을 도메인 서비스로 추출
+   - 주문 실행 로직 단위 테스트 추가
+
+3. **동시성 테스트 작성**:
+```kotlin
+@SpringBootTest
+@Testcontainers
+class AccountConcurrencyTest {
+    @Test
+    fun `100개 동시 잔액 업데이트 처리`() {
+        // Optimistic locking 부하 테스트
+    }
+}
+```
+
+**산출물**:
+- ✅ AutoTradingService 리팩토링
+- ✅ TradingService 리팩토링
+- ✅ 동시성 테스트 (100개 동시 작업)
+- ✅ 중요 거래 로직 100% 단위 테스트
+
+#### Week 7-8: 전략 및 분석 서비스
+
+**작업 목록**:
+1. StrategyService, BacktestService 리팩토링
+2. 백테스트 계산용 도메인 서비스 생성
+3. 금융 계산에 Property-based testing 추가
+
+**산출물**:
+- ✅ StrategyService 리팩토링
+- ✅ BacktestService 리팩토링
+- ✅ CAGR, Sharpe ratio 계산 Property-based tests
+
+#### Week 9-10: 사용자 및 스케줄러 서비스
+
+**작업 목록**:
+1. UserService, SchedulerService 리팩토링
+2. 설정 충돌 해결:
+   - spring-boot-starter-webflux 제거
+   - Redis 제대로 추가/제거
+   - Frontend용 CORS 설정
+
+**산출물**:
+- ✅ 모든 Application 서비스 리팩토링
+- ✅ 설정 충돌 해결
+- ✅ Frontend와 CORS 작동
+
+**Phase 2 성공 지표**:
+- ArchUnit 위반: 0
+- 단위 테스트 커버리지: 75%+
+- 통합 테스트: 중요 경로 커버
+- Application 계층: JPA import ZERO (ArchUnit 강제)
+
+---
+
+### Phase 3: 최적화 및 강화 (11-14주)
+
+#### Week 11: 설정 정리
+
+**우선 작업**:
+
+1. **webflux 의존성 제거** (50MB 메모리 절약)
+
+2. **Security 설정 수정**:
+```kotlin
+@Configuration
+class SecurityConfig {
+    @Value("\${app.security.enabled:true}")
+    private val securityEnabled: Boolean = true
+
+    // 개발: disabled일 때 permitAll()
+    // 프로덕션: enabled일 때 JWT + RBAC
+}
+```
+
+3. **Kafka 수동 커밋 설정**:
+```kotlin
+factory.containerProperties.ackMode = ContainerProperties.AckMode.MANUAL_IMMEDIATE
+```
+
+4. **모니터링/관측성 추가**
+
+#### Week 12: 성능 테스트
+
+**작업**:
+1. 거래 엔드포인트 부하 테스트 (100 req/sec)
+2. 데이터베이스 쿼리 프로파일링 (Hibernate statistics)
+3. 핫 데이터용 Redis 캐싱 추가:
+```kotlin
+@Cacheable(value = ["stockPrices"], key = "#symbol")
+fun getCurrentPrice(symbol: String): BigDecimal
+```
+
+**성능 목표**:
+- P95 latency < 200ms
+- P99 latency < 500ms
+- N+1 쿼리 없음
+
+#### Week 13: 보안 강화
+
+**작업**:
+1. 프로덕션에서 보안 활성화
+2. JWT 인증 추가
+3. RBAC 제대로 구현
+4. 보안 감사 (OWASP Top 10)
+
+#### Week 14: 문서화 및 지식 전달
+
+**작업**:
+1. CLAUDE.md에 아키텍처 규칙 업데이트
+2. Adapter 패턴 사용법 문서화
+3. 새 서비스용 마이그레이션 가이드 작성
+4. 팀 교육 세션
+
+**Phase 3 성공 지표**:
+- 성능: P95 < 200ms
+- 보안: 프로덕션에서 permitAll() 없음
+- 품질: 80%+ 테스트 커버리지
+- 아키텍처: ArchUnit 점수 100/100
+
+---
+
+## 4. 주요 패턴
+
+자세한 패턴은 [ADAPTER_PATTERNS.md](../patterns/ADAPTER_PATTERNS.md) 참조
+
+### 4.1 도메인 모델 (순수 Kotlin)
+
+```kotlin
+// domain/model/Strategy.kt
+data class Strategy(
+    val id: Long?,
+    val name: String,
+    val type: StrategyType,
+    val parameters: StrategyParameters,
+    val status: StrategyStatus
+) {
+    init {
+        require(name.length in 3..100) { "Strategy name must be 3-100 chars" }
+    }
+
+    fun activate(): Strategy {
+        require(status == StrategyStatus.DRAFT) { "Can only activate draft strategies" }
+        return copy(status = StrategyStatus.ACTIVE)
+    }
+}
+```
+
+### 4.2 도메인 포트 (인터페이스)
+
+```kotlin
+// domain/port/output/StrategyRepository.kt
+interface StrategyRepository {
+    fun save(strategy: Strategy): Strategy
+    fun findById(id: Long): Strategy?
+    fun findAllByStatus(status: StrategyStatus): List<Strategy>
+    fun delete(id: Long)
+}
+```
+
+### 4.3 Persistence Adapter (구현)
+
+```kotlin
+// adapter/output/persistence/jpa/adapter/StrategyPersistenceAdapter.kt
+@Repository
+class StrategyPersistenceAdapter(
+    private val jpaRepository: StrategyJpaRepository,
+    private val mapper: StrategyMapper
+) : StrategyRepository {
+
+    override fun save(strategy: Strategy): Strategy {
+        val entity = mapper.toEntity(strategy)
+        val saved = jpaRepository.save(entity)
+        return mapper.toDomain(saved)
+    }
+}
+```
+
+### 4.4 Application Service (Use Case)
+
+```kotlin
+// application/strategy/StrategyService.kt
+@Service
+@Transactional
+class StrategyService(
+    private val strategyRepository: StrategyRepository,  // ✅ 도메인 포트
+    private val eventPublisher: DomainEventPublisher     // ✅ 도메인 포트
+) {
+
+    fun createStrategy(request: CreateStrategyRequest): Strategy {
+        val strategy = Strategy(
+            id = null,
+            name = request.name,
+            type = request.type,
+            parameters = request.parameters,
+            status = StrategyStatus.DRAFT
+        )
+
+        val saved = strategyRepository.save(strategy)
+        eventPublisher.publish(StrategyCreatedEvent(saved.id!!))
+
+        return saved
+    }
+}
+```
+
+---
+
+## 5. 검증 방법
+
+### 5.1 Phase 1 이후 검증
+
+```bash
+# 1. ArchUnit 테스트 실행
+./gradlew test --tests "ArchitectureTest"
+# 예상: 일부 위반 (기준선)
+# 추적: 주마다 위반 건수 감소 확인
+
+# 2. 테스트 커버리지 확인
+./gradlew test jacocoTestReport
+# 목표: Phase 1 이후 30%+
+
+# 3. 기존 통합 테스트 확인
+./gradlew test --tests "*IntegrationTest"
+# 모두 통과해야 함 (무중단 변경)
+```
+
+### 5.2 Phase 2 이후 검증
+
+```bash
+# 1. ArchUnit 0 위반
+./gradlew test --tests "ArchitectureTest"
+
+# 2. 테스트 커버리지 75%+
+./gradlew test jacocoTestReport
+
+# 3. 동시성 테스트 실행
+./gradlew test --tests "*ConcurrencyTest"
+```
+
+### 5.3 Phase 3 이후 검증
+
+```bash
+# 1. 부하 테스트
+./gradlew bootRun
+# k6 또는 Gatling 사용 (100 req/sec)
+
+# 2. 보안 스캔
+./gradlew dependencyCheckAnalyze
+
+# 3. 전체 테스트 스위트
+./gradlew clean build
+# < 2분 내 완료
+```
+
+### 5.4 성공 기준
+
+| 지표 | Phase 1 | Phase 2 | Phase 3 (최종) |
+|------|---------|---------|----------------|
+| ArchUnit 위반 | 기준선의 90% | 0 | 0 |
+| 단위 테스트 커버리지 | 30% | 75% | 80% |
+| 통합 테스트 커버리지 | 40% | 60% | 60% |
+| Application → JPA imports | 8 | 0 | 0 |
+| Domain 오염 | 5 files | 0 | 0 |
+| 빌드 시간 | < 2분 | < 2분 | < 2분 |
+| P95 latency | N/A | N/A | < 200ms |
+
+---
+
+## 6. 리스크 완화
+
+### 리스크 #1: 기존 기능 중단
+
+**완화 방안**:
+- 모든 변경 사항 무중단 (어댑터가 기존 코드 감쌈)
+- 모든 리팩토링 후 통합 테스트 실행
+- 단계별 접근으로 서비스별 롤백 가능
+- 새 코드 검증될 때까지 기존 코드 유지
+
+### 리스크 #2: 팀 학습 곡선
+
+**완화 방안**:
+- Week 4 파일럿 리팩토링이 학습 자료 역할
+- CLAUDE.md에 패턴 문서화
+- 첫 리팩토링 시 페어 프로그래밍
+- Week 14 교육 세션
+
+### 리스크 #3: 일정 지연
+
+**완화 방안**:
+- Phase 간 독립성 (Phase 간 일시 중지 가능)
+- Week 1-4 기반은 이후 Phase 지연돼도 재사용 가능
+- 테스트 인프라가 즉각적인 가치 제공
+- 설정 수정 (Week 11)은 언제든 가능
+
+### 리스크 #4: 성능 저하
+
+**완화 방안**:
+- Week 12 부하 테스트로 조기 문제 식별
+- Mapper 오버헤드 최소 (단순 필드 복사)
+- 보상용 Redis 캐싱 추가
+- Spring Actuator로 지속 모니터링
+
+---
+
+## 7. 참고 문서
+
+- [ADAPTER_PATTERNS.md](../patterns/ADAPTER_PATTERNS.md) - Adapter 패턴 상세 가이드
+- [TESTING_GUIDE.md](../testing/TESTING_GUIDE.md) - 테스팅 가이드
+- [MIGRATION_LOG.md](../MIGRATION_LOG.md) - 주차별 진행 로그

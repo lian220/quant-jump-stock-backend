@@ -14,6 +14,7 @@ import org.springframework.test.web.servlet.result.MockMvcResultMatchers.*
 import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 import java.time.LocalDate
+import java.util.UUID
 
 /**
  * Marketplace Controller 통합 테스트
@@ -37,7 +38,7 @@ class MarketplaceControllerTest {
     private lateinit var backtestResultRepository: BacktestResultJpaRepository
 
     @Autowired
-    private lateinit var categoryRepository: StrategyCategoryRepository
+    private lateinit var categoryRepository: StrategyCategoryJpaRepository
 
     @Autowired
     private lateinit var marketplaceService: MarketplaceService
@@ -66,12 +67,13 @@ class MarketplaceControllerTest {
             )
         )
 
-        // 테스트 사용자 생성
+        // 테스트 사용자 생성 (각 테스트마다 고유한 ID/이메일 사용)
+        val uniqueId = UUID.randomUUID().toString().take(8)
         testUser = userRepository.save(
             UserEntity(
-                userId = "test_user",
+                userId = "test_user_$uniqueId",
                 name = "테스트 사용자",
-                email = "test@example.com",
+                email = "test_${uniqueId}@example.com",
                 passwordHash = "hashed_password"
             )
         )

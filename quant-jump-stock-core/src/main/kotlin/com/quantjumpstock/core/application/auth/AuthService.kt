@@ -1,9 +1,9 @@
 package com.quantjumpstock.core.application.auth
 
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserEntity
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserJpaRepository
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserRole
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserStatus
+import com.quantjumpstock.core.domain.model.user.User
+import com.quantjumpstock.core.domain.model.user.UserRole
+import com.quantjumpstock.core.domain.model.user.UserStatus
+import com.quantjumpstock.core.domain.port.output.UserRepository
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
@@ -16,7 +16,7 @@ import java.util.concurrent.ConcurrentHashMap
  */
 @Service
 class AuthService(
-    private val userRepository: UserJpaRepository,
+    private val userRepository: UserRepository,
     private val passwordEncoder: PasswordEncoder
 ) {
     // 간단한 토큰 저장소 (프로덕션에서는 Redis 사용 권장)
@@ -77,7 +77,7 @@ class AuthService(
         }
 
         // 사용자 조회
-        val user = userRepository.findByUserId(tokenInfo.userId).orElse(null) ?: return null
+        val user = userRepository.findByUserId(tokenInfo.userId) ?: return null
 
         return LoginResponse(
             success = true,
@@ -128,7 +128,7 @@ class AuthService(
         }
 
         // 4. 사용자 생성
-        val user = UserEntity(
+        val user = User(
             userId = request.userId,
             email = request.email,
             name = request.name,
@@ -148,7 +148,7 @@ class AuthService(
     /**
      * OAuth 로그인을 위한 세션 토큰 생성
      */
-    fun createSessionToken(user: UserEntity): String {
+    fun createSessionToken(user: User): String {
         val token = generateToken()
         val tokenInfo = TokenInfo(
             userId = user.userId,
@@ -163,16 +163,15 @@ class AuthService(
     /**
      * 사용자 조회 (userId 또는 email)
      */
-    private fun findUser(userIdOrEmail: String): UserEntity? {
+    private fun findUser(userIdOrEmail: String): User? {
         // userId로 먼저 조회
         val byUserId = userRepository.findByUserId(userIdOrEmail)
-        if (byUserId.isPresent) {
-            return byUserId.get()
+        if (byUserId != null) {
+            return byUserId
         }
 
         // email로 조회
-        val byEmail = userRepository.findByEmail(userIdOrEmail)
-        return byEmail.orElse(null)
+        return userRepository.findByEmail(userIdOrEmail)
     }
 
     /**

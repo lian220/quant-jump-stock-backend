@@ -2,6 +2,7 @@ package com.quantjumpstock.core.adapter.output.persistence.jpa
 
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
+import org.springframework.data.jpa.repository.EntityGraph
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Modifying
 import org.springframework.data.jpa.repository.Query
@@ -134,9 +135,9 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     fun sumSubscriberCount(): Long?
 
     // Marketplace: 필터링 및 정렬이 적용된 공개 전략 조회
+    @EntityGraph(value = "Strategy.withBacktestResults", type = EntityGraph.EntityGraphType.LOAD)
     @Query("""
         SELECT DISTINCT s FROM StrategyEntity s
-        LEFT JOIN FETCH s.backtestResults br
         WHERE s.isPublic = true AND s.status = 'ACTIVE'
         AND (:categoryCode IS NULL OR s.category.code = :categoryCode)
         AND (:minCagr IS NULL OR EXISTS (
@@ -147,6 +148,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
             SELECT 1 FROM BacktestResultEntity br3
             WHERE br3.strategy = s AND br3.status = 'COMPLETED' AND br3.mdd <= :maxMdd
         ))
+        ORDER BY s.subscriberCount DESC
     """,
     countQuery = """
         SELECT COUNT(DISTINCT s) FROM StrategyEntity s
@@ -169,9 +171,9 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     ): Page<StrategyEntity>
 
     // Marketplace: CAGR로 정렬된 전략 조회
+    @EntityGraph(value = "Strategy.withBacktestResults", type = EntityGraph.EntityGraphType.LOAD)
     @Query("""
         SELECT DISTINCT s FROM StrategyEntity s
-        LEFT JOIN FETCH s.backtestResults br
         WHERE s.isPublic = true AND s.status = 'ACTIVE'
         AND (:categoryCode IS NULL OR s.category.code = :categoryCode)
         AND EXISTS (
@@ -200,9 +202,9 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     ): Page<StrategyEntity>
 
     // Marketplace: Sharpe Ratio로 정렬된 전략 조회
+    @EntityGraph(value = "Strategy.withBacktestResults", type = EntityGraph.EntityGraphType.LOAD)
     @Query("""
         SELECT DISTINCT s FROM StrategyEntity s
-        LEFT JOIN FETCH s.backtestResults br
         WHERE s.isPublic = true AND s.status = 'ACTIVE'
         AND (:categoryCode IS NULL OR s.category.code = :categoryCode)
         AND EXISTS (

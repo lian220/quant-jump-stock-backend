@@ -1,9 +1,8 @@
 package com.quantjumpstock.core.application.marketplace
 
-import com.quantjumpstock.core.adapter.output.persistence.jpa.BacktestStatus
-import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyEntity
-import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyJpaRepository
 import com.quantjumpstock.core.application.strategy.CategoryInfo
+import com.quantjumpstock.core.domain.model.marketplace.MarketplaceStrategy
+import com.quantjumpstock.core.domain.port.output.MarketplaceRepository
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.stereotype.Service
@@ -16,7 +15,7 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 @Transactional(readOnly = true)
 class MarketplaceService(
-    private val strategyRepository: StrategyJpaRepository
+    private val marketplaceRepository: MarketplaceRepository
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -28,19 +27,19 @@ class MarketplaceService(
         logger.info("공개 전략 목록 조회: categoryCode=${request.categoryCode}, minCagr=${request.minCagr}, maxMdd=${request.maxMdd}, sortBy=${request.sortBy}")
 
         val page = when (request.sortBy?.lowercase()) {
-            "cagr" -> strategyRepository.findMarketplaceStrategiesByCagr(
+            "cagr" -> marketplaceRepository.findMarketplaceStrategiesByCagr(
                 request.categoryCode,
                 request.minCagr,
                 request.maxMdd,
                 request.toPageable()
             )
-            "sharpe" -> strategyRepository.findMarketplaceStrategiesBySharpe(
+            "sharpe" -> marketplaceRepository.findMarketplaceStrategiesBySharpe(
                 request.categoryCode,
                 request.minCagr,
                 request.maxMdd,
                 request.toPageable()
             )
-            else -> strategyRepository.findMarketplaceStrategies(
+            else -> marketplaceRepository.findMarketplaceStrategies(
                 request.categoryCode,
                 request.minCagr,
                 request.maxMdd,
@@ -60,27 +59,23 @@ class MarketplaceService(
     }
 
     /**
-     * StrategyEntity를 StrategyDto로 변환
+     * MarketplaceStrategy를 StrategyDto로 변환
      */
-    private fun StrategyEntity.toDto(): StrategyDto {
-        val latestBacktest = this.backtestResults
-            .filter { it.status == BacktestStatus.COMPLETED }
-            .maxByOrNull { it.createdAt }
-
+    private fun MarketplaceStrategy.toDto(): StrategyDto {
         return StrategyDto(
-            id = this.id!!,
+            id = this.id,
             name = this.name,
             description = this.description,
             category = CategoryInfo(
-                id = this.category.id!!,
-                code = this.category.code,
-                name = this.category.name
+                id = this.categoryId,
+                code = this.categoryCode,
+                name = this.categoryName
             ),
             isPremium = this.isPremium,
             subscriberCount = this.subscriberCount,
             averageRating = this.averageRating,
             rebalanceFrequency = this.rebalanceFrequency.name,
-            backtestResult = latestBacktest?.let {
+            backtestResult = this.latestBacktest?.let {
                 BacktestResultDto(
                     cagr = it.cagr,
                     mdd = it.mdd,

@@ -27,4 +27,7 @@ interface TradingConfigJpaRepository : JpaRepository<TradingConfigEntity, Long> 
 
     @Query("SELECT COUNT(tc) FROM TradingConfigEntity tc WHERE tc.enabled = true AND tc.autoTradingEnabled = true")
     fun countAutoTradingEnabled(): Long
+
+    @Query("SELECT CASE WHEN COUNT(tc) > 0 THEN true ELSE false END FROM TradingConfigEntity tc WHERE tc.user.id = :userId")
+    fun existsByUserId(userId: Long): Boolean
 }
