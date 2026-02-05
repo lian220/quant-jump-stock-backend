@@ -8,7 +8,18 @@ Backtest Application Module
 from .engine import BacktestEngine, BacktestConfig
 from .result import BacktestResult, BacktestTrade, EquityCurvePoint
 from .data_loader import DataLoader, YFinanceDataLoader, PandasDataLoader
-from .portfolio import PerformanceMetrics
+from .metrics import (
+    PerformanceMetrics,
+    TradeMetrics,
+    calculate_cagr,
+    calculate_mdd,
+    calculate_volatility,
+    calculate_sharpe_ratio,
+    calculate_sortino_ratio,
+    calculate_daily_returns,
+    calculate_performance_metrics,
+    calculate_trade_metrics,
+)
 
 # Re-export domain models for convenience
 from domain.backtest.models import (
@@ -37,6 +48,15 @@ __all__ = [
     "TradeType",
     "Portfolio",
     "ExitReason",
-    # Performance
+    # Metrics (SCRUM-184)
     "PerformanceMetrics",
+    "TradeMetrics",
+    "calculate_cagr",
+    "calculate_mdd",
+    "calculate_volatility",
+    "calculate_sharpe_ratio",
+    "calculate_sortino_ratio",
+    "calculate_daily_returns",
+    "calculate_performance_metrics",
+    "calculate_trade_metrics",
 ]
