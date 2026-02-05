@@ -92,3 +92,34 @@ class InvalidStrategyError(DomainException):
     def __init__(self, message: str, strategy_id: str = None):
         self.strategy_id = strategy_id
         super().__init__(message, f"INVALID_STRATEGY:{strategy_id}" if strategy_id else "INVALID_STRATEGY")
+
+
+class BacktestError(DomainException):
+    """백테스트 실행 오류"""
+
+    def __init__(self, message: str, strategy_id: str = None, symbol: str = None):
+        self.strategy_id = strategy_id
+        self.symbol = symbol
+        code = "BACKTEST_ERROR"
+        if strategy_id and symbol:
+            code = f"BACKTEST_ERROR:{strategy_id}:{symbol}"
+        elif strategy_id:
+            code = f"BACKTEST_ERROR:{strategy_id}"
+        super().__init__(message, code)
+
+
+class BacktestConfigError(DomainException):
+    """백테스트 설정 오류"""
+
+    def __init__(self, message: str, config_key: str = None):
+        self.config_key = config_key
+        super().__init__(message, f"BACKTEST_CONFIG_ERROR:{config_key}" if config_key else "BACKTEST_CONFIG_ERROR")
+
+
+class InsufficientCapitalError(DomainException):
+    """자본 부족 오류"""
+
+    def __init__(self, message: str, required: float = None, available: float = None):
+        self.required = required
+        self.available = available
+        super().__init__(message, "INSUFFICIENT_CAPITAL")
