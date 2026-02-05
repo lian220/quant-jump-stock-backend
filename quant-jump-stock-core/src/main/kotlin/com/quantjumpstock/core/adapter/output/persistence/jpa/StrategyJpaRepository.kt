@@ -89,6 +89,15 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     """)
     fun findByIdWithBacktestResults(id: Long): Optional<StrategyEntity>
 
+    // 공개 전략 상세 조회 (백테스트 결과 포함)
+    @Query("""
+        SELECT s FROM StrategyEntity s
+        LEFT JOIN FETCH s.backtestResults
+        LEFT JOIN FETCH s.category
+        WHERE s.id = :id AND s.isPublic = true AND s.status = 'ACTIVE'
+    """)
+    fun findPublicByIdWithBacktestResults(id: Long): Optional<StrategyEntity>
+
     // 구독자 수 업데이트
     @Modifying
     @Query("UPDATE StrategyEntity s SET s.subscriberCount = s.subscriberCount + 1 WHERE s.id = :strategyId")
