@@ -129,12 +129,31 @@ quant-jump-stock-data-engine/src/
 ## 데이터베이스
 
 ### PostgreSQL (관계형 데이터)
-- 사용자, 전략, 백테스트 결과, RBAC 등
+- **stocks**: 종목 마스터 (ticker, name, sector, industry)
+- **strategies**: 전략 정의 (DSL JSON)
+- **backtest_results**: 백테스트 결과
+- **users, user_roles**: 사용자 및 RBAC
 - JPA Entity: `adapter/output/persistence/jpa/`
 - Flyway 마이그레이션: `src/main/resources/db/migration/`
 
 ### MongoDB (시계열 데이터)
-- 주식 시세, 기술 지표, 예측 결과 등
+- **DB명**: `stock_trading`
+- **daily_stock_data**: 일별 주식 가격
+  ```json
+  {
+    "date": "2025-02-05",
+    "stocks": {
+      "AAPL": { "close_price": 231.42 },
+      "NVDA": { "close_price": 124.79 },
+      ...
+    },
+    "yfinance_indicators": { "S&P 500 ETF": 597.20, ... },
+    "fred_indicators": { ... }
+  }
+  ```
+  - 기간: 2025-02-05 ~ 현재 (약 260일)
+  - 종목: 35개 (미국 주식)
+  - **주의**: close_price만 있음 (OHLCV 중 O/H/L/V 없음)
 - Repository: `adapter/output/persistence/mongodb/`
 
 ### Flyway 마이그레이션 규칙

@@ -8,6 +8,7 @@ Backtest Application Module
 from .engine import BacktestEngine, BacktestConfig
 from .result import BacktestResult, BacktestTrade, EquityCurvePoint
 from .data_loader import DataLoader, YFinanceDataLoader, PandasDataLoader
+from .data_loader_mongo import MongoDataLoader
 from .portfolio import PerformanceMetrics
 
 # Re-export domain models for convenience
