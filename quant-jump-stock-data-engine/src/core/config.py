@@ -1,6 +1,23 @@
+"""
+DEPRECATED: 이 모듈은 config.settings로 대체되었습니다.
+
+기존 코드 호환성을 위해 유지되며, 점진적으로 마이그레이션 예정입니다.
+새 코드에서는 config.settings 사용을 권장합니다:
+
+    from config.settings import get_settings
+    settings = get_settings()
+"""
+
 import os
 from pathlib import Path
 from dotenv import load_dotenv
+import warnings
+
+warnings.warn(
+    "core.config is deprecated. Use config.settings instead.",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 # Docker 환경 감지 (/.dockerenv 파일 존재 여부 또는 KUBERNETES_SERVICE_HOST 환경 변수)
 is_docker = os.path.exists('/.dockerenv') or os.getenv('KUBERNETES_SERVICE_HOST') is not None

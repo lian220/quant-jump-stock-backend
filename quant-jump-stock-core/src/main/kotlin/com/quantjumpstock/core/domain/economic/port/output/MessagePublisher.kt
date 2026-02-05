@@ -2,6 +2,7 @@ package com.quantjumpstock.core.domain.economic.port.output
 
 import com.quantjumpstock.core.domain.model.AnalysisRequest
 import com.quantjumpstock.core.domain.model.EconomicDataUpdateRequest
+import com.quantjumpstock.core.domain.model.VertexAIPredictionRequest
 
 /**
  * 메시지 발행 인터페이스 (Output Port)
@@ -26,5 +27,15 @@ interface MessagePublisher {
     fun publishAnalysisRequest(
         topic: String,
         request: AnalysisRequest
+    )
+
+    /**
+     * Vertex AI 예측 요청 메시지 발행
+     * @param topic 메시지 토픽
+     * @param request Vertex AI 예측 요청
+     */
+    fun publishVertexAIPredictionRequest(
+        topic: String,
+        request: VertexAIPredictionRequest
     )
 }

@@ -1,58 +1,93 @@
 """
-Quantiq Data Engine - Message Processing Worker
+Quantiq Data Engine - Hexagonal Architecture
+
+Primary: Kafka 메시지 처리 워커
+Secondary: REST API (헬스체크, ML 패키지 업로드)
 
 Architecture:
-- Primary: Kafka message processing (all data operations)
-- Secondary: REST API (health checks, status queries, ML package upload)
+    adapter/input/kafka → application/strategy → adapter/output/*
 """
+
 import logging
-import json
 import time
 import threading
-from fastapi import FastAPI
-import uvicorn
-from confluent_kafka import Consumer, KafkaError
 from datetime import datetime
 from pytz import timezone
 
-from src.core.config import settings
-from src.core.database import MongoDB
-from src.features.economic_data.router import router as economic_router
-from src.features.ml_package.router import router as ml_package_router
-from src.features.economic_data.service import EconomicDataService
-from src.services.recommendation_service import RecommendationService
-from src.services.slack_notifier import SlackNotifier
-from src.core.kafka import KafkaEventPublisher
+from fastapi import FastAPI
+import uvicorn
+
+# Config
+from config.settings import get_settings
+
+# Legacy imports (점진적 교체 예정)
+from core.database import MongoDB
+from features.economic_data.router import router as economic_router
+from features.ml_package.router import router as ml_package_router
+from features.economic_data.service import EconomicDataService
+from services.recommendation_service import RecommendationService
+from services.slack_notifier import SlackNotifier
+
+# New Hexagonal imports
+from adapter.input.kafka.consumer import KafkaConsumerAdapter, KafkaMessage
+from adapter.input.kafka.handlers import (
+    EconomicDataHandler,
+    TechnicalAnalysisHandler,
+    SentimentAnalysisHandler,
+    StrategyExecutionHandler,
+    VertexAIHandler,
+)
+from adapter.input.rest import ml_router
+from adapter.output.kafka.producer import KafkaProducerAdapter
+from adapter.output.postgresql.stock_repository import PostgresStockRepository
+from adapter.output.mongodb.analysis_repository import (
+    MongoPriceRepository,
+    MongoAnalysisResultRepository,
+)
+
+# New Application Services
+from application.analysis import (
+    TechnicalAnalysisApplicationService,
+    RecommendationApplicationService,
+)
+from application.ml.prediction_service import PredictionService, GcpConfig
 
 KST = timezone('Asia/Seoul')
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+# Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-# FastAPI app (Read-Only Status API)
+# Settings
+settings = get_settings()
+
+# FastAPI (Read-Only Status API)
 app = FastAPI(
     title="Quantiq Data Engine",
-    description="Message Processing Worker with Read-Only Status API"
+    description="Message Processing Worker (Hexagonal Architecture)"
 )
 
-# Include routers (status endpoints only)
 app.include_router(economic_router)
 app.include_router(ml_package_router)
+app.include_router(ml_router.router)
 
 
 @app.get("/")
 def read_root():
     return {
         "service": "Quantiq Data Engine",
-        "architecture": "Message Processing Worker",
+        "architecture": "Hexagonal (Ports & Adapters)",
         "status": "running",
         "subscribed_kafka_topics": [
             "economic.data.update.request",
             "analysis.technical.request",
-            "analysis.sentiment.request"
+            "analysis.sentiment.request",
+            "strategy.execution.request",
+            "vertex.ai.run.request",
         ],
-        "api_purpose": "Read-only health checks and status queries",
         "timestamp": datetime.now(KST).isoformat()
     }
 
@@ -63,212 +98,243 @@ def health_check():
 
 
 def run_api():
+    """REST API 서버 실행 (별도 스레드)"""
     logger.info("Starting Data Engine API server on port 8000")
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
+
+
+# ============================================================
+# Legacy Adapter Wrappers
+# 기존 서비스를 새 핸들러 프로토콜에 맞게 래핑
+# ============================================================
+
+class LegacyEconomicServiceAdapter:
+    """기존 EconomicDataService를 새 프로토콜에 맞게 래핑"""
+
+    def __init__(self, service: EconomicDataService):
+        self._service = service
+
+    def collect_economic_data(self, target_date=None):
+        return self._service.collect_economic_data(target_date=target_date)
+
+
+class LegacyTechnicalAnalysisAdapter:
+    """기존 RecommendationService.run_technical_analysis 래핑"""
+
+    def __init__(self, service: RecommendationService):
+        self._service = service
+
+    def run_technical_analysis(self, request_id, thread_ts, target_date=None):
+        return self._service.run_technical_analysis(request_id, thread_ts, target_date)
+
+
+class NewTechnicalAnalysisAdapter:
+    """새 TechnicalAnalysisApplicationService를 핸들러 프로토콜에 맞게 래핑 (async→sync)"""
+
+    def __init__(self, service: 'TechnicalAnalysisApplicationService'):
+        self._service = service
+
+    def run_technical_analysis(self, request_id, thread_ts, target_date=None):
+        import asyncio
+
+        async def _run():
+            return await self._service.analyze_stocks(
+                request_id=request_id,
+                thread_ts=thread_ts,
+                target_date=target_date
+            )
+
+        try:
+            loop = asyncio.get_event_loop()
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+
+        return loop.run_until_complete(_run())
+
+
+class LegacySentimentAnalysisAdapter:
+    """기존 RecommendationService.run_sentiment_analysis 래핑"""
+
+    def __init__(self, service: RecommendationService):
+        self._service = service
+
+    def run_sentiment_analysis(self, request_id, thread_ts):
+        return self._service.run_sentiment_analysis(request_id, thread_ts)
+
+
+class LegacySlackNotifierAdapter:
+    """기존 SlackNotifier를 새 프로토콜에 맞게 래핑"""
+
+    def notify_start(self, request_id, source, thread_ts):
+        SlackNotifier.notify_economic_data_collection_start(request_id, source, thread_ts)
+
+    def notify_success(self, request_id, summary, thread_ts):
+        SlackNotifier.notify_economic_data_collection_success(request_id, summary, thread_ts)
+
+    def notify_error(self, request_id, error, thread_ts):
+        SlackNotifier.notify_economic_data_collection_error(request_id, error, thread_ts)
 
 
 def main():
-    logger.info("Quantiq Data Engine Started (Feature-based Architecture)")
+    logger.info("=" * 80)
+    logger.info("Quantiq Data Engine Started (Hexagonal Architecture)")
+    logger.info("=" * 80)
 
-    # Start API server in a separate thread
+    # 1. API 서버 시작 (별도 스레드)
     api_thread = threading.Thread(target=run_api, daemon=True)
     api_thread.start()
 
-    # 1. Start MongoDB connection
+    # 2. MongoDB 연결
     db = MongoDB.get_db()
     if db is None:
         logger.error("Failed to connect to MongoDB")
         return
 
-    # 2. Setup Kafka Consumer
-    conf = {
-        'bootstrap.servers': settings.KAFKA_BOOTSTRAP_SERVERS,
-        'group.id': 'quantiq-data-engine-fresh',  # Fresh consumer group for clean start
-        'auto.offset.reset': 'earliest'
-    }
+    # 3. Kafka 연결 대기
+    logger.info("Waiting for Kafka to be ready...")
+    time.sleep(5)
 
-    # Wait for Kafka to be ready
-    time.sleep(10)
+    # 4. 서비스 초기화
+    economic_service = LegacyEconomicServiceAdapter(EconomicDataService())
+    slack_notifier = LegacySlackNotifierAdapter()
 
-    consumer = Consumer(conf)
+    # 4.1. 새 Hexagonal 분석 서비스 초기화
+    stock_repository = PostgresStockRepository(
+        host=settings.postgres_host,
+        port=settings.postgres_port,
+        database=settings.postgres_db,
+        user=settings.postgres_user,
+        password=settings.postgres_password
+    )
+    price_repository = MongoPriceRepository(db)
+    result_repository = MongoAnalysisResultRepository(db)
 
-    # 토픽 구독 (경제 데이터 + 분석 요청)
-    topics = [
-        settings.KAFKA_TOPIC_ECONOMIC_DATA_UPDATE_REQUEST,
-        "analysis.technical.request",
-        "analysis.sentiment.request"
-    ]
-    consumer.subscribe(topics)
-    logger.info(f"Subscribed to topics: {topics}")
+    technical_app_service = TechnicalAnalysisApplicationService(
+        stock_repository=stock_repository,
+        price_repository=price_repository,
+        result_repository=result_repository,
+        notifier=None,  # TODO: Slack notifier adapter 연결
+        lookback_days=180
+    )
 
-    # Services 초기화
-    economic_service = EconomicDataService()
+    recommendation_app_service = RecommendationApplicationService(
+        technical_service=technical_app_service,
+        sentiment_service=None,  # TODO: 감정 분석 서비스 연결
+        notifier=None
+    )
+
+    # 4.2. 새 서비스 어댑터 (핸들러 프로토콜 호환)
+    technical_service = NewTechnicalAnalysisAdapter(technical_app_service)
+
+    # 4.3. 레거시 서비스 (점진적 교체 예정)
     recommendation_service = RecommendationService()
+    sentiment_service = LegacySentimentAnalysisAdapter(recommendation_service)
+
+    # 5. Kafka Producer 초기화
+    kafka_producer = KafkaProducerAdapter(settings)
+
+    # 6. 핸들러 생성
+    economic_handler = EconomicDataHandler(
+        service=economic_service,
+        notifier=slack_notifier,
+        publisher=kafka_producer
+    )
+
+    technical_handler = TechnicalAnalysisHandler(
+        service=technical_service,
+        publisher=kafka_producer
+    )
+
+    sentiment_handler = SentimentAnalysisHandler(
+        service=sentiment_service,
+        publisher=kafka_producer
+    )
+
+    # 6.1. Vertex AI 핸들러 (GCP 활성화 시에만)
+    vertexai_handler = None
+    prediction_service = None
+
+    if settings.gcp.enabled:
+        logger.info("GCP enabled - initializing Vertex AI services...")
+        try:
+            gcp_config = GcpConfig(
+                project_id=settings.gcp.project_id,
+                region=settings.gcp.region,
+                bucket_name=settings.gcp.model_bucket,
+                package_base_path=settings.gcp.package_base_path,
+                credentials_path=settings.gcp.credentials_path,
+                job_name=settings.gcp.job_name,
+                machine_type=settings.gcp.machine_type,
+                accelerator_type=settings.gcp.accelerator_type,
+                accelerator_count=settings.gcp.accelerator_count,
+                container_uri=settings.gcp.container_uri
+            )
+            prediction_service = PredictionService(config=gcp_config)
+
+            # ML Router에 서비스 설정
+            ml_router.set_prediction_service(prediction_service)
+
+            # Vertex AI Kafka 핸들러
+            vertexai_handler = VertexAIHandler(
+                service=prediction_service,
+                publisher=kafka_producer
+            )
+            logger.info("✅ Vertex AI services initialized")
+        except Exception as e:
+            logger.error(f"❌ Failed to initialize Vertex AI services: {e}")
+    else:
+        logger.info("GCP disabled - Vertex AI services not available")
+
+    # 7. Kafka Consumer 설정
+    consumer = KafkaConsumerAdapter(
+        settings=settings,
+        group_id="quantiq-data-engine-hex"
+    )
+
+    # 핸들러 등록
+    consumer.register_handler(economic_handler.topic, economic_handler.handle)
+    consumer.register_handler(technical_handler.topic, technical_handler.handle)
+    consumer.register_handler(sentiment_handler.topic, sentiment_handler.handle)
+
+    # Vertex AI 핸들러 등록 (GCP 활성화 시)
+    if vertexai_handler:
+        consumer.register_handler(vertexai_handler.topic, vertexai_handler.handle)
+
+    # 토픽 목록
+    topics = [
+        economic_handler.topic,
+        technical_handler.topic,
+        sentiment_handler.topic,
+    ]
+
+    # Vertex AI 토픽 추가 (GCP 활성화 시)
+    if vertexai_handler:
+        topics.append(vertexai_handler.topic)
+
+    logger.info(f"Subscribing to topics: {topics}")
 
     try:
+        # 8. Consumer 시작
+        consumer.start(topics)
+
+        # 9. 메시지 처리 루프
+        logger.info("Starting message processing loop...")
+
         while True:
-            msg = consumer.poll(1.0)
-
-            if msg is None:
-                continue
-            if msg.error():
-                if msg.error().code() == KafkaError._PARTITION_EOF:
-                    continue
-                else:
-                    logger.error(f"Consumer error: {msg.error()}")
-                    continue
-
-            try:
-                topic_name = msg.topic()
-                message = json.loads(msg.value().decode('utf-8'))
-                logger.info(f"Received request from topic '{topic_name}': {message}")
-
-                # 경제 데이터 업데이트 요청 처리
-                if topic_name == settings.KAFKA_TOPIC_ECONOMIC_DATA_UPDATE_REQUEST:
-                    # payload 필드에서 실제 데이터 추출
-                    payload = message.get("payload", message)
-                    request_id = payload.get("requestId", "unknown")
-                    source = payload.get("source", "kafka")
-                    thread_ts = payload.get("threadTs")  # Kotlin에서 전달받은 스레드 타임스탬프
-                    target_date = payload.get("targetDate")  # 수집할 기준 날짜 (YYYY-MM-DD)
-
-                    logger.info("=" * 80)
-                    logger.info("경제 데이터 업데이트 Kafka 메시지 수신")
-                    logger.info(f"Request ID: {request_id}")
-                    logger.info(f"Target Date: {target_date or '당일'}")
-                    logger.info(f"Thread TS: {thread_ts}")
-                    logger.info("=" * 80)
-
-                    # 🔔 수집 시작 알림 (스레드 답글)
-                    SlackNotifier.notify_economic_data_collection_start(request_id, source, thread_ts)
-
-                    start_time = time.time()
-                    try:
-                        # Service 호출 (날짜 파라미터 전달)
-                        result = economic_service.collect_economic_data(target_date=target_date)
-                        elapsed_time = time.time() - start_time
-
-                        logger.info("✅ 경제 데이터 수집 완료")
-
-                        # 수집 결과 데이터 구성
-                        collection_summary = {
-                            "target_date": result.get("target_date"),
-                            "duration": f"{elapsed_time:.2f}초",
-                            "fred_collected": result.get("fred_collected", 0),
-                            "yahoo_collected": result.get("yahoo_collected", 0),
-                            "total_indicators": result.get("fred_collected", 0) + result.get("yahoo_collected", 0)
-                        }
-
-                        # 🔔 수집 완료 알림 (스레드 답글)
-                        SlackNotifier.notify_economic_data_collection_success(
-                            request_id,
-                            collection_summary,
-                            thread_ts
-                        )
-
-                        # 완료 이벤트 발행
-                        KafkaEventPublisher.publish("ECONOMIC_DATA_UPDATED", {
-                            "status": "success",
-                            "timestamp": datetime.now(KST).isoformat(),
-                            "requestId": request_id,
-                            "duration": elapsed_time
-                        })
-                    except Exception as e:
-                        logger.error(f"❌ 경제 데이터 수집 실패: {e}")
-
-                        # 🔔 오류 알림 (스레드 답글)
-                        SlackNotifier.notify_economic_data_collection_error(request_id, str(e), thread_ts)
-
-                        # 오류 이벤트 발행
-                        KafkaEventPublisher.publish("ECONOMIC_DATA_UPDATE_FAILED", {
-                            "status": "failed",
-                            "timestamp": datetime.now(KST).isoformat(),
-                            "requestId": request_id,
-                            "error": str(e)
-                        })
-                        raise
-
-                # 기술적 분석 요청 처리
-                elif topic_name == "analysis.technical.request":
-                    payload = message.get("payload", message)
-                    request_id = payload.get("requestId", "unknown")
-                    thread_ts = payload.get("threadTs")  # Kotlin에서 전달받은 스레드 타임스탬프
-                    target_date = payload.get("targetDate")  # 분석 기준 날짜
-
-                    logger.info("=" * 80)
-                    logger.info("기술적 분석 요청 Kafka 메시지 수신")
-                    logger.info(f"Request ID: {request_id}")
-                    logger.info(f"Target Date: {target_date or '당일'}")
-                    logger.info(f"Thread TS: {thread_ts}")
-                    logger.info("=" * 80)
-
-                    start_time = time.time()
-                    try:
-                        # Service 호출
-                        result = recommendation_service.run_technical_analysis(request_id, thread_ts, target_date)
-                        elapsed_time = time.time() - start_time
-
-                        logger.info("✅ 기술적 분석 완료")
-
-                        # 완료 이벤트 발행
-                        KafkaEventPublisher.publish("ANALYSIS_TECHNICAL_COMPLETED", {
-                            "status": "success",
-                            "timestamp": datetime.now(KST).isoformat(),
-                            "requestId": request_id,
-                            "duration": elapsed_time,
-                            "result": result
-                        })
-                    except Exception as e:
-                        logger.error(f"❌ 기술적 분석 실패: {e}")
-                        KafkaEventPublisher.publish("ANALYSIS_TECHNICAL_FAILED", {
-                            "status": "failed",
-                            "timestamp": datetime.now(KST).isoformat(),
-                            "requestId": request_id,
-                            "error": str(e)
-                        })
-
-                # 감정 분석 요청 처리
-                elif topic_name == "analysis.sentiment.request":
-                    payload = message.get("payload", message)
-                    request_id = payload.get("requestId", "unknown")
-                    thread_ts = payload.get("threadTs")
-
-                    logger.info("=" * 80)
-                    logger.info("뉴스 감정 분석 요청 Kafka 메시지 수신")
-                    logger.info(f"Request ID: {request_id}")
-                    logger.info(f"Thread TS: {thread_ts}")
-                    logger.info("=" * 80)
-
-                    start_time = time.time()
-                    try:
-                        result = recommendation_service.run_sentiment_analysis(request_id, thread_ts)
-                        elapsed_time = time.time() - start_time
-
-                        logger.info("✅ 뉴스 감정 분석 완료")
-
-                        KafkaEventPublisher.publish("ANALYSIS_SENTIMENT_COMPLETED", {
-                            "status": "success",
-                            "timestamp": datetime.now(KST).isoformat(),
-                            "requestId": request_id,
-                            "duration": elapsed_time,
-                            "result": result
-                        })
-                    except Exception as e:
-                        logger.error(f"❌ 뉴스 감정 분석 실패: {e}")
-                        KafkaEventPublisher.publish("ANALYSIS_SENTIMENT_FAILED", {
-                            "status": "failed",
-                            "timestamp": datetime.now(KST).isoformat(),
-                            "requestId": request_id,
-                            "error": str(e)
-                        })
-
-            except Exception as e:
-                logger.error(f"Error processing message: {e}")
+            message = consumer.poll_once(timeout=1.0)
+            if message:
+                try:
+                    consumer.process_message(message)
+                except Exception as e:
+                    logger.exception(f"Error processing message: {e}")
 
     except KeyboardInterrupt:
-        pass
+        logger.info("Shutdown requested...")
     finally:
-        consumer.close()
+        consumer.stop()
+        kafka_producer.close()
+        logger.info("Data Engine stopped")
 
 
 if __name__ == "__main__":

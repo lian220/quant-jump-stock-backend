@@ -8,7 +8,11 @@ packages = [
     {include = "core", from = "src"},
     {include = "events", from = "src"},
     {include = "features", from = "src"},
-    {include = "services", from = "src"}
+    {include = "services", from = "src"},
+    {include = "config", from = "src"},
+    {include = "domain", from = "src"},
+    {include = "application", from = "src"},
+    {include = "adapter", from = "src"}
 ]
 
 [tool.poetry.dependencies]
@@ -25,6 +29,9 @@ uvicorn = "^0.27.0"
 google-cloud-storage = "^2.10.0"
 psycopg2-binary = "^2.9.9"
 pytz = "^2024.1"
+pydantic = "^2.6.0"
+pydantic-settings = "^2.1.0"
+google-cloud-aiplatform = "^1.38.0"
 
 [build-system]
 requires = ["poetry-core"]
