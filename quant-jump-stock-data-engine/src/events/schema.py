@@ -274,7 +274,7 @@ class EventTopics:
     ECONOMIC_DATA_SYNC_FAILED = "quantiq.economic.data.sync.failed"
 
     # Backtest
-    BACKTEST_REQUEST = "backtest.request.run"
+    BACKTEST_REQUEST = "quantiq.backtest.request"
     BACKTEST_COMPLETED = "backtest.results.completed"
     BACKTEST_FAILED = "backtest.results.failed"
 

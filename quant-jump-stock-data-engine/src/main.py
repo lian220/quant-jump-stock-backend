@@ -91,7 +91,7 @@ def read_root():
             "analysis.sentiment.request",
             "strategy.execution.request",
             "vertex.ai.run.request",
-            "backtest.request.run",
+            "quantiq.backtest.request",
         ],
         "timestamp": datetime.now(KST).isoformat()
     }
