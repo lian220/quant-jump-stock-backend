@@ -29,21 +29,23 @@ src/
 
 | 기능 | 복잡도 | 분리 필요성 |
 |------|--------|-------------|
+| **다중 전략 동시 실행** | 높음 | ThreadPoolExecutor 필요 |
+| **자연어 → 전략 생성** | 높음 | DSL 기반 안전한 변환 필요 |
 | **백테스트 엔진** | 높음 | 독립 모듈 필요 (10년 데이터, 동시 50개) |
-| **AI 전략 생성** | 높음 | 독립 모듈 필요 (Vertex AI, 스트리밍) |
-| **15개 시드 전략** | 중간 | 전략별 모듈화 가능 |
+| **15개 시드 전략** | 중간 | Strategy DSL로 정의 |
 | 기술적 분석 (현재) | 중간 | 현재 구조 개선 |
 | 경제 데이터 수집 (현재) | 낮음 | 현재 구조 유지 |
 
 ---
 
-## 권장 아키텍처: Modular Monolith (가벼운 버전)
+## 권장 아키텍처: Hexagonal + Strategy DSL
 
 ### 선택 이유
-1. **현재는 단순 유지** - 과도한 엔지니어링 방지
-2. **확장 대비** - 백테스트, AI 전략 추가 시 자연스럽게 확장
-3. **모듈 독립성** - 나중에 별도 서비스로 분리 가능
-4. **테스트 용이** - 순수 계산 함수 분리로 단위 테스트 가능
+1. **다중 전략 동시 실행** - ThreadPoolExecutor(max_workers=10)로 병렬 처리
+2. **안전한 전략 생성** - DSL 기반으로 exec/eval 없이 안전한 실행
+3. **자연어 → DSL 변환** - Vertex AI가 JSON DSL 생성 (코드 생성 X)
+4. **테스트 용이** - 도메인 로직 분리로 단위 테스트 가능
+5. **확장성** - 새 전략 추가 시 DSL 정의만 추가
 
 ### 제안 디렉토리 구조
 
@@ -56,519 +58,831 @@ quant-jump-stock-data-engine/
     ├── __init__.py
     ├── main.py                         # 진입점 (슬림화, ~80줄)
     │
-    ├── config/                         # 설정 관리
-    │   ├── __init__.py
-    │   ├── settings.py                 # 환경변수 (Pydantic Settings)
-    │   └── thresholds.py               # 비즈니스 규칙 임계값
-    │
-    ├── modules/                        # 각 분석 모듈 (독립적)
+    ├── domain/                         # 핵심 비즈니스 로직 (외부 의존성 없음)
     │   ├── __init__.py
     │   │
-    │   ├── economic_data/              # 경제 데이터 수집
+    │   ├── strategy/                   # 전략 도메인
     │   │   ├── __init__.py
-    │   │   ├── service.py              # EconomicDataService
-    │   │   └── repository.py           # DB 접근
+    │   │   ├── models.py               # StrategyDefinition, Rule, Condition (DSL 스키마)
+    │   │   ├── interpreter.py          # StrategyInterpreter (DSL 실행기)
+    │   │   └── indicators.py           # 순수 계산 함수 (SMA, RSI, MACD)
     │   │
-    │   ├── technical_analysis/         # 기술적 분석
+    │   ├── backtest/                   # 백테스트 도메인
     │   │   ├── __init__.py
-    │   │   ├── service.py              # TechnicalAnalysisService
-    │   │   ├── indicators.py           # 순수 계산 함수 (SMA, RSI, MACD)
-    │   │   └── repository.py           # DB 접근
-    │   │
-    │   ├── sentiment_analysis/         # 감정 분석
-    │   │   ├── __init__.py
-    │   │   ├── service.py              # SentimentAnalysisService
-    │   │   └── repository.py
-    │   │
-    │   ├── recommendation/             # 종합 추천
-    │   │   ├── __init__.py
-    │   │   ├── service.py              # RecommendationService
-    │   │   └── score_calculator.py     # 점수 계산 로직
-    │   │
-    │   ├── backtest/                   # 백테스트 엔진 (신규 - PRD v2)
-    │   │   ├── __init__.py
-    │   │   ├── service.py              # BacktestService
-    │   │   ├── engine.py               # 백테스트 실행 로직
+    │   │   ├── models.py               # BacktestResult, PerformanceMetrics
     │   │   └── metrics.py              # CAGR, MDD, Sharpe 계산
     │   │
-    │   ├── strategy/                   # 전략 실행 (신규 - PRD v2)
+    │   ├── analysis/                   # 분석 도메인
     │   │   ├── __init__.py
-    │   │   ├── service.py              # StrategyService
-    │   │   ├── base.py                 # BaseStrategy 인터페이스
-    │   │   └── strategies/             # 각 전략 구현
-    │   │       ├── __init__.py
-    │   │       ├── momentum.py         # 골든크로스, RSI 과매도, MACD
-    │   │       ├── value.py            # 저PER, 고배당
-    │   │       ├── asset_allocation.py # 60/40, 올웨더
-    │   │       └── ml_prediction.py    # Vertex AI 예측
+    │   │   ├── models.py               # AnalysisResult, TechnicalSignal
+    │   │   └── score_calculator.py     # 점수 계산 로직
     │   │
-    │   └── ai_strategy/                # AI 전략 생성 (신규 - PRD v2)
+    │   └── common/                     # 공통 도메인 모델
     │       ├── __init__.py
-    │       └── service.py              # AIStrategyService (Vertex AI)
+    │       ├── value_objects.py        # StockCode, DateRange 등
+    │       └── exceptions.py           # 도메인 예외
     │
-    ├── handlers/                       # Kafka 메시지 핸들러
+    ├── application/                    # 유스케이스 (오케스트레이션)
     │   ├── __init__.py
-    │   ├── base.py                     # BaseHandler 인터페이스
-    │   ├── economic_data.py
-    │   ├── technical_analysis.py
-    │   ├── sentiment_analysis.py
-    │   ├── combined_analysis.py
-    │   ├── backtest.py                 # (신규)
-    │   └── router.py                   # 토픽 → 핸들러 라우팅
+    │   │
+    │   ├── strategy/                   # 전략 유스케이스
+    │   │   ├── __init__.py
+    │   │   ├── executor.py             # StrategyExecutor (ThreadPoolExecutor)
+    │   │   ├── generator.py            # StrategyGenerator (자연어 → DSL)
+    │   │   └── service.py              # StrategyService
+    │   │
+    │   ├── backtest/                   # 백테스트 유스케이스
+    │   │   ├── __init__.py
+    │   │   └── service.py              # BacktestService
+    │   │
+    │   ├── analysis/                   # 분석 유스케이스
+    │   │   ├── __init__.py
+    │   │   ├── technical.py            # TechnicalAnalysisService
+    │   │   ├── sentiment.py            # SentimentAnalysisService
+    │   │   └── combined.py             # CombinedAnalysisService
+    │   │
+    │   ├── economic/                   # 경제 데이터 유스케이스
+    │   │   ├── __init__.py
+    │   │   └── service.py              # EconomicDataService
+    │   │
+    │   └── ports/                      # 포트 인터페이스 (추상화)
+    │       ├── __init__.py
+    │       ├── repositories.py         # IStockRepository, IStrategyRepository
+    │       ├── external.py             # IVertexAIClient, IKISClient
+    │       └── messaging.py            # IEventPublisher
     │
-    ├── shared/                         # 공통 유틸리티
+    ├── adapters/                       # 어댑터 (외부 연동)
     │   ├── __init__.py
-    │   ├── database.py                 # MongoDB, PostgreSQL 클라이언트
-    │   ├── kafka.py                    # Kafka 퍼블리셔
-    │   ├── slack.py                    # Slack 알림
-    │   └── exceptions.py               # 커스텀 예외
+    │   │
+    │   ├── inbound/                    # 인바운드 어댑터
+    │   │   ├── __init__.py
+    │   │   ├── kafka/                  # Kafka Consumer
+    │   │   │   ├── __init__.py
+    │   │   │   ├── consumer.py
+    │   │   │   ├── router.py           # 토픽 → 핸들러 라우팅
+    │   │   │   └── handlers/           # 메시지 핸들러
+    │   │   │       ├── __init__.py
+    │   │   │       ├── strategy.py
+    │   │   │       ├── backtest.py
+    │   │   │       ├── analysis.py
+    │   │   │       └── economic.py
+    │   │   │
+    │   │   └── api/                    # REST API
+    │   │       ├── __init__.py
+    │   │       ├── health.py
+    │   │       └── status.py
+    │   │
+    │   └── outbound/                   # 아웃바운드 어댑터
+    │       ├── __init__.py
+    │       ├── persistence/            # 데이터베이스
+    │       │   ├── __init__.py
+    │       │   ├── mongodb/            # MongoDB 어댑터
+    │       │   │   ├── __init__.py
+    │       │   │   ├── stock_repository.py
+    │       │   │   └── strategy_repository.py
+    │       │   └── postgres/           # PostgreSQL 어댑터
+    │       │       ├── __init__.py
+    │       │       └── config_repository.py
+    │       │
+    │       ├── external/               # 외부 API
+    │       │   ├── __init__.py
+    │       │   ├── vertex_ai.py        # Vertex AI 클라이언트
+    │       │   ├── kis.py              # 한국투자증권 API
+    │       │   └── fred.py             # FRED API
+    │       │
+    │       ├── messaging/              # 메시징
+    │       │   ├── __init__.py
+    │       │   └── kafka_publisher.py
+    │       │
+    │       └── notification/           # 알림
+    │           ├── __init__.py
+    │           └── slack.py
     │
-    └── api/                            # REST API (상태 조회용)
+    └── config/                         # 설정
         ├── __init__.py
-        ├── health.py
-        └── status.py
+        ├── settings.py                 # 환경변수 (Pydantic Settings)
+        └── thresholds.py               # 비즈니스 규칙 임계값
 ```
 
 ---
 
-## 핵심 원칙
+## 핵심 구현: Strategy DSL
 
-### 1. 각 모듈은 독립적
-- 모듈 간 직접 import 최소화
-- 나중에 별도 서비스로 분리 가능
-- 각 모듈은 `service.py`로 진입
-
-### 2. 순수 계산 함수 분리
-- `indicators.py` - SMA, RSI, MACD (pandas 의존, DB 의존 X)
-- `metrics.py` - CAGR, MDD, Sharpe (순수 계산)
-- `score_calculator.py` - 점수 계산 (설정 가능)
-
-### 3. 설정 외부화
-- 모든 임계값은 `config/thresholds.py`로
-- 환경변수는 `config/settings.py`로
-
-### 4. 핸들러 패턴으로 라우팅
-- main.py의 if-elif 제거
-- `handlers/router.py`에서 토픽 → 핸들러 매핑
-
----
-
-## 상세 구현 가이드
-
-### 1. config/settings.py
+### 1. domain/strategy/models.py (DSL 스키마)
 
 ```python
-from pydantic_settings import BaseSettings
-from functools import lru_cache
+"""Strategy DSL 스키마 - JSON으로 전략 정의"""
+from pydantic import BaseModel, Field
+from typing import List, Literal, Optional, Dict, Any
+from enum import Enum
 
 
-class Settings(BaseSettings):
-    # MongoDB
-    MONGODB_URI: str = "mongodb://localhost:27017"
-    MONGODB_DB_NAME: str = "stock_trading"
+class IndicatorType(str, Enum):
+    SMA = "sma"
+    RSI = "rsi"
+    MACD = "macd"
+    BOLLINGER = "bollinger"
+    VOLUME = "volume"
 
-    # PostgreSQL
-    POSTGRES_HOST: str = "localhost"
-    POSTGRES_PORT: int = 5432
-    POSTGRES_DB: str = "quantiq"
-    POSTGRES_USER: str = "postgres"
-    POSTGRES_PASSWORD: str = ""
 
-    # Kafka
-    KAFKA_BOOTSTRAP_SERVERS: str = "localhost:9092"
-    KAFKA_CONSUMER_GROUP: str = "quantiq-data-engine"
-    KAFKA_TOPIC_ECONOMIC_DATA_UPDATE_REQUEST: str = "economic.data.update.request"
+class ConditionOperator(str, Enum):
+    GREATER_THAN = "gt"
+    LESS_THAN = "lt"
+    EQUALS = "eq"
+    CROSSES_ABOVE = "crosses_above"
+    CROSSES_BELOW = "crosses_below"
 
-    # External APIs
-    FRED_API_KEY: str = ""
-    ALPHA_VANTAGE_API_KEY: str = ""
 
-    # Slack
-    SLACK_BOT_TOKEN: str = ""
-    SLACK_WEBHOOK_URL: str = ""
+class Condition(BaseModel):
+    """단일 조건"""
+    indicator: IndicatorType
+    params: Dict[str, Any] = Field(default_factory=dict)  # {"period": 20}
+    operator: ConditionOperator
+    value: float | str  # 숫자 또는 다른 지표 참조 ("sma_50")
+
+
+class Rule(BaseModel):
+    """매수/매도 규칙"""
+    name: str
+    signal_type: Literal["buy", "sell"]
+    conditions: List[Condition]
+    logic: Literal["and", "or"] = "and"
+    weight: float = 1.0
+
+
+class RiskManagement(BaseModel):
+    """리스크 관리"""
+    stop_loss_pct: float = 0.05           # 5% 손절
+    take_profit_pct: float = 0.15         # 15% 익절
+    max_position_pct: float = 0.1         # 포트폴리오 10% 한도
+    max_drawdown_pct: float = 0.2         # 최대 낙폭 20%
+
+
+class StrategyDefinition(BaseModel):
+    """전략 정의 (DSL 최상위)"""
+    strategy_id: str
+    name: str
+    description: str = ""
+    version: str = "1.0"
+
+    # 전략 규칙
+    rules: List[Rule]
+
+    # 리스크 관리
+    risk_management: RiskManagement = Field(default_factory=RiskManagement)
+
+    # 메타데이터
+    is_ai_generated: bool = False
+    source_prompt: Optional[str] = None  # 자연어 원본 (AI 생성 시)
+    created_at: Optional[str] = None
 
     class Config:
-        env_file = ".env.local"
-
-
-@lru_cache
-def get_settings() -> Settings:
-    return Settings()
-
-
-settings = get_settings()
+        json_schema_extra = {
+            "example": {
+                "strategy_id": "golden_cross_v1",
+                "name": "Golden Cross Strategy",
+                "rules": [
+                    {
+                        "name": "golden_cross_buy",
+                        "signal_type": "buy",
+                        "conditions": [
+                            {"indicator": "sma", "params": {"period": 20}, "operator": "crosses_above", "value": "sma_50"},
+                            {"indicator": "rsi", "params": {"period": 14}, "operator": "lt", "value": 70}
+                        ],
+                        "logic": "and"
+                    }
+                ],
+                "risk_management": {"stop_loss_pct": 0.05}
+            }
+        }
 ```
 
-### 2. config/thresholds.py
+### 2. domain/strategy/interpreter.py (DSL 실행기)
 
 ```python
-from pydantic_settings import BaseSettings
-from decimal import Decimal
-
-
-class AnalysisThresholds(BaseSettings):
-    """비즈니스 규칙 임계값 - 코드 수정 없이 변경 가능"""
-
-    # 기술적 분석
-    RSI_OVERSOLD: int = 30
-    RSI_OVERBOUGHT: int = 70
-    RSI_BUY_THRESHOLD: int = 50       # 기존: 하드코딩 50
-
-    # 점수 가중치
-    TECHNICAL_WEIGHT: float = 0.7     # 기존: 하드코딩 0.7
-    SENTIMENT_WEIGHT: float = 0.3     # 기존: 하드코딩 0.3
-
-    # 추천 임계값
-    RECOMMENDATION_THRESHOLD: float = 0.6  # 기존: 하드코딩 0.6
-
-    # 데이터 수집
-    LOOKBACK_DAYS: int = 180
-    MIN_DATA_POINTS: int = 50
-
-    class Config:
-        env_prefix = "THRESHOLD_"
-
-
-thresholds = AnalysisThresholds()
-```
-
-### 3. modules/technical_analysis/indicators.py
-
-```python
-"""순수 계산 함수 - DB 의존성 없음, 테스트 가능"""
-import pandas as pd
-import numpy as np
-from typing import Tuple, Optional
-
-
-def calculate_sma(series: pd.Series, period: int) -> pd.Series:
-    """Simple Moving Average"""
-    return series.rolling(window=period, min_periods=period).mean()
-
-
-def calculate_rsi(series: pd.Series, period: int = 14) -> pd.Series:
-    """Relative Strength Index"""
-    delta = series.diff()
-    gain = delta.where(delta > 0, 0).rolling(window=period, min_periods=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period, min_periods=period).mean()
-
-    epsilon = 1e-10
-    rs = gain / (loss + epsilon)
-    rs = rs.replace([np.inf, -np.inf], np.nan)
-    rsi = 100 - (100 / (1 + rs))
-
-    return rsi.clip(0, 100)
-
-
-def calculate_macd(
-    series: pd.Series,
-    short_period: int = 12,
-    long_period: int = 26,
-    signal_period: int = 9
-) -> Tuple[pd.Series, pd.Series]:
-    """MACD and Signal line"""
-    short_ema = series.ewm(span=short_period, adjust=False).mean()
-    long_ema = series.ewm(span=long_period, adjust=False).mean()
-    macd = short_ema - long_ema
-    signal = macd.ewm(span=signal_period, adjust=False).mean()
-
-    return macd, signal
-
-
-def is_buy_signal(
-    sma20: float,
-    sma50: float,
-    rsi: float,
-    macd: float,
-    signal: float,
-    rsi_threshold: int = 50
-) -> bool:
-    """매수 신호 판단 - 설정 가능한 임계값"""
-    golden_cross = sma20 > sma50
-    macd_buy = macd > signal
-    rsi_ok = rsi < rsi_threshold
-
-    return golden_cross and rsi_ok and macd_buy
-```
-
-### 4. handlers/router.py
-
-```python
-"""토픽 → 핸들러 라우팅"""
+"""Strategy Interpreter - DSL을 안전하게 실행 (exec/eval 없음)"""
 import logging
-from typing import Dict, Callable, Any
+from typing import Dict, List, Optional
+import pandas as pd
 
-from src.config.settings import settings
+from .models import StrategyDefinition, Rule, Condition, ConditionOperator, IndicatorType
+from .indicators import calculate_sma, calculate_rsi, calculate_macd, calculate_bollinger
 
 logger = logging.getLogger(__name__)
 
 
-class MessageRouter:
-    """Kafka 메시지 라우터"""
+class StrategyInterpreter:
+    """
+    DSL 기반 전략 해석기
+    - exec/eval 사용 안함 (보안)
+    - 사전 정의된 지표 함수만 사용
+    - 조건 평가는 딕셔너리 기반
+    """
 
     def __init__(self):
-        self._handlers: Dict[str, Callable] = {}
+        # 허용된 지표 함수 매핑
+        self._indicator_functions = {
+            IndicatorType.SMA: calculate_sma,
+            IndicatorType.RSI: calculate_rsi,
+            IndicatorType.MACD: calculate_macd,
+            IndicatorType.BOLLINGER: calculate_bollinger,
+        }
 
-    def register(self, topic: str, handler: Callable) -> None:
-        """핸들러 등록"""
-        self._handlers[topic] = handler
-        logger.info(f"Registered handler for topic: {topic}")
+        # 연산자 함수 매핑
+        self._operators = {
+            ConditionOperator.GREATER_THAN: lambda a, b: a > b,
+            ConditionOperator.LESS_THAN: lambda a, b: a < b,
+            ConditionOperator.EQUALS: lambda a, b: abs(a - b) < 0.0001,
+            ConditionOperator.CROSSES_ABOVE: self._crosses_above,
+            ConditionOperator.CROSSES_BELOW: self._crosses_below,
+        }
 
-    def route(self, topic: str, message: dict) -> Any:
-        """메시지 라우팅"""
-        handler = self._handlers.get(topic)
+    def execute(
+        self,
+        strategy: StrategyDefinition,
+        market_data: pd.DataFrame
+    ) -> Dict:
+        """
+        전략 실행
 
-        if handler is None:
-            logger.warning(f"No handler for topic: {topic}")
+        Args:
+            strategy: DSL 기반 전략 정의
+            market_data: OHLCV 데이터 (columns: open, high, low, close, volume)
+
+        Returns:
+            {
+                "signals": [{"date": "2024-01-15", "type": "buy", "rule": "golden_cross", "confidence": 0.85}],
+                "indicators": {"sma_20": [...], "rsi_14": [...]},
+                "risk_checks": {"stop_loss": False, "take_profit": False}
+            }
+        """
+        # 1. 모든 지표 계산
+        indicators = self._calculate_all_indicators(strategy.rules, market_data)
+
+        # 2. 각 규칙 평가
+        signals = []
+        for rule in strategy.rules:
+            signal = self._evaluate_rule(rule, indicators, market_data)
+            if signal:
+                signals.append(signal)
+
+        # 3. 리스크 체크
+        risk_checks = self._check_risk_management(
+            strategy.risk_management,
+            market_data,
+            signals
+        )
+
+        return {
+            "strategy_id": strategy.strategy_id,
+            "signals": signals,
+            "indicators": {k: v.tolist() if hasattr(v, 'tolist') else v for k, v in indicators.items()},
+            "risk_checks": risk_checks
+        }
+
+    def _calculate_all_indicators(
+        self,
+        rules: List[Rule],
+        data: pd.DataFrame
+    ) -> Dict[str, pd.Series]:
+        """모든 필요한 지표 계산"""
+        indicators = {}
+        close = data['close']
+
+        for rule in rules:
+            for condition in rule.conditions:
+                key = f"{condition.indicator.value}_{condition.params.get('period', '')}"
+
+                if key not in indicators:
+                    func = self._indicator_functions.get(condition.indicator)
+                    if func:
+                        indicators[key] = func(close, **condition.params)
+
+        return indicators
+
+    def _evaluate_rule(
+        self,
+        rule: Rule,
+        indicators: Dict[str, pd.Series],
+        data: pd.DataFrame
+    ) -> Optional[Dict]:
+        """단일 규칙 평가"""
+        results = []
+
+        for condition in rule.conditions:
+            key = f"{condition.indicator.value}_{condition.params.get('period', '')}"
+            indicator_value = indicators.get(key)
+
+            if indicator_value is None or indicator_value.empty:
+                continue
+
+            # 마지막 값 사용
+            current_value = indicator_value.iloc[-1]
+
+            # 비교 대상 값 결정
+            if isinstance(condition.value, str) and condition.value in indicators:
+                compare_value = indicators[condition.value].iloc[-1]
+            else:
+                compare_value = float(condition.value)
+
+            # 연산자 적용
+            operator_func = self._operators.get(condition.operator)
+            if operator_func:
+                # crosses_above/below는 시리즈 필요
+                if condition.operator in [ConditionOperator.CROSSES_ABOVE, ConditionOperator.CROSSES_BELOW]:
+                    if isinstance(condition.value, str):
+                        compare_series = indicators.get(condition.value)
+                    else:
+                        compare_series = pd.Series([condition.value] * len(indicator_value))
+                    result = operator_func(indicator_value, compare_series)
+                else:
+                    result = operator_func(current_value, compare_value)
+                results.append(result)
+
+        # 논리 연산
+        if not results:
             return None
 
-        return handler(message)
+        if rule.logic == "and":
+            passed = all(results)
+        else:
+            passed = any(results)
 
-    def get_topics(self) -> list:
-        """등록된 토픽 목록"""
-        return list(self._handlers.keys())
+        if passed:
+            return {
+                "date": data.index[-1].isoformat() if hasattr(data.index[-1], 'isoformat') else str(data.index[-1]),
+                "type": rule.signal_type,
+                "rule": rule.name,
+                "confidence": rule.weight
+            }
 
+        return None
 
-def create_router() -> MessageRouter:
-    """라우터 생성 및 핸들러 등록"""
-    from src.handlers.economic_data import handle_economic_data
-    from src.handlers.technical_analysis import handle_technical_analysis
-    from src.handlers.sentiment_analysis import handle_sentiment_analysis
-    from src.handlers.combined_analysis import handle_combined_analysis
+    def _crosses_above(self, series1: pd.Series, series2: pd.Series) -> bool:
+        """교차 상향 체크"""
+        if len(series1) < 2:
+            return False
+        return series1.iloc[-2] <= series2.iloc[-2] and series1.iloc[-1] > series2.iloc[-1]
 
-    router = MessageRouter()
+    def _crosses_below(self, series1: pd.Series, series2: pd.Series) -> bool:
+        """교차 하향 체크"""
+        if len(series1) < 2:
+            return False
+        return series1.iloc[-2] >= series2.iloc[-2] and series1.iloc[-1] < series2.iloc[-1]
 
-    router.register(
-        settings.KAFKA_TOPIC_ECONOMIC_DATA_UPDATE_REQUEST,
-        handle_economic_data
-    )
-    router.register("analysis.technical.request", handle_technical_analysis)
-    router.register("analysis.sentiment.request", handle_sentiment_analysis)
-    router.register("analysis.combined.request", handle_combined_analysis)
+    def _check_risk_management(
+        self,
+        risk: 'RiskManagement',
+        data: pd.DataFrame,
+        signals: List[Dict]
+    ) -> Dict:
+        """리스크 관리 체크"""
+        if data.empty:
+            return {"stop_loss": False, "take_profit": False}
 
-    return router
+        # 간단한 구현 - 실제로는 포지션 추적 필요
+        return {
+            "stop_loss_triggered": False,
+            "take_profit_triggered": False,
+            "max_drawdown_ok": True
+        }
 ```
 
-### 5. handlers/technical_analysis.py
+### 3. application/strategy/executor.py (동시 실행)
 
 ```python
-"""기술적 분석 핸들러"""
+"""Strategy Executor - 다중 전략 동시 실행"""
 import logging
-import time
-from datetime import datetime
-from pytz import timezone
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List, Dict
+import pandas as pd
 
-from src.modules.technical_analysis.service import TechnicalAnalysisService
-from src.shared.kafka import KafkaEventPublisher
-from src.shared.slack import SlackNotifier
+from src.domain.strategy.models import StrategyDefinition
+from src.domain.strategy.interpreter import StrategyInterpreter
+from src.application.ports.repositories import IStockRepository
 
 logger = logging.getLogger(__name__)
-KST = timezone('Asia/Seoul')
 
 
-def handle_technical_analysis(message: dict) -> dict:
-    """기술적 분석 요청 처리"""
-    payload = message.get("payload", message)
-    request_id = payload.get("requestId", "unknown")
-    thread_ts = payload.get("threadTs")
-    target_date = payload.get("targetDate")
+class StrategyExecutor:
+    """
+    다중 전략 동시 실행기
+    - ThreadPoolExecutor로 병렬 처리
+    - 각 전략은 독립적으로 실행
+    - 결과 집계 및 우선순위 정렬
+    """
 
-    logger.info(f"[{request_id}] 기술적 분석 시작 (target_date={target_date})")
+    def __init__(
+        self,
+        interpreter: StrategyInterpreter,
+        stock_repository: IStockRepository,
+        max_workers: int = 10
+    ):
+        self._interpreter = interpreter
+        self._stock_repository = stock_repository
+        self._executor = ThreadPoolExecutor(max_workers=max_workers)
 
-    service = TechnicalAnalysisService()
-    start_time = time.time()
+    def execute_strategies(
+        self,
+        strategies: List[StrategyDefinition],
+        stock_codes: List[str],
+        start_date: str,
+        end_date: str
+    ) -> Dict:
+        """
+        다중 전략 동시 실행
 
-    try:
-        result = service.analyze_stocks(target_date=target_date)
-        elapsed_time = time.time() - start_time
+        Args:
+            strategies: 실행할 전략 목록
+            stock_codes: 분석할 종목 코드 목록
+            start_date: 시작일
+            end_date: 종료일
 
-        logger.info(f"[{request_id}] 기술적 분석 완료")
+        Returns:
+            {
+                "results": [
+                    {"strategy_id": "...", "stock_code": "...", "signals": [...]},
+                    ...
+                ],
+                "summary": {"total_signals": 10, "buy_signals": 6, "sell_signals": 4},
+                "errors": []
+            }
+        """
+        futures = []
+        results = []
+        errors = []
 
-        KafkaEventPublisher.publish("ANALYSIS_TECHNICAL_COMPLETED", {
-            "status": "success",
-            "timestamp": datetime.now(KST).isoformat(),
-            "requestId": request_id,
-            "duration": elapsed_time,
-            "result": result
-        })
+        # 전략 x 종목 조합으로 병렬 실행
+        for strategy in strategies:
+            for stock_code in stock_codes:
+                future = self._executor.submit(
+                    self._execute_single,
+                    strategy,
+                    stock_code,
+                    start_date,
+                    end_date
+                )
+                futures.append((future, strategy.strategy_id, stock_code))
 
-        return {"success": True, "result": result}
+        # 결과 수집
+        for future, strategy_id, stock_code in futures:
+            try:
+                result = future.result(timeout=60)
+                result["strategy_id"] = strategy_id
+                result["stock_code"] = stock_code
+                results.append(result)
+            except Exception as e:
+                logger.error(f"Strategy execution failed: {strategy_id}/{stock_code} - {e}")
+                errors.append({
+                    "strategy_id": strategy_id,
+                    "stock_code": stock_code,
+                    "error": str(e)
+                })
 
-    except Exception as e:
-        logger.error(f"[{request_id}] 기술적 분석 실패: {e}")
+        # 요약 생성
+        summary = self._create_summary(results)
 
-        KafkaEventPublisher.publish("ANALYSIS_TECHNICAL_FAILED", {
-            "status": "failed",
-            "timestamp": datetime.now(KST).isoformat(),
-            "requestId": request_id,
-            "error": str(e)
-        })
+        return {
+            "results": results,
+            "summary": summary,
+            "errors": errors
+        }
 
-        return {"success": False, "error": str(e)}
+    def _execute_single(
+        self,
+        strategy: StrategyDefinition,
+        stock_code: str,
+        start_date: str,
+        end_date: str
+    ) -> Dict:
+        """단일 전략-종목 실행"""
+        # 시장 데이터 조회
+        market_data = self._stock_repository.get_ohlcv(
+            stock_code, start_date, end_date
+        )
+
+        if market_data.empty:
+            return {"signals": [], "indicators": {}, "risk_checks": {}}
+
+        # 전략 실행
+        return self._interpreter.execute(strategy, market_data)
+
+    def _create_summary(self, results: List[Dict]) -> Dict:
+        """결과 요약"""
+        all_signals = []
+        for r in results:
+            all_signals.extend(r.get("signals", []))
+
+        buy_signals = [s for s in all_signals if s.get("type") == "buy"]
+        sell_signals = [s for s in all_signals if s.get("type") == "sell"]
+
+        return {
+            "total_strategies": len(set(r.get("strategy_id") for r in results)),
+            "total_stocks": len(set(r.get("stock_code") for r in results)),
+            "total_signals": len(all_signals),
+            "buy_signals": len(buy_signals),
+            "sell_signals": len(sell_signals)
+        }
+
+    def shutdown(self):
+        """Executor 종료"""
+        self._executor.shutdown(wait=True)
 ```
 
-### 6. main.py (슬림화)
+### 4. application/strategy/generator.py (자연어 → DSL)
 
 ```python
-"""Quantiq Data Engine - 진입점"""
+"""Strategy Generator - 자연어를 DSL로 변환"""
 import logging
 import json
-import time
-import threading
-from fastapi import FastAPI
-import uvicorn
-from confluent_kafka import Consumer, KafkaError
+from typing import Optional
 
-from src.config.settings import settings
-from src.shared.database import MongoDB
-from src.handlers.router import create_router
-from src.api.health import router as health_router
-from src.api.status import router as status_router
+from src.domain.strategy.models import StrategyDefinition
+from src.application.ports.external import IVertexAIClient
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
 logger = logging.getLogger(__name__)
 
-# FastAPI
-app = FastAPI(title="Quantiq Data Engine")
-app.include_router(health_router)
-app.include_router(status_router)
 
+class StrategyGenerator:
+    """
+    자연어 → Strategy DSL 변환
+    - Vertex AI가 JSON DSL 생성 (코드 아님)
+    - 생성된 DSL 검증
+    - 안전한 실행 보장
+    """
 
-def run_api():
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    DSL_GENERATION_PROMPT = '''
+당신은 퀀트 투자 전략 DSL 생성기입니다.
+사용자의 자연어 설명을 아래 JSON 스키마에 맞는 전략 DSL로 변환하세요.
 
+## 사용 가능한 지표
+- sma: 단순이동평균 (params: period)
+- rsi: RSI (params: period, 기본 14)
+- macd: MACD (params: short_period=12, long_period=26, signal_period=9)
+- bollinger: 볼린저밴드 (params: period=20, std=2)
 
-def main():
-    logger.info("Quantiq Data Engine Started")
+## 사용 가능한 연산자
+- gt: 초과 (greater than)
+- lt: 미만 (less than)
+- eq: 같음 (equals)
+- crosses_above: 상향 돌파
+- crosses_below: 하향 돌파
 
-    # API 서버 (백그라운드)
-    api_thread = threading.Thread(target=run_api, daemon=True)
-    api_thread.start()
+## 출력 형식 (JSON)
+{
+    "strategy_id": "unique_id",
+    "name": "전략 이름",
+    "description": "전략 설명",
+    "rules": [
+        {
+            "name": "규칙 이름",
+            "signal_type": "buy" | "sell",
+            "conditions": [
+                {"indicator": "sma", "params": {"period": 20}, "operator": "crosses_above", "value": "sma_50"}
+            ],
+            "logic": "and" | "or"
+        }
+    ],
+    "risk_management": {
+        "stop_loss_pct": 0.05,
+        "take_profit_pct": 0.15
+    }
+}
 
-    # MongoDB 연결
-    db = MongoDB.get_db()
-    if db is None:
-        logger.error("Failed to connect to MongoDB")
-        return
+## 사용자 요청
+{user_prompt}
 
-    # Kafka Consumer
-    consumer = Consumer({
-        'bootstrap.servers': settings.KAFKA_BOOTSTRAP_SERVERS,
-        'group.id': settings.KAFKA_CONSUMER_GROUP,
-        'auto.offset.reset': 'earliest'
-    })
+## JSON DSL 출력:
+'''
 
-    # 라우터 생성 및 토픽 구독
-    router = create_router()
-    topics = router.get_topics()
-    consumer.subscribe(topics)
-    logger.info(f"Subscribed to topics: {topics}")
+    def __init__(self, vertex_ai_client: IVertexAIClient):
+        self._vertex_ai = vertex_ai_client
 
-    # 메시지 처리 루프
-    try:
-        while True:
-            msg = consumer.poll(1.0)
+    async def generate(self, user_prompt: str) -> Optional[StrategyDefinition]:
+        """
+        자연어를 전략 DSL로 변환
 
-            if msg is None:
-                continue
-            if msg.error():
-                if msg.error().code() != KafkaError._PARTITION_EOF:
-                    logger.error(f"Consumer error: {msg.error()}")
-                continue
+        Args:
+            user_prompt: 사용자의 자연어 전략 설명
 
-            try:
-                topic = msg.topic()
-                message = json.loads(msg.value().decode('utf-8'))
-                logger.info(f"Received message from '{topic}'")
+        Returns:
+            StrategyDefinition or None
+        """
+        try:
+            # 1. Vertex AI에 DSL 생성 요청
+            prompt = self.DSL_GENERATION_PROMPT.format(user_prompt=user_prompt)
+            response = await self._vertex_ai.generate_text(prompt)
 
-                router.route(topic, message)
+            # 2. JSON 파싱
+            json_str = self._extract_json(response)
+            dsl_dict = json.loads(json_str)
 
-            except Exception as e:
-                logger.error(f"Error processing message: {e}")
+            # 3. DSL 검증 및 객체 생성
+            strategy = StrategyDefinition(**dsl_dict)
+            strategy.is_ai_generated = True
+            strategy.source_prompt = user_prompt
 
-    except KeyboardInterrupt:
-        pass
-    finally:
-        consumer.close()
+            logger.info(f"Generated strategy: {strategy.strategy_id}")
+            return strategy
 
+        except Exception as e:
+            logger.error(f"Strategy generation failed: {e}")
+            return None
 
-if __name__ == "__main__":
-    main()
+    def _extract_json(self, text: str) -> str:
+        """응답에서 JSON 부분 추출"""
+        # ```json ... ``` 블록 찾기
+        if "```json" in text:
+            start = text.find("```json") + 7
+            end = text.find("```", start)
+            return text[start:end].strip()
+
+        # { } 블록 찾기
+        start = text.find("{")
+        end = text.rfind("}") + 1
+        return text[start:end]
 ```
 
 ---
 
-## 마이그레이션 계획 (6주)
+## DSL 예시
+
+### 골든크로스 전략
+
+```json
+{
+    "strategy_id": "golden_cross_v1",
+    "name": "Golden Cross Strategy",
+    "description": "20일선이 50일선을 상향 돌파하고 RSI가 과매수가 아닐 때 매수",
+    "version": "1.0",
+    "rules": [
+        {
+            "name": "golden_cross_buy",
+            "signal_type": "buy",
+            "conditions": [
+                {
+                    "indicator": "sma",
+                    "params": {"period": 20},
+                    "operator": "crosses_above",
+                    "value": "sma_50"
+                },
+                {
+                    "indicator": "rsi",
+                    "params": {"period": 14},
+                    "operator": "lt",
+                    "value": 70
+                }
+            ],
+            "logic": "and",
+            "weight": 1.0
+        },
+        {
+            "name": "death_cross_sell",
+            "signal_type": "sell",
+            "conditions": [
+                {
+                    "indicator": "sma",
+                    "params": {"period": 20},
+                    "operator": "crosses_below",
+                    "value": "sma_50"
+                }
+            ],
+            "logic": "and",
+            "weight": 1.0
+        }
+    ],
+    "risk_management": {
+        "stop_loss_pct": 0.05,
+        "take_profit_pct": 0.15,
+        "max_position_pct": 0.1
+    },
+    "is_ai_generated": false
+}
+```
+
+### RSI 과매도 전략
+
+```json
+{
+    "strategy_id": "rsi_oversold_v1",
+    "name": "RSI Oversold Strategy",
+    "description": "RSI가 30 이하로 과매도 상태일 때 매수",
+    "rules": [
+        {
+            "name": "rsi_oversold_buy",
+            "signal_type": "buy",
+            "conditions": [
+                {
+                    "indicator": "rsi",
+                    "params": {"period": 14},
+                    "operator": "lt",
+                    "value": 30
+                }
+            ],
+            "logic": "and"
+        },
+        {
+            "name": "rsi_overbought_sell",
+            "signal_type": "sell",
+            "conditions": [
+                {
+                    "indicator": "rsi",
+                    "params": {"period": 14},
+                    "operator": "gt",
+                    "value": 70
+                }
+            ],
+            "logic": "and"
+        }
+    ],
+    "risk_management": {
+        "stop_loss_pct": 0.03,
+        "take_profit_pct": 0.1
+    }
+}
+```
+
+---
+
+## 마이그레이션 계획 (10주)
 
 ### Phase 1: Foundation (Week 1-2)
 
-**목표**: 설정 외부화, 프로젝트 구조 정리
+**목표**: 설정 외부화, 도메인 모델 정의
 
-1. **pyproject.toml 업데이트**
-   ```toml
-   [tool.poetry.dependencies]
-   pydantic-settings = "^2.1.0"
-
-   [tool.poetry.group.dev.dependencies]
-   pytest = "^8.0.0"
-   pytest-cov = "^4.1.0"
-   ```
-
-2. `config/settings.py` 생성
-3. `config/thresholds.py` 생성 - RSI < 50 등 외부화
-4. `shared/exceptions.py` 생성
+1. `config/settings.py`, `config/thresholds.py` 생성
+2. `domain/strategy/models.py` - DSL 스키마 정의
+3. `domain/strategy/indicators.py` - 순수 계산 함수
+4. `domain/common/exceptions.py` - 도메인 예외
 
 **변경 파일**:
-- `pyproject.toml`
 - 신규: `src/config/settings.py`
 - 신규: `src/config/thresholds.py`
-- 신규: `src/shared/exceptions.py`
+- 신규: `src/domain/strategy/models.py`
+- 신규: `src/domain/strategy/indicators.py`
+- 신규: `src/domain/common/exceptions.py`
 
-### Phase 2: Handlers (Week 3)
+### Phase 2: Strategy Core (Week 3-4)
 
-**목표**: main.py의 if-elif 분리
+**목표**: DSL 인터프리터 구현
 
-1. `handlers/router.py` 생성
-2. `handlers/economic_data.py` 생성
-3. `handlers/technical_analysis.py` 생성
-4. `handlers/sentiment_analysis.py` 생성
-5. `handlers/combined_analysis.py` 생성
-6. `main.py` 슬림화 (315줄 → ~80줄)
-
-**변경 파일**:
-- `src/main.py` (대폭 수정)
-- 신규: `src/handlers/*.py`
-
-### Phase 3: Modules (Week 4)
-
-**목표**: 기존 서비스를 모듈 구조로 이동
-
-1. `modules/economic_data/` 생성 (기존 features/economic_data 이동)
-2. `modules/technical_analysis/` 생성
-   - `service.py` - 기존 services/technical_analysis.py
-   - `indicators.py` - 순수 계산 함수 추출
-3. `modules/sentiment_analysis/` 생성
-4. `modules/recommendation/` 생성
-   - `score_calculator.py` - 점수 계산 로직 추출
+1. `domain/strategy/interpreter.py` - DSL 실행기
+2. 시드 전략 DSL 파일 작성 (15개)
+3. 인터프리터 단위 테스트
 
 **변경 파일**:
-- 이동: `features/economic_data/` → `modules/economic_data/`
-- 이동: `services/technical_analysis.py` → `modules/technical_analysis/`
-- 이동: `services/sentiment_analysis.py` → `modules/sentiment_analysis/`
-- 이동: `services/recommendation_service.py` → `modules/recommendation/`
-- 삭제: `features/`, `services/` 디렉토리
+- 신규: `src/domain/strategy/interpreter.py`
+- 신규: `src/domain/strategy/seed_strategies/*.json`
+- 신규: `tests/unit/test_interpreter.py`
 
-### Phase 4: Testing (Week 5)
+### Phase 3: Application Layer (Week 5-6)
 
-**목표**: 핵심 로직 테스트
+**목표**: 유스케이스 및 포트 정의
 
-1. `tests/` 디렉토리 구조 생성
-2. `indicators.py` 단위 테스트 (순수 함수)
-3. `score_calculator.py` 단위 테스트
-4. `thresholds.py` 설정 테스트
+1. `application/ports/` - 인터페이스 정의
+2. `application/strategy/executor.py` - ThreadPoolExecutor
+3. `application/strategy/service.py` - 전략 서비스
+4. 기존 분석 서비스 이동 (`application/analysis/`)
+
+**변경 파일**:
+- 신규: `src/application/ports/*.py`
+- 신규: `src/application/strategy/*.py`
+- 이동: `services/` → `application/analysis/`
+
+### Phase 4: Adapters (Week 7-8)
+
+**목표**: 어댑터 구현
+
+1. `adapters/inbound/kafka/` - 핸들러 분리
+2. `adapters/outbound/persistence/` - 레포지토리 구현
+3. `adapters/outbound/external/` - 외부 API 클라이언트
+4. main.py 슬림화 (315줄 → ~80줄)
+
+**변경 파일**:
+- 신규: `src/adapters/inbound/kafka/*.py`
+- 신규: `src/adapters/outbound/persistence/*.py`
+- 신규: `src/adapters/outbound/external/*.py`
+- 수정: `src/main.py` (대폭 수정)
+
+### Phase 5: AI Integration (Week 9)
+
+**목표**: 자연어 → DSL 변환
+
+1. `application/strategy/generator.py` - Vertex AI 연동
+2. Vertex AI 프롬프트 최적화
+3. 생성된 DSL 검증 로직
+
+**변경 파일**:
+- 신규: `src/application/strategy/generator.py`
+- 신규: `src/adapters/outbound/external/vertex_ai.py`
+
+### Phase 6: Testing & Polish (Week 10)
+
+**목표**: 테스트 및 통합
+
+1. 통합 테스트 작성
+2. 기존 기능 회귀 테스트
+3. 문서화
 
 **테스트 구조**:
 ```
@@ -576,26 +890,12 @@ tests/
 ├── conftest.py
 ├── unit/
 │   ├── test_indicators.py
-│   ├── test_score_calculator.py
-│   └── test_thresholds.py
+│   ├── test_interpreter.py
+│   └── test_executor.py
 └── integration/
-    └── test_handlers.py
+    ├── test_strategy_flow.py
+    └── test_kafka_handlers.py
 ```
-
-### Phase 5: Future Modules (Week 6)
-
-**목표**: PRD v2 기능을 위한 모듈 스캐폴딩
-
-1. `modules/backtest/` 스캐폴딩
-   - `service.py` - 인터페이스만
-   - `metrics.py` - CAGR, MDD, Sharpe 계산 함수
-2. `modules/strategy/` 스캐폴딩
-   - `base.py` - BaseStrategy 인터페이스
-   - `strategies/momentum.py` - 기존 로직 이동
-
-**변경 파일**:
-- 신규: `modules/backtest/` (스캐폴딩)
-- 신규: `modules/strategy/` (스캐폴딩)
 
 ---
 
@@ -605,8 +905,34 @@ tests/
 |------|------|------|
 | main.py 줄 수 | 315줄 | ~80줄 |
 | 하드코딩된 임계값 | 5개+ | 0개 |
+| exec/eval 사용 | N/A | 0개 (DSL 기반) |
+| 동시 실행 전략 수 | 1개 | 10개+ |
 | 순수 계산 함수 테스트 | 0% | 80% |
-| 모듈 독립성 | 낮음 | 높음 (분리 가능) |
+| 자연어 → 전략 변환 | 불가 | 가능 (DSL) |
+
+---
+
+## 핵심 원칙
+
+### 1. 안전한 전략 실행
+- **exec/eval 금지** - DSL 인터프리터만 사용
+- 허용된 지표 함수만 실행
+- 모든 입력은 Pydantic으로 검증
+
+### 2. 도메인 분리
+- `domain/` - 비즈니스 로직 (외부 의존성 없음)
+- `application/` - 유스케이스 오케스트레이션
+- `adapters/` - 외부 시스템 연동
+
+### 3. 테스트 가능성
+- 순수 함수로 지표 계산
+- 포트 인터페이스로 모킹 가능
+- DSL 기반으로 전략 테스트 용이
+
+### 4. 확장성
+- 새 지표: `domain/strategy/indicators.py`에 함수 추가
+- 새 전략: JSON DSL 파일 추가
+- 새 어댑터: `adapters/` 하위에 구현
 
 ---
 
@@ -614,53 +940,27 @@ tests/
 
 ### Phase 1-2 검증
 ```bash
-# 설정 로드 확인
-python -c "from src.config.settings import settings; print(settings.MONGODB_URI)"
-python -c "from src.config.thresholds import thresholds; print(thresholds.RSI_BUY_THRESHOLD)"
+# DSL 파싱 테스트
+python -c "from src.domain.strategy.models import StrategyDefinition; print('OK')"
+
+# 지표 계산 테스트
+pytest tests/unit/test_indicators.py -v
 ```
 
 ### Phase 3-4 검증
 ```bash
-# 테스트 실행
-pytest tests/unit/ -v --cov=src/modules
+# 전략 실행 테스트
+pytest tests/unit/test_interpreter.py -v
+
+# 동시 실행 테스트
+pytest tests/unit/test_executor.py -v
 ```
 
-### Phase 5 검증
+### Phase 5-6 검증
 ```bash
-# 전체 서비스 실행
-python -m src.main
+# 전체 통합 테스트
+pytest tests/ -v --cov=src
 
-# Kafka 메시지 전송 테스트
-# (기존과 동일하게 동작해야 함)
+# 기존 기능 회귀 테스트
+python -m src.main  # Kafka 메시지 처리 확인
 ```
-
----
-
-## 추가 의존성
-
-```toml
-# pyproject.toml 추가 사항
-
-[tool.poetry.dependencies]
-pydantic-settings = "^2.1.0"
-
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.0.0"
-pytest-cov = "^4.1.0"
-```
-
----
-
-## 핵심 파일 변경 요약
-
-| 파일 | 변경 내용 |
-|------|-----------|
-| `src/main.py` | 315줄 → ~80줄 (핸들러 분리) |
-| `src/services/technical_analysis.py` | `modules/` + `indicators.py`로 분리 |
-| `src/services/recommendation_service.py` | `modules/` + `score_calculator.py`로 분리 |
-| `src/features/economic_data/` | `modules/economic_data/`로 이동 |
-| `pyproject.toml` | pydantic-settings, pytest 추가 |
-| 신규: `src/config/` | settings.py, thresholds.py |
-| 신규: `src/handlers/` | router.py, 각 핸들러 |
-| 신규: `src/modules/` | 모듈별 디렉토리 |
-| 신규: `tests/` | 단위 테스트 |
