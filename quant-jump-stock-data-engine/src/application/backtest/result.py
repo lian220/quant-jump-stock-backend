@@ -73,6 +73,8 @@ class BacktestResult:
     losing_trades: int = 0
     avg_win: Optional[Decimal] = None
     avg_loss: Optional[Decimal] = None
+    largest_win: Optional[Decimal] = None
+    largest_loss: Optional[Decimal] = None
     profit_factor: Optional[Decimal] = None
     avg_holding_days: Optional[Decimal] = None
 
@@ -112,6 +114,8 @@ class BacktestResult:
             "win_rate": float(self.win_rate) if self.win_rate else None,
             "avg_win": float(self.avg_win) if self.avg_win else None,
             "avg_loss": float(self.avg_loss) if self.avg_loss else None,
+            "largest_win": float(self.largest_win) if self.largest_win else None,
+            "largest_loss": float(self.largest_loss) if self.largest_loss else None,
             "profit_factor": float(self.profit_factor) if self.profit_factor else None,
         }
 
@@ -140,6 +144,8 @@ class BacktestResult:
             "losing_trades": self.losing_trades,
             "avg_win": float(self.avg_win) if self.avg_win else None,
             "avg_loss": float(self.avg_loss) if self.avg_loss else None,
+            "largest_win": float(self.largest_win) if self.largest_win else None,
+            "largest_loss": float(self.largest_loss) if self.largest_loss else None,
             "profit_factor": float(self.profit_factor) if self.profit_factor else None,
             "avg_holding_days": float(self.avg_holding_days) if self.avg_holding_days else None,
             "benchmark_return": float(self.benchmark_return) if self.benchmark_return else None,

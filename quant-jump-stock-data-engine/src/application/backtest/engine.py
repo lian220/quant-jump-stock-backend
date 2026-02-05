@@ -24,12 +24,14 @@ Backtest Engine
 """
 
 import logging
+import math
 import time
 from dataclasses import dataclass, field
 from datetime import date, timedelta
-from decimal import Decimal
-from typing import Dict, List, Optional, Set
+from decimal import Decimal, ROUND_HALF_UP
+from typing import Dict, List, Optional, Set, Tuple
 
+import numpy as np
 import pandas as pd
 
 from domain.strategy.models import StrategyDefinition, SignalType
@@ -461,33 +463,14 @@ class BacktestEngine:
             reason = trade.exit_reason or "unknown"
             exit_reason_counts[reason] = exit_reason_counts.get(reason, 0) + 1
 
-        # 승/패 거래 집계
-        winning_trades = [t for t in sell_trades if t.realized_pnl and t.realized_pnl > 0]
-        losing_trades = [t for t in sell_trades if t.realized_pnl and t.realized_pnl < 0]
-
-        # 총 수익률 계산
-        total_return = self._portfolio.total_pnl_pct
+        # 성과 지표 계산
+        metrics = self._calculate_metrics(trades)
 
         # MDD 계산
         mdd = Decimal("0")
         for point in self._equity_curve:
             if point.drawdown_pct < mdd:
                 mdd = point.drawdown_pct
-
-        # 승률 계산
-        win_rate = None
-        if sell_trades:
-            win_rate = Decimal(len(winning_trades)) / Decimal(len(sell_trades)) * 100
-
-        # 평균 수익/손실 계산
-        avg_win = None
-        avg_loss = None
-
-        if winning_trades:
-            avg_win = sum(t.realized_pnl_pct or 0 for t in winning_trades) / len(winning_trades)
-
-        if losing_trades:
-            avg_loss = sum(t.realized_pnl_pct or 0 for t in losing_trades) / len(losing_trades)
 
         result = BacktestResult(
             strategy_id=0,  # 나중에 DB 저장 시 설정
@@ -496,14 +479,22 @@ class BacktestEngine:
             end_date=self.config.end_date,
             initial_capital=self.config.initial_capital,
             final_value=self._portfolio.total_value,
-            total_return=total_return,
+            total_return=metrics["total_return_pct"],
+            cagr=metrics["cagr"],
             mdd=mdd,
-            total_trades=len(sell_trades),
-            winning_trades=len(winning_trades),
-            losing_trades=len(losing_trades),
-            win_rate=win_rate,
-            avg_win=avg_win,
-            avg_loss=avg_loss,
+            sharpe_ratio=metrics["sharpe_ratio"],
+            sortino_ratio=metrics["sortino_ratio"],
+            volatility=metrics["volatility"],
+            win_rate=metrics["win_rate"],
+            total_trades=metrics["total_trades"],
+            winning_trades=metrics["winning_trades"],
+            losing_trades=metrics["losing_trades"],
+            avg_win=metrics["avg_win"],
+            avg_loss=metrics["avg_loss"],
+            largest_win=metrics["largest_win"],
+            largest_loss=metrics["largest_loss"],
+            profit_factor=metrics["profit_factor"],
+            avg_holding_days=metrics["avg_holding_days"],
             trades=trades,
             equity_curve=self._equity_curve,
             exit_reason_counts=exit_reason_counts,
@@ -516,6 +507,169 @@ class BacktestEngine:
         )
 
         return result
+
+    def _calculate_metrics(
+        self,
+        trades: List[BacktestTrade]
+    ) -> Dict[str, Optional[Decimal]]:
+        """
+        성과 지표 계산
+
+        portfolio.py의 로직을 Decimal 기반으로 통합
+
+        Returns:
+            성과 지표 딕셔너리
+        """
+        # 기본 수익률
+        total_return = self._portfolio.total_pnl
+        total_return_pct = self._portfolio.total_pnl_pct
+
+        # 연간 수익률 (CAGR)
+        days = (self.config.end_date - self.config.start_date).days
+        years = Decimal(str(days)) / Decimal("365") if days > 0 else Decimal("1")
+
+        cagr = Decimal("0")
+        if years > 0 and total_return_pct > Decimal("-100"):
+            # CAGR = (final/initial)^(1/years) - 1
+            ratio = (Decimal("100") + total_return_pct) / Decimal("100")
+            if ratio > 0:
+                cagr = (Decimal(str(float(ratio) ** (1 / float(years)))) - 1) * 100
+
+        # 변동성 및 샤프/소르티노 비율 계산
+        volatility = None
+        sharpe_ratio = None
+        sortino_ratio = None
+
+        if len(self._equity_curve) > 1:
+            # 일간 수익률 계산
+            equities = [float(p.equity) for p in self._equity_curve]
+            daily_returns = []
+            for i in range(1, len(equities)):
+                if equities[i-1] > 0:
+                    ret = (equities[i] - equities[i-1]) / equities[i-1]
+                    daily_returns.append(ret)
+
+            if len(daily_returns) > 0:
+                returns_array = np.array(daily_returns)
+
+                # 연환산 변동성 (일간 표준편차 * sqrt(252))
+                daily_std = float(np.std(returns_array))
+                annual_vol = daily_std * math.sqrt(252)
+                volatility = Decimal(str(annual_vol * 100)).quantize(
+                    Decimal("0.01"), rounding=ROUND_HALF_UP
+                )
+
+                # 샤프 비율 (무위험 수익률 3% 가정)
+                risk_free_rate = 0.03
+                excess_return = float(cagr) / 100 - risk_free_rate
+                if annual_vol > 0:
+                    sharpe = excess_return / annual_vol
+                    sharpe_ratio = Decimal(str(sharpe)).quantize(
+                        Decimal("0.01"), rounding=ROUND_HALF_UP
+                    )
+
+                # 소르티노 비율 (하방 변동성만 사용)
+                negative_returns = returns_array[returns_array < 0]
+                if len(negative_returns) > 0:
+                    downside_std = float(np.std(negative_returns)) * math.sqrt(252)
+                    if downside_std > 0:
+                        sortino = excess_return / downside_std
+                        sortino_ratio = Decimal(str(sortino)).quantize(
+                            Decimal("0.01"), rounding=ROUND_HALF_UP
+                        )
+
+        # 거래 통계
+        sell_trades = [t for t in trades if t.trade_type == "sell"]
+        total_trades = len(sell_trades)
+
+        # 승/패 분석 (FIFO 기반)
+        wins: List[Decimal] = []
+        losses: List[Decimal] = []
+        holding_days: List[int] = []
+
+        buy_trades_map: Dict[str, List[BacktestTrade]] = {}
+
+        for trade in trades:
+            if trade.trade_type == "buy":
+                if trade.symbol not in buy_trades_map:
+                    buy_trades_map[trade.symbol] = []
+                buy_trades_map[trade.symbol].append(trade)
+            elif trade.trade_type == "sell":
+                if trade.symbol in buy_trades_map and buy_trades_map[trade.symbol]:
+                    buy_trade = buy_trades_map[trade.symbol].pop(0)
+
+                    # PnL 계산
+                    pnl = (trade.price - buy_trade.price) * trade.quantity
+                    pnl -= (trade.commission + buy_trade.commission)
+
+                    if pnl > 0:
+                        wins.append(pnl)
+                    else:
+                        losses.append(pnl)
+
+                    # 보유 기간
+                    days_held = (trade.trade_date - buy_trade.trade_date).days
+                    holding_days.append(days_held)
+
+        winning_trades = len(wins)
+        losing_trades = len(losses)
+
+        # 승률
+        win_rate = None
+        if total_trades > 0:
+            win_rate = Decimal(str(winning_trades / total_trades * 100)).quantize(
+                Decimal("0.01"), rounding=ROUND_HALF_UP
+            )
+
+        # 평균 수익/손실
+        avg_win = None
+        avg_loss = None
+        largest_win = None
+        largest_loss = None
+
+        if wins:
+            avg_win = sum(wins) / len(wins)
+            largest_win = max(wins)
+
+        if losses:
+            avg_loss = sum(losses) / len(losses)
+            largest_loss = min(losses)
+
+        # Profit Factor
+        profit_factor = None
+        gross_profit = sum(wins) if wins else Decimal("0")
+        gross_loss = abs(sum(losses)) if losses else Decimal("0")
+
+        if gross_loss > 0:
+            profit_factor = gross_profit / gross_loss
+        elif gross_profit > 0:
+            profit_factor = Decimal("999.99")  # 무한대 대신
+
+        # 평균 보유 기간
+        avg_holding_days = None
+        if holding_days:
+            avg_holding_days = Decimal(str(sum(holding_days) / len(holding_days))).quantize(
+                Decimal("0.1"), rounding=ROUND_HALF_UP
+            )
+
+        return {
+            "total_return": total_return,
+            "total_return_pct": total_return_pct,
+            "cagr": cagr,
+            "volatility": volatility,
+            "sharpe_ratio": sharpe_ratio,
+            "sortino_ratio": sortino_ratio,
+            "total_trades": total_trades,
+            "winning_trades": winning_trades,
+            "losing_trades": losing_trades,
+            "win_rate": win_rate,
+            "avg_win": avg_win,
+            "avg_loss": avg_loss,
+            "largest_win": largest_win,
+            "largest_loss": largest_loss,
+            "profit_factor": profit_factor,
+            "avg_holding_days": avg_holding_days,
+        }
 
     def _create_error_result(
         self,

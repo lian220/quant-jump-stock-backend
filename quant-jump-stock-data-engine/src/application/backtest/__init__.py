@@ -7,13 +7,16 @@ Backtest Application Module
 
 from .engine import BacktestEngine, BacktestConfig
 from .result import BacktestResult, BacktestTrade, EquityCurvePoint
-from .data_loader import DataLoader, YFinanceDataLoader
-from .portfolio import (
+from .data_loader import DataLoader, YFinanceDataLoader, PandasDataLoader
+from .portfolio import PerformanceMetrics
+
+# Re-export domain models for convenience
+from domain.backtest.models import (
     Position,
     Trade,
     TradeType,
     Portfolio,
-    PerformanceMetrics,
+    ExitReason,
 )
 
 __all__ = [
@@ -27,10 +30,13 @@ __all__ = [
     # Data Loader
     "DataLoader",
     "YFinanceDataLoader",
-    # Portfolio (from SCRUM-183)
+    "PandasDataLoader",
+    # Portfolio Domain Models (from domain.backtest)
     "Position",
     "Trade",
     "TradeType",
     "Portfolio",
+    "ExitReason",
+    # Performance
     "PerformanceMetrics",
 ]
