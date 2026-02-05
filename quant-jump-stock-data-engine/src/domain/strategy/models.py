@@ -38,6 +38,10 @@ class IndicatorType(str, Enum):
     BOLLINGER_UPPER = "bollinger_upper"  # 볼린저 상단
     BOLLINGER_MIDDLE = "bollinger_middle"  # 볼린저 중간
     BOLLINGER_LOWER = "bollinger_lower"  # 볼린저 하단
+    ATR = "atr"          # 평균 실제 범위 (Average True Range)
+    STOCHASTIC_K = "stochastic_k"  # 스토캐스틱 %K
+    STOCHASTIC_D = "stochastic_d"  # 스토캐스틱 %D
+    OBV = "obv"          # 거래량 균형 (On-Balance Volume)
     VOLUME = "volume"    # 거래량
     PRICE = "price"      # 현재가
 
@@ -96,6 +100,14 @@ class Condition(BaseModel):
         elif self.indicator in [IndicatorType.BOLLINGER_UPPER, IndicatorType.BOLLINGER_MIDDLE, IndicatorType.BOLLINGER_LOWER]:
             period = self.params.get("period", 20)
             return f"bollinger_{period}"
+        elif self.indicator == IndicatorType.ATR:
+            period = self.params.get("period", 14)
+            return f"atr_{period}"
+        elif self.indicator in [IndicatorType.STOCHASTIC_K, IndicatorType.STOCHASTIC_D]:
+            k_period = self.params.get("k_period", 14)
+            return f"stochastic_{k_period}"  # Stochastic은 한 번에 계산
+        elif self.indicator == IndicatorType.OBV:
+            return "obv"
         else:
             return self.indicator.value
 

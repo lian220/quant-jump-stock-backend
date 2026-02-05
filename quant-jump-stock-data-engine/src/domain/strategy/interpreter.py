@@ -26,6 +26,9 @@ from .indicators import (
     calculate_rsi,
     calculate_macd,
     calculate_bollinger_bands,
+    calculate_atr,
+    calculate_stochastic,
+    calculate_obv,
     crosses_above,
     crosses_below,
 )
@@ -204,6 +207,29 @@ class StrategyInterpreter:
                 elif indicator_type == IndicatorType.PRICE:
                     indicators["price"] = close
 
+                elif indicator_type == IndicatorType.ATR:
+                    period = params.get("period", 14)
+                    if all(col in data.columns for col in ['high', 'low', 'close']):
+                        indicators[key] = calculate_atr(
+                            data['high'], data['low'], close, period
+                        )
+
+                elif indicator_type in [IndicatorType.STOCHASTIC_K, IndicatorType.STOCHASTIC_D]:
+                    k_period = params.get("k_period", 14)
+                    d_period = params.get("d_period", 3)
+                    stoch_key = f"stochastic_{k_period}"
+                    if f"{stoch_key}_k" not in indicators:
+                        if all(col in data.columns for col in ['high', 'low', 'close']):
+                            k, d = calculate_stochastic(
+                                data['high'], data['low'], close, k_period, d_period
+                            )
+                            indicators[f"{stoch_key}_k"] = k
+                            indicators[f"{stoch_key}_d"] = d
+
+                elif indicator_type == IndicatorType.OBV:
+                    if 'volume' in data.columns:
+                        indicators["obv"] = calculate_obv(close, data['volume'])
+
             except InsufficientDataError as e:
                 logger.warning(f"Insufficient data for {key}: {e}")
                 indicators[key] = pd.Series(dtype=float)
@@ -222,6 +248,14 @@ class StrategyInterpreter:
             period = params.get("period", 20)
             suffix = indicator_type.value.split("_")[-1]
             return f"bollinger_{period}_{suffix}"
+        elif indicator_type == IndicatorType.ATR:
+            return f"atr_{params.get('period', 14)}"
+        elif indicator_type in [IndicatorType.STOCHASTIC_K, IndicatorType.STOCHASTIC_D]:
+            k_period = params.get("k_period", 14)
+            suffix = "k" if indicator_type == IndicatorType.STOCHASTIC_K else "d"
+            return f"stochastic_{k_period}_{suffix}"
+        elif indicator_type == IndicatorType.OBV:
+            return "obv"
         else:
             return indicator_type.value
 
