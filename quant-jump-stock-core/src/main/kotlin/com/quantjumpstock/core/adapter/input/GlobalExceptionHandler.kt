@@ -2,6 +2,7 @@ package com.quantjumpstock.core.adapter.input
 
 import com.quantjumpstock.core.adapter.output.notification.slack.SlackApiClient
 import com.quantjumpstock.core.application.auth.AuthException
+import com.quantjumpstock.core.application.marketplace.StrategyNotFoundException
 import com.quantjumpstock.core.infrastructure.security.AccessDeniedException
 import com.quantjumpstock.core.infrastructure.security.UnauthorizedException
 import jakarta.servlet.http.HttpServletRequest
@@ -100,6 +101,22 @@ class GlobalExceptionHandler(
                 error = "Bad Request",
                 message = "잘못된 요청 형식입니다",
                 status = HttpStatus.BAD_REQUEST.value()
+            ))
+    }
+
+    /**
+     * 전략 없음 예외 처리
+     */
+    @ExceptionHandler(StrategyNotFoundException::class)
+    fun handleStrategyNotFoundException(ex: StrategyNotFoundException): ResponseEntity<ErrorResponse> {
+        logger.warn("📊 Strategy not found: {}", ex.message)
+
+        return ResponseEntity
+            .status(HttpStatus.NOT_FOUND)
+            .body(ErrorResponse(
+                error = "Not Found",
+                message = ex.message ?: "Strategy not found",
+                status = HttpStatus.NOT_FOUND.value()
             ))
     }
 

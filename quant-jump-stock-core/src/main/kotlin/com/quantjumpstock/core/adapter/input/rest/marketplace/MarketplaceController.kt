@@ -1,10 +1,15 @@
 package com.quantjumpstock.core.adapter.input.rest.marketplace
 
 import com.quantjumpstock.core.application.marketplace.MarketplaceService
+import com.quantjumpstock.core.application.marketplace.StrategyDetailResponse
 import com.quantjumpstock.core.application.marketplace.StrategyListRequest
 import com.quantjumpstock.core.application.marketplace.StrategyListResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.media.Content
+import io.swagger.v3.oas.annotations.media.Schema
+import io.swagger.v3.oas.annotations.responses.ApiResponse
+import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -77,6 +82,42 @@ class MarketplaceController(
         )
 
         val response = marketplaceService.getPublicStrategies(request)
+        return ResponseEntity.ok(response)
+    }
+
+    /**
+     * 전략 상세 조회
+     * GET /api/v1/marketplace/strategies/{id}
+     */
+    @GetMapping("/strategies/{id}")
+    @Operation(
+        summary = "전략 상세 조회",
+        description = """
+            공개된 전략의 상세 정보를 조회합니다.
+
+            응답에 포함되는 정보:
+            - 기본 정보: 전략명, 설명, 카테고리, 리밸런싱 주기
+            - 성과 지표: CAGR, MDD, 샤프 비율, 소르티노 비율, 승률 등
+            - 수익 곡선: 백테스트 기간 동안의 자산 가치 변화
+            - 현재 보유 종목: 최근 30일 내 매수/리밸런싱 신호 기반
+        """
+    )
+    @ApiResponses(
+        ApiResponse(
+            responseCode = "200",
+            description = "조회 성공",
+            content = [Content(schema = Schema(implementation = StrategyDetailResponse::class))]
+        ),
+        ApiResponse(
+            responseCode = "404",
+            description = "전략을 찾을 수 없음"
+        )
+    )
+    fun getStrategyDetail(
+        @Parameter(description = "전략 ID", example = "1")
+        @PathVariable id: Long
+    ): ResponseEntity<StrategyDetailResponse> {
+        val response = marketplaceService.getStrategyDetail(id)
         return ResponseEntity.ok(response)
     }
 }

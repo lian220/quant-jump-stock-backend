@@ -1,6 +1,7 @@
 package com.quantjumpstock.core.domain.port.output
 
 import com.quantjumpstock.core.domain.model.marketplace.MarketplaceStrategy
+import com.quantjumpstock.core.domain.model.marketplace.StrategyDetail
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import java.math.BigDecimal
@@ -40,4 +41,10 @@ interface MarketplaceRepository {
         maxMdd: BigDecimal?,
         pageable: Pageable
     ): Page<MarketplaceStrategy>
+
+    /**
+     * 전략 상세 조회 (공개된 활성 전략만)
+     * 성과 지표, 수익 곡선, 현재 보유 종목 포함
+     */
+    fun findPublicStrategyById(id: Long): StrategyDetail?
 }

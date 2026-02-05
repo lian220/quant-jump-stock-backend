@@ -2,6 +2,7 @@ package com.quantjumpstock.core.application.marketplace
 
 import com.quantjumpstock.core.application.strategy.CategoryInfo
 import com.quantjumpstock.core.domain.model.marketplace.MarketplaceStrategy
+import com.quantjumpstock.core.domain.model.marketplace.StrategyDetail
 import com.quantjumpstock.core.domain.port.output.MarketplaceRepository
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
@@ -55,6 +56,79 @@ class MarketplaceService(
         return StrategyListResponse(
             strategies = strategies,
             pagination = pagination
+        )
+    }
+
+    /**
+     * 전략 상세 조회
+     * 성과 지표, 수익 곡선, 현재 보유 종목 포함
+     */
+    fun getStrategyDetail(id: Long): StrategyDetailResponse {
+        logger.info("전략 상세 조회: id=$id")
+
+        val strategyDetail = marketplaceRepository.findPublicStrategyById(id)
+            ?: throw StrategyNotFoundException("전략을 찾을 수 없습니다: id=$id")
+
+        logger.info("전략 상세 조회 완료: ${strategyDetail.name}")
+
+        return strategyDetail.toDetailResponse()
+    }
+
+    /**
+     * StrategyDetail을 StrategyDetailResponse로 변환
+     */
+    private fun StrategyDetail.toDetailResponse(): StrategyDetailResponse {
+        return StrategyDetailResponse(
+            id = this.id,
+            name = this.name,
+            description = this.description,
+            category = CategoryInfo(
+                id = this.categoryId,
+                code = this.categoryCode,
+                name = this.categoryName
+            ),
+            isPremium = this.isPremium,
+            subscriberCount = this.subscriberCount,
+            averageRating = this.averageRating,
+            rebalanceFrequency = this.rebalanceFrequency.name,
+            performanceMetrics = this.latestBacktest?.let {
+                PerformanceMetricsDto(
+                    cagr = it.cagr,
+                    mdd = it.mdd,
+                    sharpeRatio = it.sharpeRatio,
+                    sortinoRatio = it.sortinoRatio,
+                    totalReturn = it.totalReturn,
+                    volatility = it.volatility,
+                    winRate = it.winRate,
+                    totalTrades = it.totalTrades,
+                    winningTrades = it.winningTrades,
+                    losingTrades = it.losingTrades,
+                    avgWin = it.avgWin,
+                    avgLoss = it.avgLoss,
+                    benchmarkReturn = it.benchmarkReturn,
+                    alpha = it.alpha,
+                    beta = it.beta,
+                    initialCapital = it.initialCapital,
+                    finalValue = it.finalValue,
+                    startDate = it.startDate.toString(),
+                    endDate = it.endDate.toString()
+                )
+            },
+            equityCurve = this.latestBacktest?.equityCurve?.map {
+                EquityCurvePointDto(
+                    date = it.date.toString(),
+                    value = it.value
+                )
+            } ?: emptyList(),
+            currentHoldings = this.currentHoldings.map {
+                CurrentHoldingDto(
+                    ticker = it.ticker,
+                    targetWeight = it.targetWeight,
+                    signalDate = it.signalDate.toString(),
+                    reason = it.reason
+                )
+            },
+            createdAt = this.createdAt
         )
     }
 
