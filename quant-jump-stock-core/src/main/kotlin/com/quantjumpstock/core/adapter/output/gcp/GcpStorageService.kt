@@ -11,14 +11,17 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.core.io.ResourceLoader
 import org.springframework.stereotype.Service
+import com.quantjumpstock.core.domain.ml.port.output.MlPackageStoragePort
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 
 /**
- * GCS(Google Cloud Storage) 통합 서비스
- * ML 패키지 업로드, 버전 관리, 상태 조회 등 GCS 관련 기능 담당
+ * GCS(Google Cloud Storage) 통합 서비스 (Output Adapter)
+ *
+ * MlPackageStoragePort를 구현하여 GCS에 접근.
+ * ML 패키지 업로드, 버전 관리, 상태 조회 등 GCS 관련 기능 담당.
  *
  * ML 스크립트 위치: backend/scripts/ml/
  * - predict_optimized.py: 주식 예측 ML 스크립트
@@ -32,7 +35,7 @@ class GcpStorageService(
     private val gcpProperties: GcpProperties,
     @Value("\${ml.scripts.base-path:#{null}}")
     private val scriptsBasePath: String?
-) {
+) : MlPackageStoragePort {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
     private val bucketName: String
@@ -47,21 +50,13 @@ class GcpStorageService(
         private const val TRAINER_DIR = "aiplatform_custom_trainer_script"
     }
 
-    data class UploadResult(
-        val success: Boolean,
-        val message: String,
-        val gcsUri: String? = null,
-        val version: Int? = null,
-        val timestamp: String = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
-    )
-
     /**
      * ML 패키지를 GCS에 업로드
      *
      * @param scriptName 업로드할 스크립트 이름 (기본: predict_optimized.py)
      * @return 업로드 결과
      */
-    fun uploadPackage(scriptName: String = "predict_optimized.py"): UploadResult {
+    override fun uploadPackage(scriptName: String): MlPackageStoragePort.UploadResult {
         logger.info("=".repeat(60))
         logger.info("📦 GCS ML 패키지 업로드 시작")
         logger.info("버킷: $bucketName")
@@ -98,7 +93,7 @@ class GcpStorageService(
             logger.info("크기: ${packageBytes.size} bytes")
             logger.info("=".repeat(60))
 
-            UploadResult(
+            MlPackageStoragePort.UploadResult(
                 success = true,
                 message = "패키지 업로드 완료",
                 gcsUri = gcsUri,
@@ -107,7 +102,7 @@ class GcpStorageService(
 
         } catch (e: Exception) {
             logger.error("❌ GCS 패키지 업로드 실패", e)
-            UploadResult(
+            MlPackageStoragePort.UploadResult(
                 success = false,
                 message = "패키지 업로드 실패: ${e.message}"
             )
@@ -146,7 +141,7 @@ class GcpStorageService(
     /**
      * 패키지 상태 조회
      */
-    fun getPackageStatus(): Map<String, Any> {
+    override fun getPackageStatus(): Map<String, Any> {
         return try {
             val currentVersion = getCurrentVersion()
             val latestBlobPath = if (currentVersion > 0) {
@@ -181,6 +176,11 @@ class GcpStorageService(
             )
         }
     }
+
+    /**
+     * 스토리지 사용 가능 여부
+     */
+    override fun isAvailable(): Boolean = true
 
     /**
      * 버킷 존재 확인

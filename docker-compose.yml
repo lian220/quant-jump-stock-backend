@@ -151,9 +151,8 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
       # APIs
       FRED_API_KEY: ${FRED_API_KEY}
-      # Slack
+      # Slack (SLACK_BOT_TOKEN은 .env.common에서 로드)
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL_SCHEDULER}
-      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
       SLACK_CHANNEL: "C0A1XASTLH2"
       # Google Cloud (container path override)
       GOOGLE_APPLICATION_CREDENTIALS: "/app/credentials/vertex-ai-key.json"
@@ -207,9 +206,8 @@ services:
       SPRING_DATA_MONGODB_URI: ${MONGODB_URI:-mongodb://quantiq_user:quantiq_password@mongodb:27017/stock_trading?authSource=admin}
       # Kafka
       KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
-      # Slack
+      # Slack (SLACK_BOT_TOKEN은 .env.common에서 로드)
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL_TRADING}
-      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
       SLACK_CHANNEL: "C0A1XASTLH2"
       # KIS (Korean Investment & Securities) - Temporary
       KIS_APP_KEY: "test_app_key"

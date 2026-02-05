@@ -20,5 +20,8 @@ RUN poetry config virtualenvs.create false \
 # Copy source code
 COPY . .
 
+# Set Python path to include src directory
+ENV PYTHONPATH=/app/src
+
 # Run the application
 CMD ["python", "-m", "src.main"]

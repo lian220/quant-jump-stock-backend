@@ -1,8 +1,7 @@
 package com.quantjumpstock.core.adapter.input.rest.prediction
 
 import com.quantjumpstock.core.adapter.input.api.PredictionApi
-import com.quantjumpstock.core.adapter.output.persistence.mongodb.PredictionResultMongoRepository
-import com.quantjumpstock.core.domain.model.prediction.PredictionResult
+import com.quantjumpstock.core.application.prediction.PredictionService
 import org.slf4j.LoggerFactory
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.RequestMapping
@@ -10,26 +9,28 @@ import org.springframework.web.bind.annotation.RestController
 import java.time.LocalDate
 
 /**
- * 예측 결과 조회 Controller
+ * 예측 결과 조회 Controller (Input Adapter)
+ *
+ * HTTP 요청을 PredictionService로 전달하는 Adapter 역할만 수행.
+ * 비즈니스 로직은 Application Service에서 처리.
  */
 @RestController
 @RequestMapping("/api/v1/predictions")
 class PredictionController(
-    private val predictionRepository: PredictionResultMongoRepository
+    private val predictionService: PredictionService
 ) : PredictionApi {
 
     private val logger = LoggerFactory.getLogger(this::class.java)
 
     override fun getAllPredictions(days: Int): ResponseEntity<Map<String, Any>> {
         return try {
-            val fromDate = LocalDate.now().minusDays(days.toLong())
-            val predictions = predictionRepository.findRecentPredictions(fromDate)
+            val result = predictionService.getAllPredictions(days)
 
             ResponseEntity.ok(mapOf(
-                "success" to true,
-                "count" to predictions.size,
-                "fromDate" to fromDate.toString(),
-                "predictions" to predictions
+                "success" to result.success,
+                "count" to result.count,
+                "fromDate" to result.fromDate.toString(),
+                "predictions" to result.predictions
             ))
         } catch (e: Exception) {
             logger.error("❌ 예측 결과 조회 실패", e)
@@ -42,14 +43,13 @@ class PredictionController(
 
     override fun getLatestPredictions(): ResponseEntity<Map<String, Any>> {
         return try {
-            val today = LocalDate.now()
-            val predictions = predictionRepository.findByDate(today)
+            val result = predictionService.getLatestPredictions()
 
             ResponseEntity.ok(mapOf(
-                "success" to true,
-                "date" to today.toString(),
-                "count" to predictions.size,
-                "predictions" to predictions.sortedByDescending { it.confidence }
+                "success" to result.success,
+                "date" to result.fromDate.toString(),
+                "count" to result.count,
+                "predictions" to result.predictions
             ))
         } catch (e: Exception) {
             logger.error("❌ 최신 예측 조회 실패", e)
@@ -62,17 +62,15 @@ class PredictionController(
 
     override fun getBuySignals(minConfidence: Double?): ResponseEntity<Map<String, Any>> {
         return try {
-            val today = LocalDate.now()
             val threshold = minConfidence ?: 0.7
-
-            val buySignals = predictionRepository.findHighConfidenceBuySignals(today, threshold)
+            val result = predictionService.getBuySignals(threshold)
 
             ResponseEntity.ok(mapOf(
-                "success" to true,
-                "date" to today.toString(),
-                "minConfidence" to threshold,
-                "count" to buySignals.size,
-                "buySignals" to buySignals.sortedByDescending { it.confidence }
+                "success" to result.success,
+                "date" to result.date.toString(),
+                "minConfidence" to result.minConfidence,
+                "count" to result.count,
+                "buySignals" to result.buySignals
             ))
         } catch (e: Exception) {
             logger.error("❌ 매수 신호 조회 실패", e)
@@ -85,14 +83,13 @@ class PredictionController(
 
     override fun getPredictionsBySymbol(symbol: String, limit: Int): ResponseEntity<Map<String, Any>> {
         return try {
-            val predictions = predictionRepository.findBySymbolOrderByDateDesc(symbol)
-                .take(limit)
+            val result = predictionService.getPredictionsBySymbol(symbol, limit)
 
             ResponseEntity.ok(mapOf(
-                "success" to true,
-                "symbol" to symbol,
-                "count" to predictions.size,
-                "predictions" to predictions
+                "success" to result.success,
+                "symbol" to result.symbol,
+                "count" to result.count,
+                "predictions" to result.predictions
             ))
         } catch (e: Exception) {
             logger.error("❌ 종목 예측 조회 실패", e)
@@ -105,13 +102,13 @@ class PredictionController(
 
     override fun getPredictionsByDate(date: LocalDate): ResponseEntity<Map<String, Any>> {
         return try {
-            val predictions = predictionRepository.findByDate(date)
+            val result = predictionService.getPredictionsByDate(date)
 
             ResponseEntity.ok(mapOf(
-                "success" to true,
-                "date" to date.toString(),
-                "count" to predictions.size,
-                "predictions" to predictions.sortedByDescending { it.confidence }
+                "success" to result.success,
+                "date" to result.fromDate.toString(),
+                "count" to result.count,
+                "predictions" to result.predictions
             ))
         } catch (e: Exception) {
             logger.error("❌ 날짜별 예측 조회 실패", e)
@@ -124,15 +121,12 @@ class PredictionController(
 
     override fun getPredictionStats(days: Int): ResponseEntity<Map<String, Any>> {
         return try {
-            val fromDate = LocalDate.now().minusDays(days.toLong())
-            val predictions = predictionRepository.findRecentPredictions(fromDate)
-
-            val stats = calculateStats(predictions)
+            val result = predictionService.getPredictionStats(days)
 
             ResponseEntity.ok(mapOf(
-                "success" to true,
-                "period" to "${fromDate} ~ ${LocalDate.now()}",
-                "stats" to stats
+                "success" to result.success,
+                "period" to result.period,
+                "stats" to result.stats
             ))
         } catch (e: Exception) {
             logger.error("❌ 통계 조회 실패", e)
@@ -141,44 +135,5 @@ class PredictionController(
                 "message" to "통계 조회 실패: ${e.message}"
             ))
         }
-    }
-
-    /**
-     * 통계 계산
-     */
-    private fun calculateStats(predictions: List<PredictionResult>): Map<String, Any> {
-        if (predictions.isEmpty()) {
-            return mapOf(
-                "total" to 0,
-                "message" to "데이터 없음"
-            )
-        }
-
-        val buyCount = predictions.count { it.signal == "BUY" }
-        val sellCount = predictions.count { it.signal == "SELL" }
-        val holdCount = predictions.count { it.signal == "HOLD" }
-
-        val avgConfidence = predictions.map { it.confidence }.average()
-        val highConfidenceCount = predictions.count { it.confidence >= 0.7 }
-
-        return mapOf(
-            "total" to predictions.size,
-            "signals" to mapOf(
-                "BUY" to buyCount,
-                "SELL" to sellCount,
-                "HOLD" to holdCount
-            ),
-            "signalRatio" to mapOf(
-                "BUY" to String.format("%.1f%%", buyCount.toDouble() / predictions.size * 100),
-                "SELL" to String.format("%.1f%%", sellCount.toDouble() / predictions.size * 100),
-                "HOLD" to String.format("%.1f%%", holdCount.toDouble() / predictions.size * 100)
-            ),
-            "confidence" to mapOf(
-                "average" to String.format("%.2f", avgConfidence),
-                "high" to highConfidenceCount,
-                "highRatio" to String.format("%.1f%%", highConfidenceCount.toDouble() / predictions.size * 100)
-            ),
-            "uniqueSymbols" to predictions.map { it.symbol }.distinct().size
-        )
     }
 }
