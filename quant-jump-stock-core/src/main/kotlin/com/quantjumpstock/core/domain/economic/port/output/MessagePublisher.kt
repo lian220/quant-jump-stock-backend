@@ -1,6 +1,7 @@
 package com.quantjumpstock.core.domain.economic.port.output
 
 import com.quantjumpstock.core.domain.model.AnalysisRequest
+import com.quantjumpstock.core.domain.model.BacktestRequest
 import com.quantjumpstock.core.domain.model.EconomicDataUpdateRequest
 import com.quantjumpstock.core.domain.model.VertexAIPredictionRequest
 
@@ -37,5 +38,15 @@ interface MessagePublisher {
     fun publishVertexAIPredictionRequest(
         topic: String,
         request: VertexAIPredictionRequest
+    )
+
+    /**
+     * 백테스트 요청 메시지 발행
+     * @param topic 메시지 토픽
+     * @param request 백테스트 요청
+     */
+    fun publishBacktestRequest(
+        topic: String,
+        request: BacktestRequest
     )
 }
