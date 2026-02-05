@@ -348,6 +348,27 @@ class StrategyExecutionHandler(MessageHandler):
             raise
 
 
+class BacktestServiceProtocol(Protocol):
+    """백테스트 서비스 프로토콜"""
+    async def run_backtest(
+        self,
+        strategy_id: int,
+        symbols: list,
+        start_date: str,
+        end_date: str,
+        initial_capital: float,
+        commission_rate: float,
+        slippage_rate: float
+    ) -> object:
+        ...
+
+
+class BacktestRepositoryProtocol(Protocol):
+    """백테스트 결과 저장소 프로토콜"""
+    async def save_result(self, result: object, request_id: Optional[str] = None) -> int:
+        ...
+
+
 class VertexAIPredictionServiceProtocol(Protocol):
     """Vertex AI 예측 서비스 프로토콜"""
     def run_prediction(
@@ -416,3 +437,147 @@ class VertexAIHandler(MessageHandler):
                     "error": str(e)
                 })
             raise
+
+
+class BacktestRequestHandler(MessageHandler):
+    """
+    백테스트 실행 요청 핸들러
+
+    SCRUM-186: Kafka로 백테스트 요청을 받아 실행하고
+    결과를 PostgreSQL에 저장합니다.
+    """
+
+    def __init__(
+        self,
+        backtest_service: BacktestServiceProtocol,
+        backtest_repository: BacktestRepositoryProtocol,
+        publisher: Optional[EventPublisherProtocol] = None
+    ):
+        self.backtest_service = backtest_service
+        self.backtest_repository = backtest_repository
+        self.publisher = publisher
+
+    @property
+    def topic(self) -> str:
+        return "backtest.request.run"
+
+    def handle(self, message: KafkaMessage) -> None:
+        start_time = self._log_start(message, "백테스트 실행 요청")
+
+        # 페이로드에서 파라미터 추출
+        payload = message.payload
+        strategy_id = payload.get("strategyId")
+        symbols = payload.get("symbols", [])
+        start_date = payload.get("startDate")
+        end_date = payload.get("endDate")
+        initial_capital = payload.get("initialCapital", 10000000.0)
+        commission_rate = payload.get("commissionRate", 0.00015)
+        slippage_rate = payload.get("slippageRate", 0.0001)
+
+        if not strategy_id:
+            self._publish_failure(message, "strategyId is required", start_time)
+            raise ValueError("strategyId is required")
+
+        if not symbols:
+            self._publish_failure(message, "symbols is required", start_time)
+            raise ValueError("symbols is required")
+
+        if not start_date or not end_date:
+            self._publish_failure(message, "startDate and endDate are required", start_time)
+            raise ValueError("startDate and endDate are required")
+
+        try:
+            # 비동기 실행을 동기로 래핑
+            import asyncio
+
+            async def _execute():
+                # 백테스트 실행
+                result = await self.backtest_service.run_backtest(
+                    strategy_id=strategy_id,
+                    symbols=symbols,
+                    start_date=start_date,
+                    end_date=end_date,
+                    initial_capital=initial_capital,
+                    commission_rate=commission_rate,
+                    slippage_rate=slippage_rate
+                )
+
+                # PostgreSQL에 결과 저장
+                result_id = await self.backtest_repository.save_result(
+                    result,
+                    request_id=message.request_id
+                )
+
+                return result, result_id
+
+            # 이벤트 루프 생성/재사용
+            try:
+                loop = asyncio.get_event_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            result, result_id = loop.run_until_complete(_execute())
+
+            elapsed = time.time() - start_time
+            self._log_success("백테스트 실행", start_time)
+
+            # 성공 이벤트 발행
+            if self.publisher:
+                self.publisher.publish("BACKTEST_COMPLETED", {
+                    "status": "completed",
+                    "timestamp": datetime.now(KST).isoformat(),
+                    "requestId": message.request_id,
+                    "backtestResultId": result_id,
+                    "strategyId": strategy_id,
+                    "strategyName": result.strategy_name,
+                    "symbols": symbols,
+                    "startDate": start_date,
+                    "endDate": end_date,
+                    "initialCapital": float(result.initial_capital),
+                    "finalValue": float(result.final_value),
+                    "totalReturn": float(result.total_return),
+                    "totalReturnPct": float((result.total_return / result.initial_capital) * 100),
+                    "cagr": float(result.cagr),
+                    "mdd": float(result.mdd),
+                    "sharpeRatio": float(result.sharpe_ratio) if result.sharpe_ratio else None,
+                    "sortinoRatio": float(result.sortino_ratio) if result.sortino_ratio else None,
+                    "volatility": float(result.volatility) if result.volatility else None,
+                    "totalTrades": result.total_trades,
+                    "winningTrades": result.winning_trades,
+                    "losingTrades": result.losing_trades,
+                    "winRate": float(result.win_rate) if result.win_rate else None,
+                    "profitFactor": float(result.profit_factor) if result.profit_factor else None,
+                    "avgWin": float(result.avg_win) if result.avg_win else None,
+                    "avgLoss": float(result.avg_loss) if result.avg_loss else None,
+                    "executionTimeSeconds": elapsed
+                })
+
+            logger.info(
+                f"백테스트 완료: result_id={result_id}, "
+                f"strategy={strategy_id}, trades={result.total_trades}"
+            )
+
+        except Exception as e:
+            self._log_error("백테스트 실행", e)
+            self._publish_failure(message, str(e), start_time)
+            raise
+
+    def _publish_failure(
+        self,
+        message: KafkaMessage,
+        error_message: str,
+        start_time: float
+    ):
+        """실패 이벤트 발행"""
+        if self.publisher:
+            self.publisher.publish("BACKTEST_FAILED", {
+                "status": "failed",
+                "timestamp": datetime.now(KST).isoformat(),
+                "requestId": message.request_id,
+                "strategyId": message.payload.get("strategyId"),
+                "errorCode": "BACKTEST_EXECUTION_ERROR",
+                "errorMessage": error_message,
+                "retryable": True,
+                "duration": time.time() - start_time
+            })

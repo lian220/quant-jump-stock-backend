@@ -8,6 +8,7 @@ Backtest Application Module
 from .engine import BacktestEngine, BacktestConfig
 from .result import BacktestResult, BacktestTrade, EquityCurvePoint
 from .data_loader import DataLoader, YFinanceDataLoader, PandasDataLoader
+from .service import BacktestApplicationService
 from .metrics import (
     PerformanceMetrics,
     TradeMetrics,
@@ -42,6 +43,8 @@ __all__ = [
     "DataLoader",
     "YFinanceDataLoader",
     "PandasDataLoader",
+    # Service (SCRUM-186)
+    "BacktestApplicationService",
     # Portfolio Domain Models (from domain.backtest)
     "Position",
     "Trade",

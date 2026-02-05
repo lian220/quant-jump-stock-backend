@@ -95,6 +95,42 @@ class PostgresStrategyRepository(StrategyRepositoryPort):
             logger.error(f"Failed to fetch strategy {strategy_id}: {e}")
             return None
 
+    async def find_by_db_id(self, db_id: int) -> Optional[StrategyDefinition]:
+        """DB PK(id)로 전략 조회 (SCRUM-186: 백테스트용)"""
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                    cursor.execute(
+                        """
+                        SELECT
+                            s.id,
+                            s.strategy_id,
+                            s.name,
+                            s.description,
+                            s.version,
+                            s.conditions,
+                            s.status,
+                            sc.code as category_code,
+                            s.created_at,
+                            s.updated_at
+                        FROM strategies s
+                        LEFT JOIN strategy_categories sc ON s.category_id = sc.id
+                        WHERE s.id = %s AND s.status = 'ACTIVE'
+                        """,
+                        (db_id,)
+                    )
+                    row = cursor.fetchone()
+
+            if row is None:
+                logger.debug(f"Strategy not found by db_id: {db_id}")
+                return None
+
+            return self._to_domain(row)
+
+        except Exception as e:
+            logger.error(f"Failed to fetch strategy by db_id {db_id}: {e}")
+            return None
+
     async def find_all_active(self) -> List[StrategyDefinition]:
         """활성화된 모든 전략 조회"""
         try:
