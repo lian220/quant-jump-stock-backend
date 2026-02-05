@@ -21,6 +21,16 @@ from .strategy import (
     StrategyService,
 )
 
+from .backtest import (
+    Portfolio,
+    BacktestEngine,
+    BacktestResult,
+    PerformanceMetrics,
+    Position,
+    Trade,
+    TradeType,
+)
+
 __all__ = [
     # Output Ports
     "StrategyRepositoryPort",
@@ -33,4 +43,12 @@ __all__ = [
     # Services
     "StrategyExecutor",
     "StrategyService",
+    # Backtest
+    "Portfolio",
+    "BacktestEngine",
+    "BacktestResult",
+    "PerformanceMetrics",
+    "Position",
+    "Trade",
+    "TradeType",
 ]
