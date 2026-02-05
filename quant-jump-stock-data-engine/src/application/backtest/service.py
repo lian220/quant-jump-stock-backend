@@ -44,7 +44,7 @@ class BacktestApplicationService:
     async def run_backtest(
         self,
         strategy_id: int,
-        symbols: List[str],
+        tickers: List[str],
         start_date: str,
         end_date: str,
         initial_capital: float = 10000000.0,
@@ -56,7 +56,7 @@ class BacktestApplicationService:
 
         Args:
             strategy_id: 전략 ID (DB PK)
-            symbols: 거래 대상 종목 코드 목록
+            tickers: 거래 대상 종목 코드 목록
             start_date: 시작일 (YYYY-MM-DD)
             end_date: 종료일 (YYYY-MM-DD)
             initial_capital: 초기 자본금
@@ -72,7 +72,7 @@ class BacktestApplicationService:
         """
         logger.info(
             f"Starting backtest: strategy_id={strategy_id}, "
-            f"symbols={symbols}, period={start_date}~{end_date}"
+            f"tickers={tickers}, period={start_date}~{end_date}"
         )
 
         # 1. 전략 로드
@@ -85,7 +85,7 @@ class BacktestApplicationService:
             start_date=self._parse_date(start_date),
             end_date=self._parse_date(end_date),
             initial_capital=Decimal(str(initial_capital)),
-            symbols=symbols,
+            tickers=tickers,
             commission_rate=Decimal(str(commission_rate)),
             slippage_rate=Decimal(str(slippage_rate))
         )

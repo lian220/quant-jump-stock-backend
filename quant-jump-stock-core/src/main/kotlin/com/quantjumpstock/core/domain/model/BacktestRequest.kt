@@ -13,5 +13,6 @@ data class BacktestRequest(
     val initialCapital: BigDecimal,
     val timestamp: String,
     val source: String = "quantiq-core",
-    val userId: String? = null
+    val userId: String? = null,
+    val tickers: List<String> = emptyList()  // 백테스트 대상 종목
 )

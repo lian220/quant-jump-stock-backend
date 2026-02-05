@@ -151,7 +151,8 @@ class KafkaMessagePublisherAdapter(
                     "startDate" to request.startDate,
                     "endDate" to request.endDate,
                     "initialCapital" to request.initialCapital.toString(),
-                    "userId" to request.userId
+                    "userId" to request.userId,
+                    "tickers" to request.tickers
                 )
             )
 

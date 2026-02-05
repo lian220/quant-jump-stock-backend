@@ -106,7 +106,6 @@ class PostgresBacktestRepository:
                 initial_capital,
                 final_value,
                 total_return,
-                total_return_pct,
                 cagr,
                 mdd,
                 sharpe_ratio,
@@ -118,21 +117,17 @@ class PostgresBacktestRepository:
                 win_rate,
                 avg_win,
                 avg_loss,
-                largest_win,
-                largest_loss,
-                profit_factor,
-                avg_holding_period,
                 benchmark_return,
                 alpha,
                 beta,
-                exit_reason_counts,
-                execution_time_seconds,
+                equity_curve,
                 status,
-                created_at
+                created_at,
+                completed_at
             ) VALUES (
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s, %s, %s, NOW()
+                %s, %s, NOW(), NOW()
             ) RETURNING id
             """,
             (
@@ -142,7 +137,6 @@ class PostgresBacktestRepository:
                 float(result.initial_capital),
                 float(result.final_value),
                 float(result.total_return),
-                float(self._calculate_return_pct(result)),
                 float(result.cagr),
                 float(result.mdd),
                 float(result.sharpe_ratio) if result.sharpe_ratio else None,
@@ -154,15 +148,10 @@ class PostgresBacktestRepository:
                 float(result.win_rate) if result.win_rate else None,
                 float(result.avg_win) if result.avg_win else None,
                 float(result.avg_loss) if result.avg_loss else None,
-                float(result.largest_win) if result.largest_win else None,
-                float(result.largest_loss) if result.largest_loss else None,
-                float(result.profit_factor) if result.profit_factor else None,
-                float(result.avg_holding_days) if result.avg_holding_days else None,
                 float(result.benchmark_return) if result.benchmark_return else None,
                 float(result.alpha) if result.alpha else None,
                 float(result.beta) if result.beta else None,
-                json.dumps(result.exit_reason_counts),
-                result.execution_time_seconds,
+                json.dumps([{"date": str(p.date), "equity": float(p.equity)} for p in result.equity_curve]) if result.equity_curve else None,
                 "COMPLETED"
             )
         )
@@ -177,38 +166,36 @@ class PostgresBacktestRepository:
         for trade in trades:
             values.append((
                 result_id,
-                trade.symbol,
-                trade.trade_type.upper(),
                 trade.trade_date,
-                float(trade.price),
+                trade.symbol,  # ticker
+                trade.trade_type.upper(),  # side
                 trade.quantity,
+                float(trade.price),
                 float(trade.amount),
                 float(trade.commission),
-                trade.exit_reason,
                 float(trade.realized_pnl) if trade.realized_pnl else None,
                 float(trade.realized_pnl_pct) if trade.realized_pnl_pct else None,
-                float(trade.entry_price) if trade.entry_price else None,
-                trade.holding_days
+                trade.holding_days,
+                trade.exit_reason  # signal_reason
             ))
 
         psycopg2.extras.execute_batch(
             cursor,
             """
             INSERT INTO backtest_trades (
-                backtest_result_id,
-                symbol,
-                trade_type,
+                backtest_id,
                 trade_date,
-                price,
+                ticker,
+                side,
                 quantity,
+                price,
                 amount,
                 commission,
-                exit_reason,
                 pnl,
-                pnl_percentage,
-                execution_price,
-                holding_days
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                pnl_percent,
+                holding_days,
+                signal_reason
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             values,
             page_size=100

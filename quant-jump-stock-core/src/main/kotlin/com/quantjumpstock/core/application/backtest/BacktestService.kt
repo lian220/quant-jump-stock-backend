@@ -40,7 +40,8 @@ class BacktestService(
             initialCapital = request.initialCapital,
             timestamp = timestamp,
             source = "quantiq-core",
-            userId = userId
+            userId = userId,
+            tickers = request.tickers
         )
 
         try {
@@ -75,7 +76,8 @@ data class BacktestRequestDto(
     val strategyId: Long,
     val startDate: String,          // yyyy-MM-dd
     val endDate: String,            // yyyy-MM-dd
-    val initialCapital: BigDecimal
+    val initialCapital: BigDecimal,
+    val tickers: List<String> = emptyList()  // 백테스트 대상 종목
 )
 
 /**

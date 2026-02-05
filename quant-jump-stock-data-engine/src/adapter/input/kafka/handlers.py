@@ -459,7 +459,7 @@ class BacktestRequestHandler(MessageHandler):
 
     @property
     def topic(self) -> str:
-        return "backtest.request.run"
+        return "quantiq.backtest.request"
 
     def handle(self, message: KafkaMessage) -> None:
         start_time = self._log_start(message, "백테스트 실행 요청")
@@ -467,7 +467,7 @@ class BacktestRequestHandler(MessageHandler):
         # 페이로드에서 파라미터 추출
         payload = message.payload
         strategy_id = payload.get("strategyId")
-        symbols = payload.get("symbols", [])
+        tickers = payload.get("tickers", [])
         start_date = payload.get("startDate")
         end_date = payload.get("endDate")
         initial_capital = payload.get("initialCapital", 10000000.0)
@@ -478,9 +478,9 @@ class BacktestRequestHandler(MessageHandler):
             self._publish_failure(message, "strategyId is required", start_time)
             raise ValueError("strategyId is required")
 
-        if not symbols:
-            self._publish_failure(message, "symbols is required", start_time)
-            raise ValueError("symbols is required")
+        if not tickers:
+            self._publish_failure(message, "tickers is required", start_time)
+            raise ValueError("tickers is required")
 
         if not start_date or not end_date:
             self._publish_failure(message, "startDate and endDate are required", start_time)
@@ -494,7 +494,7 @@ class BacktestRequestHandler(MessageHandler):
                 # 백테스트 실행
                 result = await self.backtest_service.run_backtest(
                     strategy_id=strategy_id,
-                    symbols=symbols,
+                    tickers=tickers,
                     start_date=start_date,
                     end_date=end_date,
                     initial_capital=initial_capital,
@@ -531,7 +531,7 @@ class BacktestRequestHandler(MessageHandler):
                     "backtestResultId": result_id,
                     "strategyId": strategy_id,
                     "strategyName": result.strategy_name,
-                    "symbols": symbols,
+                    "tickers": tickers,
                     "startDate": start_date,
                     "endDate": end_date,
                     "initialCapital": float(result.initial_capital),

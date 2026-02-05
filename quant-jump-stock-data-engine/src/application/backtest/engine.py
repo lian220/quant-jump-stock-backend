@@ -61,7 +61,7 @@ class BacktestConfig:
         start_date: 백테스트 시작일
         end_date: 백테스트 종료일
         initial_capital: 초기 자본금
-        symbols: 거래 대상 종목 목록
+        tickers: 거래 대상 종목 목록
         commission_rate: 수수료율 (0.00015 = 0.015%)
         slippage_rate: 슬리피지율 (0.001 = 0.1%)
         max_positions: 최대 동시 보유 종목 수
@@ -71,7 +71,7 @@ class BacktestConfig:
     start_date: date
     end_date: date
     initial_capital: Decimal = Decimal("10000000")
-    symbols: List[str] = field(default_factory=list)
+    tickers: List[str] = field(default_factory=list)
     commission_rate: Decimal = Decimal("0.00015")  # 0.015%
     slippage_rate: Decimal = Decimal("0.001")      # 0.1%
     max_positions: int = 10
@@ -147,7 +147,7 @@ class BacktestEngine:
             logger.info(
                 f"Starting backtest: {strategy.name}, "
                 f"{len(trading_dates)} trading days, "
-                f"{len(self.config.symbols)} symbols"
+                f"{len(self.config.tickers)} symbols"
             )
 
             # 4. 일별 시뮬레이션
@@ -192,7 +192,7 @@ class BacktestEngine:
 
     def _load_data(self) -> None:
         """데이터 로드"""
-        symbols = self.config.symbols
+        symbols = self.config.tickers
 
         if not symbols:
             logger.warning("No symbols specified")
@@ -290,7 +290,7 @@ class BacktestEngine:
         prices: Dict[str, Decimal]
     ) -> None:
         """전략 시그널 처리"""
-        for symbol in self.config.symbols:
+        for symbol in self.config.tickers:
             if symbol not in self._data:
                 continue
 
@@ -507,7 +507,7 @@ class BacktestEngine:
             exit_reason_counts=exit_reason_counts,
             execution_time_seconds=execution_time,
             metadata={
-                "symbols": self.config.symbols,
+                "symbols": self.config.tickers,
                 "commission_rate": float(self.config.commission_rate),
                 "slippage_rate": float(self.config.slippage_rate),
             }
