@@ -60,6 +60,26 @@ class MongoDataLoader(DataLoader):
             self._client = MongoClient(self.uri)
         return self._client
 
+    def load_single(
+        self,
+        symbol: str,
+        start_date: date,
+        end_date: date
+    ) -> pd.DataFrame:
+        """
+        단일 종목 데이터 로드
+
+        Args:
+            symbol: 종목 코드
+            start_date: 시작일
+            end_date: 종료일
+
+        Returns:
+            DataFrame with OHLCV columns
+        """
+        result = self.load([symbol], start_date, end_date)
+        return result.get(symbol, pd.DataFrame())
+
     def load(
         self,
         symbols: List[str],
