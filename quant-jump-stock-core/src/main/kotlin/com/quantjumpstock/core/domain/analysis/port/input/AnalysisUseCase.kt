@@ -4,7 +4,7 @@ import java.util.concurrent.CompletableFuture
 
 /**
  * 분석 UseCase (Input Port)
- * 기술적 분석, 감정 분석, 통합 분석을 트리거하는 비즈니스 로직
+ * 기술적 분석, 감정 분석을 트리거하는 비즈니스 로직
  */
 interface AnalysisUseCase {
 
@@ -21,11 +21,4 @@ interface AnalysisUseCase {
      * @param targetDate 분석 대상 날짜 (yyyy-MM-dd), null이면 당일
      */
     fun triggerSentimentAnalysis(targetDate: String? = null): CompletableFuture<String>
-
-    /**
-     * 통합 분석 트리거
-     * 기술적 분석 + 감정 분석 + 통합 점수 계산
-     * @param targetDate 분석 대상 날짜 (yyyy-MM-dd), null이면 당일
-     */
-    fun triggerCombinedAnalysis(targetDate: String? = null): CompletableFuture<String>
 }

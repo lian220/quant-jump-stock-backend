@@ -50,8 +50,7 @@ def read_root():
         "subscribed_kafka_topics": [
             "economic.data.update.request",
             "analysis.technical.request",
-            "analysis.sentiment.request",
-            "analysis.combined.request"
+            "analysis.sentiment.request"
         ],
         "api_purpose": "Read-only health checks and status queries",
         "timestamp": datetime.now(KST).isoformat()
@@ -97,8 +96,7 @@ def main():
     topics = [
         settings.KAFKA_TOPIC_ECONOMIC_DATA_UPDATE_REQUEST,
         "analysis.technical.request",
-        "analysis.sentiment.request",
-        "analysis.combined.request"
+        "analysis.sentiment.request"
     ]
     consumer.subscribe(topics)
     logger.info(f"Subscribed to topics: {topics}")
@@ -258,43 +256,6 @@ def main():
                     except Exception as e:
                         logger.error(f"❌ 뉴스 감정 분석 실패: {e}")
                         KafkaEventPublisher.publish("ANALYSIS_SENTIMENT_FAILED", {
-                            "status": "failed",
-                            "timestamp": datetime.now(KST).isoformat(),
-                            "requestId": request_id,
-                            "error": str(e)
-                        })
-
-                # 통합 분석 요청 처리
-                elif topic_name == "analysis.combined.request":
-                    payload = message.get("payload", message)
-                    request_id = payload.get("requestId", "unknown")
-                    thread_ts = payload.get("threadTs")
-                    target_date = payload.get("targetDate")  # 분석 기준 날짜
-
-                    logger.info("=" * 80)
-                    logger.info("통합 분석 요청 Kafka 메시지 수신")
-                    logger.info(f"Request ID: {request_id}")
-                    logger.info(f"Target Date: {target_date or '당일'}")
-                    logger.info(f"Thread TS: {thread_ts}")
-                    logger.info("=" * 80)
-
-                    start_time = time.time()
-                    try:
-                        result = recommendation_service.run_combined_analysis(request_id, thread_ts, target_date)
-                        elapsed_time = time.time() - start_time
-
-                        logger.info("✅ 통합 분석 완료")
-
-                        KafkaEventPublisher.publish("ANALYSIS_COMPLETED", {
-                            "status": "success",
-                            "timestamp": datetime.now(KST).isoformat(),
-                            "requestId": request_id,
-                            "duration": elapsed_time,
-                            "result": result
-                        })
-                    except Exception as e:
-                        logger.error(f"❌ 통합 분석 실패: {e}")
-                        KafkaEventPublisher.publish("ANALYSIS_FAILED", {
                             "status": "failed",
                             "timestamp": datetime.now(KST).isoformat(),
                             "requestId": request_id,

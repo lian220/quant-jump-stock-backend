@@ -92,16 +92,19 @@ echo ""
 
 cd "$PROJECT_ROOT"
 
-# Load environment
+# Load environment (순서: .env.common → .env.local/.env.prod)
+set -a
+if [ -f ".env.common" ]; then
+    source ".env.common"
+fi
 if [ -f "$ENV_FILE" ]; then
-    set -a
     source "$ENV_FILE"
-    set +a
-    echo -e "${GREEN}✓ Loaded environment from ${ENV_FILE}${NC}"
+    echo -e "${GREEN}✓ Loaded: .env.common → ${ENV_FILE}${NC}"
 else
     echo -e "${RED}❌ ${ENV_FILE} not found!${NC}"
     exit 1
 fi
+set +a
 
 # Build Quant Jump Stock Core
 if [ "$SKIP_BUILD" = false ]; then

@@ -25,7 +25,6 @@ import java.util.concurrent.CompletableFuture
  * 지원하는 분석 유형:
  * - 기술적 분석 (Technical Analysis): SMA, RSI, MACD
  * - 감정 분석 (Sentiment Analysis): 뉴스 감성 점수
- * - 통합 분석 (Combined Analysis): 기술적 + 감정 + 경제 데이터 통합
  * - 병렬 분석 (Parallel Analysis): 기술적 + 감정 동시 실행
  */
 @Tag(name = "Analysis", description = "주식 분석 API - 기술적 분석, 감정 분석, 통합 분석")
@@ -188,10 +187,6 @@ class AnalysisController(
         summary = "병렬 분석 실행 (기술적 + 감정 동시)",
         description = """
             기술적 분석과 감정 분석을 동시에 실행합니다.
-
-            **차이점:**
-            - /combined: 순차 실행 (1단계 → 2단계 → 3단계)
-            - /parallel: 동시 실행 (기술적 || 감정)
 
             **장점:**
             - 실행 시간 단축 (약 50% 절감)

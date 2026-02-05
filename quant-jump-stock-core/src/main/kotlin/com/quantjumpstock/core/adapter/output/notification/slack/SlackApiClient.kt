@@ -309,57 +309,6 @@ class SlackApiClient(
     }
 
     /**
-     * 통합 분석 요청 알림 (스레드 루트 메시지)
-     *
-     * @param requestId 요청 ID
-     * @param targetDate 분석 대상 날짜 (yyyy-MM-dd), null이면 당일
-     * @return Slack 스레드 타임스탬프 (답글용)
-     */
-    fun notifyCombinedAnalysisRequest(requestId: String, targetDate: String? = null): String? {
-        if (slackBotToken.isBlank()) {
-            logger.warn("⚠️ Slack Bot Token 없음 - Webhook으로 fallback")
-            notifyViaWebhook("🧩 통합 분석 요청", requestId, "통합 분석", targetDate)
-            return null
-        }
-
-        try {
-            val dateInfo = targetDate ?: "당일"
-            val message = SlackApiMessage(
-                channel = slackChannel,
-                text = "🧩 통합 분석 요청",
-                attachments = listOf(
-                    SlackAttachment(
-                        color = "9c27b0",
-                        title = "통합 분석 시작",
-                        text = "기술적 분석 + 감정 분석 + 통합 점수 계산이 요청되었습니다.",
-                        fields = listOf(
-                            SlackField("Request ID", requestId, true),
-                            SlackField("Target Date", "📅 $dateInfo", true),
-                            SlackField("Timestamp", getCurrentTimeKST(), true),
-                            SlackField("Source", "Quartz Scheduler", true),
-                            SlackField("Status", "🔄 Processing", true)
-                        )
-                    )
-                )
-            )
-
-            val response = sendToSlackApi(message)
-            val threadTs = response?.ts
-
-            if (threadTs != null) {
-                logger.info("✅ Slack 스레드 루트 생성: requestId=$requestId, threadTs=$threadTs")
-            } else {
-                logger.warn("⚠️ Slack 메시지 발송 성공하지만 threadTs 없음")
-            }
-
-            return threadTs
-        } catch (e: Exception) {
-            logger.error("❌ Slack API 알림 발송 실패", e)
-            return null
-        }
-    }
-
-    /**
      * 분석 오류 알림
      */
     fun notifyAnalysisError(requestId: String, analysisType: String, error: String) {

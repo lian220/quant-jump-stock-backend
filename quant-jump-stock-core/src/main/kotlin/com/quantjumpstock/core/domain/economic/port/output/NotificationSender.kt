@@ -36,14 +36,6 @@ interface NotificationSender {
     fun notifySentimentAnalysisRequest(requestId: String, targetDate: String? = null): String?
 
     /**
-     * 통합 분석 요청 알림 (스레드 루트 메시지)
-     * @param requestId 요청 ID
-     * @param targetDate 분석 대상 날짜 (yyyy-MM-dd), null이면 당일
-     * @return Slack 스레드 타임스탬프 (threadTs)
-     */
-    fun notifyCombinedAnalysisRequest(requestId: String, targetDate: String? = null): String?
-
-    /**
      * 분석 오류 알림
      */
     fun notifyAnalysisError(requestId: String, analysisType: String, error: String)

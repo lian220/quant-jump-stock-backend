@@ -40,14 +40,12 @@ interface SchedulerApi {
             등록된 모든 스케줄의 상태와 설정 정보를 조회합니다.
 
             **등록된 스케줄:**
-            1. economicDataUpdateTrigger (06:05 KST): 경제 데이터 업데이트
-            2. economicDataUpdate2Trigger (23:00 KST): 경제 데이터 재수집 + Vertex AI 예측
-            3. parallelAnalysisTrigger (23:05 KST): 병렬 분석
-            4. combinedAnalysisTrigger (23:45 KST): 통합 분석
-            5. autoBuyTrigger (23:50 KST): 자동 매수
-            6. cleanupOrdersTrigger (06:30 KST): 주문 정리
-            7. portfolioProfitReportTrigger (07:00 KST): 포트폴리오 수익 보고
-            8. autoSellTrigger (매 1분): 자동 매도 체크
+            1. economicDataUpdate2Trigger (22:00 KST): 경제 데이터 재수집 + Vertex AI 예측
+            2. parallelAnalysisTrigger (23:05 KST): 병렬 분석 (기술적 + 감정)
+            3. autoBuyTrigger (00:30 KST): 자동 매수
+            4. cleanupOrdersTrigger (06:30 KST): 주문 정리
+            5. portfolioProfitReportTrigger (07:00 KST): 포트폴리오 수익 보고
+            6. autoSellTrigger (매 1분): 자동 매도 체크
         """
     )
     @StandardApiResponses

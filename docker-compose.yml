@@ -77,11 +77,12 @@ services:
     container_name: qjs-postgres
     profiles: [ "local" ]
     env_file:
+      - .env.common
       - ${ENV_FILE:-.env.local}
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-quantiq}
-      POSTGRES_USER: ${POSTGRES_USER:-quantiq_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-quantiq_password}
+      POSTGRES_DB: ${DB_NAME:-quantiq}
+      POSTGRES_USER: ${DB_USER:-quantiq_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-quantiq_password}
       PGDATA: /var/lib/postgresql/data/pgdata
     ports:
       - "5432:5432"
@@ -140,6 +141,7 @@ services:
       kafka:
         condition: service_started
     env_file:
+      - .env.common
       - ${ENV_FILE:-.env.local}
     environment:
       TZ: "Asia/Seoul"
@@ -153,10 +155,8 @@ services:
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL_SCHEDULER}
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
       SLACK_CHANNEL: "C0A1XASTLH2"
-      # Google Cloud (override .env.local path for container)
+      # Google Cloud (container path override)
       GOOGLE_APPLICATION_CREDENTIALS: "/app/credentials/vertex-ai-key.json"
-      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-arboreal-path-479202-c5}
-      GCP_REGION: ${GCP_REGION:-us-central1}
       # ML Scripts path
       ML_SCRIPTS_DIR: "/scripts/ml"
     volumes:
@@ -184,6 +184,7 @@ services:
       kafka:
         condition: service_started
     env_file:
+      - .env.common
       - ${ENV_FILE:-.env.local}
     volumes:
       - ./credentials:/app/credentials
@@ -205,7 +206,7 @@ services:
       # MongoDB - use env vars (supports both local and prod)
       SPRING_DATA_MONGODB_URI: ${MONGODB_URI:-mongodb://quantiq_user:quantiq_password@mongodb:27017/stock_trading?authSource=admin}
       # Kafka
-      SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
       # Slack
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL_TRADING}
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN}
@@ -217,14 +218,8 @@ services:
       DB_DUAL_WRITE: "true"
       DB_READ_SOURCE: "rdb"
       RUN_MIGRATION: "true"
-      # Google Cloud (override .env.local path for container)
+      # Google Cloud (container path override)
       GOOGLE_APPLICATION_CREDENTIALS: "/app/credentials/vertex-ai-key.json"
-      # Vertex AI용 PostgreSQL (Supabase - 외부 접근 가능)
-      VERTEX_AI_DB_HOST: ${VERTEX_AI_DB_HOST}
-      VERTEX_AI_DB_PORT: ${VERTEX_AI_DB_PORT:-5432}
-      VERTEX_AI_DB_NAME: ${VERTEX_AI_DB_NAME}
-      VERTEX_AI_DB_USER: ${VERTEX_AI_DB_USER}
-      VERTEX_AI_DB_PASSWORD: ${VERTEX_AI_DB_PASSWORD}
       # JVM Heap Settings
       JAVA_OPTS: "-Xmx768m -Xms512m -XX:MaxMetaspaceSize=256m"
     deploy:

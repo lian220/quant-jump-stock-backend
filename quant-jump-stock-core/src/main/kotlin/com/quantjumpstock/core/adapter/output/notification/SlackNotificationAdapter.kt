@@ -29,10 +29,6 @@ class SlackNotificationAdapter(
         return slackApiClient.notifySentimentAnalysisRequest(requestId, targetDate)
     }
 
-    override fun notifyCombinedAnalysisRequest(requestId: String, targetDate: String?): String? {
-        return slackApiClient.notifyCombinedAnalysisRequest(requestId, targetDate)
-    }
-
     override fun notifyAnalysisError(requestId: String, analysisType: String, error: String) {
         slackApiClient.notifyAnalysisError(requestId, analysisType, error)
     }

@@ -77,7 +77,7 @@ spring:
   # Kafka Configuration
   # ============================================
   kafka:
-    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
       group-id: quantiq-core
       max-poll-records: 10

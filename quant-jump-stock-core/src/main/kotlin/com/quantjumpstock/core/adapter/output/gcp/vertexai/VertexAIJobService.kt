@@ -170,7 +170,11 @@ class VertexAIJobService(
     private fun buildCustomJob(packageUri: String, envVars: Map<String, String>): CustomJob {
         val vertexAiProps = gcpProperties.vertexAi
 
-        val envVarList = envVars.map { (key, value) ->
+        // 빈 값 필터링 (Vertex AI는 빈 값을 허용하지 않음)
+        val filteredEnvVars = envVars.filterValues { it.isNotBlank() }
+        logger.info("📋 환경 변수 필터링: ${envVars.size}개 → ${filteredEnvVars.size}개 (빈 값 ${envVars.size - filteredEnvVars.size}개 제거)")
+
+        val envVarList = filteredEnvVars.map { (key, value) ->
             EnvVar.newBuilder()
                 .setName(key)
                 .setValue(value)
