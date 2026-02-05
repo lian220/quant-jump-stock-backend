@@ -76,6 +76,7 @@ class RiskManager:
         take_profit_pct: 익절 비율 (0.15 = 15%)
         trailing_stop_enabled: 트레일링 스탑 활성화
         trailing_stop_pct: 트레일링 스탑 비율 (고점 대비)
+        trailing_trigger_profit_pct: 트레일링 스탑 활성화 트리거 수익률 (0.05 = 5%)
         max_drawdown_pct: 포트폴리오 최대 낙폭 비율
     """
 
@@ -85,12 +86,14 @@ class RiskManager:
         take_profit_pct: float = 0.15,
         trailing_stop_enabled: bool = False,
         trailing_stop_pct: float = 0.05,
+        trailing_trigger_profit_pct: float = 0.0,
         max_drawdown_pct: float = 0.20
     ):
         self.stop_loss_pct = Decimal(str(stop_loss_pct))
         self.take_profit_pct = Decimal(str(take_profit_pct))
         self.trailing_stop_enabled = trailing_stop_enabled
         self.trailing_stop_pct = Decimal(str(trailing_stop_pct))
+        self.trailing_trigger_profit_pct = Decimal(str(trailing_trigger_profit_pct))
         self.max_drawdown_pct = Decimal(str(max_drawdown_pct))
 
         # 히스토리 추적 (포트폴리오 MDD 계산용)
@@ -112,6 +115,7 @@ class RiskManager:
             take_profit_pct=risk_management.take_profit_pct,
             trailing_stop_enabled=risk_management.trailing_stop,
             trailing_stop_pct=risk_management.trailing_stop_pct,
+            trailing_trigger_profit_pct=getattr(risk_management, 'trailing_trigger_profit_pct', 0.0),
             max_drawdown_pct=risk_management.max_drawdown_pct
         )
 
@@ -236,11 +240,22 @@ class RiskManager:
         Trailing Stop 조건 체크
 
         고점 대비 하락률이 trailing_stop_pct 이상이면 청산
-        단, 현재 손익이 양수일 때만 적용 (수익 구간에서만)
+
+        활성화 조건:
+        - trailing_trigger_profit_pct가 설정된 경우: 해당 수익률 이상 달성 시에만 적용
+        - trailing_trigger_profit_pct가 0인 경우: 수익 구간(pnl > 0)에서만 적용
         """
-        # 수익 구간에서만 트레일링 스탑 적용
-        if position.pnl_pct <= 0:
-            return None
+        pnl_pct_ratio = position.pnl_pct / 100  # Decimal ratio (예: 0.05 = 5%)
+
+        # 트레일링 스탑 활성화 조건 체크
+        if self.trailing_trigger_profit_pct > 0:
+            # trigger_profit 설정된 경우: 해당 수익률 이상 달성 시에만 적용
+            if pnl_pct_ratio < self.trailing_trigger_profit_pct:
+                return None
+        else:
+            # trigger_profit 미설정(0): 수익 구간에서만 적용 (기존 동작)
+            if position.pnl_pct <= 0:
+                return None
 
         # 고점 대비 하락률 계산
         drawdown_from_high = position.drawdown_from_high / 100  # Decimal ratio
@@ -320,10 +335,14 @@ class RiskManager:
         self._portfolio_high_watermark = Decimal("0")
 
     def __repr__(self) -> str:
+        trailing_info = 'OFF'
+        if self.trailing_stop_enabled:
+            trigger = f"@{self.trailing_trigger_profit_pct * 100:.1f}%" if self.trailing_trigger_profit_pct > 0 else "@profit"
+            trailing_info = f"ON({trigger}, -{self.trailing_stop_pct * 100:.1f}%)"
         return (
             f"RiskManager("
             f"stop_loss={self.stop_loss_pct * 100:.1f}%, "
             f"take_profit={self.take_profit_pct * 100:.1f}%, "
-            f"trailing_stop={'ON' if self.trailing_stop_enabled else 'OFF'}"
+            f"trailing_stop={trailing_info}"
             f")"
         )

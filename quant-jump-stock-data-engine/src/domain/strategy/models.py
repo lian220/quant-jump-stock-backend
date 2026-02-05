@@ -122,6 +122,7 @@ class RiskManagement(BaseModel):
     max_drawdown_pct: float = Field(default=0.2, ge=0.0, le=1.0, description="최대 낙폭 (20%)")
     trailing_stop: bool = Field(default=False, description="트레일링 스탑 활성화")
     trailing_stop_pct: float = Field(default=0.05, ge=0.0, le=1.0, description="트레일링 스탑 비율")
+    trailing_trigger_profit_pct: float = Field(default=0.0, ge=0.0, le=1.0, description="트레일링 스탑 활성화 트리거 수익률 (0이면 수익 구간에서 활성화)")
 
 
 class StrategyDefinition(BaseModel):

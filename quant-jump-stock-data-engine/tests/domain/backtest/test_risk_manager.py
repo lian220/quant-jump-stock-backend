@@ -238,6 +238,142 @@ class TestRiskManagerTrailingStop:
         # Then: 트레일링 스탑 비활성화이므로 청산 없음
         assert len(exits) == 0
 
+    def test_trailing_stop_with_trigger_profit_activated(self):
+        """트리거 수익률 이상 달성 시 트레일링 스탑 활성화"""
+        # Given: 5% 트리거, 3% 트레일링 스탑 설정
+        risk_manager = RiskManager(
+            stop_loss_pct=0.05,
+            take_profit_pct=0.20,
+            trailing_stop_enabled=True,
+            trailing_stop_pct=0.03,
+            trailing_trigger_profit_pct=0.05  # 5% 수익 달성 시 활성화
+        )
+
+        # 진입가 10000원, 고점 11000원(+10%), 현재가 10670원(고점 대비 -3%, 진입 대비 +6.7%)
+        portfolio = Portfolio(initial_capital=Decimal("1000000"))
+        position = Position(
+            symbol="005930",
+            entry_date=date(2024, 1, 1),
+            entry_price=Decimal("10000"),
+            quantity=10,
+            current_price=Decimal("10670")
+        )
+        position.highest_price = Decimal("11000")
+        portfolio.positions["005930"] = position
+
+        prices = {"005930": Decimal("10670")}
+
+        # When
+        exits = risk_manager.check_risk_exits(portfolio, prices, date(2024, 1, 10))
+
+        # Then: 수익률 6.7% >= 트리거 5% 이므로 트레일링 스탑 발동
+        assert len(exits) == 1
+        assert exits[0].exit_type == RiskExitType.TRAILING_STOP
+        assert exits[0].reason == ExitReason.TRAILING_STOP
+
+    def test_trailing_stop_with_trigger_profit_not_activated(self):
+        """트리거 수익률 미달 시 트레일링 스탑 미활성화"""
+        # Given: 10% 트리거, 3% 트레일링 스탑 설정
+        risk_manager = RiskManager(
+            stop_loss_pct=0.05,
+            take_profit_pct=0.20,
+            trailing_stop_enabled=True,
+            trailing_stop_pct=0.03,
+            trailing_trigger_profit_pct=0.10  # 10% 수익 달성 시 활성화
+        )
+
+        # 진입가 10000원, 고점 10500원(+5%), 현재가 10185원(고점 대비 -3%, 진입 대비 +1.85%)
+        portfolio = Portfolio(initial_capital=Decimal("1000000"))
+        position = Position(
+            symbol="005930",
+            entry_date=date(2024, 1, 1),
+            entry_price=Decimal("10000"),
+            quantity=10,
+            current_price=Decimal("10185")
+        )
+        position.highest_price = Decimal("10500")
+        portfolio.positions["005930"] = position
+
+        prices = {"005930": Decimal("10185")}
+
+        # When
+        exits = risk_manager.check_risk_exits(portfolio, prices, date(2024, 1, 10))
+
+        # Then: 수익률 1.85% < 트리거 10% 이므로 트레일링 스탑 미발동
+        assert len(exits) == 0
+
+    def test_trailing_stop_trigger_profit_exact_threshold(self):
+        """정확히 트리거 수익률 도달 시 트레일링 스탑 활성화"""
+        # Given: 5% 트리거, 5% 트레일링 스탑 설정
+        risk_manager = RiskManager(
+            stop_loss_pct=0.05,
+            take_profit_pct=0.20,
+            trailing_stop_enabled=True,
+            trailing_stop_pct=0.05,
+            trailing_trigger_profit_pct=0.05  # 5% 수익 달성 시 활성화
+        )
+
+        # 진입가 10000원, 고점 11000원(+10%), 현재가 10500원(진입 대비 +5%, 고점 대비 -4.5%)
+        portfolio = Portfolio(initial_capital=Decimal("1000000"))
+        position = Position(
+            symbol="005930",
+            entry_date=date(2024, 1, 1),
+            entry_price=Decimal("10000"),
+            quantity=10,
+            current_price=Decimal("10500")
+        )
+        position.highest_price = Decimal("11000")
+        portfolio.positions["005930"] = position
+
+        prices = {"005930": Decimal("10500")}
+
+        # When
+        exits = risk_manager.check_risk_exits(portfolio, prices, date(2024, 1, 10))
+
+        # Then: 수익률 5% >= 트리거 5%, 고점 대비 -4.5% < -5% 이므로 미발동
+        assert len(exits) == 0
+
+    def test_trailing_stop_jira_example(self):
+        """Jira 티켓 예시 시나리오 테스트
+
+        예시:
+        - 진입가: 10,000원
+        - 최고가: 11,000원 (10% 수익) → 트레일링 활성화
+        - 현재가: 10,670원 → 최고가 대비 -3% → 자동 매도
+        """
+        # Given: 5% 트리거, 3% 트레일링 스탑 (Jira 예시)
+        risk_manager = RiskManager(
+            stop_loss_pct=0.05,
+            take_profit_pct=0.20,
+            trailing_stop_enabled=True,
+            trailing_stop_pct=0.03,  # 최고점 대비 -3%
+            trailing_trigger_profit_pct=0.05  # 5% 수익 달성 시 활성화
+        )
+
+        # Jira 예시 시나리오
+        portfolio = Portfolio(initial_capital=Decimal("1000000"))
+        position = Position(
+            symbol="005930",
+            entry_date=date(2024, 1, 1),
+            entry_price=Decimal("10000"),  # 진입가 10,000원
+            quantity=10,
+            current_price=Decimal("10670")  # 현재가 10,670원 (진입 대비 +6.7%)
+        )
+        position.highest_price = Decimal("11000")  # 최고가 11,000원 (10% 수익)
+        portfolio.positions["005930"] = position
+
+        prices = {"005930": Decimal("10670")}
+
+        # When
+        exits = risk_manager.check_risk_exits(portfolio, prices, date(2024, 1, 10))
+
+        # Then: 트레일링 스탑 발동
+        # - 수익률 6.7% >= 트리거 5% (활성화됨)
+        # - 고점 대비 하락률: (10670/11000 - 1) = -3% <= -3% (발동)
+        assert len(exits) == 1
+        assert exits[0].exit_type == RiskExitType.TRAILING_STOP
+        assert exits[0].symbol == "005930"
+
 
 class TestRiskManagerMultiplePositions:
     """다중 포지션 테스트"""
@@ -339,6 +475,7 @@ class TestRiskManagerFromModel:
             take_profit_pct=0.20,
             trailing_stop=True,
             trailing_stop_pct=0.07,
+            trailing_trigger_profit_pct=0.05,
             max_drawdown_pct=0.25
         )
 
@@ -350,7 +487,26 @@ class TestRiskManagerFromModel:
         assert risk_manager.take_profit_pct == Decimal("0.20")
         assert risk_manager.trailing_stop_enabled is True
         assert risk_manager.trailing_stop_pct == Decimal("0.07")
+        assert risk_manager.trailing_trigger_profit_pct == Decimal("0.05")
         assert risk_manager.max_drawdown_pct == Decimal("0.25")
+
+    def test_from_risk_management_default_trigger_profit(self):
+        """trailing_trigger_profit_pct 미설정 시 기본값 0.0"""
+        from src.domain.strategy.models import RiskManagement
+
+        # Given: trailing_trigger_profit_pct 미설정
+        risk_config = RiskManagement(
+            stop_loss_pct=0.05,
+            take_profit_pct=0.15,
+            trailing_stop=True,
+            trailing_stop_pct=0.05
+        )
+
+        # When
+        risk_manager = RiskManager.from_risk_management(risk_config)
+
+        # Then: 기본값 0.0
+        assert risk_manager.trailing_trigger_profit_pct == Decimal("0.0")
 
 
 class TestPosition:
