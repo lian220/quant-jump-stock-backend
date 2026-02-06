@@ -87,13 +87,11 @@ class BacktestPersistenceAdapter(
 
         logger.debug("백테스트 거래 내역 일괄 저장: count={}", trades.size)
 
-        // Pre-fetch: 동일 BacktestResult를 N번 조회하지 않도록 미리 로드
+        // Pre-fetch: 단일 쿼리로 모든 BacktestResult를 한번에 로드
         val resultIds = trades.mapNotNull { it.backtestResultId }.distinct()
-        val resultEntityMap = resultIds.associateWith { id ->
-            backtestResultJpaRepository.findById(id).orElseThrow {
-                IllegalArgumentException("BacktestResult not found: $id")
-            }
-        }
+        val resultEntityMap = backtestResultJpaRepository.findAllById(resultIds).associateBy { it.id }
+        val missingIds = resultIds.filter { it !in resultEntityMap }
+        require(missingIds.isEmpty()) { "BacktestResult not found for ids: $missingIds" }
 
         val entities = trades.map { trade ->
             val backtestResultId = trade.backtestResultId
