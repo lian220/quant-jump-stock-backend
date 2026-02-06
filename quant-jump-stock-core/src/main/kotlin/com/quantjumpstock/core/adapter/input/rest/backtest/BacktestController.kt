@@ -23,7 +23,8 @@ import org.springframework.web.bind.annotation.*
 @CrossOrigin(origins = ["http://localhost:3000", "http://localhost:4000"], allowCredentials = "true")
 class BacktestController(
     private val backtestService: BacktestService,
-    private val authService: AuthService
+    private val authService: AuthService,
+    private val userTierService: UserTierService
 ) {
 
     /**
@@ -46,11 +47,28 @@ class BacktestController(
     fun runBacktest(
         @RequestHeader("Authorization", required = false) authorization: String?,
         @RequestBody request: BacktestRunRequest
-    ): ResponseEntity<BacktestRunResponse> {
+    ): ResponseEntity<Any> {
         val userId = authorization?.let { extractUserId(it) }
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
+        // Rate Limit 체크
+        val limitResult = userTierService.checkBacktestLimit(userId)
+        if (!limitResult.allowed) {
+            val rateLimitResponse = BacktestRateLimitResponse(
+                dailyLimit = limitResult.dailyLimit,
+                remaining = limitResult.remaining,
+                tier = limitResult.tier,
+                message = limitResult.message ?: "일일 백테스트 한도를 초과했습니다."
+            )
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", "86400")
+                .body(rateLimitResponse)
+        }
+
         val response = backtestService.runBacktest(request, userId)
+
+        // 성공 시 카운트 증가
+        userTierService.incrementBacktestCount(userId)
 
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(response)
     }

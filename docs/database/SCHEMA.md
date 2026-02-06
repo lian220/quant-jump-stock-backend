@@ -85,9 +85,12 @@ QuantiQ 시스템은 **PostgreSQL**과 **MongoDB** 두 가지 데이터베이스
 | created_at | TIMESTAMP | NOT NULL | 생성일시 |
 | updated_at | TIMESTAMP | NOT NULL | 수정일시 |
 
-**비즈니스 로직**:
-- FREE 티어: 일 3회 백테스트 제한
-- PREMIUM 티어: 무제한 백테스트
+**비즈니스 로직 (Rate Limiting)**:
+- FREE 티어: 일 3회 백테스트 제한 (`FREE_DAILY_LIMIT = 3`)
+- PREMIUM / PREMIUM_YEARLY 티어: 무제한 백테스트
+- `backtest_count_today`: 오늘 실행한 백테스트 횟수 (자정에 자동 리셋)
+- `backtest_count_reset_at`: 카운트 리셋 기준 날짜 (날짜 변경 시 Entity 레벨에서 자동 리셋)
+- 한도 초과 시 429 Too Many Requests 응답 (Retry-After: 86400초)
 
 ---
 
