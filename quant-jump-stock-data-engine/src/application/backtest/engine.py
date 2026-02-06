@@ -460,7 +460,7 @@ class BacktestEngine:
             p.market_value for p in self._portfolio.positions.values()
         )
 
-        # 벤치마크 정규화 값 계산 (초기자본 × close / first_close)
+        # 벤치마크 정규화 값 계산 (초기자본 x close / first_close)
         benchmark_normalized = None
         if self._benchmark_data is not None:
             target_dt = pd.Timestamp(current_date)
@@ -732,6 +732,7 @@ class BacktestEngine:
             "high_watermark": self._high_watermark,
             "positions": positions,
             "trade_count": len(self._portfolio.trades),
+            "benchmark_first_close": float(self._benchmark_first_close) if self._benchmark_first_close else None,
         }
 
     def resume_from_checkpoint(
@@ -796,6 +797,17 @@ class BacktestEngine:
                     benchmark=benchmark_val,
                 )
                 self._equity_curve.append(point)
+
+        # 벤치마크 첫 번째 종가 복원
+        bm_first = checkpoint_data.get("benchmark_first_close")
+        if bm_first is not None:
+            self._benchmark_first_close = Decimal(str(bm_first))
+
+            # _benchmark_values 복원 (정규화된 값에서 원래 종가 역산)
+            for point in self._equity_curve:
+                if point.benchmark is not None:
+                    raw_close = point.benchmark * self._benchmark_first_close / self.config.initial_capital
+                    self._benchmark_values.append((point.date, raw_close))
 
         # 리스크 매니저 초기화
         self._risk_manager = RiskManager.from_risk_management(
