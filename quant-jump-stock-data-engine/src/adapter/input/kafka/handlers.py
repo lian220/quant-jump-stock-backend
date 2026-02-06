@@ -362,10 +362,52 @@ class BacktestServiceProtocol(Protocol):
     ) -> object:
         ...
 
+    async def run_backtest_incremental(
+        self,
+        strategy_id: int,
+        tickers: list,
+        start_date: str,
+        end_date: str,
+        initial_capital: float,
+        commission_rate: float,
+        slippage_rate: float,
+        existing_backtest: Optional[dict],
+        checkpoint: Optional[object]
+    ) -> object:
+        """증분 백테스트 실행"""
+        ...
+
 
 class BacktestRepositoryProtocol(Protocol):
     """백테스트 결과 저장소 프로토콜"""
     async def save_result(self, result: object, request_id: Optional[str] = None) -> int:
+        ...
+
+    async def find_active_backtest(
+        self,
+        strategy_id: int,
+        tickers: list,
+        start_date: str
+    ) -> Optional[dict]:
+        """기존 활성 백테스트 조회"""
+        ...
+
+    async def get_latest_checkpoint(self, backtest_id: int) -> Optional[object]:
+        """최신 체크포인트 조회"""
+        ...
+
+    async def save_checkpoint(self, checkpoint: object) -> int:
+        """체크포인트 저장"""
+        ...
+
+    async def update_result_incremental(
+        self,
+        backtest_id: int,
+        result: object,
+        new_trades: list,
+        request_id: Optional[str] = None
+    ) -> None:
+        """증분 결과 업데이트"""
         ...
 
 
@@ -473,6 +515,7 @@ class BacktestRequestHandler(MessageHandler):
         initial_capital = payload.get("initialCapital", 10000000.0)
         commission_rate = payload.get("commissionRate", 0.00015)
         slippage_rate = payload.get("slippageRate", 0.0001)
+        force_full = payload.get("forceFull", False)  # 강제 전체 실행 옵션
 
         if not strategy_id:
             self._publish_failure(message, "strategyId is required", start_time)
@@ -491,24 +534,86 @@ class BacktestRequestHandler(MessageHandler):
             import asyncio
 
             async def _execute():
-                # 백테스트 실행
-                result = await self.backtest_service.run_backtest(
+                existing_backtest = None
+                checkpoint = None
+
+                # 강제 전체 실행이 아닌 경우, 기존 백테스트 및 체크포인트 조회
+                if not force_full:
+                    existing_backtest = await self.backtest_repository.find_active_backtest(
+                        strategy_id=strategy_id,
+                        tickers=tickers,
+                        start_date=start_date
+                    )
+
+                    if existing_backtest:
+                        checkpoint = await self.backtest_repository.get_latest_checkpoint(
+                            existing_backtest["id"]
+                        )
+                        logger.info(
+                            f"기존 백테스트 발견: id={existing_backtest['id']}, "
+                            f"checkpoint={'있음' if checkpoint else '없음'}"
+                        )
+
+                # 증분 백테스트 실행
+                incremental_result = await self.backtest_service.run_backtest_incremental(
                     strategy_id=strategy_id,
                     tickers=tickers,
                     start_date=start_date,
                     end_date=end_date,
                     initial_capital=initial_capital,
                     commission_rate=commission_rate,
-                    slippage_rate=slippage_rate
+                    slippage_rate=slippage_rate,
+                    existing_backtest=existing_backtest,
+                    checkpoint=checkpoint
                 )
 
-                # PostgreSQL에 결과 저장
-                result_id = await self.backtest_repository.save_result(
-                    result,
-                    request_id=message.request_id
-                )
+                result = incremental_result.result
 
-                return result, result_id
+                # 결과 저장 (증분 vs 전체)
+                if incremental_result.is_incremental and incremental_result.backtest_id:
+                    # 증분: 기존 결과 업데이트
+                    await self.backtest_repository.update_result_incremental(
+                        backtest_id=incremental_result.backtest_id,
+                        result=result,
+                        new_trades=incremental_result.new_trades,
+                        request_id=message.request_id
+                    )
+                    result_id = incremental_result.backtest_id
+                    logger.info(f"증분 백테스트 결과 업데이트: id={result_id}")
+                else:
+                    # 전체: 새 결과 저장
+                    result_id = await self.backtest_repository.save_result(
+                        result,
+                        request_id=message.request_id
+                    )
+                    logger.info(f"새 백테스트 결과 저장: id={result_id}")
+
+                # 체크포인트 저장
+                from adapter.output.postgresql.backtest_repository import BacktestCheckpoint
+                from datetime import datetime as dt, date as date_type
+                from decimal import Decimal
+
+                checkpoint_data = incremental_result.checkpoint_data
+                checkpoint_date_value = checkpoint_data["checkpoint_date"]
+                # checkpoint_date가 이미 date 객체인 경우와 문자열인 경우 모두 처리
+                if isinstance(checkpoint_date_value, date_type):
+                    checkpoint_date = checkpoint_date_value
+                else:
+                    checkpoint_date = dt.strptime(checkpoint_date_value, "%Y-%m-%d").date()
+
+                new_checkpoint = BacktestCheckpoint(
+                    backtest_id=result_id,
+                    checkpoint_date=checkpoint_date,
+                    cash=Decimal(str(checkpoint_data["cash"])),
+                    high_watermark=Decimal(str(checkpoint_data["high_watermark"])),
+                    positions=checkpoint_data["positions"],
+                    equity_curve=checkpoint_data["equity_curve"],
+                    trade_count=checkpoint_data["trade_count"]
+                )
+                await self.backtest_repository.save_checkpoint(new_checkpoint)
+                logger.info(f"체크포인트 저장: backtest_id={result_id}, date={checkpoint_date}")
+
+                return result, result_id, incremental_result.is_incremental
 
             # 이벤트 루프 생성/재사용
             try:
@@ -517,10 +622,11 @@ class BacktestRequestHandler(MessageHandler):
                 loop = asyncio.new_event_loop()
                 asyncio.set_event_loop(loop)
 
-            result, result_id = loop.run_until_complete(_execute())
+            result, result_id, is_incremental = loop.run_until_complete(_execute())
 
             elapsed = time.time() - start_time
-            self._log_success("백테스트 실행", start_time)
+            execution_type = "증분" if is_incremental else "전체"
+            self._log_success(f"백테스트 실행 ({execution_type})", start_time)
 
             # 성공 이벤트 발행
             if self.publisher:
@@ -534,6 +640,7 @@ class BacktestRequestHandler(MessageHandler):
                     "tickers": tickers,
                     "startDate": start_date,
                     "endDate": end_date,
+                    "isIncremental": is_incremental,
                     "initialCapital": float(result.initial_capital),
                     "finalValue": float(result.final_value),
                     "totalReturn": float(result.total_return),
@@ -555,7 +662,8 @@ class BacktestRequestHandler(MessageHandler):
 
             logger.info(
                 f"백테스트 완료: result_id={result_id}, "
-                f"strategy={strategy_id}, trades={result.total_trades}"
+                f"strategy={strategy_id}, trades={result.total_trades}, "
+                f"mode={execution_type}"
             )
 
         except Exception as e:

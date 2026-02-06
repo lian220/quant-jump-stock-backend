@@ -608,3 +608,211 @@ class BacktestEngine:
             error_message=error_message,
             execution_time_seconds=execution_time
         )
+
+    # ============================================================
+    # Checkpoint Methods (증분 백테스트 지원)
+    # ============================================================
+
+    def create_checkpoint(self) -> Dict[str, any]:
+        """
+        현재 엔진 상태로 체크포인트 생성
+
+        Returns:
+            체크포인트 데이터 딕셔너리
+        """
+        if not self._portfolio:
+            raise ValueError("Portfolio not initialized")
+
+        # 포지션 직렬화
+        positions = [
+            {
+                "symbol": pos.symbol,
+                "entry_date": pos.entry_date.isoformat(),
+                "entry_price": float(pos.entry_price),
+                "quantity": pos.quantity,
+                "current_price": float(pos.current_price),
+                "highest_price": float(pos.highest_price),
+                "lowest_price": float(pos.lowest_price),
+                "cost_basis": float(pos.cost_basis),
+            }
+            for pos in self._portfolio.positions.values()
+        ]
+
+        # 수익 곡선 직렬화
+        equity_curve = [
+            {
+                "date": point.date.isoformat(),
+                "equity": float(point.equity),
+                "cash": float(point.cash),
+                "positions_value": float(point.positions_value),
+                "drawdown_pct": float(point.drawdown_pct),
+            }
+            for point in self._equity_curve
+        ]
+
+        return {
+            "checkpoint_date": self._portfolio.current_date,
+            "cash": self._portfolio.cash,
+            "high_watermark": self._high_watermark,
+            "positions": positions,
+            "equity_curve": equity_curve,
+            "trade_count": len(self._portfolio.trades),
+        }
+
+    def resume_from_checkpoint(
+        self,
+        checkpoint_data: Dict[str, any],
+        strategy: StrategyDefinition
+    ) -> None:
+        """
+        체크포인트에서 엔진 상태 복원
+
+        Args:
+            checkpoint_data: 체크포인트 데이터
+            strategy: 전략 정의
+        """
+        from datetime import datetime
+
+        # 포트폴리오 초기화
+        self._portfolio = Portfolio(
+            initial_capital=self.config.initial_capital
+        )
+
+        # 현금 및 거래 수 복원
+        self._portfolio.cash = Decimal(str(checkpoint_data["cash"]))
+        self._high_watermark = Decimal(str(checkpoint_data["high_watermark"]))
+
+        # 포지션 복원
+        for pos_data in checkpoint_data.get("positions", []):
+            entry_date = datetime.fromisoformat(pos_data["entry_date"]).date()
+            position = Position(
+                symbol=pos_data["symbol"],
+                entry_date=entry_date,
+                entry_price=Decimal(str(pos_data["entry_price"])),
+                quantity=pos_data["quantity"],
+                current_price=Decimal(str(pos_data["current_price"])),
+                highest_price=Decimal(str(pos_data["highest_price"])),
+                lowest_price=Decimal(str(pos_data["lowest_price"])),
+                cost_basis=Decimal(str(pos_data["cost_basis"])),
+            )
+            self._portfolio.positions[pos_data["symbol"]] = position
+
+        # 수익 곡선 복원
+        self._equity_curve = []
+        for point_data in checkpoint_data.get("equity_curve", []):
+            point_date = datetime.fromisoformat(point_data["date"]).date()
+            point = EquityCurvePoint(
+                date=point_date,
+                equity=Decimal(str(point_data["equity"])),
+                cash=Decimal(str(point_data["cash"])),
+                positions_value=Decimal(str(point_data["positions_value"])),
+                drawdown_pct=Decimal(str(point_data["drawdown_pct"])),
+            )
+            self._equity_curve.append(point)
+
+        # 리스크 매니저 초기화
+        self._risk_manager = RiskManager.from_risk_management(
+            strategy.risk_management
+        )
+
+        logger.info(
+            f"Resumed from checkpoint: date={checkpoint_data.get('checkpoint_date')}, "
+            f"cash={self._portfolio.cash}, positions={len(self._portfolio.positions)}"
+        )
+
+    def run_incremental(
+        self,
+        strategy: StrategyDefinition,
+        resume_from_date: date
+    ) -> BacktestResult:
+        """
+        체크포인트 이후부터 증분 실행
+
+        Args:
+            strategy: 전략 정의
+            resume_from_date: 재개 시작일 (이 날짜 다음날부터 실행)
+
+        Returns:
+            BacktestResult: 전체 백테스트 결과 (증분 포함)
+        """
+        start_time = time.time()
+
+        try:
+            # 1. 데이터 로드 (전체 기간)
+            self._load_data()
+
+            if not self._data:
+                return self._create_error_result(
+                    strategy, "No data loaded for any symbol"
+                )
+
+            # 2. 거래일 목록 생성 (resume_from_date 이후만)
+            all_trading_dates = self._get_trading_dates()
+            trading_dates = [
+                d for d in all_trading_dates
+                if d > resume_from_date
+            ]
+
+            if not trading_dates:
+                logger.info(f"No new trading dates after {resume_from_date}")
+                # 새 거래일이 없으면 현재 상태로 결과 생성
+                execution_time = time.time() - start_time
+                return self._create_result(strategy, execution_time)
+
+            logger.info(
+                f"Running incremental backtest: {strategy.name}, "
+                f"from {resume_from_date} to {self.config.end_date}, "
+                f"{len(trading_dates)} new trading days"
+            )
+
+            # 3. 일별 시뮬레이션 (새 거래일만)
+            for current_date in trading_dates:
+                self._process_day(strategy, current_date)
+
+            # 4. 결과 생성
+            execution_time = time.time() - start_time
+            result = self._create_result(strategy, execution_time)
+
+            logger.info(
+                f"Incremental backtest completed: {strategy.name}, "
+                f"Total return: {result.total_return:.2f}%, "
+                f"New trades: {result.total_trades}"
+            )
+
+            return result
+
+        except Exception as e:
+            logger.exception(f"Incremental backtest failed: {strategy.name}")
+            execution_time = time.time() - start_time
+            return self._create_error_result(
+                strategy, str(e), execution_time
+            )
+
+    def get_new_trades_since(self, trade_count_before: int) -> List[BacktestTrade]:
+        """
+        체크포인트 이후 새로 생긴 거래만 반환
+
+        Args:
+            trade_count_before: 체크포인트 시점의 거래 수
+
+        Returns:
+            새로 생긴 거래 목록
+        """
+        new_trades = self._portfolio.trades[trade_count_before:]
+
+        return [
+            BacktestTrade(
+                symbol=t.symbol,
+                trade_type=t.trade_type.value,
+                trade_date=t.trade_date,
+                price=t.price,
+                quantity=t.quantity,
+                amount=t.amount,
+                commission=t.commission,
+                exit_reason=t.exit_reason.value if t.exit_reason else None,
+                realized_pnl=t.realized_pnl,
+                realized_pnl_pct=t.realized_pnl_pct,
+                entry_price=t.entry_price
+            )
+            for t in new_trades
+        ]

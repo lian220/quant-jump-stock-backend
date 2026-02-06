@@ -36,6 +36,7 @@ services:
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
       KAFKA_HEAP_OPTS: "-Xmx512M -Xms256M"
     deploy:
       resources:
@@ -84,12 +85,15 @@ services:
       POSTGRES_USER: ${DB_USER:-quantiq_user}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-quantiq_password}
       PGDATA: /var/lib/postgresql/data/pgdata
+      # pg_isready가 사용하는 환경변수
+      PGUSER: ${DB_USER:-quantiq_user}
+      PGDATABASE: ${DB_NAME:-quantiq}
     ports:
       - "5432:5432"
     volumes:
       - ./data/postgres:/var/lib/postgresql/data
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U quantiq_user" ]
+      test: [ "CMD-SHELL", "pg_isready" ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -110,10 +114,13 @@ services:
     profiles: [ "local" ]
     ports:
       - "27017:27017"
+    env_file:
+      - .env.common
+      - ${ENV_FILE:-.env.local}
     environment:
-      MONGO_INITDB_ROOT_USERNAME: quantiq_user
-      MONGO_INITDB_ROOT_PASSWORD: quantiq_password
-      MONGO_INITDB_DATABASE: stock_trading
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-quantiq_user}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-quantiq_password}
+      MONGO_INITDB_DATABASE: ${MONGO_DB_NAME:-stock_trading}
     command: mongod --auth --wiredTigerCacheSizeGB 0.5
     volumes:
       - ./data/mongodb:/data/db
