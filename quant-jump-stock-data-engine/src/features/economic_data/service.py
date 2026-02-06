@@ -286,12 +286,19 @@ class EconomicDataService:
                     # 각 날짜별로 데이터를 그룹화
                     for date, row in df.iterrows():
                         date_str = date.strftime("%Y-%m-%d")
-                        close_price = float(row["Close"]) if "Close" in row and not pd.isna(row["Close"]) else None
 
-                        if close_price is not None:
-                            daily_data[date_str]["stocks"][ticker] = {
-                                "close_price": close_price
+                        # OHLCV 전체 저장
+                        if "Close" in row and not pd.isna(row["Close"]):
+                            stock_data = {
+                                "open": float(row["Open"]) if "Open" in row and not pd.isna(row["Open"]) else None,
+                                "high": float(row["High"]) if "High" in row and not pd.isna(row["High"]) else None,
+                                "low": float(row["Low"]) if "Low" in row and not pd.isna(row["Low"]) else None,
+                                "close": float(row["Close"]),
+                                "volume": int(row["Volume"]) if "Volume" in row and not pd.isna(row["Volume"]) else 0,
+                                # 하위 호환성을 위해 close_price도 유지
+                                "close_price": float(row["Close"])
                             }
+                            daily_data[date_str]["stocks"][ticker] = stock_data
 
                     success_count += 1
                     logger.info(f"✅ 종목 데이터 수집 완료: {ticker} ({len(df)}일)")

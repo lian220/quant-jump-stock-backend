@@ -124,6 +124,31 @@ data class AnalysisPredictionCompletedPayload(
 )
 
 // ============================================================================
+// Backtest Events
+// ============================================================================
+
+data class BacktestRequestPayload(
+    val requestId: String,
+    val strategyId: Long,
+    val startDate: String,      // yyyy-MM-dd
+    val endDate: String,        // yyyy-MM-dd
+    val initialCapital: String, // BigDecimal as String for JSON serialization
+    val userId: String?
+)
+
+data class BacktestCompletedPayload(
+    val requestId: String,
+    val strategyId: Long,
+    val status: String,         // success, failed
+    val totalReturn: Double?,
+    val sharpeRatio: Double?,
+    val maxDrawdown: Double?,
+    val winRate: Double?,
+    val duration: Double,       // execution time in seconds
+    val errorMessage: String? = null
+)
+
+// ============================================================================
 // Economic Events
 // ============================================================================
 
@@ -177,6 +202,11 @@ object EventTopics {
     const val ECONOMIC_DATA_SYNC_REQUESTED = "quantiq.economic.data.sync.requested"
     const val ECONOMIC_DATA_UPDATED = "quantiq.economic.data.updated"
     const val ECONOMIC_DATA_SYNC_FAILED = "quantiq.economic.data.sync.failed"
+
+    // Backtest
+    const val BACKTEST_REQUEST = "quantiq.backtest.request"
+    const val BACKTEST_COMPLETED = "quantiq.backtest.completed"
+    const val BACKTEST_FAILED = "quantiq.backtest.failed"
 
     // Legacy (backward compatibility)
     @Deprecated("Use ANALYSIS_REQUEST instead")

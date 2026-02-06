@@ -181,6 +181,69 @@ class EconomicDataSyncFailedPayload:
 
 
 # ============================================================================
+# Backtest Events
+# ============================================================================
+
+@dataclass
+class BacktestRequestPayload:
+    """백테스트 실행 요청 페이로드"""
+    requestId: str
+    strategyId: int
+    symbols: List[str]
+    startDate: str  # YYYY-MM-DD
+    endDate: str    # YYYY-MM-DD
+    initialCapital: float = 10000000.0
+    commissionRate: float = 0.00015
+    slippageRate: float = 0.0001
+    userId: Optional[int] = None
+    priority: str = "normal"  # high, normal, low
+
+
+@dataclass
+class BacktestCompletedPayload:
+    """백테스트 완료 페이로드"""
+    requestId: str
+    backtestResultId: int
+    strategyId: int
+    strategyName: str
+    symbols: List[str]
+    startDate: str
+    endDate: str
+    # 성과 지표
+    initialCapital: float
+    finalValue: float
+    totalReturn: float
+    totalReturnPct: float
+    cagr: float
+    mdd: float
+    sharpeRatio: Optional[float]
+    sortinoRatio: Optional[float]
+    volatility: Optional[float]
+    # 거래 통계
+    totalTrades: int
+    winningTrades: int
+    losingTrades: int
+    winRate: Optional[float]
+    profitFactor: Optional[float]
+    avgWin: Optional[float]
+    avgLoss: Optional[float]
+    # 실행 정보
+    executionTimeSeconds: float
+    status: str = "completed"
+
+
+@dataclass
+class BacktestFailedPayload:
+    """백테스트 실패 페이로드"""
+    requestId: str
+    strategyId: int
+    errorCode: str
+    errorMessage: str
+    retryable: bool = True
+    retryAfter: Optional[int] = None
+
+
+# ============================================================================
 # Event Topics (Constants)
 # ============================================================================
 
@@ -209,6 +272,11 @@ class EventTopics:
     ECONOMIC_DATA_SYNC_REQUESTED = "quantiq.economic.data.sync.requested"
     ECONOMIC_DATA_UPDATED = "quantiq.economic.data.updated"
     ECONOMIC_DATA_SYNC_FAILED = "quantiq.economic.data.sync.failed"
+
+    # Backtest
+    BACKTEST_REQUEST = "quantiq.backtest.request"
+    BACKTEST_COMPLETED = "backtest.results.completed"
+    BACKTEST_FAILED = "backtest.results.failed"
 
     # Legacy (backward compatibility)
     LEGACY_ANALYSIS_REQUEST = "quantiq.analysis.request"

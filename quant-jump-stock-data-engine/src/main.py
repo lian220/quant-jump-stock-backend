@@ -36,10 +36,13 @@ from adapter.input.kafka.handlers import (
     SentimentAnalysisHandler,
     StrategyExecutionHandler,
     VertexAIHandler,
+    BacktestRequestHandler,
 )
 from adapter.input.rest import ml_router
 from adapter.output.kafka.producer import KafkaProducerAdapter
 from adapter.output.postgresql.stock_repository import PostgresStockRepository
+from adapter.output.postgresql.strategy_repository import PostgresStrategyRepository
+from adapter.output.postgresql.backtest_repository import PostgresBacktestRepository
 from adapter.output.mongodb.analysis_repository import (
     MongoPriceRepository,
     MongoAnalysisResultRepository,
@@ -51,6 +54,7 @@ from application.analysis import (
     RecommendationApplicationService,
 )
 from application.ml.prediction_service import PredictionService, GcpConfig
+from application.backtest import BacktestApplicationService
 
 KST = timezone('Asia/Seoul')
 
@@ -87,6 +91,7 @@ def read_root():
             "analysis.sentiment.request",
             "strategy.execution.request",
             "vertex.ai.run.request",
+            "quantiq.backtest.request",
         ],
         "timestamp": datetime.now(KST).isoformat()
     }
@@ -251,7 +256,34 @@ def main():
         publisher=kafka_producer
     )
 
-    # 6.1. Vertex AI 핸들러 (GCP 활성화 시에만)
+    # 6.1. 백테스트 핸들러 (SCRUM-186)
+    strategy_pg_repository = PostgresStrategyRepository(
+        host=settings.postgres_host,
+        port=settings.postgres_port,
+        database=settings.postgres_db,
+        user=settings.postgres_user,
+        password=settings.postgres_password
+    )
+
+    backtest_repository = PostgresBacktestRepository(
+        host=settings.postgres_host,
+        port=settings.postgres_port,
+        database=settings.postgres_db,
+        user=settings.postgres_user,
+        password=settings.postgres_password
+    )
+
+    backtest_service = BacktestApplicationService(
+        strategy_repository=strategy_pg_repository
+    )
+
+    backtest_handler = BacktestRequestHandler(
+        backtest_service=backtest_service,
+        backtest_repository=backtest_repository,
+        publisher=kafka_producer
+    )
+
+    # 6.2. Vertex AI 핸들러 (GCP 활성화 시에만)
     vertexai_handler = None
     prediction_service = None
 
@@ -296,6 +328,7 @@ def main():
     consumer.register_handler(economic_handler.topic, economic_handler.handle)
     consumer.register_handler(technical_handler.topic, technical_handler.handle)
     consumer.register_handler(sentiment_handler.topic, sentiment_handler.handle)
+    consumer.register_handler(backtest_handler.topic, backtest_handler.handle)
 
     # Vertex AI 핸들러 등록 (GCP 활성화 시)
     if vertexai_handler:
@@ -306,6 +339,7 @@ def main():
         economic_handler.topic,
         technical_handler.topic,
         sentiment_handler.topic,
+        backtest_handler.topic,
     ]
 
     # Vertex AI 토픽 추가 (GCP 활성화 시)
