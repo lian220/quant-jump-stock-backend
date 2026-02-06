@@ -9,7 +9,7 @@ import logging
 import time
 from abc import ABC, abstractmethod
 from typing import Optional, Protocol
-from datetime import datetime
+from datetime import datetime, date
 from pytz import timezone
 
 from .consumer import KafkaMessage
@@ -372,7 +372,8 @@ class BacktestServiceProtocol(Protocol):
         commission_rate: float,
         slippage_rate: float,
         existing_backtest: Optional[dict],
-        checkpoint: Optional[object]
+        checkpoint: Optional[object],
+        equity_curve_data: Optional[list] = None
     ) -> object:
         """증분 백테스트 실행"""
         ...
@@ -399,7 +400,7 @@ class BacktestRepositoryProtocol(Protocol):
     async def get_equity_curve_until(
         self,
         backtest_id: int,
-        until_date: object
+        until_date: date
     ) -> list:
         """특정 날짜까지의 equity_curve 조회 (backtest_results에서)"""
         ...

@@ -133,6 +133,7 @@ class PostgresBacktestRepository:
 
     def _insert_result(self, cursor, result: BacktestResult) -> int:
         """backtest_results 테이블에 삽입"""
+        now = get_kst_now()
         cursor.execute(
             """
             INSERT INTO backtest_results (
@@ -189,8 +190,8 @@ class PostgresBacktestRepository:
                 float(result.beta) if result.beta else None,
                 json.dumps([{"date": str(p.date), "equity": float(p.equity)} for p in result.equity_curve]) if result.equity_curve else None,
                 "COMPLETED",
-                get_kst_now(),  # created_at
-                get_kst_now()   # completed_at
+                now,  # created_at
+                now   # completed_at
             )
         )
         return cursor.fetchone()[0]
@@ -618,8 +619,7 @@ class PostgresBacktestRepository:
                             cash = EXCLUDED.cash,
                             high_watermark = EXCLUDED.high_watermark,
                             positions = EXCLUDED.positions,
-                            trade_count = EXCLUDED.trade_count,
-                            created_at = EXCLUDED.created_at
+                            trade_count = EXCLUDED.trade_count
                         RETURNING id
                         """,
                         (
