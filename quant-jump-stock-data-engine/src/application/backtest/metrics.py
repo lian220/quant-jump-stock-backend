@@ -252,7 +252,8 @@ def calculate_sortino_ratio(
     returns_array = np.array(daily_returns)
     negative_returns = returns_array[returns_array < 0]
 
-    if len(negative_returns) == 0:
+    # ddof=1 사용 시 최소 2개 샘플 필요 (1개면 NaN 발생)
+    if len(negative_returns) < 2:
         return None
 
     # 하방 변동성 (연환산)

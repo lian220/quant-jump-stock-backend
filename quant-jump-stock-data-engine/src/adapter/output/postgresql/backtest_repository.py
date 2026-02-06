@@ -339,17 +339,17 @@ class PostgresBacktestRepository:
         """DB 행 → 도메인 모델 변환"""
         trades = [
             BacktestTrade(
-                symbol=t["symbol"],
-                trade_type=t["trade_type"].lower(),
+                symbol=t["ticker"],  # DB column: ticker
+                trade_type=t["side"].lower(),  # DB column: side
                 trade_date=t["trade_date"],
                 price=Decimal(str(t["price"])),
                 quantity=t["quantity"],
                 amount=Decimal(str(t["amount"])),
                 commission=Decimal(str(t["commission"])),
-                exit_reason=t.get("exit_reason"),
+                exit_reason=t.get("signal_reason"),  # DB column: signal_reason
                 realized_pnl=Decimal(str(t["pnl"])) if t.get("pnl") else None,
-                realized_pnl_pct=Decimal(str(t["pnl_percentage"])) if t.get("pnl_percentage") else None,
-                entry_price=Decimal(str(t["execution_price"])) if t.get("execution_price") else None,
+                realized_pnl_pct=Decimal(str(t["pnl_percent"])) if t.get("pnl_percent") else None,  # DB column: pnl_percent
+                entry_price=None,  # Not stored in DB
                 holding_days=t.get("holding_days")
             )
             for t in trade_rows

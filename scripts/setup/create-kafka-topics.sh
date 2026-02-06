@@ -6,8 +6,8 @@
 # 사용법: bash scripts/setup/create-kafka-topics.sh
 #
 # 토픽 네이밍 규칙:
-#   {도메인}.{기능}.{요청/응답}
-#   예: backtest.run.request, backtest.run.result
+#   {prefix}.{도메인}.{상태}
+#   예: quantiq.backtest.request, quantiq.backtest.completed
 # ============================================================
 
 set -e
@@ -44,10 +44,13 @@ declare -a topic_definitions=(
 
     # ----------------------------------------------------------
     # 🧪 백테스트 (Backtest) - SCRUM-162
+    # EventSchema.kt / schema.py 참조
     # ----------------------------------------------------------
-    "backtest.run.request|Spring → Data Engine: 백테스트 실행 요청"
-    "backtest.run.result|Data Engine → Spring: 백테스트 결과 (성과 지표, 거래 내역)"
-    "backtest.progress|Data Engine → Spring: 백테스트 진행 상황 (선택적)"
+    "quantiq.backtest.request|Spring → Data Engine: 백테스트 실행 요청"
+    "quantiq.backtest.completed|Data Engine → Spring: 백테스트 완료 (Kotlin EventSchema)"
+    "quantiq.backtest.failed|Data Engine → Spring: 백테스트 실패 (Kotlin EventSchema)"
+    "backtest.results.completed|Data Engine → Spring: 백테스트 완료 (Python EventTopics)"
+    "backtest.results.failed|Data Engine → Spring: 백테스트 실패 (Python EventTopics)"
 
     # ----------------------------------------------------------
     # 📡 실시간 신호 (Trading Signals)
