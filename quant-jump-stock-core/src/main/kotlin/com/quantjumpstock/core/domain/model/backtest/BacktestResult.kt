@@ -1,5 +1,6 @@
 package com.quantjumpstock.core.domain.model.backtest
 
+import com.quantjumpstock.core.domain.port.output.Benchmark
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -21,7 +22,7 @@ data class BacktestResult(
     val startDate: LocalDate,
     val endDate: LocalDate,
     val initialCapital: BigDecimal,
-    val benchmark: String = "SPY",
+    val benchmark: String = Benchmark.DEFAULT_TICKER,
 
     // Performance Metrics
     val finalValue: BigDecimal,

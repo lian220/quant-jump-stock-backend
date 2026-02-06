@@ -6,6 +6,7 @@ import com.quantjumpstock.core.domain.model.backtest.BacktestResult
 import com.quantjumpstock.core.domain.model.backtest.BacktestStatus
 import com.quantjumpstock.core.domain.model.backtest.BacktestTrade
 import com.quantjumpstock.core.domain.model.backtest.BacktestTradeSide
+import com.quantjumpstock.core.domain.port.output.Benchmark
 import com.quantjumpstock.core.domain.port.output.BacktestResultRepository
 import com.quantjumpstock.core.domain.port.output.BacktestTradeRepository
 import org.slf4j.LoggerFactory
@@ -52,7 +53,7 @@ class BacktestResultSaveService(
                 ?: throw IllegalArgumentException("endDate is required"),
             initialCapital = parseBigDecimal(payload.get("initialCapital"))
                 ?: throw IllegalArgumentException("initialCapital is required"),
-            benchmark = payload.get("benchmark")?.asText() ?: "SPY",
+            benchmark = payload.get("benchmark")?.asText() ?: Benchmark.DEFAULT_TICKER,
             finalValue = parseBigDecimal(metrics.get("finalValue")) ?: BigDecimal.ZERO,
             totalReturn = parseBigDecimal(metrics.get("totalReturn")) ?: BigDecimal.ZERO,
             cagr = parseBigDecimal(metrics.get("cagr")) ?: BigDecimal.ZERO,
@@ -109,7 +110,7 @@ class BacktestResultSaveService(
                 ?: throw IllegalArgumentException("endDate is required"),
             initialCapital = parseBigDecimal(payload.get("initialCapital"))
                 ?: throw IllegalArgumentException("initialCapital is required"),
-            benchmark = payload.get("benchmark")?.asText() ?: "SPY",
+            benchmark = payload.get("benchmark")?.asText() ?: Benchmark.DEFAULT_TICKER,
             finalValue = BigDecimal.ZERO,
             totalReturn = BigDecimal.ZERO,
             cagr = BigDecimal.ZERO,

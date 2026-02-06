@@ -14,6 +14,7 @@ from datetime import datetime, date
 from pytz import timezone
 
 from adapter.output.postgresql.backtest_repository import BacktestCheckpoint
+from application.backtest.service import DEFAULT_BENCHMARK
 from .consumer import KafkaMessage
 
 KST = timezone('Asia/Seoul')
@@ -361,7 +362,7 @@ class BacktestServiceProtocol(Protocol):
         initial_capital: float,
         commission_rate: float,
         slippage_rate: float,
-        benchmark: str = "SPY"
+        benchmark: str = DEFAULT_BENCHMARK
     ) -> object:
         ...
 
@@ -377,7 +378,7 @@ class BacktestServiceProtocol(Protocol):
         existing_backtest: Optional[dict],
         checkpoint: Optional[object],
         equity_curve_data: Optional[list] = None,
-        benchmark: str = "SPY"
+        benchmark: str = DEFAULT_BENCHMARK
     ) -> object:
         """증분 백테스트 실행"""
         ...
@@ -529,7 +530,7 @@ class BacktestRequestHandler(MessageHandler):
         commission_rate = payload.get("commissionRate", 0.00015)
         slippage_rate = payload.get("slippageRate", 0.0001)
         force_full = payload.get("forceFull", False)  # 강제 전체 실행 옵션
-        benchmark = payload.get("benchmark", "SPY")
+        benchmark = payload.get("benchmark", DEFAULT_BENCHMARK)
 
         if not strategy_id:
             self._publish_failure(message, "strategyId is required", start_time)

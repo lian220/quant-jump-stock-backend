@@ -1,5 +1,6 @@
 package com.quantjumpstock.core.adapter.output.persistence.jpa
 
+import com.quantjumpstock.core.domain.port.output.Benchmark
 import jakarta.persistence.*
 import java.math.BigDecimal
 import java.time.LocalDate
@@ -37,7 +38,7 @@ data class BacktestResultEntity(
     val initialCapital: BigDecimal,
 
     @Column(length = 20)
-    val benchmark: String = "SPY",
+    val benchmark: String = Benchmark.DEFAULT_TICKER,
 
     // Performance Metrics
     @Column(name = "final_value", nullable = false, precision = 15, scale = 2)

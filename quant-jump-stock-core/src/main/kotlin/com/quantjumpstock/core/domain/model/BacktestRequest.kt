@@ -1,5 +1,6 @@
 package com.quantjumpstock.core.domain.model
 
+import com.quantjumpstock.core.domain.port.output.Benchmark
 import java.math.BigDecimal
 
 /**
@@ -15,7 +16,7 @@ data class BacktestRequest(
     val source: String = "quantiq-core",
     val userId: String? = null,
     val tickers: List<String> = emptyList(),  // 백테스트 대상 종목
-    val benchmark: String = "SPY",
+    val benchmark: String = Benchmark.DEFAULT_TICKER,
     val rebalancePeriod: String = "MONTHLY",
 
     // SCRUM-258: 리스크 파라미터

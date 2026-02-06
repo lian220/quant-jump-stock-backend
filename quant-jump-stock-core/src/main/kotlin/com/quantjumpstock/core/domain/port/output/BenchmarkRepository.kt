@@ -37,6 +37,10 @@ enum class Benchmark(
     DXY("DX-Y.NYB", "달러 인덱스", BenchmarkType.CURRENCY);
 
     companion object {
+        /** 기본 벤치마크 */
+        val DEFAULT = SPY
+        val DEFAULT_TICKER: String = DEFAULT.ticker
+
         fun findByTicker(ticker: String): Benchmark? =
             entries.find { it.ticker == ticker }
 

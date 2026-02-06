@@ -21,6 +21,9 @@ from domain.strategy.models import StrategyDefinition
 
 logger = logging.getLogger(__name__)
 
+# 기본 벤치마크 (Core API Benchmark Enum과 동기화)
+DEFAULT_BENCHMARK = "SPY"
+
 
 class IncrementalBacktestResult:
     """증분 백테스트 결과"""
@@ -69,7 +72,7 @@ class BacktestApplicationService:
         initial_capital: float = 10000000.0,
         commission_rate: float = 0.00015,
         slippage_rate: float = 0.0001,
-        benchmark: str = "SPY"
+        benchmark: str = DEFAULT_BENCHMARK
     ) -> BacktestResult:
         """
         백테스트 실행
@@ -206,7 +209,7 @@ class BacktestApplicationService:
         existing_backtest: Optional[Dict[str, Any]] = None,
         checkpoint: Optional[Dict[str, Any]] = None,
         equity_curve_data: Optional[List[Dict[str, Any]]] = None,
-        benchmark: str = "SPY"
+        benchmark: str = DEFAULT_BENCHMARK
     ) -> IncrementalBacktestResult:
         """
         증분 백테스트 실행
