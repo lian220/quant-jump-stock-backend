@@ -9,13 +9,13 @@ SCRUM-186: Kafka Consumer + PostgreSQL 결과 저장
 """
 
 import logging
-import os
 from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Optional, Dict, Any, Tuple
 
 import psycopg2
 
+from config.settings import get_settings
 from .engine import BacktestEngine, BacktestConfig
 from .data_loader import DataLoader
 from .data_loader_mongo import MongoDataLoader
@@ -174,18 +174,18 @@ class BacktestApplicationService:
         """
         conn = None
         try:
-            db_host = os.environ.get("DB_HOST", "localhost")
-            db_port = os.environ.get("DB_PORT", "5432")
-            db_name = os.environ.get("DB_NAME", "quantiq")
-            db_user = os.environ.get("DB_USER")
-            db_password = os.environ.get("DB_PASSWORD")
-            if not db_user or not db_password:
+            settings = get_settings()
+            db_cfg = settings.database
+            if not db_cfg.postgres_user or not db_cfg.postgres_password:
                 logger.warning("DB_USER/DB_PASSWORD not set; skipping benchmark name map")
                 return None
 
             conn = psycopg2.connect(
-                host=db_host, port=db_port,
-                dbname=db_name, user=db_user, password=db_password
+                host=db_cfg.postgres_host,
+                port=db_cfg.postgres_port,
+                dbname=db_cfg.postgres_db,
+                user=db_cfg.postgres_user,
+                password=db_cfg.postgres_password
             )
             with conn.cursor() as cursor:
                 cursor.execute("SELECT ticker, name FROM yfinance_indicators WHERE is_active = true")
