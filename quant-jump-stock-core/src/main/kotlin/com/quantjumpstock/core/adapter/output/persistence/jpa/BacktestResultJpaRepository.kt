@@ -39,6 +39,8 @@ interface BacktestResultJpaRepository : JpaRepository<BacktestResultEntity, Long
     """)
     fun findByIdWithTrades(id: Long): Optional<BacktestResultEntity>
 
+    fun findByRequestId(requestId: String): BacktestResultEntity?
+
     // 기간별 조회
     @Query("""
         SELECT br FROM BacktestResultEntity br

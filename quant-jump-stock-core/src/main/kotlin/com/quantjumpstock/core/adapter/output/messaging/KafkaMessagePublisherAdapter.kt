@@ -139,21 +139,31 @@ class KafkaMessagePublisherAdapter(
         request: BacktestRequest
     ) {
         try {
+            // 기본 페이로드 구성
+            val payload = mutableMapOf<String, Any?>(
+                "requestId" to request.requestId,
+                "strategyId" to request.strategyId,
+                "startDate" to request.startDate,
+                "endDate" to request.endDate,
+                "initialCapital" to request.initialCapital.toString(),
+                "userId" to request.userId,
+                "tickers" to request.tickers,
+                "benchmark" to request.benchmark,
+                "rebalancePeriod" to request.rebalancePeriod
+            )
+
+            // SCRUM-258: 리스크 파라미터 추가
+            request.riskSettings?.let { payload["riskSettings"] = it }
+            request.positionSizing?.let { payload["positionSizing"] = it }
+            request.tradingCosts?.let { payload["tradingCosts"] = it }
+
             val event = mapOf(
                 "eventId" to UUID.randomUUID().toString(),
                 "eventType" to topic,
                 "version" to "1.0",
                 "timestamp" to request.timestamp,
                 "source" to request.source,
-                "payload" to mapOf(
-                    "requestId" to request.requestId,
-                    "strategyId" to request.strategyId,
-                    "startDate" to request.startDate,
-                    "endDate" to request.endDate,
-                    "initialCapital" to request.initialCapital.toString(),
-                    "userId" to request.userId,
-                    "tickers" to request.tickers
-                )
+                "payload" to payload
             )
 
             val eventJson = objectMapper.writeValueAsString(event)

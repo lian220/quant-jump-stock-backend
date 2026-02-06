@@ -15,6 +15,9 @@ data class BacktestResultEntity(
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,
 
+    @Column(name = "request_id", unique = true, length = 36)
+    val requestId: String? = null,
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "strategy_id", nullable = false)
     val strategy: StrategyEntity,
