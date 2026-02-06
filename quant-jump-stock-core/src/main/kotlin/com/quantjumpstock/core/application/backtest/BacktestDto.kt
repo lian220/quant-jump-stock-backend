@@ -209,7 +209,8 @@ data class BacktestMetrics(
  */
 data class EquityCurvePoint(
     val date: String,
-    val value: BigDecimal
+    val value: BigDecimal,
+    val benchmark: BigDecimal? = null
 )
 
 /**

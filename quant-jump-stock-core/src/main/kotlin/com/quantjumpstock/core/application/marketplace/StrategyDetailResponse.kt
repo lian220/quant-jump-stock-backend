@@ -3,6 +3,7 @@ package com.quantjumpstock.core.application.marketplace
 import com.quantjumpstock.core.application.strategy.CategoryInfo
 import io.swagger.v3.oas.annotations.media.Schema
 import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.LocalDateTime
 
 /**
@@ -42,6 +43,15 @@ data class StrategyDetailResponse(
 
     @Schema(description = "현재 보유 종목")
     val currentHoldings: List<CurrentHoldingDto>,
+
+    @Schema(description = "전략 규칙 목록")
+    val rules: List<StrategyRuleDto> = emptyList(),
+
+    @Schema(description = "월별 수익률")
+    val monthlyReturns: List<MonthlyReturnDto> = emptyList(),
+
+    @Schema(description = "거래 내역")
+    val trades: List<BacktestTradeDto> = emptyList(),
 
     @Schema(description = "생성일")
     val createdAt: LocalDateTime
@@ -119,7 +129,10 @@ data class EquityCurvePointDto(
     val date: String,
 
     @Schema(description = "자산 가치", example = "10500000")
-    val value: BigDecimal
+    val value: BigDecimal,
+
+    @Schema(description = "벤치마크 가치 (초기자본 기준 정규화)", example = "10200000")
+    val benchmark: BigDecimal? = null
 )
 
 /**
@@ -138,4 +151,76 @@ data class CurrentHoldingDto(
 
     @Schema(description = "매수 사유")
     val reason: String?
+)
+
+/**
+ * 전략 규칙
+ */
+@Schema(description = "전략 규칙 정보")
+data class StrategyRuleDto(
+    @Schema(description = "규칙 ID", example = "1")
+    val id: Int,
+
+    @Schema(description = "규칙 이름", example = "골든 크로스 매수")
+    val name: String,
+
+    @Schema(description = "규칙 설명", example = "단기 이평선이 장기 이평선 상향 돌파")
+    val description: String,
+
+    @Schema(description = "규칙 유형 (entry, exit, filter, rebalance)", example = "entry")
+    val type: String,
+
+    @Schema(description = "규칙 파라미터")
+    val parameters: Map<String, Any>
+)
+
+/**
+ * 월별 수익률
+ */
+@Schema(description = "월별 수익률 정보")
+data class MonthlyReturnDto(
+    @Schema(description = "연도", example = "2024")
+    val year: Int,
+
+    @Schema(description = "월 (1-12)", example = "3")
+    val month: Int,
+
+    @Schema(description = "수익률 (%)", example = "2.35")
+    val returnPct: BigDecimal
+)
+
+/**
+ * 거래 내역
+ */
+@Schema(description = "거래 내역 정보")
+data class BacktestTradeDto(
+    @Schema(description = "거래일", example = "2024-01-15")
+    val tradeDate: String,
+
+    @Schema(description = "종목 코드", example = "AAPL")
+    val ticker: String,
+
+    @Schema(description = "매매 방향 (BUY/SELL)", example = "BUY")
+    val side: String,
+
+    @Schema(description = "수량", example = "10")
+    val quantity: Int,
+
+    @Schema(description = "가격", example = "185.50")
+    val price: BigDecimal,
+
+    @Schema(description = "거래 금액", example = "1855.00")
+    val amount: BigDecimal,
+
+    @Schema(description = "손익 (SELL만)", example = "150.00")
+    val pnl: BigDecimal?,
+
+    @Schema(description = "손익률 (SELL만, %)", example = "8.50")
+    val pnlPercent: BigDecimal?,
+
+    @Schema(description = "보유일수 (SELL만)", example = "45")
+    val holdingDays: Int?,
+
+    @Schema(description = "매매 사유")
+    val signalReason: String?
 )

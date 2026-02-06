@@ -10,7 +10,6 @@ AI 생성 전략 등 동적 전략은 MongoDB에서 관리.
 
 import logging
 from typing import List, Optional
-import psycopg2
 import psycopg2.extras
 from contextlib import contextmanager
 import json
@@ -29,35 +28,26 @@ class PostgresStrategyRepository(StrategyRepositoryPort):
     conditions JSONB는 Data Engine DSL 스키마와 동일.
     """
 
-    def __init__(
-        self,
-        host: str,
-        port: int,
-        database: str,
-        user: str,
-        password: str
-    ):
-        self._conn_params = {
-            "host": host,
-            "port": port,
-            "database": database,
-            "user": user,
-            "password": password
-        }
+    def __init__(self, pool):
+        """
+        Args:
+            pool: psycopg2.pool.ThreadedConnectionPool 인스턴스
+        """
+        self._pool = pool
 
     @contextmanager
     def _get_connection(self):
-        """PostgreSQL 연결 컨텍스트 매니저"""
+        """PostgreSQL 연결 컨텍스트 매니저 (풀에서 가져오고 반환)"""
         conn = None
         try:
-            conn = psycopg2.connect(**self._conn_params)
+            conn = self._pool.getconn()
             yield conn
         except Exception as e:
             logger.error(f"PostgreSQL connection error: {e}")
             raise
         finally:
             if conn:
-                conn.close()
+                self._pool.putconn(conn)
 
     async def find_by_id(self, strategy_id: str) -> Optional[StrategyDefinition]:
         """전략 ID로 조회"""

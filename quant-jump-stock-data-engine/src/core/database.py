@@ -1,6 +1,7 @@
 from pymongo import MongoClient
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 from contextlib import contextmanager
 from src.core.config import settings
 import logging
@@ -30,7 +31,7 @@ class MongoDB:
 
 
 class PostgreSQL:
-    """PostgreSQL 연결 관리 클래스"""
+    """PostgreSQL 연결 관리 클래스 (ThreadedConnectionPool 기반)"""
 
     _connection_pool = None
 
@@ -46,12 +47,29 @@ class PostgreSQL:
         }
 
     @classmethod
+    def get_pool(cls):
+        """ThreadedConnectionPool 싱글톤 반환 (minconn=2, maxconn=10)"""
+        if cls._connection_pool is None:
+            try:
+                cls._connection_pool = psycopg2.pool.ThreadedConnectionPool(
+                    minconn=2,
+                    maxconn=10,
+                    **cls.get_connection_params()
+                )
+                logger.info("PostgreSQL ThreadedConnectionPool created (min=2, max=10)")
+            except Exception as e:
+                logger.error(f"Failed to create PostgreSQL connection pool: {e}")
+                raise
+        return cls._connection_pool
+
+    @classmethod
     @contextmanager
     def get_connection(cls):
-        """PostgreSQL 연결 컨텍스트 매니저"""
+        """PostgreSQL 연결 컨텍스트 매니저 (풀에서 가져오고 반환)"""
+        pool = cls.get_pool()
         conn = None
         try:
-            conn = psycopg2.connect(**cls.get_connection_params())
+            conn = pool.getconn()
             yield conn
             conn.commit()
         except Exception as e:
@@ -61,7 +79,15 @@ class PostgreSQL:
             raise
         finally:
             if conn:
-                conn.close()
+                pool.putconn(conn)
+
+    @classmethod
+    def close_pool(cls):
+        """커넥션 풀 종료 (앱 종료 시 호출)"""
+        if cls._connection_pool is not None:
+            cls._connection_pool.closeall()
+            cls._connection_pool = None
+            logger.info("PostgreSQL connection pool closed")
 
     @classmethod
     def execute_query(cls, query, params=None, fetch_one=False, fetch_all=True):

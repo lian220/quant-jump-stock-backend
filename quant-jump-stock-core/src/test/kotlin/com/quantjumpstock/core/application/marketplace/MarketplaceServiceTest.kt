@@ -33,6 +33,12 @@ class MarketplaceServiceTest {
     @Mock
     private lateinit var marketplaceRepository: MarketplaceRepository
 
+    @Mock
+    private lateinit var conditionsParser: ConditionsParser
+
+    @Mock
+    private lateinit var monthlyReturnsCalculator: MonthlyReturnsCalculator
+
     @InjectMocks
     private lateinit var marketplaceService: MarketplaceService
 

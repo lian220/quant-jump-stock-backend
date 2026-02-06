@@ -17,6 +17,7 @@ import com.quantjumpstock.core.domain.model.marketplace.CurrentHolding
 import com.quantjumpstock.core.domain.model.marketplace.EquityCurvePoint
 import com.quantjumpstock.core.domain.model.marketplace.MarketplaceStrategy
 import com.quantjumpstock.core.domain.model.marketplace.StrategyDetail
+import com.quantjumpstock.core.domain.model.marketplace.BacktestTradeDetail
 import com.quantjumpstock.core.domain.model.strategy.RebalanceFrequency
 import com.quantjumpstock.core.domain.port.output.MarketplaceRepository
 import org.springframework.data.domain.Page
@@ -157,6 +158,7 @@ class MarketplacePersistenceAdapter(
             rebalanceFrequency = mapRebalanceFrequency(entity.rebalanceFrequency),
             latestBacktest = latestBacktest?.let { toBacktestDetailSummary(it) },
             currentHoldings = currentHoldings,
+            conditions = entity.conditions,
             createdAt = entity.createdAt
         )
     }
@@ -185,7 +187,21 @@ class MarketplacePersistenceAdapter(
             finalValue = entity.finalValue,
             startDate = entity.startDate,
             endDate = entity.endDate,
-            equityCurve = equityCurve
+            equityCurve = equityCurve,
+            trades = entity.trades.map { trade ->
+                BacktestTradeDetail(
+                    tradeDate = trade.tradeDate,
+                    ticker = trade.ticker,
+                    side = trade.side.name,
+                    quantity = trade.quantity,
+                    price = trade.price,
+                    amount = trade.amount,
+                    pnl = trade.pnl,
+                    pnlPercent = trade.pnlPercent,
+                    holdingDays = trade.holdingDays,
+                    signalReason = trade.signalReason
+                )
+            }.sortedBy { it.tradeDate }
         )
     }
 
@@ -205,9 +221,10 @@ class MarketplacePersistenceAdapter(
             val rawData: List<Map<String, Any>> = objectMapper.readValue(equityCurveJson)
             rawData.mapNotNull { point ->
                 val date = point["date"]?.toString()?.let { LocalDate.parse(it) }
-                val value = point["value"]?.let { BigDecimal(it.toString()) }
+                val value = (point["equity"] ?: point["value"])?.let { BigDecimal(it.toString()) }
+                val benchmark = point["benchmark"]?.let { BigDecimal(it.toString()) }
                 if (date != null && value != null) {
-                    EquityCurvePoint(date = date, value = value)
+                    EquityCurvePoint(date = date, value = value, benchmark = benchmark)
                 } else {
                     null
                 }
