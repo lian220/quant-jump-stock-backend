@@ -8,10 +8,12 @@ Kafka Message Handlers
 import logging
 import time
 from abc import ABC, abstractmethod
+from decimal import Decimal
 from typing import Optional, Protocol
 from datetime import datetime, date
 from pytz import timezone
 
+from adapter.output.postgresql.backtest_repository import BacktestCheckpoint
 from .consumer import KafkaMessage
 
 KST = timezone('Asia/Seoul')
@@ -607,17 +609,13 @@ class BacktestRequestHandler(MessageHandler):
                     logger.info(f"새 백테스트 결과 저장: id={result_id}")
 
                 # 체크포인트 저장 (equity_curve는 backtest_results에 저장되므로 제외)
-                from adapter.output.postgresql.backtest_repository import BacktestCheckpoint
-                from datetime import datetime as dt, date as date_type
-                from decimal import Decimal
-
                 checkpoint_data = incremental_result.checkpoint_data
                 checkpoint_date_value = checkpoint_data["checkpoint_date"]
                 # checkpoint_date가 이미 date 객체인 경우와 문자열인 경우 모두 처리
-                if isinstance(checkpoint_date_value, date_type):
+                if isinstance(checkpoint_date_value, date):
                     checkpoint_date = checkpoint_date_value
                 else:
-                    checkpoint_date = dt.strptime(checkpoint_date_value, "%Y-%m-%d").date()
+                    checkpoint_date = datetime.strptime(checkpoint_date_value, "%Y-%m-%d").date()
 
                 new_checkpoint = BacktestCheckpoint(
                     backtest_id=result_id,

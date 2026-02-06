@@ -718,7 +718,13 @@ class PostgresBacktestRepository:
                             float(result.avg_win) if result.avg_win else None,
                             float(result.avg_loss) if result.avg_loss else None,
                             json.dumps([
-                                {"date": p.date.isoformat(), "equity": float(p.equity)}
+                                {
+                                    "date": p.date.isoformat(),
+                                    "equity": float(p.equity),
+                                    "cash": float(p.cash),
+                                    "positions_value": float(p.positions_value),
+                                    "drawdown_pct": float(p.drawdown_pct)
+                                }
                                 for p in result.equity_curve
                             ]) if result.equity_curve else None,
                             new_end_date,
