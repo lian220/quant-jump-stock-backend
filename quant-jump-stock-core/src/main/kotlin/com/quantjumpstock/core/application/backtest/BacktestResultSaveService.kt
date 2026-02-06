@@ -45,9 +45,12 @@ class BacktestResultSaveService(
         val backtestResult = BacktestResult(
             strategyId = strategyId,
             userId = userId,
-            startDate = parseDate(payload.get("startDate")?.asText()) ?: LocalDate.now(),
-            endDate = parseDate(payload.get("endDate")?.asText()) ?: LocalDate.now(),
-            initialCapital = parseBigDecimal(payload.get("initialCapital")) ?: BigDecimal.ZERO,
+            startDate = parseDate(payload.get("startDate")?.asText())
+                ?: throw IllegalArgumentException("startDate is required"),
+            endDate = parseDate(payload.get("endDate")?.asText())
+                ?: throw IllegalArgumentException("endDate is required"),
+            initialCapital = parseBigDecimal(payload.get("initialCapital"))
+                ?: throw IllegalArgumentException("initialCapital is required"),
             benchmark = payload.get("benchmark")?.asText() ?: "KOSPI",
             finalValue = parseBigDecimal(metrics.get("finalValue")) ?: BigDecimal.ZERO,
             totalReturn = parseBigDecimal(metrics.get("totalReturn")) ?: BigDecimal.ZERO,
@@ -98,9 +101,12 @@ class BacktestResultSaveService(
         val backtestResult = BacktestResult(
             strategyId = strategyId,
             userId = userId,
-            startDate = parseDate(payload.get("startDate")?.asText()) ?: LocalDate.now(),
-            endDate = parseDate(payload.get("endDate")?.asText()) ?: LocalDate.now(),
-            initialCapital = parseBigDecimal(payload.get("initialCapital")) ?: BigDecimal.ZERO,
+            startDate = parseDate(payload.get("startDate")?.asText())
+                ?: throw IllegalArgumentException("startDate is required"),
+            endDate = parseDate(payload.get("endDate")?.asText())
+                ?: throw IllegalArgumentException("endDate is required"),
+            initialCapital = parseBigDecimal(payload.get("initialCapital"))
+                ?: throw IllegalArgumentException("initialCapital is required"),
             benchmark = payload.get("benchmark")?.asText() ?: "KOSPI",
             finalValue = BigDecimal.ZERO,
             totalReturn = BigDecimal.ZERO,

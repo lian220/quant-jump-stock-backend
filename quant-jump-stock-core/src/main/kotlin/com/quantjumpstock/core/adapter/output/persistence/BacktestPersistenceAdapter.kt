@@ -81,12 +81,20 @@ class BacktestPersistenceAdapter(
         if (trades.isEmpty()) return emptyList()
 
         logger.debug("백테스트 거래 내역 일괄 저장: count={}", trades.size)
-        val entities = trades.map { trade ->
-            val backtestResultEntity = backtestResultJpaRepository.findById(
-                trade.backtestResultId ?: throw IllegalArgumentException("backtestResultId is required for saving trades")
-            ).orElseThrow {
-                IllegalArgumentException("BacktestResult not found: ${trade.backtestResultId}")
+
+        // Pre-fetch: 동일 BacktestResult를 N번 조회하지 않도록 미리 로드
+        val resultIds = trades.mapNotNull { it.backtestResultId }.distinct()
+        val resultEntityMap = resultIds.associateWith { id ->
+            backtestResultJpaRepository.findById(id).orElseThrow {
+                IllegalArgumentException("BacktestResult not found: $id")
             }
+        }
+
+        val entities = trades.map { trade ->
+            val backtestResultId = trade.backtestResultId
+                ?: throw IllegalArgumentException("backtestResultId is required for saving trades")
+            val backtestResultEntity = resultEntityMap[backtestResultId]
+                ?: throw IllegalArgumentException("BacktestResult not found: $backtestResultId")
             toEntity(trade, backtestResultEntity)
         }
         val saved = backtestTradeJpaRepository.saveAll(entities)

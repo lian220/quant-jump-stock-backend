@@ -156,7 +156,7 @@ class BacktestService(
         val equityCurve = result.equityCurve?.let { parseEquityCurve(it) }
 
         return BacktestResultResponse(
-            id = result.id!!,
+            id = requireNotNull(result.id) { "BacktestResult.id must not be null when mapping to response" },
             strategyId = result.strategyId,
             strategyName = result.strategyName,
             status = result.status.name,
@@ -190,7 +190,7 @@ class BacktestService(
      */
     private fun mapToListItemResponse(result: BacktestResult): BacktestListItemResponse {
         return BacktestListItemResponse(
-            id = result.id!!,
+            id = requireNotNull(result.id) { "BacktestResult.id must not be null when mapping to response" },
             strategyId = result.strategyId,
             strategyName = result.strategyName,
             status = result.status.name,
@@ -212,7 +212,7 @@ class BacktestService(
      */
     private fun mapToTradeResponse(trade: BacktestTrade): BacktestTradeResponse {
         return BacktestTradeResponse(
-            id = trade.id!!,
+            id = requireNotNull(trade.id) { "BacktestTrade.id must not be null when mapping to response" },
             tradeDate = trade.tradeDate,
             ticker = trade.ticker,
             side = trade.side.name,
@@ -232,11 +232,15 @@ class BacktestService(
      */
     private fun parseEquityCurve(json: String): List<EquityCurvePoint>? {
         return try {
-            objectMapper.readValue<List<Map<String, Any>>>(json).map { point ->
-                EquityCurvePoint(
-                    date = point["date"]?.toString() ?: "",
-                    value = BigDecimal(point["value"]?.toString() ?: "0")
-                )
+            objectMapper.readValue<List<Map<String, Any>>>(json).mapNotNull { point ->
+                val date = point["date"]?.toString()
+                val value = point["value"]?.toString()?.let { BigDecimal(it) }
+                if (date.isNullOrBlank() || value == null) {
+                    logger.warn("EquityCurve 포인트 누락된 필드 무시: date=$date, value=${point["value"]}")
+                    null
+                } else {
+                    EquityCurvePoint(date = date, value = value)
+                }
             }
         } catch (e: Exception) {
             logger.warn("EquityCurve 파싱 실패: ${e.message}")
