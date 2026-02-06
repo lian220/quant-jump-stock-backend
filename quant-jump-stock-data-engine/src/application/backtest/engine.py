@@ -199,7 +199,7 @@ class BacktestEngine:
         self._high_watermark = self.config.initial_capital
         self._data = {}
         self._benchmark_data = None
-        self._benchmark_values = []
+        self._benchmark_values = []  # List of (date, Decimal) tuples for date-alignment
 
     def _load_data(self) -> None:
         """데이터 로드"""
@@ -467,13 +467,13 @@ class BacktestEngine:
 
         self._equity_curve.append(point)
 
-        # 벤치마크 가격 추적
+        # 벤치마크 가격 추적 (날짜와 함께 저장하여 equity_curve와 정렬 가능)
         if self._benchmark_data is not None:
             target_dt = pd.Timestamp(current_date)
             if target_dt in self._benchmark_data.index:
                 bm_close = self._benchmark_data.loc[target_dt, "close"]
                 if pd.notna(bm_close):
-                    self._benchmark_values.append(Decimal(str(bm_close)))
+                    self._benchmark_values.append((current_date, Decimal(str(bm_close))))
 
     def _create_result(
         self,
@@ -521,16 +521,24 @@ class BacktestEngine:
         bm_beta = None
 
         if self._benchmark_values and len(self._benchmark_values) >= 2:
+            # 날짜 정렬: equity_curve와 benchmark_values를 동일 날짜로 매칭
+            bm_date_map = {d: v for d, v in self._benchmark_values}
+            aligned_equity = []
+            aligned_bm = []
+            for point in self._equity_curve:
+                if point.date in bm_date_map:
+                    aligned_equity.append(point.equity)
+                    aligned_bm.append(bm_date_map[point.date])
+
             bm_return = calculate_benchmark_return(
-                self._benchmark_values,
+                aligned_bm,
                 self.config.start_date,
                 self.config.end_date
             )
 
-            # 벤치마크 일간 수익률 계산
-            equity_values = [p.equity for p in self._equity_curve]
-            strategy_daily = calculate_daily_returns(equity_values)
-            benchmark_daily = calculate_daily_returns(self._benchmark_values)
+            # 벤치마크 일간 수익률 계산 (날짜 정렬된 시계열)
+            strategy_daily = calculate_daily_returns(aligned_equity)
+            benchmark_daily = calculate_daily_returns(aligned_bm)
 
             if strategy_daily and benchmark_daily:
                 bm_beta = calculate_beta(strategy_daily, benchmark_daily)

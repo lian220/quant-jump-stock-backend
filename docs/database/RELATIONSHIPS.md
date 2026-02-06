@@ -188,7 +188,7 @@ PredictionResult (Vertex AI 예측)
                     │
                     ├─── ❌ 한도 초과 → 429 응답
                     │    └─── BacktestRateLimitResponse
-                    │         (Retry-After: 86400)
+                    │         (Retry-After: 86400, 고정 24시간 윈도우)
                     │
                     └─── ✅ 허용 → 백테스트 실행
                             │

@@ -410,7 +410,7 @@ def calculate_beta(
     b_returns = np.array(benchmark_returns[:min_len])
 
     benchmark_var = np.var(b_returns, ddof=1)
-    if benchmark_var == 0:
+    if benchmark_var < 1e-12:
         return None
 
     covariance = np.cov(s_returns, b_returns, ddof=1)[0][1]

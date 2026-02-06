@@ -76,9 +76,16 @@ class BacktestController(
                 .body(rateLimitResponse)
         }
 
-        val response = backtestService.runBacktest(request, userId)
-
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(response)
+        return try {
+            val response = backtestService.runBacktest(request, userId)
+            ResponseEntity.status(HttpStatus.ACCEPTED).body(response)
+        } catch (e: Exception) {
+            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(mapOf(
+                    "error" to "BACKTEST_SUBMISSION_FAILED",
+                    "message" to "백테스트 요청 처리 중 오류가 발생했습니다."
+                ))
+        }
     }
 
     /**

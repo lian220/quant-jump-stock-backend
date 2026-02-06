@@ -173,20 +173,23 @@ class BacktestApplicationService:
             db_host = os.environ.get("DB_HOST", "localhost")
             db_port = os.environ.get("DB_PORT", "5432")
             db_name = os.environ.get("DB_NAME", "quantiq")
-            db_user = os.environ.get("DB_USER", "quantiq_user")
-            db_password = os.environ.get("DB_PASSWORD", "quantiq_password")
+            db_user = os.environ.get("DB_USER")
+            db_password = os.environ.get("DB_PASSWORD")
+            if not db_user or not db_password:
+                logger.warning("DB_USER/DB_PASSWORD not set; skipping benchmark name map")
+                return None
 
             conn = psycopg2.connect(
                 host=db_host, port=db_port,
                 dbname=db_name, user=db_user, password=db_password
             )
-            cursor = conn.cursor()
-            cursor.execute("SELECT ticker, name FROM yfinance_indicators WHERE is_active = true")
-            rows = cursor.fetchall()
-            cursor.close()
-            conn.close()
-
-            return {row[0]: row[1] for row in rows}
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT ticker, name FROM yfinance_indicators WHERE is_active = true")
+                    rows = cursor.fetchall()
+                return {row[0]: row[1] for row in rows}
+            finally:
+                conn.close()
         except Exception as e:
             logger.warning(f"Failed to load benchmark name map: {e}")
             return None

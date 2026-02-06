@@ -614,6 +614,9 @@ class BacktestRequestHandler(MessageHandler):
 
                 # 체크포인트 저장 (equity_curve는 backtest_results에 저장되므로 제외)
                 checkpoint_data = incremental_result.checkpoint_data
+                if not checkpoint_data:
+                    logger.warning(f"checkpoint_data가 None입니다. 체크포인트 저장을 건너뜁니다. backtest_id={result_id}")
+                    return result, result_id, incremental_result.is_incremental
                 checkpoint_date_value = checkpoint_data.get("checkpoint_date")
                 if checkpoint_date_value is None:
                     logger.warning(f"checkpoint_date가 None입니다. 체크포인트 저장을 건너뜁니다. backtest_id={result_id}")
@@ -679,9 +682,9 @@ class BacktestRequestHandler(MessageHandler):
                     "profitFactor": float(result.profit_factor) if result.profit_factor else None,
                     "avgWin": float(result.avg_win) if result.avg_win else None,
                     "avgLoss": float(result.avg_loss) if result.avg_loss else None,
-                    "benchmarkReturn": float(result.benchmark_return) if result.benchmark_return else None,
-                    "alpha": float(result.alpha) if result.alpha else None,
-                    "beta": float(result.beta) if result.beta else None,
+                    "benchmarkReturn": float(result.benchmark_return) if result.benchmark_return is not None else None,
+                    "alpha": float(result.alpha) if result.alpha is not None else None,
+                    "beta": float(result.beta) if result.beta is not None else None,
                     "executionTimeSeconds": elapsed
                 })
 

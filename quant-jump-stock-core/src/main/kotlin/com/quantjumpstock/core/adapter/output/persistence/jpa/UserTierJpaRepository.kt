@@ -78,7 +78,7 @@ interface UserTierJpaRepository : JpaRepository<UserTierEntity, Long> {
     fun incrementBacktestCount(userId: Long): Int
 
     // 원자적 조건부 카운트 증가 (TOCTOU 방지)
-    @Modifying
+    @Modifying(clearAutomatically = true)
     @Query("""
         UPDATE UserTierEntity ut
         SET ut.backtestCountToday = ut.backtestCountToday + 1
