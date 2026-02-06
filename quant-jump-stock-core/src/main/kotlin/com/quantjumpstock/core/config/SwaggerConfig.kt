@@ -33,11 +33,8 @@ class SwaggerConfig {
             .servers(
                 listOf(
                     Server()
-                        .url("http://localhost:8080")
-                        .description("로컬 개발 서버"),
-                    Server()
                         .url("http://localhost:10010")
-                        .description("Docker 개발 서버")
+                        .description("개발 서버")
                 )
             )
     }

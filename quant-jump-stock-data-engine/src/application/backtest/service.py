@@ -68,7 +68,8 @@ class BacktestApplicationService:
         end_date: str,
         initial_capital: float = 10000000.0,
         commission_rate: float = 0.00015,
-        slippage_rate: float = 0.0001
+        slippage_rate: float = 0.0001,
+        benchmark: str = "SPY"
     ) -> BacktestResult:
         """
         백테스트 실행
@@ -99,17 +100,22 @@ class BacktestApplicationService:
         if not strategy:
             raise ValueError(f"Strategy not found: {strategy_id}")
 
-        # 2. 백테스트 설정
+        # 2. 벤치마크 ticker→name 매핑 로드
+        benchmark_name_map = self._load_benchmark_name_map()
+
+        # 3. 백테스트 설정
         config = BacktestConfig(
             start_date=self._parse_date(start_date),
             end_date=self._parse_date(end_date),
             initial_capital=Decimal(str(initial_capital)),
             tickers=tickers,
             commission_rate=Decimal(str(commission_rate)),
-            slippage_rate=Decimal(str(slippage_rate))
+            slippage_rate=Decimal(str(slippage_rate)),
+            benchmark_ticker=benchmark,
+            benchmark_ticker_to_name=benchmark_name_map
         )
 
-        # 3. 엔진 생성 및 실행
+        # 4. 엔진 생성 및 실행
         engine = BacktestEngine(
             data_loader=self._data_loader,
             config=config
@@ -117,7 +123,7 @@ class BacktestApplicationService:
 
         result = engine.run(strategy)
 
-        # 4. strategy_id를 DB PK로 설정
+        # 5. strategy_id를 DB PK로 설정
         result.strategy_id = strategy_id
 
         logger.info(
@@ -153,6 +159,41 @@ class BacktestApplicationService:
         """날짜 문자열 파싱"""
         return datetime.strptime(date_str, "%Y-%m-%d").date()
 
+    def _load_benchmark_name_map(self) -> Optional[Dict[str, str]]:
+        """
+        PostgreSQL yfinance_indicators 테이블에서 ticker→name 매핑 로드
+
+        yfinance_indicators MongoDB 키가 name(예: "S&P 500 지수")이므로
+        ticker(예: "^GSPC")로 조회하기 위한 매핑
+        """
+        try:
+            import psycopg2
+            import os
+
+            db_host = os.environ.get("DB_HOST", "localhost")
+            db_port = os.environ.get("DB_PORT", "5432")
+            db_name = os.environ.get("DB_NAME", "quantiq")
+            db_user = os.environ.get("DB_USER")
+            db_password = os.environ.get("DB_PASSWORD")
+            if not db_user or not db_password:
+                logger.warning("DB_USER/DB_PASSWORD not set; skipping benchmark name map")
+                return None
+
+            conn = psycopg2.connect(
+                host=db_host, port=db_port,
+                dbname=db_name, user=db_user, password=db_password
+            )
+            try:
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT ticker, name FROM yfinance_indicators WHERE is_active = true")
+                    rows = cursor.fetchall()
+                return {row[0]: row[1] for row in rows}
+            finally:
+                conn.close()
+        except Exception as e:
+            logger.warning(f"Failed to load benchmark name map: {e}")
+            return None
+
     async def run_backtest_incremental(
         self,
         strategy_id: int,
@@ -164,7 +205,8 @@ class BacktestApplicationService:
         slippage_rate: float = 0.0001,
         existing_backtest: Optional[Dict[str, Any]] = None,
         checkpoint: Optional[Dict[str, Any]] = None,
-        equity_curve_data: Optional[List[Dict[str, Any]]] = None
+        equity_curve_data: Optional[List[Dict[str, Any]]] = None,
+        benchmark: str = "SPY"
     ) -> IncrementalBacktestResult:
         """
         증분 백테스트 실행
@@ -197,23 +239,28 @@ class BacktestApplicationService:
         if not strategy:
             raise ValueError(f"Strategy not found: {strategy_id}")
 
-        # 2. 백테스트 설정
+        # 2. 벤치마크 ticker→name 매핑 로드
+        benchmark_name_map = self._load_benchmark_name_map()
+
+        # 3. 백테스트 설정
         config = BacktestConfig(
             start_date=self._parse_date(start_date),
             end_date=self._parse_date(end_date),
             initial_capital=Decimal(str(initial_capital)),
             tickers=tickers,
             commission_rate=Decimal(str(commission_rate)),
-            slippage_rate=Decimal(str(slippage_rate))
+            slippage_rate=Decimal(str(slippage_rate)),
+            benchmark_ticker=benchmark,
+            benchmark_ticker_to_name=benchmark_name_map
         )
 
-        # 3. 엔진 생성
+        # 4. 엔진 생성
         engine = BacktestEngine(
             data_loader=self._data_loader,
             config=config
         )
 
-        # 4. 증분 실행 또는 전체 실행
+        # 5. 증분 실행 또는 전체 실행
         if existing_backtest and checkpoint:
             # 증분 실행 (equity_curve는 backtest_results에서 조회한 데이터 사용)
             result, new_trades = await self._run_incremental(

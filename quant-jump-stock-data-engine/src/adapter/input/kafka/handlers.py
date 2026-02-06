@@ -360,7 +360,8 @@ class BacktestServiceProtocol(Protocol):
         end_date: str,
         initial_capital: float,
         commission_rate: float,
-        slippage_rate: float
+        slippage_rate: float,
+        benchmark: str = "SPY"
     ) -> object:
         ...
 
@@ -375,7 +376,8 @@ class BacktestServiceProtocol(Protocol):
         slippage_rate: float,
         existing_backtest: Optional[dict],
         checkpoint: Optional[object],
-        equity_curve_data: Optional[list] = None
+        equity_curve_data: Optional[list] = None,
+        benchmark: str = "SPY"
     ) -> object:
         """증분 백테스트 실행"""
         ...
@@ -527,6 +529,7 @@ class BacktestRequestHandler(MessageHandler):
         commission_rate = payload.get("commissionRate", 0.00015)
         slippage_rate = payload.get("slippageRate", 0.0001)
         force_full = payload.get("forceFull", False)  # 강제 전체 실행 옵션
+        benchmark = payload.get("benchmark", "SPY")
 
         if not strategy_id:
             self._publish_failure(message, "strategyId is required", start_time)
@@ -584,7 +587,8 @@ class BacktestRequestHandler(MessageHandler):
                     slippage_rate=slippage_rate,
                     existing_backtest=existing_backtest,
                     checkpoint=checkpoint,
-                    equity_curve_data=equity_curve_data
+                    equity_curve_data=equity_curve_data,
+                    benchmark=benchmark
                 )
 
                 result = incremental_result.result
@@ -610,7 +614,13 @@ class BacktestRequestHandler(MessageHandler):
 
                 # 체크포인트 저장 (equity_curve는 backtest_results에 저장되므로 제외)
                 checkpoint_data = incremental_result.checkpoint_data
-                checkpoint_date_value = checkpoint_data["checkpoint_date"]
+                if not checkpoint_data:
+                    logger.warning(f"checkpoint_data가 None입니다. 체크포인트 저장을 건너뜁니다. backtest_id={result_id}")
+                    return result, result_id, incremental_result.is_incremental
+                checkpoint_date_value = checkpoint_data.get("checkpoint_date")
+                if checkpoint_date_value is None:
+                    logger.warning(f"checkpoint_date가 None입니다. 체크포인트 저장을 건너뜁니다. backtest_id={result_id}")
+                    return result, result_id, incremental_result.is_incremental
                 # checkpoint_date가 이미 date 객체인 경우와 문자열인 경우 모두 처리
                 if isinstance(checkpoint_date_value, date):
                     checkpoint_date = checkpoint_date_value
@@ -672,6 +682,9 @@ class BacktestRequestHandler(MessageHandler):
                     "profitFactor": float(result.profit_factor) if result.profit_factor else None,
                     "avgWin": float(result.avg_win) if result.avg_win else None,
                     "avgLoss": float(result.avg_loss) if result.avg_loss else None,
+                    "benchmarkReturn": float(result.benchmark_return) if result.benchmark_return is not None else None,
+                    "alpha": float(result.alpha) if result.alpha is not None else None,
+                    "beta": float(result.beta) if result.beta is not None else None,
                     "executionTimeSeconds": elapsed
                 })
 

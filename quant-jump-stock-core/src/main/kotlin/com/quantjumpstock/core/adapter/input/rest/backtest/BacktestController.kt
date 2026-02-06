@@ -2,6 +2,7 @@ package com.quantjumpstock.core.adapter.input.rest.backtest
 
 import com.quantjumpstock.core.application.auth.AuthService
 import com.quantjumpstock.core.application.backtest.*
+import com.quantjumpstock.core.domain.port.output.Benchmark
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -23,7 +24,8 @@ import org.springframework.web.bind.annotation.*
 @CrossOrigin(origins = ["http://localhost:3000", "http://localhost:4000"], allowCredentials = "true")
 class BacktestController(
     private val backtestService: BacktestService,
-    private val authService: AuthService
+    private val authService: AuthService,
+    private val userTierService: UserTierService
 ) {
 
     /**
@@ -46,13 +48,114 @@ class BacktestController(
     fun runBacktest(
         @RequestHeader("Authorization", required = false) authorization: String?,
         @RequestBody request: BacktestRunRequest
-    ): ResponseEntity<BacktestRunResponse> {
-        val userId = authorization?.let { extractUserIdAsLong(it) }
+    ): ResponseEntity<Any> {
+        val userId = authorization?.let { extractUserId(it) }
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
-        val response = backtestService.runBacktest(request, userId.toString())
+        // 벤치마크 검증
+        if (!Benchmark.existsByTicker(request.benchmark)) {
+            return ResponseEntity.badRequest()
+                .body(mapOf(
+                    "error" to "INVALID_BENCHMARK",
+                    "message" to "지원하지 않는 벤치마크입니다: ${request.benchmark}",
+                    "availableBenchmarks" to "/api/v1/backtest/benchmarks"
+                ))
+        }
 
-        return ResponseEntity.status(HttpStatus.ACCEPTED).body(response)
+        // Rate Limit 원자적 체크 + 카운트 증가 (TOCTOU 방지)
+        val limitResult = userTierService.checkAndIncrementBacktestCount(userId)
+        if (!limitResult.allowed) {
+            val rateLimitResponse = BacktestRateLimitResponse(
+                dailyLimit = limitResult.dailyLimit,
+                remaining = limitResult.remaining,
+                tier = limitResult.tier,
+                message = limitResult.message ?: "일일 백테스트 한도를 초과했습니다."
+            )
+            return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS)
+                .header("Retry-After", "86400")
+                .body(rateLimitResponse)
+        }
+
+        return try {
+            val response = backtestService.runBacktest(request, userId)
+            ResponseEntity.status(HttpStatus.ACCEPTED).body(response)
+        } catch (e: Exception) {
+            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(mapOf(
+                    "error" to "BACKTEST_SUBMISSION_FAILED",
+                    "message" to "백테스트 요청 처리 중 오류가 발생했습니다."
+                ))
+        }
+    }
+
+    /**
+     * 사용 가능한 벤치마크 목록 조회
+     * GET /api/v1/backtest/benchmarks
+     */
+    @GetMapping("/benchmarks")
+    @Operation(
+        summary = "벤치마크 목록 조회",
+        description = "백테스트에 사용할 수 있는 벤치마크 목록을 조회합니다."
+    )
+    @ApiResponse(responseCode = "200", description = "벤치마크 목록 조회 성공")
+    fun getBenchmarks(): ResponseEntity<List<BenchmarkResponse>> {
+        val benchmarks = Benchmark.getAll()
+        val response = benchmarks.map { BenchmarkResponse(it.ticker, it.name, it.type) }
+        return ResponseEntity.ok(response)
+    }
+
+    /**
+     * 초보자용 Enhanced 백테스트 결과 조회
+     * GET /api/v1/backtest/{id}/enhanced
+     * SCRUM-245: 신호등 시스템 + 평문 설명 + 용어 사전
+     */
+    @GetMapping("/{id}/enhanced")
+    @Operation(
+        summary = "초보자용 백테스트 결과 조회",
+        description = "백테스트 결과를 초보자 친화적으로 조회합니다. 성과 등급(신호등), 평문 요약, 용어 설명을 포함합니다."
+    )
+    @ApiResponses(
+        ApiResponse(
+            responseCode = "200",
+            description = "Enhanced 백테스트 결과 조회 성공",
+            content = [Content(schema = Schema(implementation = BacktestEnhancedResponse::class))]
+        ),
+        ApiResponse(responseCode = "202", description = "아직 처리 중"),
+        ApiResponse(responseCode = "404", description = "백테스트 결과를 찾을 수 없음")
+    )
+    fun getEnhancedBacktestResult(
+        @Parameter(description = "백테스트 ID (DB ID 또는 requestId)") @PathVariable id: String
+    ): ResponseEntity<Any> {
+        return try {
+            val resolvedId = backtestService.resolveBacktestId(id)
+            val status = backtestService.getBacktestStatus(resolvedId)
+
+            when (status) {
+                "RUNNING" -> {
+                    val pendingResponse = BacktestPendingResponse(
+                        id = resolvedId,
+                        status = "RUNNING",
+                        message = "백테스트가 아직 처리 중입니다.",
+                        estimatedRemainingTime = 30
+                    )
+                    ResponseEntity.status(HttpStatus.ACCEPTED)
+                        .header("Retry-After", "10")
+                        .body(pendingResponse)
+                }
+                "FAILED" -> {
+                    val result = backtestService.getBacktestResult(resolvedId)
+                    ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body(result)
+                }
+                else -> {
+                    val enhanced = backtestService.getEnhancedBacktestResult(resolvedId)
+                    ResponseEntity.ok(enhanced)
+                }
+            }
+        } catch (e: BacktestNotFoundException) {
+            ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(mapOf("error" to e.message))
+        }
     }
 
     /**

@@ -15,6 +15,9 @@ UserEntity (1:1) ─────────────────────
     ├─ (1:1) ──────────────────────────────────────────── UserKisAccountEntity
     │                                                         KIS 계정 정보
     │
+    ├─ (1:1) ──────────────────────────────────────────── UserTierEntity
+    │                                                         사용자 티어 (Rate Limiting)
+    │
     ├─ (1:N) ──────────────────────────────────────────── TradeEntity
     │                                                         거래 내역
     │
@@ -168,7 +171,34 @@ PredictionResult (Vertex AI 예측)
 
 ---
 
-### 3. 손익 관리 (Stop Loss / Take Profit)
+### 3. 백테스트 Rate Limiting
+
+```text
+백테스트 실행 요청 (POST /api/v1/backtest/run)
+    ↓
+    │ Authorization 헤더에서 userId 추출
+    │
+    └──→ UserEntity 조회 (userId: String → PK: Long)
+            │
+            └──→ UserTierEntity 조회 (findByUserId)
+                    │
+                    ├─── canPerformBacktest() 확인
+                    │    ├─── FREE: backtestCountToday < 3
+                    │    └─── PREMIUM: 항상 true
+                    │
+                    ├─── ❌ 한도 초과 → 429 응답
+                    │    └─── BacktestRateLimitResponse
+                    │         (Retry-After: 86400, 고정 24시간 윈도우)
+                    │
+                    └─── ✅ 허용 → 백테스트 실행
+                            │
+                            └──→ 성공 시 incrementBacktestCount()
+                                 (backtestCountToday + 1)
+```
+
+---
+
+### 4. 손익 관리 (Stop Loss / Take Profit)
 
 ```
 TradeEntity (EXECUTED 상태)

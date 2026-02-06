@@ -13,7 +13,7 @@ data class BacktestRunRequest(
     val startDate: String,              // yyyy-MM-dd
     val endDate: String,                // yyyy-MM-dd
     val initialCapital: BigDecimal,
-    val benchmark: String = "KOSPI",
+    val benchmark: String = "SPY",
     val rebalancePeriod: RebalancePeriod = RebalancePeriod.MONTHLY,
     val tickers: List<String> = emptyList(),
 
@@ -290,4 +290,36 @@ data class BacktestPendingResponse(
     val status: String,
     val message: String,
     val estimatedRemainingTime: Int?
+)
+
+/**
+ * 백테스트 Rate Limit 체크 결과
+ */
+data class BacktestLimitResult(
+    val allowed: Boolean,
+    val remaining: Int,
+    val dailyLimit: Int,
+    val tier: String,
+    val message: String? = null
+)
+
+/**
+ * 백테스트 Rate Limit 초과 응답 (429 Too Many Requests)
+ */
+data class BacktestRateLimitResponse(
+    val error: String = "RATE_LIMIT_EXCEEDED",
+    val dailyLimit: Int,
+    val remaining: Int,
+    val tier: String,
+    val message: String
+)
+
+/**
+ * 벤치마크 정보 응답 DTO
+ * GET /api/v1/backtest/benchmarks
+ */
+data class BenchmarkResponse(
+    val ticker: String,
+    val name: String,
+    val type: String
 )
