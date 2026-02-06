@@ -2,7 +2,7 @@ package com.quantjumpstock.core.application.backtest
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
-import com.quantjumpstock.core.adapter.output.persistence.jpa.BacktestResultJpaRepository
+import com.quantjumpstock.core.domain.port.output.BacktestResultRepository
 import com.quantjumpstock.core.domain.economic.port.output.MessagePublisher
 import com.quantjumpstock.core.domain.model.BacktestRequest
 import com.quantjumpstock.core.events.EventTopics
@@ -35,7 +35,7 @@ class BacktestServiceTest {
     private lateinit var messagePublisher: MessagePublisher
 
     @Mock
-    private lateinit var backtestResultRepository: BacktestResultJpaRepository
+    private lateinit var backtestResultRepository: BacktestResultRepository
 
     private lateinit var objectMapper: ObjectMapper
 

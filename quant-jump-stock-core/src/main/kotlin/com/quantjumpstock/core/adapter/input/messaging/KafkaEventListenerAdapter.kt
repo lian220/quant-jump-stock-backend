@@ -165,6 +165,7 @@ class KafkaEventListenerAdapter(
         try {
             val event = objectMapper.readTree(message)
             val payload = event.get("payload")
+                ?: throw IllegalArgumentException("백테스트 완료 이벤트에 payload가 없습니다: $message")
 
             val requestId = payload.get("requestId")?.asText() ?: "unknown"
             val strategyId = payload.get("strategyId")?.asLong() ?: 0L
@@ -199,6 +200,7 @@ class KafkaEventListenerAdapter(
         try {
             val event = objectMapper.readTree(message)
             val payload = event.get("payload")
+                ?: throw IllegalArgumentException("백테스트 실패 이벤트에 payload가 없습니다: $message")
 
             val requestId = payload.get("requestId")?.asText() ?: "unknown"
             val strategyId = payload.get("strategyId")?.asLong() ?: 0L

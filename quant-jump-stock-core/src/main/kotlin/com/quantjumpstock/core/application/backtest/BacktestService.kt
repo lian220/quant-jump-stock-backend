@@ -2,12 +2,11 @@ package com.quantjumpstock.core.application.backtest
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
-import com.quantjumpstock.core.adapter.output.persistence.jpa.BacktestResultEntity
-import com.quantjumpstock.core.adapter.output.persistence.jpa.BacktestResultJpaRepository
-import com.quantjumpstock.core.adapter.output.persistence.jpa.BacktestStatus
-import com.quantjumpstock.core.adapter.output.persistence.jpa.BacktestTradeEntity
+import com.quantjumpstock.core.domain.model.backtest.BacktestResult
+import com.quantjumpstock.core.domain.model.backtest.BacktestTrade
 import com.quantjumpstock.core.domain.economic.port.output.MessagePublisher
 import com.quantjumpstock.core.domain.model.*
+import com.quantjumpstock.core.domain.port.output.BacktestResultRepository
 import com.quantjumpstock.core.events.EventTopics
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.PageRequest
@@ -25,7 +24,7 @@ import java.util.UUID
 @Service
 class BacktestService(
     private val messagePublisher: MessagePublisher,
-    private val backtestResultRepository: BacktestResultJpaRepository,
+    private val backtestResultRepository: BacktestResultRepository,
     private val objectMapper: ObjectMapper
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
@@ -86,10 +85,10 @@ class BacktestService(
      * GET /api/v1/backtest/{id}
      */
     fun getBacktestResult(id: Long): BacktestResultResponse {
-        val entity = backtestResultRepository.findByIdWithTrades(id)
-            .orElseThrow { BacktestNotFoundException("백테스트 결과를 찾을 수 없습니다: id=$id") }
+        val result = backtestResultRepository.findByIdWithTrades(id)
+            ?: throw BacktestNotFoundException("백테스트 결과를 찾을 수 없습니다: id=$id")
 
-        return mapToResultResponse(entity)
+        return mapToResultResponse(result)
     }
 
     /**
@@ -102,7 +101,9 @@ class BacktestService(
         page: Int,
         size: Int
     ): PagedResponse<BacktestListItemResponse> {
-        val pageable = PageRequest.of(page, size.coerceAtMost(100), Sort.by(Sort.Direction.DESC, "createdAt"))
+        val safePage = page.coerceAtLeast(0)
+        val safeSize = size.coerceIn(1, 100)
+        val pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"))
 
         val pageResult = when {
             strategyId != null -> backtestResultRepository.findByStrategyIdOrderByCreatedAtDesc(strategyId, pageable)
@@ -114,8 +115,8 @@ class BacktestService(
 
         return PagedResponse(
             content = content,
-            page = page,
-            size = size,
+            page = safePage,
+            size = safeSize,
             totalElements = pageResult.totalElements,
             totalPages = pageResult.totalPages
         )
@@ -125,9 +126,9 @@ class BacktestService(
      * 백테스트 상태 확인
      */
     fun getBacktestStatus(id: Long): String {
-        val entity = backtestResultRepository.findById(id)
-            .orElseThrow { BacktestNotFoundException("백테스트 결과를 찾을 수 없습니다: id=$id") }
-        return entity.status.name
+        val result = backtestResultRepository.findById(id)
+            ?: throw BacktestNotFoundException("백테스트 결과를 찾을 수 없습니다: id=$id")
+        return result.status.name
     }
 
     /**
@@ -142,86 +143,87 @@ class BacktestService(
             val end = java.time.LocalDate.parse(request.endDate)
             java.time.temporal.ChronoUnit.YEARS.between(start, end).toInt().coerceAtLeast(1)
         } catch (e: Exception) {
+            logger.warn("날짜 파싱 실패, 기본값 사용: startDate=${request.startDate}, endDate=${request.endDate}, error=${e.message}")
             5
         }
         return baseTime + tickerTime + (periodYears * 5)
     }
 
     /**
-     * Entity → ResultResponse 매핑
+     * Domain → ResultResponse 매핑
      */
-    private fun mapToResultResponse(entity: BacktestResultEntity): BacktestResultResponse {
-        val equityCurve = entity.equityCurve?.let { parseEquityCurve(it) }
+    private fun mapToResultResponse(result: BacktestResult): BacktestResultResponse {
+        val equityCurve = result.equityCurve?.let { parseEquityCurve(it) }
 
         return BacktestResultResponse(
-            id = entity.id!!,
-            strategyId = entity.strategy.id!!,
-            strategyName = entity.strategy.name,
-            status = entity.status.name,
+            id = result.id!!,
+            strategyId = result.strategyId,
+            strategyName = result.strategyName,
+            status = result.status.name,
             metrics = BacktestMetrics(
-                cagr = entity.cagr,
-                mdd = entity.mdd,
-                sharpeRatio = entity.sharpeRatio,
-                sortinoRatio = entity.sortinoRatio,
-                winRate = entity.winRate,
-                totalReturn = entity.totalReturn,
-                volatility = entity.volatility,
-                totalTrades = entity.totalTrades,
-                winningTrades = entity.winningTrades,
-                losingTrades = entity.losingTrades,
-                avgWin = entity.avgWin,
-                avgLoss = entity.avgLoss,
-                benchmarkReturn = entity.benchmarkReturn,
-                alpha = entity.alpha,
-                beta = entity.beta
+                cagr = result.cagr,
+                mdd = result.mdd,
+                sharpeRatio = result.sharpeRatio,
+                sortinoRatio = result.sortinoRatio,
+                winRate = result.winRate,
+                totalReturn = result.totalReturn,
+                volatility = result.volatility,
+                totalTrades = result.totalTrades,
+                winningTrades = result.winningTrades,
+                losingTrades = result.losingTrades,
+                avgWin = result.avgWin,
+                avgLoss = result.avgLoss,
+                benchmarkReturn = result.benchmarkReturn,
+                alpha = result.alpha,
+                beta = result.beta
             ),
             equityCurve = equityCurve,
-            benchmarkCurve = null, // TODO: benchmarkCurve 필드 추가 시 매핑
-            trades = entity.trades.map { mapToTradeResponse(it) },
-            createdAt = entity.createdAt,
-            completedAt = entity.completedAt
+            benchmarkCurve = null,
+            trades = result.trades.map { mapToTradeResponse(it) },
+            createdAt = result.createdAt,
+            completedAt = result.completedAt
         )
     }
 
     /**
-     * Entity → ListItemResponse 매핑
+     * Domain → ListItemResponse 매핑
      */
-    private fun mapToListItemResponse(entity: BacktestResultEntity): BacktestListItemResponse {
+    private fun mapToListItemResponse(result: BacktestResult): BacktestListItemResponse {
         return BacktestListItemResponse(
-            id = entity.id!!,
-            strategyId = entity.strategy.id!!,
-            strategyName = entity.strategy.name,
-            status = entity.status.name,
-            startDate = entity.startDate,
-            endDate = entity.endDate,
-            initialCapital = entity.initialCapital,
-            finalValue = entity.finalValue,
-            totalReturn = entity.totalReturn,
-            cagr = entity.cagr,
-            mdd = entity.mdd,
-            sharpeRatio = entity.sharpeRatio,
-            createdAt = entity.createdAt,
-            completedAt = entity.completedAt
+            id = result.id!!,
+            strategyId = result.strategyId,
+            strategyName = result.strategyName,
+            status = result.status.name,
+            startDate = result.startDate,
+            endDate = result.endDate,
+            initialCapital = result.initialCapital,
+            finalValue = result.finalValue,
+            totalReturn = result.totalReturn,
+            cagr = result.cagr,
+            mdd = result.mdd,
+            sharpeRatio = result.sharpeRatio,
+            createdAt = result.createdAt,
+            completedAt = result.completedAt
         )
     }
 
     /**
-     * TradeEntity → TradeResponse 매핑
+     * Domain Trade → TradeResponse 매핑
      */
-    private fun mapToTradeResponse(entity: BacktestTradeEntity): BacktestTradeResponse {
+    private fun mapToTradeResponse(trade: BacktestTrade): BacktestTradeResponse {
         return BacktestTradeResponse(
-            id = entity.id!!,
-            tradeDate = entity.tradeDate,
-            ticker = entity.ticker,
-            side = entity.side.name,
-            quantity = entity.quantity,
-            price = entity.price,
-            amount = entity.amount,
-            commission = entity.commission,
-            pnl = entity.pnl,
-            pnlPercent = entity.pnlPercent,
-            holdingDays = entity.holdingDays,
-            signalReason = entity.signalReason
+            id = trade.id!!,
+            tradeDate = trade.tradeDate,
+            ticker = trade.ticker,
+            side = trade.side.name,
+            quantity = trade.quantity,
+            price = trade.price,
+            amount = trade.amount,
+            commission = trade.commission,
+            pnl = trade.pnl,
+            pnlPercent = trade.pnlPercent,
+            holdingDays = trade.holdingDays,
+            signalReason = trade.signalReason
         )
     }
 

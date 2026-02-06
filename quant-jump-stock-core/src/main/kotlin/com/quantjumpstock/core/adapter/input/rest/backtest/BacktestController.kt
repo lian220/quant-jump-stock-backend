@@ -47,9 +47,10 @@ class BacktestController(
         @RequestHeader("Authorization", required = false) authorization: String?,
         @RequestBody request: BacktestRunRequest
     ): ResponseEntity<BacktestRunResponse> {
-        val userId = authorization?.let { extractUserId(it) }
+        val userId = authorization?.let { extractUserIdAsLong(it) }
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
-        val response = backtestService.runBacktest(request, userId)
+        val response = backtestService.runBacktest(request, userId.toString())
 
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(response)
     }
@@ -86,6 +87,11 @@ class BacktestController(
                         .header("Retry-After", "10")
                         .body(pendingResponse)
                 }
+                "FAILED" -> {
+                    val result = backtestService.getBacktestResult(id)
+                    ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body(result)
+                }
                 else -> {
                     val result = backtestService.getBacktestResult(id)
                     ResponseEntity.ok(result)
@@ -114,8 +120,10 @@ class BacktestController(
         @RequestHeader("Authorization", required = false) authorization: String?
     ): ResponseEntity<PagedResponse<BacktestListItemResponse>> {
         val userId = authorization?.let { extractUserIdAsLong(it) }
+        val safePage = page.coerceAtLeast(0)
+        val safeSize = size.coerceIn(1, 100)
 
-        val response = backtestService.getBacktestList(strategyId, userId, page, size)
+        val response = backtestService.getBacktestList(strategyId, userId, safePage, safeSize)
 
         return ResponseEntity.ok(response)
     }

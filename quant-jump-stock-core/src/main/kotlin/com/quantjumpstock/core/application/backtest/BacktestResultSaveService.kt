@@ -2,7 +2,12 @@ package com.quantjumpstock.core.application.backtest
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.quantjumpstock.core.adapter.output.persistence.jpa.*
+import com.quantjumpstock.core.domain.model.backtest.BacktestResult
+import com.quantjumpstock.core.domain.model.backtest.BacktestStatus
+import com.quantjumpstock.core.domain.model.backtest.BacktestTrade
+import com.quantjumpstock.core.domain.model.backtest.BacktestTradeSide
+import com.quantjumpstock.core.domain.port.output.BacktestResultRepository
+import com.quantjumpstock.core.domain.port.output.BacktestTradeRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -16,10 +21,8 @@ import java.time.LocalDateTime
  */
 @Service
 class BacktestResultSaveService(
-    private val backtestResultRepository: BacktestResultJpaRepository,
-    private val backtestTradeRepository: BacktestTradeJpaRepository,
-    private val strategyRepository: StrategyJpaRepository,
-    private val userRepository: UserJpaRepository,
+    private val backtestResultRepository: BacktestResultRepository,
+    private val backtestTradeRepository: BacktestTradeRepository,
     private val objectMapper: ObjectMapper
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
@@ -34,18 +37,14 @@ class BacktestResultSaveService(
 
         logger.info("백테스트 결과 저장 시작: requestId=$requestId, strategyId=$strategyId")
 
-        val strategy = strategyRepository.findById(strategyId)
-            .orElseThrow { IllegalArgumentException("Strategy not found: $strategyId") }
-
         val userId = payload.get("userId")?.asText()?.toLongOrNull()
-        val user = userId?.let { userRepository.findById(it).orElse(null) }
 
         // 메트릭 파싱
         val metrics = payload.get("metrics") ?: payload
 
-        val backtestResult = BacktestResultEntity(
-            strategy = strategy,
-            user = user,
+        val backtestResult = BacktestResult(
+            strategyId = strategyId,
+            userId = userId,
             startDate = parseDate(payload.get("startDate")?.asText()) ?: LocalDate.now(),
             endDate = parseDate(payload.get("endDate")?.asText()) ?: LocalDate.now(),
             initialCapital = parseBigDecimal(payload.get("initialCapital")) ?: BigDecimal.ZERO,
@@ -94,15 +93,11 @@ class BacktestResultSaveService(
 
         logger.info("백테스트 실패 결과 저장 시작: requestId=$requestId, strategyId=$strategyId")
 
-        val strategy = strategyRepository.findById(strategyId)
-            .orElseThrow { IllegalArgumentException("Strategy not found: $strategyId") }
-
         val userId = payload.get("userId")?.asText()?.toLongOrNull()
-        val user = userId?.let { userRepository.findById(it).orElse(null) }
 
-        val backtestResult = BacktestResultEntity(
-            strategy = strategy,
-            user = user,
+        val backtestResult = BacktestResult(
+            strategyId = strategyId,
+            userId = userId,
             startDate = parseDate(payload.get("startDate")?.asText()) ?: LocalDate.now(),
             endDate = parseDate(payload.get("endDate")?.asText()) ?: LocalDate.now(),
             initialCapital = parseBigDecimal(payload.get("initialCapital")) ?: BigDecimal.ZERO,
@@ -121,15 +116,13 @@ class BacktestResultSaveService(
     }
 
     /**
-     * 거래 내역 저장
+     * 거래 내역 일괄 저장
      */
-    private fun saveTrades(backtestResult: BacktestResultEntity, trades: JsonNode) {
-        var savedCount = 0
-
-        trades.forEach { trade ->
+    private fun saveTrades(backtestResult: BacktestResult, trades: JsonNode) {
+        val tradeEntities = trades.mapNotNull { trade ->
             try {
-                val tradeEntity = BacktestTradeEntity(
-                    backtestResult = backtestResult,
+                BacktestTrade(
+                    backtestResultId = backtestResult.id,
                     tradeDate = parseDate(trade.get("tradeDate")?.asText()) ?: LocalDate.now(),
                     ticker = trade.get("ticker")?.asText() ?: "UNKNOWN",
                     side = parseTradeSide(trade.get("side")?.asText()),
@@ -142,15 +135,14 @@ class BacktestResultSaveService(
                     holdingDays = trade.get("holdingDays")?.asInt(),
                     signalReason = trade.get("signalReason")?.asText()
                 )
-
-                backtestTradeRepository.save(tradeEntity)
-                savedCount++
             } catch (e: Exception) {
-                logger.warn("거래 내역 저장 실패: ${e.message}")
+                logger.warn("거래 내역 파싱 실패: ${e.message}")
+                null
             }
         }
 
-        logger.info("거래 내역 저장 완료: $savedCount 건")
+        backtestTradeRepository.saveAll(tradeEntities)
+        logger.info("거래 내역 저장 완료: ${tradeEntities.size} 건")
     }
 
     // ============================================================================
@@ -186,7 +178,7 @@ class BacktestResultSaveService(
         return when (side?.uppercase()) {
             "BUY" -> BacktestTradeSide.BUY
             "SELL" -> BacktestTradeSide.SELL
-            else -> BacktestTradeSide.BUY
+            else -> throw IllegalArgumentException("Unknown trade side: $side")
         }
     }
 }
