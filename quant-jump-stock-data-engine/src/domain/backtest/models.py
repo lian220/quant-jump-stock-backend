@@ -272,7 +272,7 @@ class Portfolio:
             return None
 
         # 매도 수량 결정
-        sell_quantity = quantity if quantity else position.quantity
+        sell_quantity = quantity if quantity is not None else position.quantity
         sell_quantity = min(sell_quantity, position.quantity)
 
         # 실현 손익 계산

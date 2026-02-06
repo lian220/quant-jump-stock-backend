@@ -7,20 +7,28 @@ CAGR, MDD, Sharpe Ratio 등 핵심 성과 지표를 계산합니다.
 SCRUM-184: engine.py에서 분리하여 재사용성 및 테스트 용이성 향상
 """
 
+import logging
 import math
 from dataclasses import dataclass
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 import numpy as np
 
+logger = logging.getLogger(__name__)
 
 # 연간 거래일 수
 TRADING_DAYS_PER_YEAR = 252
 
 # 무위험 수익률 (한국 기준금리 근사)
 DEFAULT_RISK_FREE_RATE = Decimal("0.03")  # 3%
+
+# Beta 계산 시 벤치마크 분산 최소 임계값 (0에 가까우면 계산 불가)
+MIN_BENCHMARK_VARIANCE = 1e-12
+
+# Profit Factor 상한 (손실 없을 때 대체값)
+MAX_PROFIT_FACTOR = Decimal("999.99")
 
 
 @dataclass
@@ -125,7 +133,8 @@ def calculate_cagr(
     try:
         cagr = (Decimal(str(float(ratio) ** (1 / float(years)))) - 1) * 100
         return cagr.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
-    except (ValueError, OverflowError):
+    except (ValueError, OverflowError) as e:
+        logger.warning(f"CAGR calculation failed: {e} (ratio={ratio}, years={years})")
         return Decimal("0")
 
 
@@ -410,7 +419,7 @@ def calculate_beta(
     b_returns = np.array(benchmark_returns[:min_len])
 
     benchmark_var = np.var(b_returns, ddof=1)
-    if benchmark_var < 1e-12:
+    if benchmark_var < MIN_BENCHMARK_VARIANCE:
         return None
 
     covariance = np.cov(s_returns, b_returns, ddof=1)[0][1]
@@ -468,7 +477,7 @@ def calculate_trade_metrics(
         return TradeMetrics()
 
     # FIFO 매칭을 위한 매수 기록
-    buy_trades_map: dict[str, list] = {}
+    buy_trades_map: Dict[str, list] = {}
 
     wins: List[Decimal] = []
     losses: List[Decimal] = []
@@ -545,7 +554,7 @@ def calculate_trade_metrics(
             Decimal("0.01"), rounding=ROUND_HALF_UP
         )
     elif gross_profit > 0:
-        profit_factor = Decimal("999.99")
+        profit_factor = MAX_PROFIT_FACTOR
 
     # 평균 보유 기간
     avg_holding_days = None

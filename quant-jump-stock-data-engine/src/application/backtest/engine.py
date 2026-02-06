@@ -28,7 +28,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import date
 from decimal import Decimal
-from typing import Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set
 
 import pandas as pd
 
@@ -82,6 +82,7 @@ class BacktestConfig:
     rebalance_frequency: str = "daily"
     benchmark_ticker: Optional[str] = None
     benchmark_ticker_to_name: Optional[Dict[str, str]] = None
+    min_historical_bars: int = 50  # 전략 실행에 필요한 최소 과거 데이터 수
 
 
 class BacktestEngine:
@@ -328,7 +329,7 @@ class BacktestEngine:
             target_dt = pd.Timestamp(current_date)
             historical_data = df[df.index <= target_dt]
 
-            if historical_data.empty or len(historical_data) < 50:
+            if historical_data.empty or len(historical_data) < self.config.min_historical_bars:
                 continue
 
             # 전략 실행
@@ -688,7 +689,7 @@ class BacktestEngine:
     # Checkpoint Methods (증분 백테스트 지원)
     # ============================================================
 
-    def create_checkpoint(self) -> Dict[str, any]:
+    def create_checkpoint(self) -> Dict[str, Any]:
         """
         현재 엔진 상태로 체크포인트 생성
 
@@ -726,9 +727,9 @@ class BacktestEngine:
 
     def resume_from_checkpoint(
         self,
-        checkpoint_data: Dict[str, any],
+        checkpoint_data: Dict[str, Any],
         strategy: StrategyDefinition,
-        equity_curve_data: Optional[List[Dict[str, any]]] = None
+        equity_curve_data: Optional[List[Dict[str, Any]]] = None
     ) -> None:
         """
         체크포인트에서 엔진 상태 복원

@@ -28,6 +28,12 @@ from .data_loader import DataLoader
 
 logger = logging.getLogger(__name__)
 
+# 레거시 데이터 포맷 (close_price만 있는 경우) OHLCV 추정 배율
+_LEGACY_OPEN_RATIO = 0.998
+_LEGACY_HIGH_RATIO = 1.005
+_LEGACY_LOW_RATIO = 0.995
+_LEGACY_VOLUME_DEFAULT = 1_000_000
+
 class MongoDataLoader(DataLoader):
     """
     MongoDB daily_stock_data 컬렉션에서 데이터 로드
@@ -168,11 +174,11 @@ class MongoDataLoader(DataLoader):
                         # 레거시 포맷 (close_price만 있는 경우) - 추정값 사용
                         records.append({
                             "date": pd.Timestamp(doc["date"]),
-                            "open": close * 0.998,
-                            "high": close * 1.005,
-                            "low": close * 0.995,
+                            "open": close * _LEGACY_OPEN_RATIO,
+                            "high": close * _LEGACY_HIGH_RATIO,
+                            "low": close * _LEGACY_LOW_RATIO,
                             "close": close,
-                            "volume": 1000000
+                            "volume": _LEGACY_VOLUME_DEFAULT
                         })
 
             if records:

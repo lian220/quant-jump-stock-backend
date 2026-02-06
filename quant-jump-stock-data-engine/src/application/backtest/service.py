@@ -9,9 +9,12 @@ SCRUM-186: Kafka Consumer + PostgreSQL 결과 저장
 """
 
 import logging
+import os
 from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Optional, Dict, Any, Tuple
+
+import psycopg2
 
 from .engine import BacktestEngine, BacktestConfig
 from .data_loader import DataLoader
@@ -169,10 +172,8 @@ class BacktestApplicationService:
         yfinance_indicators MongoDB 키가 name(예: "S&P 500 지수")이므로
         ticker(예: "^GSPC")로 조회하기 위한 매핑
         """
+        conn = None
         try:
-            import psycopg2
-            import os
-
             db_host = os.environ.get("DB_HOST", "localhost")
             db_port = os.environ.get("DB_PORT", "5432")
             db_name = os.environ.get("DB_NAME", "quantiq")
@@ -186,16 +187,16 @@ class BacktestApplicationService:
                 host=db_host, port=db_port,
                 dbname=db_name, user=db_user, password=db_password
             )
-            try:
-                with conn.cursor() as cursor:
-                    cursor.execute("SELECT ticker, name FROM yfinance_indicators WHERE is_active = true")
-                    rows = cursor.fetchall()
-                return {row[0]: row[1] for row in rows}
-            finally:
-                conn.close()
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT ticker, name FROM yfinance_indicators WHERE is_active = true")
+                rows = cursor.fetchall()
+            return {row[0]: row[1] for row in rows}
         except Exception as e:
             logger.warning(f"Failed to load benchmark name map: {e}")
             return None
+        finally:
+            if conn is not None:
+                conn.close()
 
     async def run_backtest_incremental(
         self,
