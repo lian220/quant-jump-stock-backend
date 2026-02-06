@@ -52,7 +52,7 @@ class BacktestResultSaveService(
                 ?: throw IllegalArgumentException("endDate is required"),
             initialCapital = parseBigDecimal(payload.get("initialCapital"))
                 ?: throw IllegalArgumentException("initialCapital is required"),
-            benchmark = payload.get("benchmark")?.asText() ?: "KOSPI",
+            benchmark = payload.get("benchmark")?.asText() ?: "SPY",
             finalValue = parseBigDecimal(metrics.get("finalValue")) ?: BigDecimal.ZERO,
             totalReturn = parseBigDecimal(metrics.get("totalReturn")) ?: BigDecimal.ZERO,
             cagr = parseBigDecimal(metrics.get("cagr")) ?: BigDecimal.ZERO,
@@ -109,7 +109,7 @@ class BacktestResultSaveService(
                 ?: throw IllegalArgumentException("endDate is required"),
             initialCapital = parseBigDecimal(payload.get("initialCapital"))
                 ?: throw IllegalArgumentException("initialCapital is required"),
-            benchmark = payload.get("benchmark")?.asText() ?: "KOSPI",
+            benchmark = payload.get("benchmark")?.asText() ?: "SPY",
             finalValue = BigDecimal.ZERO,
             totalReturn = BigDecimal.ZERO,
             cagr = BigDecimal.ZERO,

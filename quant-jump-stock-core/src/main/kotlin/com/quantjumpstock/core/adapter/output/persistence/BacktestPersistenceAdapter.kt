@@ -110,7 +110,7 @@ class BacktestPersistenceAdapter(
         return BacktestResult(
             id = entity.id,
             requestId = entity.requestId,
-            strategyId = entity.strategy.id!!,
+            strategyId = entity.strategy.id ?: 0L,
             strategyName = entity.strategy.name,
             userId = entity.user?.id,
             startDate = entity.startDate,
@@ -146,7 +146,7 @@ class BacktestPersistenceAdapter(
         return BacktestResult(
             id = entity.id,
             requestId = entity.requestId,
-            strategyId = entity.strategy.id!!,
+            strategyId = entity.strategy.id ?: 0L,
             strategyName = entity.strategy.name,
             userId = entity.user?.id,
             startDate = entity.startDate,

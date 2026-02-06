@@ -37,7 +37,7 @@ data class BacktestResultEntity(
     val initialCapital: BigDecimal,
 
     @Column(length = 20)
-    val benchmark: String = "KOSPI",
+    val benchmark: String = "SPY",
 
     // Performance Metrics
     @Column(name = "final_value", nullable = false, precision = 15, scale = 2)

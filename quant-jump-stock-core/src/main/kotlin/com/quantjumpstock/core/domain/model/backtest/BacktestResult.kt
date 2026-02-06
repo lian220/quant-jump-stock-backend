@@ -21,7 +21,7 @@ data class BacktestResult(
     val startDate: LocalDate,
     val endDate: LocalDate,
     val initialCapital: BigDecimal,
-    val benchmark: String = "KOSPI",
+    val benchmark: String = "SPY",
 
     // Performance Metrics
     val finalValue: BigDecimal,
