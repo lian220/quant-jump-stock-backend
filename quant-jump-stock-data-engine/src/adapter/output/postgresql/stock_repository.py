@@ -32,6 +32,11 @@ class PostgresStockRepository(StockRepositoryPort):
             conn = self._pool.getconn()
             yield conn
         except Exception as e:
+            if conn:
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
             logger.error(f"PostgreSQL connection error: {e}")
             raise
         finally:

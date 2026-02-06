@@ -28,7 +28,9 @@ class MonthlyReturnsCalculator {
         if (entries.size < 2) return emptyList()
 
         // 이전 월 대비 수익률 계산 (첫 월은 기준점이므로 제외)
-        return entries.zipWithNext().map { (prev, curr) ->
+        return entries.zipWithNext().mapNotNull { (prev, curr) ->
+            if (prev.value.compareTo(BigDecimal.ZERO) == 0) return@mapNotNull null
+
             val returnPct = curr.value
                 .subtract(prev.value)
                 .divide(prev.value, 6, RoundingMode.HALF_UP)

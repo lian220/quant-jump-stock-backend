@@ -1,5 +1,6 @@
 package com.quantjumpstock.core.application.marketplace
 
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
@@ -42,22 +43,20 @@ class ConditionsParser(
                     val name = ruleNode.get("name")?.asText() ?: ""
                     val description = ruleNode.get("description")?.asText() ?: ""
 
-                    // conditions 내 파라미터를 플래튼
+                    // conditions 내 파라미터를 플래튼 (다중 조건 시 인덱스 접두사 사용)
                     val parameters = mutableMapOf<String, Any>()
                     val conditionsNode = ruleNode.get("conditions")
                     if (conditionsNode != null && conditionsNode.isArray) {
-                        for (condNode in conditionsNode) {
-                            condNode.get("indicator")?.asText()?.let { parameters["indicator"] = it }
-                            condNode.get("operator")?.asText()?.let { parameters["operator"] = it }
-                            condNode.get("value")?.asText()?.let { parameters["compareValue"] = it }
+                        val condCount = conditionsNode.size()
+                        for ((idx, condNode) in conditionsNode.withIndex()) {
+                            val prefix = if (condCount > 1) "cond${idx + 1}_" else ""
+                            condNode.get("indicator")?.asText()?.let { parameters["${prefix}indicator"] = it }
+                            condNode.get("operator")?.asText()?.let { parameters["${prefix}operator"] = it }
+                            condNode.get("value")?.asText()?.let { parameters["${prefix}compareValue"] = it }
                             val paramsNode = condNode.get("params")
                             if (paramsNode != null && paramsNode.isObject) {
                                 paramsNode.fields().forEach { (key, value) ->
-                                    parameters[key] = when {
-                                        value.isInt -> value.asInt()
-                                        value.isDouble || value.isFloat -> value.asDouble()
-                                        else -> value.asText()
-                                    }
+                                    parameters["$prefix$key"] = jsonNodeToValue(value)
                                 }
                             }
                         }
@@ -84,11 +83,7 @@ class ConditionsParser(
             if (riskNode != null && riskNode.isObject) {
                 val riskParams = mutableMapOf<String, Any>()
                 riskNode.fields().forEach { (key, value) ->
-                    riskParams[key] = when {
-                        value.isInt -> value.asInt()
-                        value.isDouble || value.isFloat -> value.asDouble()
-                        else -> value.asText()
-                    }
+                    riskParams[key] = jsonNodeToValue(value)
                 }
                 if (riskParams.isNotEmpty()) {
                     result.add(
@@ -108,6 +103,14 @@ class ConditionsParser(
             logger.warn("conditions JSON 파싱 실패: ${e.message}")
             emptyList()
         }
+    }
+
+    private fun jsonNodeToValue(node: JsonNode): Any = when {
+        node.isInt -> node.asInt()
+        node.isLong -> node.asLong()
+        node.isDouble || node.isFloat -> node.asDouble()
+        node.isBoolean -> node.asBoolean()
+        else -> node.asText()
     }
 
     private fun mapSignalType(signalType: String): String = when (signalType.lowercase()) {

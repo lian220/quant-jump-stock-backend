@@ -3,7 +3,6 @@ package com.quantjumpstock.core.application.marketplace
 import com.quantjumpstock.core.application.strategy.CategoryInfo
 import io.swagger.v3.oas.annotations.media.Schema
 import java.math.BigDecimal
-import java.math.RoundingMode
 import java.time.LocalDateTime
 
 /**

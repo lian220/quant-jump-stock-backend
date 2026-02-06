@@ -2,17 +2,23 @@ package com.quantjumpstock.core.application.marketplace
 
 import com.quantjumpstock.core.domain.model.backtest.BacktestStatus
 import com.quantjumpstock.core.domain.model.backtest.BacktestSummary
+import com.quantjumpstock.core.domain.model.marketplace.BacktestDetailSummary
+import com.quantjumpstock.core.domain.model.marketplace.BacktestTradeDetail
+import com.quantjumpstock.core.domain.model.marketplace.EquityCurvePoint
 import com.quantjumpstock.core.domain.model.marketplace.MarketplaceStrategy
+import com.quantjumpstock.core.domain.model.marketplace.StrategyDetail
 import com.quantjumpstock.core.domain.model.strategy.RebalanceFrequency
 import com.quantjumpstock.core.domain.port.output.MarketplaceRepository
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import org.junit.jupiter.api.assertThrows
 import org.mockito.InjectMocks
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.kotlin.any
+import org.mockito.kotlin.eq
 import org.mockito.kotlin.isNull
 import org.mockito.kotlin.whenever
 import org.springframework.data.domain.PageImpl
@@ -22,6 +28,7 @@ import java.time.LocalDate
 import java.time.LocalDateTime
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
+import org.junit.jupiter.api.Assertions.assertTrue
 
 /**
  * MarketplaceService 단위 테스트
@@ -244,5 +251,131 @@ class MarketplaceServiceTest {
         assertEquals(3, response.pagination.totalPages)
         assertEquals(false, response.pagination.isFirst)
         assertEquals(false, response.pagination.isLast)
+    }
+
+    // ===== getStrategyDetail 테스트 =====
+
+    @Test
+    @DisplayName("전략 상세 조회 - 정상 응답")
+    fun testGetStrategyDetail_Success() {
+        // Given
+        val testDetail = StrategyDetail(
+            id = 1L,
+            name = "테스트 전략",
+            description = "테스트 설명",
+            categoryId = 1L,
+            categoryCode = "VALUE",
+            categoryName = "가치투자",
+            isPremium = false,
+            subscriberCount = 100,
+            averageRating = BigDecimal("4.5"),
+            rebalanceFrequency = RebalanceFrequency.MONTHLY,
+            latestBacktest = BacktestDetailSummary(
+                id = 1L,
+                cagr = BigDecimal("15.5"),
+                mdd = BigDecimal("-12.3"),
+                sharpeRatio = BigDecimal("1.8"),
+                sortinoRatio = BigDecimal("2.0"),
+                totalReturn = BigDecimal("50.0"),
+                volatility = BigDecimal("18.5"),
+                winRate = BigDecimal("65.0"),
+                totalTrades = 10,
+                winningTrades = 7,
+                losingTrades = 3,
+                avgWin = BigDecimal("5.0"),
+                avgLoss = BigDecimal("-3.0"),
+                benchmarkReturn = BigDecimal("30.0"),
+                alpha = BigDecimal("0.08"),
+                beta = BigDecimal("0.95"),
+                initialCapital = BigDecimal("10000000"),
+                finalValue = BigDecimal("15000000"),
+                startDate = LocalDate.of(2020, 1, 1),
+                endDate = LocalDate.of(2023, 12, 31),
+                equityCurve = listOf(
+                    EquityCurvePoint(LocalDate.of(2020, 1, 1), BigDecimal("10000000")),
+                    EquityCurvePoint(LocalDate.of(2023, 12, 31), BigDecimal("15000000"))
+                ),
+                trades = listOf(
+                    BacktestTradeDetail(
+                        tradeDate = LocalDate.of(2020, 3, 15),
+                        ticker = "AAPL",
+                        side = "BUY",
+                        quantity = 100,
+                        price = BigDecimal("150.00"),
+                        amount = BigDecimal("15000.00"),
+                        pnl = null,
+                        pnlPercent = null,
+                        holdingDays = null,
+                        signalReason = "golden_cross"
+                    )
+                )
+            ),
+            currentHoldings = emptyList(),
+            conditions = "{}",
+            createdAt = LocalDateTime.now()
+        )
+
+        whenever(marketplaceRepository.findPublicStrategyById(eq(1L))).thenReturn(testDetail)
+        whenever(conditionsParser.parseToRules(any())).thenReturn(emptyList())
+        whenever(monthlyReturnsCalculator.calculate(any())).thenReturn(emptyList())
+
+        // When
+        val response = marketplaceService.getStrategyDetail(1L)
+
+        // Then
+        assertNotNull(response)
+        assertEquals("테스트 전략", response.name)
+        assertNotNull(response.performanceMetrics)
+        assertEquals(BigDecimal("15.5"), response.performanceMetrics?.cagr)
+        assertEquals(1, response.trades.size)
+        assertEquals("AAPL", response.trades[0].ticker)
+        assertEquals("BUY", response.trades[0].side)
+    }
+
+    @Test
+    @DisplayName("전략 상세 조회 - 존재하지 않는 전략")
+    fun testGetStrategyDetail_NotFound() {
+        // Given
+        whenever(marketplaceRepository.findPublicStrategyById(eq(999L))).thenReturn(null)
+
+        // When & Then
+        assertThrows<StrategyNotFoundException> {
+            marketplaceService.getStrategyDetail(999L)
+        }
+    }
+
+    @Test
+    @DisplayName("전략 상세 조회 - 백테스트 없는 전략")
+    fun testGetStrategyDetail_NoBacktest() {
+        // Given
+        val testDetail = StrategyDetail(
+            id = 2L,
+            name = "백테스트 없는 전략",
+            description = null,
+            categoryId = 1L,
+            categoryCode = "MOMENTUM",
+            categoryName = "모멘텀",
+            isPremium = false,
+            subscriberCount = 0,
+            averageRating = BigDecimal.ZERO,
+            rebalanceFrequency = RebalanceFrequency.DAILY,
+            latestBacktest = null,
+            currentHoldings = emptyList(),
+            conditions = "{}",
+            createdAt = LocalDateTime.now()
+        )
+
+        whenever(marketplaceRepository.findPublicStrategyById(eq(2L))).thenReturn(testDetail)
+        whenever(conditionsParser.parseToRules(any())).thenReturn(emptyList())
+
+        // When
+        val response = marketplaceService.getStrategyDetail(2L)
+
+        // Then
+        assertNotNull(response)
+        assertEquals("백테스트 없는 전략", response.name)
+        assertEquals(null, response.performanceMetrics)
+        assertTrue(response.trades.isEmpty())
+        assertTrue(response.equityCurve.isEmpty())
     }
 }
