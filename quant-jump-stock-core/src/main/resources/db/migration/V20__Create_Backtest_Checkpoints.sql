@@ -1,7 +1,7 @@
--- V10__Create_Backtest_Checkpoints.sql
+-- V20__Create_Backtest_Checkpoints.sql
 -- 백테스트 체크포인트 테이블 (증분 업데이트 지원)
 
-CREATE TABLE backtest_checkpoints (
+CREATE TABLE IF NOT EXISTS backtest_checkpoints (
     id BIGSERIAL PRIMARY KEY,
     backtest_id BIGINT NOT NULL REFERENCES backtest_results(id) ON DELETE CASCADE,
     checkpoint_date DATE NOT NULL,
@@ -29,9 +29,9 @@ COMMENT ON TABLE backtest_checkpoints IS '백테스트 증분 실행을 위한 �
 COMMENT ON COLUMN backtest_checkpoints.positions IS '보유 포지션 배열: [{ticker, quantity, entry_price, entry_date}]';
 COMMENT ON COLUMN backtest_checkpoints.equity_curve IS '수익 곡선: [{date, equity, drawdown}]';
 
--- 인덱스
-CREATE INDEX idx_backtest_checkpoints_backtest_id ON backtest_checkpoints(backtest_id);
-CREATE INDEX idx_backtest_checkpoints_date ON backtest_checkpoints(checkpoint_date DESC);
+-- 인덱스 (IF NOT EXISTS)
+CREATE INDEX IF NOT EXISTS idx_backtest_checkpoints_backtest_id ON backtest_checkpoints(backtest_id);
+CREATE INDEX IF NOT EXISTS idx_backtest_checkpoints_date ON backtest_checkpoints(checkpoint_date DESC);
 
 -- backtest_results에 증분 모드 컬럼 추가
 ALTER TABLE backtest_results
