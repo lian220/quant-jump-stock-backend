@@ -16,7 +16,9 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 @Transactional(readOnly = true)
 class MarketplaceService(
-    private val marketplaceRepository: MarketplaceRepository
+    private val marketplaceRepository: MarketplaceRepository,
+    private val conditionsParser: ConditionsParser,
+    private val monthlyReturnsCalculator: MonthlyReturnsCalculator
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -129,6 +131,24 @@ class MarketplaceService(
                     reason = it.reason
                 )
             },
+            rules = conditionsParser.parseToRules(this.conditions),
+            monthlyReturns = this.latestBacktest?.equityCurve?.let {
+                monthlyReturnsCalculator.calculate(it)
+            } ?: emptyList(),
+            trades = this.latestBacktest?.trades?.map {
+                BacktestTradeDto(
+                    tradeDate = it.tradeDate.toString(),
+                    ticker = it.ticker,
+                    side = it.side,
+                    quantity = it.quantity,
+                    price = it.price,
+                    amount = it.amount,
+                    pnl = it.pnl,
+                    pnlPercent = it.pnlPercent,
+                    holdingDays = it.holdingDays,
+                    signalReason = it.signalReason
+                )
+            } ?: emptyList(),
             createdAt = this.createdAt
         )
     }

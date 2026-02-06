@@ -23,6 +23,7 @@ data class StrategyDetail(
     val rebalanceFrequency: RebalanceFrequency,
     val latestBacktest: BacktestDetailSummary?,
     val currentHoldings: List<CurrentHolding>,
+    val conditions: String = "{}",
     val createdAt: LocalDateTime
 )
 
@@ -50,7 +51,8 @@ data class BacktestDetailSummary(
     val finalValue: BigDecimal,
     val startDate: LocalDate,
     val endDate: LocalDate,
-    val equityCurve: List<EquityCurvePoint>
+    val equityCurve: List<EquityCurvePoint>,
+    val trades: List<BacktestTradeDetail> = emptyList()
 )
 
 /**
@@ -60,6 +62,22 @@ data class EquityCurvePoint(
     val date: LocalDate,
     val value: BigDecimal,
     val benchmark: BigDecimal? = null
+)
+
+/**
+ * 거래 내역 상세
+ */
+data class BacktestTradeDetail(
+    val tradeDate: LocalDate,
+    val ticker: String,
+    val side: String,
+    val quantity: Int,
+    val price: BigDecimal,
+    val amount: BigDecimal,
+    val pnl: BigDecimal?,
+    val pnlPercent: BigDecimal?,
+    val holdingDays: Int?,
+    val signalReason: String?
 )
 
 /**
