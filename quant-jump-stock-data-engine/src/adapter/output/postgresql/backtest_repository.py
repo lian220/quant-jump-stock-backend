@@ -16,9 +16,19 @@ import psycopg2
 import psycopg2.extras
 from contextlib import contextmanager
 
-from datetime import date
+from datetime import date, datetime, timezone, timedelta
 from dataclasses import dataclass, field
 from typing import List, Dict, Any
+
+# KST 타임존 (UTC+9)
+KST = timezone(timedelta(hours=9))
+
+
+def get_kst_now() -> datetime:
+    """현재 KST 시간 반환 (naive datetime - timezone 정보 없음)"""
+    # PostgreSQL timestamp without time zone 컬럼에 저장하기 위해
+    # timezone 정보 없는 naive datetime 반환
+    return datetime.now(KST).replace(tzinfo=None)
 
 from application.backtest.result import BacktestResult, BacktestTrade, EquityCurvePoint
 
@@ -27,13 +37,17 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class BacktestCheckpoint:
-    """백테스트 체크포인트 (포트폴리오 상태 스냅샷)"""
+    """
+    백테스트 체크포인트 (포트폴리오 상태 스냅샷)
+
+    Note: equity_curve는 backtest_results에서 조회하므로 여기에 저장하지 않음.
+          중복 저장 방지 및 저장 용량 최적화.
+    """
     backtest_id: int
     checkpoint_date: date
     cash: Decimal
     high_watermark: Decimal
     positions: List[Dict[str, Any]] = field(default_factory=list)
-    equity_curve: List[Dict[str, Any]] = field(default_factory=list)
     trade_count: int = 0
     id: Optional[int] = None
 
@@ -119,6 +133,7 @@ class PostgresBacktestRepository:
 
     def _insert_result(self, cursor, result: BacktestResult) -> int:
         """backtest_results 테이블에 삽입"""
+        now = get_kst_now()
         cursor.execute(
             """
             INSERT INTO backtest_results (
@@ -149,7 +164,7 @@ class PostgresBacktestRepository:
             ) VALUES (
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, NOW(), NOW()
+                %s, %s, %s, %s
             ) RETURNING id
             """,
             (
@@ -174,7 +189,9 @@ class PostgresBacktestRepository:
                 float(result.alpha) if result.alpha else None,
                 float(result.beta) if result.beta else None,
                 json.dumps([{"date": str(p.date), "equity": float(p.equity)} for p in result.equity_curve]) if result.equity_curve else None,
-                "COMPLETED"
+                "COMPLETED",
+                now,  # created_at
+                now   # completed_at
             )
         )
         return cursor.fetchone()[0]
@@ -282,10 +299,10 @@ class PostgresBacktestRepository:
                         UPDATE backtest_results
                         SET status = %s,
                             error_message = %s,
-                            updated_at = NOW()
+                            updated_at = %s
                         WHERE id = %s
                         """,
-                        (status, error_message, result_id)
+                        (status, error_message, get_kst_now(), result_id)
                     )
                     conn.commit()
 
@@ -479,14 +496,14 @@ class PostgresBacktestRepository:
         self,
         backtest_id: int
     ) -> Optional[BacktestCheckpoint]:
-        """get_latest_checkpoint의 동기 구현"""
+        """get_latest_checkpoint의 동기 구현 (equity_curve는 backtest_results에서 조회)"""
         try:
             with self._get_connection() as conn:
                 with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
                     cursor.execute(
                         """
                         SELECT id, backtest_id, checkpoint_date, cash, high_watermark,
-                               positions, equity_curve, trade_count
+                               positions, trade_count
                         FROM backtest_checkpoints
                         WHERE backtest_id = %s
                         ORDER BY checkpoint_date DESC
@@ -506,12 +523,73 @@ class PostgresBacktestRepository:
                         cash=Decimal(str(row['cash'])),
                         high_watermark=Decimal(str(row['high_watermark'])),
                         positions=row['positions'] if row['positions'] else [],
-                        equity_curve=row['equity_curve'] if row['equity_curve'] else [],
                         trade_count=row['trade_count']
                     )
         except Exception as e:
             logger.error(f"Failed to get latest checkpoint: {e}")
             return None
+
+    async def get_equity_curve_until(
+        self,
+        backtest_id: int,
+        until_date: date
+    ) -> List[Dict[str, Any]]:
+        """
+        backtest_results에서 특정 날짜까지의 equity_curve 조회
+
+        Args:
+            backtest_id: 백테스트 결과 ID
+            until_date: 조회 종료일 (이 날짜 포함)
+
+        Returns:
+            equity_curve 리스트 (until_date까지만)
+        """
+        return await asyncio.to_thread(
+            self._get_equity_curve_until_sync, backtest_id, until_date
+        )
+
+    def _get_equity_curve_until_sync(
+        self,
+        backtest_id: int,
+        until_date: date
+    ) -> List[Dict[str, Any]]:
+        """get_equity_curve_until의 동기 구현"""
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                    cursor.execute(
+                        """
+                        SELECT equity_curve
+                        FROM backtest_results
+                        WHERE id = %s
+                        """,
+                        (backtest_id,)
+                    )
+                    row = cursor.fetchone()
+
+                    if not row or not row.get('equity_curve'):
+                        return []
+
+                    curve_data = row['equity_curve']
+                    if isinstance(curve_data, str):
+                        curve_data = json.loads(curve_data)
+
+                    # until_date까지만 필터링
+                    until_date_str = until_date.isoformat()
+                    filtered_curve = [
+                        point for point in curve_data
+                        if point.get('date', '') <= until_date_str
+                    ]
+
+                    logger.debug(
+                        f"Retrieved equity_curve until {until_date}: "
+                        f"{len(filtered_curve)} points from {len(curve_data)} total"
+                    )
+                    return filtered_curve
+
+        except Exception as e:
+            logger.error(f"Failed to get equity_curve until {until_date}: {e}")
+            return []
 
     async def save_checkpoint(self, checkpoint: BacktestCheckpoint) -> int:
         """
@@ -526,7 +604,7 @@ class PostgresBacktestRepository:
         return await asyncio.to_thread(self._save_checkpoint_sync, checkpoint)
 
     def _save_checkpoint_sync(self, checkpoint: BacktestCheckpoint) -> int:
-        """save_checkpoint의 동기 구현"""
+        """save_checkpoint의 동기 구현 (equity_curve 제외 - backtest_results에서 조회)"""
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -534,16 +612,14 @@ class PostgresBacktestRepository:
                         """
                         INSERT INTO backtest_checkpoints (
                             backtest_id, checkpoint_date, cash, high_watermark,
-                            positions, equity_curve, trade_count
+                            positions, trade_count, created_at
                         ) VALUES (%s, %s, %s, %s, %s, %s, %s)
                         ON CONFLICT (backtest_id, checkpoint_date)
                         DO UPDATE SET
                             cash = EXCLUDED.cash,
                             high_watermark = EXCLUDED.high_watermark,
                             positions = EXCLUDED.positions,
-                            equity_curve = EXCLUDED.equity_curve,
-                            trade_count = EXCLUDED.trade_count,
-                            created_at = NOW()
+                            trade_count = EXCLUDED.trade_count
                         RETURNING id
                         """,
                         (
@@ -552,8 +628,8 @@ class PostgresBacktestRepository:
                             float(checkpoint.cash),
                             float(checkpoint.high_watermark),
                             json.dumps(checkpoint.positions),
-                            json.dumps(checkpoint.equity_curve),
-                            checkpoint.trade_count
+                            checkpoint.trade_count,
+                            get_kst_now()
                         )
                     )
                     checkpoint_id = cursor.fetchone()[0]
@@ -623,7 +699,7 @@ class PostgresBacktestRepository:
                             equity_curve = %s,
                             is_incremental = TRUE,
                             last_checkpoint_date = %s,
-                            completed_at = NOW()
+                            completed_at = %s
                         WHERE id = %s
                         """,
                         (
@@ -642,10 +718,17 @@ class PostgresBacktestRepository:
                             float(result.avg_win) if result.avg_win else None,
                             float(result.avg_loss) if result.avg_loss else None,
                             json.dumps([
-                                {"date": p.date.isoformat(), "equity": float(p.equity)}
+                                {
+                                    "date": p.date.isoformat(),
+                                    "equity": float(p.equity),
+                                    "cash": float(p.cash),
+                                    "positions_value": float(p.positions_value),
+                                    "drawdown_pct": float(p.drawdown_pct)
+                                }
                                 for p in result.equity_curve
                             ]) if result.equity_curve else None,
                             new_end_date,
+                            get_kst_now(),
                             backtest_id
                         )
                     )
