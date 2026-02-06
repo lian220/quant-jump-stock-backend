@@ -8,6 +8,7 @@ SCRUM-186: Kafka Consumer + PostgreSQL 결과 저장
 """
 
 import logging
+import asyncio
 from typing import Optional
 from decimal import Decimal
 import json
@@ -15,9 +16,26 @@ import psycopg2
 import psycopg2.extras
 from contextlib import contextmanager
 
+from datetime import date
+from dataclasses import dataclass, field
+from typing import List, Dict, Any
+
 from application.backtest.result import BacktestResult, BacktestTrade, EquityCurvePoint
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class BacktestCheckpoint:
+    """백테스트 체크포인트 (포트폴리오 상태 스냅샷)"""
+    backtest_id: int
+    checkpoint_date: date
+    cash: Decimal
+    high_watermark: Decimal
+    positions: List[Dict[str, Any]] = field(default_factory=list)
+    equity_curve: List[Dict[str, Any]] = field(default_factory=list)
+    trade_count: int = 0
+    id: Optional[int] = None
 
 
 class PostgresBacktestRepository:
@@ -69,6 +87,10 @@ class PostgresBacktestRepository:
         Returns:
             생성된 backtest_results.id
         """
+        return await asyncio.to_thread(self._save_result_sync, result, request_id)
+
+    def _save_result_sync(self, result: BacktestResult, request_id: Optional[str] = None) -> int:
+        """save_result의 동기 구현"""
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -243,6 +265,15 @@ class PostgresBacktestRepository:
         error_message: Optional[str] = None
     ):
         """결과 상태 업데이트"""
+        await asyncio.to_thread(self._update_status_sync, result_id, status, error_message)
+
+    def _update_status_sync(
+        self,
+        result_id: int,
+        status: str,
+        error_message: Optional[str] = None
+    ):
+        """update_status의 동기 구현"""
         try:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
@@ -266,6 +297,10 @@ class PostgresBacktestRepository:
 
     async def find_by_id(self, result_id: int) -> Optional[BacktestResult]:
         """결과 ID로 조회"""
+        return await asyncio.to_thread(self._find_by_id_sync, result_id)
+
+    def _find_by_id_sync(self, result_id: int) -> Optional[BacktestResult]:
+        """find_by_id의 동기 구현"""
         try:
             with self._get_connection() as conn:
                 with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
@@ -287,7 +322,7 @@ class PostgresBacktestRepository:
                     cursor.execute(
                         """
                         SELECT * FROM backtest_trades
-                        WHERE backtest_result_id = %s
+                        WHERE backtest_id = %s
                         ORDER BY trade_date
                         """,
                         (result_id,)
@@ -368,3 +403,264 @@ class PostgresBacktestRepository:
             exit_reason_counts=row.get("exit_reason_counts", {}),
             execution_time_seconds=row.get("execution_time_seconds", 0)
         )
+
+    # ============================================================
+    # Checkpoint Methods (증분 백테스트 지원)
+    # ============================================================
+
+    async def find_active_backtest(
+        self,
+        strategy_id: int,
+        tickers: List[str],
+        start_date: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        동일 전략의 활성 백테스트 조회 (증분 업데이트 가능한 것)
+
+        Args:
+            strategy_id: 전략 ID
+            tickers: 종목 목록 (현재는 검증 안 함, 향후 확장용)
+            start_date: 시작일 (YYYY-MM-DD 문자열)
+
+        Returns:
+            기존 백테스트 정보 {id, end_date, last_checkpoint_date} 또는 None
+        """
+        return await asyncio.to_thread(
+            self._find_active_backtest_sync, strategy_id, tickers, start_date
+        )
+
+    def _find_active_backtest_sync(
+        self,
+        strategy_id: int,
+        tickers: List[str],
+        start_date: str
+    ) -> Optional[Dict[str, Any]]:
+        """find_active_backtest의 동기 구현"""
+        try:
+            from datetime import datetime as dt
+            start_date_parsed = dt.strptime(start_date, "%Y-%m-%d").date()
+
+            with self._get_connection() as conn:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                    cursor.execute(
+                        """
+                        SELECT id, end_date, last_checkpoint_date, is_incremental
+                        FROM backtest_results
+                        WHERE strategy_id = %s
+                          AND start_date = %s
+                          AND status = 'COMPLETED'
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                        """,
+                        (strategy_id, start_date_parsed)
+                    )
+                    row = cursor.fetchone()
+                    return dict(row) if row else None
+        except Exception as e:
+            logger.error(f"Failed to find active backtest: {e}")
+            return None
+
+    async def get_latest_checkpoint(
+        self,
+        backtest_id: int
+    ) -> Optional[BacktestCheckpoint]:
+        """
+        백테스트의 가장 최근 체크포인트 조회
+
+        Args:
+            backtest_id: 백테스트 결과 ID
+
+        Returns:
+            BacktestCheckpoint 또는 None
+        """
+        return await asyncio.to_thread(self._get_latest_checkpoint_sync, backtest_id)
+
+    def _get_latest_checkpoint_sync(
+        self,
+        backtest_id: int
+    ) -> Optional[BacktestCheckpoint]:
+        """get_latest_checkpoint의 동기 구현"""
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cursor:
+                    cursor.execute(
+                        """
+                        SELECT id, backtest_id, checkpoint_date, cash, high_watermark,
+                               positions, equity_curve, trade_count
+                        FROM backtest_checkpoints
+                        WHERE backtest_id = %s
+                        ORDER BY checkpoint_date DESC
+                        LIMIT 1
+                        """,
+                        (backtest_id,)
+                    )
+                    row = cursor.fetchone()
+
+                    if not row:
+                        return None
+
+                    return BacktestCheckpoint(
+                        id=row['id'],
+                        backtest_id=row['backtest_id'],
+                        checkpoint_date=row['checkpoint_date'],
+                        cash=Decimal(str(row['cash'])),
+                        high_watermark=Decimal(str(row['high_watermark'])),
+                        positions=row['positions'] if row['positions'] else [],
+                        equity_curve=row['equity_curve'] if row['equity_curve'] else [],
+                        trade_count=row['trade_count']
+                    )
+        except Exception as e:
+            logger.error(f"Failed to get latest checkpoint: {e}")
+            return None
+
+    async def save_checkpoint(self, checkpoint: BacktestCheckpoint) -> int:
+        """
+        체크포인트 저장 (upsert)
+
+        Args:
+            checkpoint: 체크포인트 데이터
+
+        Returns:
+            체크포인트 ID
+        """
+        return await asyncio.to_thread(self._save_checkpoint_sync, checkpoint)
+
+    def _save_checkpoint_sync(self, checkpoint: BacktestCheckpoint) -> int:
+        """save_checkpoint의 동기 구현"""
+        try:
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute(
+                        """
+                        INSERT INTO backtest_checkpoints (
+                            backtest_id, checkpoint_date, cash, high_watermark,
+                            positions, equity_curve, trade_count
+                        ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (backtest_id, checkpoint_date)
+                        DO UPDATE SET
+                            cash = EXCLUDED.cash,
+                            high_watermark = EXCLUDED.high_watermark,
+                            positions = EXCLUDED.positions,
+                            equity_curve = EXCLUDED.equity_curve,
+                            trade_count = EXCLUDED.trade_count,
+                            created_at = NOW()
+                        RETURNING id
+                        """,
+                        (
+                            checkpoint.backtest_id,
+                            checkpoint.checkpoint_date,
+                            float(checkpoint.cash),
+                            float(checkpoint.high_watermark),
+                            json.dumps(checkpoint.positions),
+                            json.dumps(checkpoint.equity_curve),
+                            checkpoint.trade_count
+                        )
+                    )
+                    checkpoint_id = cursor.fetchone()[0]
+                    conn.commit()
+
+                    logger.info(
+                        f"Saved checkpoint: backtest_id={checkpoint.backtest_id}, "
+                        f"date={checkpoint.checkpoint_date}"
+                    )
+                    return checkpoint_id
+        except Exception as e:
+            logger.error(f"Failed to save checkpoint: {e}")
+            raise
+
+    async def update_result_incremental(
+        self,
+        backtest_id: int,
+        result: BacktestResult,
+        new_trades: List[BacktestTrade],
+        request_id: Optional[str] = None
+    ) -> None:
+        """
+        기존 백테스트 결과를 증분 업데이트
+
+        Args:
+            backtest_id: 기존 백테스트 ID
+            result: 업데이트된 전체 결과 (지표 재계산)
+            new_trades: 새로 추가된 거래만
+            request_id: 요청 ID (Kafka 메시지 추적용)
+        """
+        await asyncio.to_thread(
+            self._update_result_incremental_sync,
+            backtest_id, result, new_trades, request_id
+        )
+
+    def _update_result_incremental_sync(
+        self,
+        backtest_id: int,
+        result: BacktestResult,
+        new_trades: List[BacktestTrade],
+        request_id: Optional[str] = None
+    ) -> None:
+        """update_result_incremental의 동기 구현"""
+        try:
+            new_end_date = result.end_date
+
+            with self._get_connection() as conn:
+                with conn.cursor() as cursor:
+                    # 1. 결과 지표 업데이트
+                    cursor.execute(
+                        """
+                        UPDATE backtest_results SET
+                            end_date = %s,
+                            final_value = %s,
+                            total_return = %s,
+                            cagr = %s,
+                            mdd = %s,
+                            sharpe_ratio = %s,
+                            sortino_ratio = %s,
+                            volatility = %s,
+                            total_trades = %s,
+                            winning_trades = %s,
+                            losing_trades = %s,
+                            win_rate = %s,
+                            avg_win = %s,
+                            avg_loss = %s,
+                            equity_curve = %s,
+                            is_incremental = TRUE,
+                            last_checkpoint_date = %s,
+                            completed_at = NOW()
+                        WHERE id = %s
+                        """,
+                        (
+                            new_end_date,
+                            float(result.final_value),
+                            float(result.total_return),
+                            float(result.cagr),
+                            float(result.mdd),
+                            float(result.sharpe_ratio) if result.sharpe_ratio else None,
+                            float(result.sortino_ratio) if result.sortino_ratio else None,
+                            float(result.volatility) if result.volatility else None,
+                            result.total_trades,
+                            result.winning_trades,
+                            result.losing_trades,
+                            float(result.win_rate) if result.win_rate else None,
+                            float(result.avg_win) if result.avg_win else None,
+                            float(result.avg_loss) if result.avg_loss else None,
+                            json.dumps([
+                                {"date": p.date.isoformat(), "equity": float(p.equity)}
+                                for p in result.equity_curve
+                            ]) if result.equity_curve else None,
+                            new_end_date,
+                            backtest_id
+                        )
+                    )
+
+                    # 2. 새 거래만 추가
+                    if new_trades:
+                        self._insert_trades(cursor, backtest_id, new_trades)
+
+                    conn.commit()
+
+                    logger.info(
+                        f"Updated backtest {backtest_id} incrementally: "
+                        f"end_date={new_end_date}, new_trades={len(new_trades)}, "
+                        f"request_id={request_id}"
+                    )
+        except Exception as e:
+            logger.error(f"Failed to update backtest incrementally: {e}")
+            raise
