@@ -610,7 +610,10 @@ class BacktestRequestHandler(MessageHandler):
 
                 # 체크포인트 저장 (equity_curve는 backtest_results에 저장되므로 제외)
                 checkpoint_data = incremental_result.checkpoint_data
-                checkpoint_date_value = checkpoint_data["checkpoint_date"]
+                checkpoint_date_value = checkpoint_data.get("checkpoint_date")
+                if checkpoint_date_value is None:
+                    logger.warning(f"checkpoint_date가 None입니다. 체크포인트 저장을 건너뜁니다. backtest_id={result_id}")
+                    return result, result_id, incremental_result.is_incremental
                 # checkpoint_date가 이미 date 객체인 경우와 문자열인 경우 모두 처리
                 if isinstance(checkpoint_date_value, date):
                     checkpoint_date = checkpoint_date_value

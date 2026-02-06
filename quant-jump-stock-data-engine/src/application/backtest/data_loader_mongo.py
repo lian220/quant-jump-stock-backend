@@ -17,6 +17,7 @@ MongoDB의 daily_stock_data 컬렉션에서 백테스트용 데이터를 로드�
 """
 
 import logging
+import os
 from datetime import date, timedelta
 from typing import Dict, List, Optional
 
@@ -26,6 +27,8 @@ from pymongo import MongoClient
 from .data_loader import DataLoader
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_MONGO_URI = "mongodb://quantiq_user:quantiq_password@localhost:27017/stock_trading?authSource=admin"
 
 
 class MongoDataLoader(DataLoader):
@@ -39,7 +42,7 @@ class MongoDataLoader(DataLoader):
 
     def __init__(
         self,
-        uri: str = "mongodb://quantiq_user:quantiq_password@localhost:27017/stock_trading?authSource=admin",
+        uri: str = None,
         database: str = "stock_trading",
         collection: str = "daily_stock_data",
         add_buffer_days: int = 50
@@ -51,7 +54,7 @@ class MongoDataLoader(DataLoader):
             collection: 컬렉션 이름
             add_buffer_days: 지표 계산을 위한 추가 버퍼 일수 (이동평균 등)
         """
-        self.uri = uri
+        self.uri = uri or os.environ.get("MONGODB_URI", _DEFAULT_MONGO_URI)
         self.database = database
         self.collection = collection
         self.add_buffer_days = add_buffer_days

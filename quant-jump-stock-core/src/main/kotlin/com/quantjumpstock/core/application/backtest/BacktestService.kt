@@ -2,6 +2,7 @@ package com.quantjumpstock.core.application.backtest
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
+import com.quantjumpstock.core.domain.model.backtest.BacktestGradeCalculator
 import com.quantjumpstock.core.domain.model.backtest.BacktestResult
 import com.quantjumpstock.core.domain.model.backtest.BacktestTrade
 import com.quantjumpstock.core.domain.economic.port.output.MessagePublisher
@@ -133,6 +134,57 @@ class BacktestService(
         val result = backtestResultRepository.findByRequestId(idOrRequestId)
             ?: throw BacktestNotFoundException("백테스트 결과를 찾을 수 없습니다: requestId=$idOrRequestId")
         return requireNotNull(result.id) { "BacktestResult.id must not be null" }
+    }
+
+    /**
+     * 초보자용 Enhanced 백테스트 결과 조회
+     * GET /api/v1/backtest/{id}/enhanced
+     * SCRUM-245: 신호등 시스템 + 평문 설명 + 용어 사전
+     */
+    fun getEnhancedBacktestResult(id: Long): BacktestEnhancedResponse {
+        val result = backtestResultRepository.findByIdWithTrades(id)
+            ?: throw BacktestNotFoundException("백테스트 결과를 찾을 수 없습니다: id=$id")
+
+        val equityCurve = result.equityCurve?.let { parseEquityCurve(it) }
+
+        // 등급 계산
+        val gradedMetrics = listOf(
+            BacktestGradeCalculator.gradeCagr(result.cagr),
+            BacktestGradeCalculator.gradeMdd(result.mdd),
+            BacktestGradeCalculator.gradeSharpe(result.sharpeRatio),
+            BacktestGradeCalculator.gradeWinRate(result.winRate),
+            BacktestGradeCalculator.gradeSortino(result.sortinoRatio),
+            BacktestGradeCalculator.gradeVolatility(result.volatility)
+        )
+
+        val overallGrade = BacktestGradeCalculator.calculateOverallGrade(
+            cagr = result.cagr,
+            mdd = result.mdd,
+            sharpe = result.sharpeRatio,
+            winRate = result.winRate
+        )
+
+        // 평문 요약
+        val summary = BacktestGradeCalculator.generatePlainSummary(result)
+
+        return BacktestEnhancedResponse(
+            id = requireNotNull(result.id),
+            strategyId = result.strategyId,
+            strategyName = result.strategyName,
+            status = result.status.name,
+            startDate = result.startDate,
+            endDate = result.endDate,
+            initialCapital = result.initialCapital,
+            finalValue = result.finalValue,
+            overallGrade = MetricGradeResponse.from(overallGrade),
+            summary = summary,
+            gradedMetrics = gradedMetrics.map { GradedMetricResponse.from(it) },
+            equityCurve = equityCurve,
+            trades = result.trades.map { mapToTradeResponse(it) },
+            glossary = BacktestGlossary.TERMS,
+            createdAt = result.createdAt,
+            completedAt = result.completedAt
+        )
     }
 
     /**

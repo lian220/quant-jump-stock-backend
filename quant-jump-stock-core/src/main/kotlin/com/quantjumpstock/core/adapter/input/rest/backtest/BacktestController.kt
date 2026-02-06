@@ -47,12 +47,66 @@ class BacktestController(
         @RequestHeader("Authorization", required = false) authorization: String?,
         @RequestBody request: BacktestRunRequest
     ): ResponseEntity<BacktestRunResponse> {
-        val userId = authorization?.let { extractUserIdAsLong(it) }
+        val userId = authorization?.let { extractUserId(it) }
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
-        val response = backtestService.runBacktest(request, userId.toString())
+        val response = backtestService.runBacktest(request, userId)
 
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(response)
+    }
+
+    /**
+     * 초보자용 Enhanced 백테스트 결과 조회
+     * GET /api/v1/backtest/{id}/enhanced
+     * SCRUM-245: 신호등 시스템 + 평문 설명 + 용어 사전
+     */
+    @GetMapping("/{id}/enhanced")
+    @Operation(
+        summary = "초보자용 백테스트 결과 조회",
+        description = "백테스트 결과를 초보자 친화적으로 조회합니다. 성과 등급(신호등), 평문 요약, 용어 설명을 포함합니다."
+    )
+    @ApiResponses(
+        ApiResponse(
+            responseCode = "200",
+            description = "Enhanced 백테스트 결과 조회 성공",
+            content = [Content(schema = Schema(implementation = BacktestEnhancedResponse::class))]
+        ),
+        ApiResponse(responseCode = "202", description = "아직 처리 중"),
+        ApiResponse(responseCode = "404", description = "백테스트 결과를 찾을 수 없음")
+    )
+    fun getEnhancedBacktestResult(
+        @Parameter(description = "백테스트 ID (DB ID 또는 requestId)") @PathVariable id: String
+    ): ResponseEntity<Any> {
+        return try {
+            val resolvedId = backtestService.resolveBacktestId(id)
+            val status = backtestService.getBacktestStatus(resolvedId)
+
+            when (status) {
+                "RUNNING" -> {
+                    val pendingResponse = BacktestPendingResponse(
+                        id = resolvedId,
+                        status = "RUNNING",
+                        message = "백테스트가 아직 처리 중입니다.",
+                        estimatedRemainingTime = 30
+                    )
+                    ResponseEntity.status(HttpStatus.ACCEPTED)
+                        .header("Retry-After", "10")
+                        .body(pendingResponse)
+                }
+                "FAILED" -> {
+                    val result = backtestService.getBacktestResult(resolvedId)
+                    ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                        .body(result)
+                }
+                else -> {
+                    val enhanced = backtestService.getEnhancedBacktestResult(resolvedId)
+                    ResponseEntity.ok(enhanced)
+                }
+            }
+        } catch (e: BacktestNotFoundException) {
+            ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(mapOf("error" to e.message))
+        }
     }
 
     /**
