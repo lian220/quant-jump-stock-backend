@@ -162,7 +162,7 @@ class TestBacktestEngine:
             start_date=start_date,
             end_date=end_date,
             initial_capital=Decimal("10000000"),
-            symbols=["005930"],
+            tickers=["005930"],
             position_size_pct=Decimal("0.5")
         )
 
@@ -198,7 +198,7 @@ class TestBacktestEngine:
             start_date=start_date,
             end_date=end_date,
             initial_capital=Decimal("10000000"),
-            symbols=["005930", "000660"],
+            tickers=["005930", "000660"],
             max_positions=5,
             position_size_pct=Decimal("0.2")
         )
@@ -267,7 +267,7 @@ class TestBacktestEngine:
             start_date=start_date,
             end_date=end_date,
             initial_capital=Decimal("10000000"),
-            symbols=["005930"],
+            tickers=["005930"],
             position_size_pct=Decimal("0.5")
         )
 
@@ -299,7 +299,7 @@ class TestBacktestEngine:
             start_date=start_date,
             end_date=end_date,
             initial_capital=Decimal("10000000"),
-            symbols=["005930"]
+            tickers=["005930"]
         )
 
         engine = BacktestEngine(data_loader=data_loader, config=config)
@@ -326,7 +326,7 @@ class TestBacktestEngine:
             start_date=date(2024, 1, 1),
             end_date=date(2024, 1, 31),
             initial_capital=Decimal("10000000"),
-            symbols=["005930"]
+            tickers=["005930"]
         )
 
         engine = BacktestEngine(data_loader=data_loader, config=config)
@@ -356,7 +356,7 @@ class TestBacktestEngine:
             start_date=start_date,
             end_date=end_date,
             initial_capital=Decimal("10000000"),
-            symbols=["005930"],
+            tickers=["005930"],
             commission_rate=Decimal("0.001"),  # 0.1%
             slippage_rate=Decimal("0.002"),    # 0.2%
             position_size_pct=Decimal("0.5")
@@ -396,7 +396,7 @@ class TestBacktestConfig:
             start_date=date(2024, 1, 1),
             end_date=date(2024, 12, 31),
             initial_capital=Decimal("50000000"),
-            symbols=["005930", "000660"],
+            tickers=["005930", "000660"],
             max_positions=5,
             position_size_pct=Decimal("0.2")
         )
@@ -404,7 +404,7 @@ class TestBacktestConfig:
         assert config.initial_capital == Decimal("50000000")
         assert config.max_positions == 5
         assert config.position_size_pct == Decimal("0.2")
-        assert len(config.symbols) == 2
+        assert len(config.tickers) == 2
 
 
 class TestBacktestResult:
