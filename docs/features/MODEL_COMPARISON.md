@@ -240,3 +240,20 @@ db.stock_predictions.bulk_write(prediction_updates)
 4. ✅ predict.py 즉시 사용 가능
 
 **현재 작업 (옵션 1) 계속 진행하는 것이 정답입니다!** 🎯
+
+---
+
+## 📚 관련 문서
+
+### 기능 명세
+- [분석 아키텍처](./ANALYSIS_ARCHITECTURE.md) - 분석 시스템
+- [predict.py 비교](./PREDICT_PY_COMPARISON.md) - 버전 비교
+- [플랫폼 분석](./PLATFORM_ANALYSIS.md) - 4개 플랫폼 비교
+
+### 아키텍처
+- [시스템 아키텍처](../architecture/시스템_아키텍처.md) - 전체 시스템 구조
+- [하이브리드 데이터베이스 전략](../architecture/하이브리드_데이터베이스_전략.md) - DB 전략
+
+### 분석 결과
+- [데이터 형식 분석](../analysis/데이터_형식_분석.md) - 데이터 구조
+- [FRED 데이터 분석](../analysis/FRED_데이터_분석_2026-02-01.md) - 경제 지표

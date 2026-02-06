@@ -1,22 +1,53 @@
 # Database Schema Documentation
 
+> **최종 업데이트**: 2026-02-06
+> **Flyway 버전**: V20
+
 ## 개요
 
 QuantiQ 시스템은 **PostgreSQL**과 **MongoDB** 두 가지 데이터베이스를 사용하는 **폴리글롯 퍼시스턴스** 아키텍처를 채택하고 있습니다.
 
-- **PostgreSQL (JPA)**: 트랜잭션 데이터, 사용자 정보, 거래 내역
+- **PostgreSQL (JPA)**: 트랜잭션 데이터, 사용자 정보, 거래 내역, 전략, 백테스트
 - **MongoDB**: 분석 데이터, 시계열 데이터, 예측 결과
 
 ---
 
 ## PostgreSQL (JPA Entities)
 
+### Entity 목록 (21개)
+
+| 카테고리 | Entity | 테이블명 | 설명 |
+|----------|--------|----------|------|
+| **사용자** | UserEntity | users | 사용자 정보 |
+| | UserTierEntity | user_tiers | 사용자 티어 (FREE/PREMIUM) |
+| | UserKisAccountEntity | user_kis_accounts | KIS 계정 정보 |
+| | KisTokenEntity | kis_tokens | KIS API 토큰 |
+| | TradingConfigEntity | trading_configs | 거래 설정 |
+| | AccountBalanceEntity | account_balances | 계좌 잔액 |
+| **RBAC** | RoleEntity | roles | 역할 정의 |
+| | PermissionEntity | permissions | 권한 정의 |
+| | RolePermissionEntity | role_permissions | 역할-권한 매핑 |
+| | UserRoleEntity | user_roles | 사용자-역할 매핑 |
+| **전략** | StrategyEntity | strategies | 전략 정의 |
+| | StrategyCategoryEntity | strategy_categories | 전략 카테고리 |
+| | StrategySubscriptionEntity | strategy_subscriptions | 전략 구독 |
+| | StrategySignalEntity | strategy_signals | 전략 신호 |
+| **백테스트** | BacktestResultEntity | backtest_results | 백테스트 결과 |
+| | BacktestTradeEntity | backtest_trades | 백테스트 거래 내역 |
+| **거래** | TradeEntity | trades | 실제 거래 내역 |
+| | TradeSignalExecutedEntity | trade_signals_executed | 거래 신호 실행 기록 |
+| **마스터** | StockEntity | stocks | 종목 정보 |
+| | FredIndicatorEntity | fred_indicators | FRED 경제 지표 |
+| | YfinanceIndicatorEntity | yfinance_indicators | yfinance 지표 |
+
+---
+
+## 사용자 관련 테이블
+
 ### 1. users (사용자)
 
-**테이블명**: `users`
 **엔티티**: `UserEntity`
 
-#### 스키마
 | 컬럼명 | 타입 | 제약조건 | 설명 |
 |--------|------|----------|------|
 | id | BIGINT | PK, AUTO_INCREMENT | 사용자 ID |
@@ -24,26 +55,46 @@ QuantiQ 시스템은 **PostgreSQL**과 **MongoDB** 두 가지 데이터베이스
 | name | VARCHAR(100) | NULL | 사용자 이름 |
 | email | VARCHAR(100) | UNIQUE | 이메일 |
 | password_hash | VARCHAR(255) | NULL | 비밀번호 해시 |
+| oauth_provider | VARCHAR(20) | NULL | OAuth 제공자 (GOOGLE, NAVER) |
+| oauth_provider_id | VARCHAR(255) | NULL | OAuth 제공자 ID |
+| profile_image_url | VARCHAR(500) | NULL | 프로필 이미지 URL |
 | status | VARCHAR(20) | NOT NULL | 상태 (ACTIVE, INACTIVE, SUSPENDED) |
+| role | VARCHAR(20) | NOT NULL | 역할 (ADMIN, USER, MODERATOR) |
 | created_at | TIMESTAMP | NOT NULL | 생성일시 |
 | updated_at | TIMESTAMP | NOT NULL | 수정일시 |
 
-#### 연관 관계
-- `1:1` → **trading_configs** (TradingConfigEntity)
-- `1:1` → **account_balances** (AccountBalanceEntity)
-- `1:1` → **user_kis_accounts** (UserKisAccountEntity)
-- `1:N` → **trades** (TradeEntity)
-- `1:N` → **trade_signals_executed** (TradeSignalExecutedEntity)
-- `1:N` → **kis_tokens** (KisTokenEntity)
+**연관 관계**:
+- `1:1` → trading_configs, account_balances, user_kis_accounts, user_tiers
+- `1:N` → trades, kis_tokens, user_roles, strategies (owner)
 
 ---
 
-### 2. user_kis_accounts (KIS 계정 정보)
+### 2. user_tiers (사용자 티어)
 
-**테이블명**: `user_kis_accounts`
+**엔티티**: `UserTierEntity`
+
+| 컬럼명 | 타입 | 제약조건 | 설명 |
+|--------|------|----------|------|
+| id | BIGINT | PK, AUTO_INCREMENT | 티어 ID |
+| user_id | BIGINT | FK (users), UNIQUE, NOT NULL | 사용자 ID |
+| tier | VARCHAR(20) | NOT NULL | 티어 (FREE, PREMIUM, PREMIUM_YEARLY) |
+| started_at | TIMESTAMP | NULL | 프리미엄 시작일 |
+| expires_at | TIMESTAMP | NULL | 프리미엄 만료일 |
+| backtest_count_today | INT | NOT NULL | 오늘 백테스트 횟수 |
+| backtest_count_reset_at | DATE | NOT NULL | 백테스트 카운트 리셋 날짜 |
+| created_at | TIMESTAMP | NOT NULL | 생성일시 |
+| updated_at | TIMESTAMP | NOT NULL | 수정일시 |
+
+**비즈니스 로직**:
+- FREE 티어: 일 3회 백테스트 제한
+- PREMIUM 티어: 무제한 백테스트
+
+---
+
+### 3. user_kis_accounts (KIS 계정 정보)
+
 **엔티티**: `UserKisAccountEntity`
 
-#### 스키마
 | 컬럼명 | 타입 | 제약조건 | 설명 |
 |--------|------|----------|------|
 | id | BIGINT | PK, AUTO_INCREMENT | KIS 계정 ID |
@@ -58,21 +109,12 @@ QuantiQ 시스템은 **PostgreSQL**과 **MongoDB** 두 가지 데이터베이스
 | created_at | TIMESTAMP | NOT NULL | 생성일시 |
 | updated_at | TIMESTAMP | NOT NULL | 수정일시 |
 
-#### 연관 관계
-- `N:1` → **users** (UserEntity)
-
-#### 보안
-- `app_secret_encrypted`: Jasypt 또는 AES 암호화 저장
-- `getDecryptedAppSecret()`: 복호화 메서드 제공
-
 ---
 
-### 3. kis_tokens (KIS API Access Token)
+### 4. kis_tokens (KIS API Access Token)
 
-**테이블명**: `kis_tokens`
 **엔티티**: `KisTokenEntity`
 
-#### 스키마
 | 컬럼명 | 타입 | 제약조건 | 설명 |
 |--------|------|----------|------|
 | id | BIGINT | PK, AUTO_INCREMENT | 토큰 ID |
@@ -84,26 +126,15 @@ QuantiQ 시스템은 **PostgreSQL**과 **MongoDB** 두 가지 데이터베이스
 | created_at | TIMESTAMP | NOT NULL | 생성일시 |
 | updated_at | TIMESTAMP | NOT NULL | 수정일시 |
 
-#### 인덱스
-- **UNIQUE**: `(user_id, account_type)` - 사용자별, 계정 타입별 유니크 제약
-- **INDEX**: `idx_kis_tokens_user_account` - 조회 성능 최적화
-- **INDEX**: `idx_kis_tokens_expiration` - 만료 토큰 정리 최적화
-
-#### 연관 관계
-- `N:1` → **users** (UserEntity)
-
-#### 메서드
-- `isExpired()`: 토큰 만료 여부 확인
-- `isValid()`: 토큰 유효성 확인 (활성화 + 만료 안 됨)
+**인덱스**:
+- UNIQUE: `(user_id, account_type)`
 
 ---
 
-### 4. trading_configs (거래 설정)
+### 5. trading_configs (거래 설정)
 
-**테이블명**: `trading_configs`
 **엔티티**: `TradingConfigEntity`
 
-#### 스키마
 | 컬럼명 | 타입 | 제약조건 | 설명 |
 |--------|------|----------|------|
 | id | BIGINT | PK, AUTO_INCREMENT | 설정 ID |
@@ -118,17 +149,12 @@ QuantiQ 시스템은 **PostgreSQL**과 **MongoDB** 두 가지 데이터베이스
 | created_at | TIMESTAMP | NOT NULL | 생성일시 |
 | updated_at | TIMESTAMP | NOT NULL | 수정일시 |
 
-#### 연관 관계
-- `1:1` → **users** (UserEntity)
-
 ---
 
-### 5. account_balances (계좌 잔액)
+### 6. account_balances (계좌 잔액)
 
-**테이블명**: `account_balances`
 **엔티티**: `AccountBalanceEntity`
 
-#### 스키마
 | 컬럼명 | 타입 | 제약조건 | 설명 |
 |--------|------|----------|------|
 | id | BIGINT | PK, AUTO_INCREMENT | 잔액 ID |
@@ -140,21 +166,253 @@ QuantiQ 시스템은 **PostgreSQL**과 **MongoDB** 두 가지 데이터베이스
 | created_at | TIMESTAMP | NOT NULL | 생성일시 |
 | updated_at | TIMESTAMP | NOT NULL | 수정일시 |
 
-#### 연관 관계
-- `1:1` → **users** (UserEntity)
-
-#### 동시성 제어
-- `@Version`: 낙관적 락(Optimistic Lock) 사용
-- `getAvailableCash()`: 사용 가능한 현금 계산 (cash - lockedCash)
+**동시성 제어**: `@Version` 낙관적 락 사용
 
 ---
 
-### 6. trades (거래 내역)
+## RBAC (역할 기반 접근 제어)
 
-**테이블명**: `trades`
+### 7. roles (역할)
+
+**엔티티**: `RoleEntity`
+
+| 컬럼명 | 타입 | 제약조건 | 설명 |
+|--------|------|----------|------|
+| id | BIGINT | PK, AUTO_INCREMENT | 역할 ID |
+| name | VARCHAR(50) | UNIQUE, NOT NULL | 역할명 (SUPER_ADMIN, ADMIN, MODERATOR, USER) |
+| description | VARCHAR(255) | NULL | 설명 |
+| is_system | BOOLEAN | NOT NULL | 시스템 역할 여부 |
+| created_at | TIMESTAMP | NOT NULL | 생성일시 |
+
+**연관 관계**:
+- `1:N` → role_permissions, user_roles
+
+---
+
+### 8. permissions (권한)
+
+**엔티티**: `PermissionEntity`
+
+| 컬럼명 | 타입 | 제약조건 | 설명 |
+|--------|------|----------|------|
+| id | BIGINT | PK, AUTO_INCREMENT | 권한 ID |
+| code | VARCHAR(100) | UNIQUE, NOT NULL | 권한 코드 |
+| name | VARCHAR(100) | NOT NULL | 권한명 |
+| description | VARCHAR(255) | NULL | 설명 |
+| category | VARCHAR(50) | NULL | 카테고리 |
+| created_at | TIMESTAMP | NOT NULL | 생성일시 |
+
+**권한 카테고리**:
+- User Management: USER_VIEW, USER_CREATE, USER_UPDATE, USER_DELETE, USER_ROLE_ASSIGN
+- Strategy Management: STRATEGY_VIEW, STRATEGY_CREATE, STRATEGY_UPDATE, STRATEGY_DELETE, STRATEGY_APPROVE, STRATEGY_PUBLISH
+- Backtest: BACKTEST_RUN, BACKTEST_VIEW_ALL, BACKTEST_UNLIMITED
+- Analytics: ANALYTICS_VIEW, ANALYTICS_EXPORT
+- System: SYSTEM_SETTINGS, SYSTEM_LOGS, SYSTEM_MAINTENANCE
+- Subscription: SUBSCRIPTION_VIEW, SUBSCRIPTION_MANAGE, PAYMENT_VIEW, PAYMENT_REFUND
+
+---
+
+### 9. role_permissions (역할-권한 매핑)
+
+**엔티티**: `RolePermissionEntity`
+
+| 컬럼명 | 타입 | 제약조건 | 설명 |
+|--------|------|----------|------|
+| id | BIGINT | PK, AUTO_INCREMENT | ID |
+| role_id | BIGINT | FK (roles), NOT NULL | 역할 ID |
+| permission_id | BIGINT | FK (permissions), NOT NULL | 권한 ID |
+| created_at | TIMESTAMP | NOT NULL | 생성일시 |
+
+**인덱스**: UNIQUE `(role_id, permission_id)`
+
+---
+
+### 10. user_roles (사용자-역할 매핑)
+
+**엔티티**: `UserRoleEntity`
+
+| 컬럼명 | 타입 | 제약조건 | 설명 |
+|--------|------|----------|------|
+| id | BIGINT | PK, AUTO_INCREMENT | ID |
+| user_id | BIGINT | FK (users), NOT NULL | 사용자 ID |
+| role_id | BIGINT | FK (roles), NOT NULL | 역할 ID |
+| assigned_at | TIMESTAMP | NOT NULL | 할당일시 |
+| assigned_by | BIGINT | FK (users), NULL | 할당자 ID |
+| created_at | TIMESTAMP | NOT NULL | 생성일시 |
+
+**인덱스**: UNIQUE `(user_id, role_id)`
+
+---
+
+## 전략 관련 테이블
+
+### 11. strategy_categories (전략 카테고리)
+
+**엔티티**: `StrategyCategoryEntity`
+
+| 컬럼명 | 타입 | 제약조건 | 설명 |
+|--------|------|----------|------|
+| id | BIGINT | PK, AUTO_INCREMENT | 카테고리 ID |
+| code | VARCHAR(50) | UNIQUE, NOT NULL | 카테고리 코드 |
+| name | VARCHAR(100) | NOT NULL | 카테고리명 |
+| description | TEXT | NULL | 설명 |
+| icon | VARCHAR(50) | NULL | 아이콘 |
+| sort_order | INT | DEFAULT 0 | 정렬 순서 |
+| is_active | BOOLEAN | DEFAULT TRUE | 활성화 여부 |
+| created_at | TIMESTAMP | NOT NULL | 생성일시 |
+| updated_at | TIMESTAMP | NOT NULL | 수정일시 |
+
+---
+
+### 12. strategies (전략)
+
+**엔티티**: `StrategyEntity`
+
+| 컬럼명 | 타입 | 제약조건 | 설명 |
+|--------|------|----------|------|
+| id | BIGINT | PK, AUTO_INCREMENT | 전략 ID |
+| name | VARCHAR(100) | NOT NULL | 전략명 |
+| description | TEXT | NULL | 설명 |
+| category_id | BIGINT | FK (strategy_categories), NOT NULL | 카테고리 ID |
+| owner_id | BIGINT | FK (users), NULL | 소유자 ID |
+| is_public | BOOLEAN | DEFAULT FALSE | 공개 여부 |
+| is_premium | BOOLEAN | DEFAULT FALSE | 프리미엄 전용 여부 |
+| status | VARCHAR(20) | NOT NULL | 상태 |
+| conditions | JSONB | NOT NULL | 전략 조건 (DSL) |
+| rebalance_frequency | VARCHAR(20) | DEFAULT 'MONTHLY' | 리밸런싱 주기 |
+| subscriber_count | INT | DEFAULT 0 | 구독자 수 |
+| average_rating | DECIMAL(3,2) | DEFAULT 0 | 평균 평점 |
+| created_at | TIMESTAMP | NOT NULL | 생성일시 |
+| updated_at | TIMESTAMP | NOT NULL | 수정일시 |
+
+**전략 상태 (StrategyStatus)**:
+- `DRAFT`: 초안
+- `PENDING_REVIEW`: 검토 대기
+- `APPROVED`: 승인됨
+- `PUBLISHED`: 발행됨 (마켓플레이스 공개)
+- `REJECTED`: 반려됨
+- `ACTIVE`: 활성 (레거시)
+- `ARCHIVED`: 보관됨
+
+**리밸런싱 주기 (RebalanceFrequency)**:
+- DAILY, WEEKLY, MONTHLY, QUARTERLY, YEARLY, NONE
+
+**연관 관계**:
+- `N:1` → strategy_categories, users (owner)
+- `1:N` → strategy_subscriptions, backtest_results, strategy_signals
+
+---
+
+### 13. strategy_subscriptions (전략 구독)
+
+**엔티티**: `StrategySubscriptionEntity`
+
+| 컬럼명 | 타입 | 제약조건 | 설명 |
+|--------|------|----------|------|
+| id | BIGINT | PK, AUTO_INCREMENT | 구독 ID |
+| user_id | BIGINT | FK (users), NOT NULL | 사용자 ID |
+| strategy_id | BIGINT | FK (strategies), NOT NULL | 전략 ID |
+| status | VARCHAR(20) | NOT NULL | 상태 (ACTIVE, PAUSED, CANCELLED) |
+| notify_signals | BOOLEAN | DEFAULT TRUE | 신호 알림 여부 |
+| notify_rebalance | BOOLEAN | DEFAULT TRUE | 리밸런싱 알림 여부 |
+| subscribed_at | TIMESTAMP | NOT NULL | 구독일시 |
+| cancelled_at | TIMESTAMP | NULL | 취소일시 |
+| created_at | TIMESTAMP | NOT NULL | 생성일시 |
+
+**인덱스**: UNIQUE `(user_id, strategy_id)`
+
+---
+
+### 14. strategy_signals (전략 신호)
+
+**엔티티**: `StrategySignalEntity`
+
+| 컬럼명 | 타입 | 제약조건 | 설명 |
+|--------|------|----------|------|
+| id | BIGINT | PK, AUTO_INCREMENT | 신호 ID |
+| strategy_id | BIGINT | FK (strategies), NOT NULL | 전략 ID |
+| signal_date | DATE | NOT NULL | 신호 날짜 |
+| signal_type | VARCHAR(20) | NOT NULL | 신호 타입 (BUY, SELL, REBALANCE, HOLD) |
+| ticker | VARCHAR(20) | NULL | 종목 티커 |
+| target_weight | DECIMAL(5,2) | NULL | 목표 비중 |
+| reason | TEXT | NULL | 신호 사유 |
+| conditions_snapshot | JSONB | NULL | 조건 스냅샷 |
+| created_at | TIMESTAMP | NOT NULL | 생성일시 |
+
+---
+
+## 백테스트 관련 테이블
+
+### 15. backtest_results (백테스트 결과)
+
+**엔티티**: `BacktestResultEntity`
+
+| 컬럼명 | 타입 | 제약조건 | 설명 |
+|--------|------|----------|------|
+| id | BIGINT | PK, AUTO_INCREMENT | 결과 ID |
+| strategy_id | BIGINT | FK (strategies), NOT NULL | 전략 ID |
+| user_id | BIGINT | FK (users), NULL | 실행자 ID |
+| start_date | DATE | NOT NULL | 시작일 |
+| end_date | DATE | NOT NULL | 종료일 |
+| initial_capital | DECIMAL(15,2) | NOT NULL | 초기 자본 |
+| benchmark | VARCHAR(20) | DEFAULT 'KOSPI' | 벤치마크 |
+| final_value | DECIMAL(15,2) | NOT NULL | 최종 가치 |
+| total_return | DECIMAL(10,4) | NOT NULL | 총 수익률 |
+| cagr | DECIMAL(10,4) | NOT NULL | 연평균 수익률 |
+| mdd | DECIMAL(10,4) | NOT NULL | 최대 낙폭 |
+| sharpe_ratio | DECIMAL(10,4) | NULL | 샤프 비율 |
+| sortino_ratio | DECIMAL(10,4) | NULL | 소르티노 비율 |
+| volatility | DECIMAL(10,4) | NULL | 변동성 |
+| win_rate | DECIMAL(5,2) | NULL | 승률 |
+| total_trades | INT | DEFAULT 0 | 총 거래 수 |
+| winning_trades | INT | DEFAULT 0 | 수익 거래 수 |
+| losing_trades | INT | DEFAULT 0 | 손실 거래 수 |
+| avg_win | DECIMAL(10,4) | NULL | 평균 수익 |
+| avg_loss | DECIMAL(10,4) | NULL | 평균 손실 |
+| benchmark_return | DECIMAL(10,4) | NULL | 벤치마크 수익률 |
+| alpha | DECIMAL(10,4) | NULL | 알파 |
+| beta | DECIMAL(10,4) | NULL | 베타 |
+| equity_curve | JSONB | NULL | 자산 곡선 |
+| status | VARCHAR(20) | NOT NULL | 상태 (RUNNING, COMPLETED, FAILED) |
+| error_message | TEXT | NULL | 에러 메시지 |
+| created_at | TIMESTAMP | NOT NULL | 생성일시 |
+| completed_at | TIMESTAMP | NULL | 완료일시 |
+
+**연관 관계**:
+- `N:1` → strategies, users
+- `1:N` → backtest_trades
+
+---
+
+### 16. backtest_trades (백테스트 거래 내역)
+
+**엔티티**: `BacktestTradeEntity`
+
+| 컬럼명 | 타입 | 제약조건 | 설명 |
+|--------|------|----------|------|
+| id | BIGINT | PK, AUTO_INCREMENT | 거래 ID |
+| backtest_id | BIGINT | FK (backtest_results), NOT NULL | 백테스트 ID |
+| trade_date | DATE | NOT NULL | 거래일 |
+| ticker | VARCHAR(20) | NOT NULL | 종목 티커 |
+| side | VARCHAR(10) | NOT NULL | 방향 (BUY, SELL) |
+| quantity | INT | NOT NULL | 수량 |
+| price | DECIMAL(15,4) | NOT NULL | 가격 |
+| amount | DECIMAL(15,2) | NOT NULL | 거래 금액 |
+| commission | DECIMAL(10,2) | DEFAULT 0 | 수수료 |
+| pnl | DECIMAL(15,2) | NULL | 손익 (SELL 시) |
+| pnl_percent | DECIMAL(10,4) | NULL | 손익률 |
+| holding_days | INT | NULL | 보유일 |
+| signal_reason | VARCHAR(255) | NULL | 신호 사유 |
+| created_at | TIMESTAMP | NOT NULL | 생성일시 |
+
+---
+
+## 거래 관련 테이블
+
+### 17. trades (거래 내역)
+
 **엔티티**: `TradeEntity`
 
-#### 스키마
 | 컬럼명 | 타입 | 제약조건 | 설명 |
 |--------|------|----------|------|
 | id | BIGINT | PK, AUTO_INCREMENT | 거래 ID |
@@ -171,18 +429,12 @@ QuantiQ 시스템은 **PostgreSQL**과 **MongoDB** 두 가지 데이터베이스
 | created_at | TIMESTAMP | NOT NULL | 생성일시 |
 | updated_at | TIMESTAMP | NOT NULL | 수정일시 |
 
-#### 연관 관계
-- `N:1` → **users** (UserEntity)
-- `1:1` ← **trade_signals_executed** (역참조)
-
 ---
 
-### 7. trade_signals_executed (거래 신호 실행 기록)
+### 18. trade_signals_executed (거래 신호 실행 기록)
 
-**테이블명**: `trade_signals_executed`
 **엔티티**: `TradeSignalExecutedEntity`
 
-#### 스키마
 | 컬럼명 | 타입 | 제약조건 | 설명 |
 |--------|------|----------|------|
 | id | BIGINT | PK, AUTO_INCREMENT | 실행 기록 ID |
@@ -196,87 +448,104 @@ QuantiQ 시스템은 **PostgreSQL**과 **MongoDB** 두 가지 데이터베이스
 | executed_trade_id | BIGINT | FK (trades), NULL | 실행된 거래 ID |
 | created_at | TIMESTAMP | NOT NULL | 생성일시 |
 
-#### 연관 관계
-- `N:1` → **users** (UserEntity)
-- `N:1` → **trades** (TradeEntity) - 실행된 거래 참조
-
 ---
 
-### 8. stocks (종목 정보) ✨
+## 마스터 데이터 테이블
 
-**테이블명**: `stocks`
+### 19. stocks (종목 정보)
+
 **엔티티**: `StockEntity`
-**마이그레이션**: 2026-02-01 MongoDB → PostgreSQL 완료
 
-#### 스키마
 | 컬럼명 | 타입 | 제약조건 | 설명 |
 |--------|------|----------|------|
 | id | BIGINT | PK, AUTO_INCREMENT | 종목 ID |
 | ticker | VARCHAR(20) | UNIQUE, NOT NULL | 종목 티커 (예: AAPL, TSLA) |
 | stock_name | VARCHAR(200) | NOT NULL | 한글 종목명 |
 | stock_name_en | VARCHAR(200) | NULL | 영문 종목명 |
-| is_etf | BOOLEAN | NOT NULL, DEFAULT FALSE | ETF 여부 |
-| leverage_ticker | VARCHAR(20) | NULL | 레버리지 상품 티커 (예: TQQQ) |
+| is_etf | BOOLEAN | DEFAULT FALSE | ETF 여부 |
+| leverage_ticker | VARCHAR(20) | NULL | 레버리지 상품 티커 |
 | exchange | VARCHAR(50) | NULL | 거래소 (NASDAQ, NYSE 등) |
-| sector | VARCHAR(100) | NULL | 섹터 (Technology, Healthcare 등) |
-| industry | VARCHAR(100) | NULL | 산업 (Consumer Electronics 등) |
-| is_active | BOOLEAN | NOT NULL, DEFAULT TRUE | 활성화 여부 (거래 가능) |
+| sector | VARCHAR(100) | NULL | 섹터 |
+| industry | VARCHAR(100) | NULL | 산업 |
+| is_active | BOOLEAN | DEFAULT TRUE | 활성화 여부 |
 | created_at | TIMESTAMP | NOT NULL | 생성일시 |
 | updated_at | TIMESTAMP | NOT NULL | 수정일시 |
 
-#### 인덱스
-- **UNIQUE**: `uq_stocks_ticker` - ticker 유니크 제약
-- **INDEX**: `idx_stocks_ticker` - ticker 조회 최적화
-- **INDEX**: `idx_stocks_is_active` (WHERE is_active = TRUE) - 활성 종목 필터링
-- **INDEX**: `idx_stocks_sector` (WHERE sector IS NOT NULL) - 섹터별 조회
-- **INDEX**: `idx_stocks_industry` (WHERE industry IS NOT NULL) - 산업별 조회
-- **INDEX**: `idx_stocks_is_etf` (WHERE is_etf = TRUE) - ETF 필터링
+**인덱스**:
+- UNIQUE: `ticker`
+- INDEX: `is_active`, `sector`, `industry`, `is_etf`
 
-#### Repository 메서드
-```kotlin
-fun findByTicker(ticker: String): StockEntity?
-fun findByIsActive(isActive: Boolean): List<StockEntity>
-fun findByIsEtf(isEtf: Boolean): List<StockEntity>
-fun findBySector(sector: String): List<StockEntity>
-fun findByIndustry(industry: String): List<StockEntity>
-fun findAllActiveStocks(): List<StockEntity>
-fun findAllActiveNonEtfStocks(): List<StockEntity>
-fun findAllActiveEtfs(): List<StockEntity>
-```
+---
 
-#### 초기 데이터
-- `V7__Insert_Initial_Stocks_Data.sql`로 35개 종목 데이터 관리
-- AAPL, TSLA, NVDA, MSFT, QQQ, SPY 등 주요 미국 주식 및 ETF
+### 20. fred_indicators (FRED 경제 지표)
 
-#### 마이그레이션 히스토리
-**2026-02-01**: MongoDB → PostgreSQL 마이그레이션
-- **이유**: 정적 메타데이터로 RDB가 더 적합
-- **결과**: 35개 stocks 데이터 이전 완료
-- **다음 단계**: Dual-write 지원 → MongoDB 제거
-- **참조**: [마이그레이션 문서](../../claudedocs/Stock_마이그레이션_MongoDB_to_PostgreSQL.md)
+**엔티티**: `FredIndicatorEntity`
+
+| 컬럼명 | 타입 | 제약조건 | 설명 |
+|--------|------|----------|------|
+| id | BIGINT | PK, AUTO_INCREMENT | 지표 ID |
+| code | VARCHAR(50) | UNIQUE, NOT NULL | 지표 코드 |
+| name | VARCHAR(200) | NOT NULL | 지표명 |
+| description | TEXT | NULL | 설명 |
+| category | VARCHAR(100) | NULL | 카테고리 |
+| unit | VARCHAR(50) | NULL | 단위 |
+| frequency | VARCHAR(20) | NULL | 빈도 (DAILY, WEEKLY, MONTHLY) |
+| is_active | BOOLEAN | DEFAULT TRUE | 활성화 여부 |
+| created_at | TIMESTAMP | NOT NULL | 생성일시 |
+| updated_at | TIMESTAMP | NOT NULL | 수정일시 |
+
+---
+
+### 21. yfinance_indicators (yfinance 지표)
+
+**엔티티**: `YfinanceIndicatorEntity`
+
+| 컬럼명 | 타입 | 제약조건 | 설명 |
+|--------|------|----------|------|
+| id | BIGINT | PK, AUTO_INCREMENT | 지표 ID |
+| ticker | VARCHAR(20) | UNIQUE, NOT NULL | 티커 |
+| name | VARCHAR(200) | NOT NULL | 지표명 |
+| description | TEXT | NULL | 설명 |
+| indicator_type | VARCHAR(50) | DEFAULT 'ETF' | 지표 타입 |
+| is_active | BOOLEAN | DEFAULT TRUE | 활성화 여부 |
+| created_at | TIMESTAMP | NOT NULL | 생성일시 |
+| updated_at | TIMESTAMP | NOT NULL | 수정일시 |
 
 ---
 
 ## MongoDB Collections
 
-### 1. daily_stock_data (일별 주식 데이터) ⚠️ 컬렉션명 변경 예정
+### 1. daily_stock_data (일별 주식 데이터)
 
-**컬렉션명**: `daily_stock_data` (stocks에서 변경됨)
-**도메인 모델**: `DailyStockData`
+**컬렉션명**: `daily_stock_data`
 
-#### 설명
-- 이전에 `stocks` 컬렉션으로 혼용되던 것을 명확히 구분
-- 주식 **메타데이터**(ticker, name 등)는 PostgreSQL `stocks` 테이블로 이동
-- **시계열 데이터**(일별 가격, 거래량 등)는 MongoDB 유지
+```javascript
+{
+  "_id": ObjectId,
+  "date": "YYYY-MM-DD",
+  "stocks": {
+    "AAPL": { "close_price": 231.42 },
+    "NVDA": { "close_price": 124.79 },
+    // ... 35개 종목
+  },
+  "yfinance_indicators": {
+    "S&P 500 ETF": 597.20,
+    // ...
+  },
+  "fred_indicators": {
+    // ...
+  }
+}
+```
+
+**인덱스**: `date` (UNIQUE)
 
 ---
 
 ### 2. economic_data (경제 지표 데이터)
 
 **컬렉션명**: `economic_data`
-**도메인 모델**: `EconomicData`
 
-#### 스키마
 ```javascript
 {
   "_id": ObjectId,
@@ -285,302 +554,171 @@ fun findAllActiveEtfs(): List<StockEntity>
     "GDP": Double,
     "CPI": Double,
     "UnemploymentRate": Double,
-    "InterestRate": Double,
-    // ... 기타 경제 지표
+    "InterestRate": Double
   },
   "created_at": ISODate
 }
 ```
 
-#### 인덱스
-- `date` (UNIQUE)
-
 ---
 
-### 3. stock_analysis_results (종목 분석 결과)
-
-**컬렉션명**: `stock_analysis_results`
-**도메인 모델**: `StockAnalysis`
-
-#### 스키마
-```javascript
-{
-  "_id": ObjectId,
-  "ticker": String,
-  "date": ISODate,
-  "metrics": {
-    "mae": Double,       // Mean Absolute Error
-    "rmse": Double,      // Root Mean Square Error
-    "accuracy": Double   // 정확도
-  },
-  "predictions": {
-    "last_actual_price": Double,
-    "predicted_future_price": Double,
-    "predicted_rise": Boolean,
-    "rise_probability": Double
-  },
-  "recommendation": String,  // 추천 의견
-  "analysis": String,        // 분석 내용
-  "created_at": ISODate
-}
-```
-
-#### 인덱스
-- `ticker`, `date`
-- `created_at`
-
----
-
-### 4. stock_recommendations (종목 추천)
+### 3. stock_recommendations (종목 추천)
 
 **컬렉션명**: `stock_recommendations`
-**도메인 모델**: `StockRecommendation`
 
-#### 스키마
 ```javascript
 {
   "_id": ObjectId,
   "ticker": String,
-  "date": String,              // YYYY-MM-DD
+  "date": String,
   "stock_name": String,
   "current_price": Double,
-  "composite_score": Double,   // 종합 점수
+  "composite_score": Double,
   "technical_indicators": {
     "sma20": Double,
     "sma50": Double,
-    "sma200": Double,
     "rsi": Double,
-    "macd": Double,
-    "signal": Double,
-    "macd_histogram": Double,
-    "bollinger_upper": Double,
-    "bollinger_lower": Double,
-    "volume": Long,
-    "avg_volume": Long
+    "macd": Double
   },
   "sentiment_score": Double,
-  "recommendation_reason": String,
   "is_recommended": Boolean,
   "updated_at": ISODate
 }
 ```
 
-#### 인덱스
-- `ticker`, `date` (UNIQUE)
-- `is_recommended`
-- `composite_score` (DESC)
+**인덱스**: `(ticker, date)` UNIQUE
 
 ---
 
-### 5. sentiment_analysis (감정 분석)
-
-**컬렉션명**: `sentiment_analysis`
-**도메인 모델**: `SentimentAnalysis`
-
-#### 스키마
-```javascript
-{
-  "_id": ObjectId,
-  "ticker": String,
-  "date": String,                    // YYYY-MM-DD
-  "average_sentiment_score": Double, // 평균 감정 점수
-  "article_count": Int,              // 뉴스 기사 수
-  "updated_at": ISODate
-}
-```
-
-#### 인덱스
-- `ticker`, `date` (UNIQUE)
-- `updated_at`
-
----
-
-### 6. prediction_results (Vertex AI 예측 결과)
+### 4. prediction_results (Vertex AI 예측 결과)
 
 **컬렉션명**: `prediction_results`
-**도메인 모델**: `PredictionResult`
 
-#### 스키마
 ```javascript
 {
   "_id": ObjectId,
-  "symbol": String,                      // 종목 심볼
-  "date": ISODate,                       // 예측 날짜
-  "predicted_price": Double,             // 예측 가격
-  "confidence": Double,                  // 신뢰도
-  "signal": String,                      // BUY, SELL, HOLD
-  "predicted_change_percent": Double,    // 예측 변동률 (%)
-  "technical_score": Double,             // 기술적 점수
-  "sentiment_score": Double,             // 감정 점수
-  "model_version": String,               // 모델 버전
-  "created_at": ISODate,
-  "vertex_ai_job_id": String,            // Vertex AI Job ID
-  "metadata": Object                     // 추가 메타데이터
+  "symbol": String,
+  "date": ISODate,
+  "predicted_price": Double,
+  "confidence": Double,
+  "signal": String,  // BUY, SELL, HOLD
+  "predicted_change_percent": Double,
+  "model_version": String,
+  "vertex_ai_job_id": String,
+  "created_at": ISODate
 }
 ```
 
-#### 인덱스
-- `symbol`, `date`
-- `signal`
-- `confidence` (DESC)
-- `created_at` (DESC)
-
 ---
 
-## 데이터베이스 간 연관 관계
+## Flyway 마이그레이션 히스토리
 
-### PostgreSQL ↔ MongoDB 참조
-
-#### 1. 사용자 거래 → 종목 정보
-```
-UserEntity.trades (PostgreSQL)
-  ↓ ticker 참조
-Stock (MongoDB)
-```
-
-#### 2. 거래 신호 실행 → 추천 정보
-```
-TradeSignalExecutedEntity.recommendationId (PostgreSQL)
-  ↓ MongoDB ObjectId 참조
-StockRecommendation._id (MongoDB)
-```
-
-#### 3. 거래 신호 → 예측 결과
-```
-TradeSignalExecutedEntity.ticker (PostgreSQL)
-  ↓ symbol 참조
-PredictionResult.symbol (MongoDB)
-```
-
----
-
-## 마이그레이션 히스토리
-
-### MongoDB → PostgreSQL 마이그레이션
-
-| 컬렉션 | 테이블 | 상태 | 사유 |
-|--------|--------|------|------|
-| access_tokens | kis_tokens | ✅ 완료 | 트랜잭션 일관성, 인덱스 성능 |
-| users (MongoDB) | users (PostgreSQL) | 🔄 병행 | 점진적 마이그레이션 |
-
----
-
-## 성능 최적화
-
-### PostgreSQL
-
-#### 인덱스 전략
-- **kis_tokens**: `(user_id, account_type)` UNIQUE, `expiration_time` INDEX
-- **trades**: `user_id`, `ticker`, `created_at` INDEX
-- **trade_signals_executed**: `user_id`, `ticker`, `created_at` INDEX
-
-#### 동시성 제어
-- **account_balances**: 낙관적 락 (`@Version`) 사용으로 잔액 동시 수정 방지
-
-### MongoDB
-
-#### 인덱스 전략
-- **stocks**: `ticker` UNIQUE, `is_active`
-- **stock_recommendations**: `(ticker, date)` UNIQUE, `composite_score` DESC
-- **prediction_results**: `(symbol, date)`, `confidence` DESC, `created_at` DESC
-
-#### 샤딩 전략 (미래)
-- **stocks**: `ticker` 기준 샤딩
-- **prediction_results**: `date` 기준 샤딩 (시계열 데이터)
-
----
-
-## 보안 고려사항
-
-### 민감 정보 암호화
-1. **UserKisAccountEntity.appSecretEncrypted**
-   - Jasypt 또는 AES-256 암호화
-   - 복호화 메서드: `getDecryptedAppSecret()`
-
-2. **KisTokenEntity.accessToken**
-   - TEXT 타입으로 저장 (길이 제한 없음)
-   - 만료 시간 관리로 보안 강화
-
-### 접근 제어
-- 사용자 데이터는 `user_id` 기준 격리
-- API 레벨에서 사용자 인증 및 권한 확인
+| 버전 | 파일명 | 설명 |
+|------|--------|------|
+| V1 | V1__Initial_Schema.sql | 초기 스키마 (users, trades 등) |
+| V2 | V2__Create_Stocks_And_Indicators.sql | 종목, 지표 테이블 |
+| V3 | V3__Create_Quartz_Tables.sql | Quartz 스케줄러 테이블 |
+| V4 | V4__Insert_Initial_Data.sql | 초기 데이터 |
+| V5 | V5__Create_User_KIS_Accounts.sql | KIS 계정 테이블 |
+| V6 | V6__Create_KIS_Tokens_Table.sql | KIS 토큰 테이블 |
+| V7 | V7__Create_RBAC_Tables.sql | RBAC 테이블 (roles, permissions) |
+| V8 | V8__Insert_Admin_User_And_Permissions.sql | 관리자 계정 및 권한 |
+| V9 | V9__Create_Strategy_And_Backtest_Tables.sql | 전략, 백테스트 테이블 |
+| V10 | V10__Fix_Indicator_ID_Types.sql | 지표 ID 타입 수정 |
+| V11 | V11__Add_User_Roles_Audit_Columns.sql | 사용자 역할 감사 컬럼 |
+| V12 | V12__Add_ML_Prediction_Strategy.sql | ML 예측 전략 |
+| V13 | V13__Create_User_Tiers_Table.sql | 사용자 티어 테이블 |
+| V14 | V14__Add_OAuth_Columns_To_Users.sql | OAuth 컬럼 추가 |
+| V15 | V15__Create_RBAC_Tables_And_Initial_Data.sql | RBAC 데이터 |
+| V16 | V16__Insert_Seed_Strategies.sql | 시드 전략 |
+| V17 | V17__Create_Strategy_Categories_Table.sql | 전략 카테고리 |
+| V18 | V18__Migrate_Strategies_To_DSL_Format.sql | DSL 포맷 마이그레이션 |
+| V19 | V19__Add_Missing_Table_Column_Comments.sql | 컬럼 코멘트 |
+| V20 | V20__Create_Backtest_Checkpoints.sql | 백테스트 체크포인트 |
 
 ---
 
 ## ERD (Entity Relationship Diagram)
 
 ```
+┌─────────────────────────────────────────────────────────────────────┐
+│                           users                                      │
+│─────────────────────────────────────────────────────────────────────│
+│ id (PK) | user_id (UK) | email (UK) | oauth_provider | status       │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+         ┌───────────────────┼───────────────────┬──────────────────┐
+         │ 1:1                │ 1:1               │ 1:1              │
+         ▼                    ▼                   ▼                  ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│ trading_configs │  │ account_balances│  │user_kis_accounts│  │   user_tiers    │
+└─────────────────┘  └─────────────────┘  └─────────────────┘  └─────────────────┘
+         │
+         │ 1:N
+         ├───────────────────┬────────────────────┐
+         ▼                   ▼                    ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│     trades      │  │   kis_tokens    │  │   user_roles    │
+└─────────────────┘  └─────────────────┘  └────────┬────────┘
+                                                   │ N:1
+                                                   ▼
+                                          ┌─────────────────┐
+                                          │     roles       │
+                                          └────────┬────────┘
+                                                   │ 1:N
+                                                   ▼
+                                          ┌─────────────────┐
+                                          │role_permissions │
+                                          └────────┬────────┘
+                                                   │ N:1
+                                                   ▼
+                                          ┌─────────────────┐
+                                          │  permissions    │
+                                          └─────────────────┘
+
+┌─────────────────────────────────────────────────────────────────────┐
+│                         strategies                                   │
+│─────────────────────────────────────────────────────────────────────│
+│ id (PK) | name | category_id (FK) | owner_id (FK) | conditions      │
+└────────────────────────────┬────────────────────────────────────────┘
+         │
+         │ 1:N
+         ├───────────────────┬────────────────────┐
+         ▼                   ▼                    ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│ backtest_results│  │strategy_signals │  │strategy_subscri │
+│                 │  │                 │  │    ptions       │
+└────────┬────────┘  └─────────────────┘  └─────────────────┘
+         │ 1:N
+         ▼
 ┌─────────────────┐
-│     users       │
-│─────────────────│
-│ id (PK)        │
-│ user_id (UK)   │
-│ email (UK)     │
-│ status         │
-└────────┬────────┘
-         │
-         │ 1:1
-         ├──────────────┐
-         │              │
-         ▼              ▼
-┌──────────────┐  ┌───────────────────┐
-│trading_configs│  │account_balances  │
-│──────────────│  │───────────────────│
-│id (PK)       │  │id (PK)           │
-│user_id (FK)  │  │user_id (FK)      │
-│enabled       │  │cash              │
-│max_stocks    │  │total_value       │
-└──────────────┘  │locked_cash       │
-                  │version (@Version)│
-                  └───────────────────┘
-         │
-         │ 1:1
-         ▼
-┌─────────────────────┐
-│user_kis_accounts    │
-│─────────────────────│
-│id (PK)             │
-│user_id (FK, UK)    │
-│app_key             │
-│app_secret_encrypted│
-│account_number      │
-│account_type        │
-└─────────────────────┘
-         │
-         │ 1:N
-         ├─────────────────┐
-         │                 │
-         ▼                 ▼
-┌───────────────┐  ┌──────────────────────┐
-│   trades      │  │trade_signals_executed│
-│───────────────│  │──────────────────────│
-│id (PK)        │  │id (PK)              │
-│user_id (FK)   │  │user_id (FK)         │
-│ticker         │  │recommendation_id    │◄─── MongoDB Reference
-│side (BUY/SELL)│  │ticker               │
-│quantity       │  │signal (BUY/SELL)    │
-│price          │  │confidence           │
-│status         │  │execution_decision   │
-│kis_order_id   │  │executed_trade_id(FK)│
-└───────────────┘  └──────────────────────┘
-         │
-         │ 1:N
-         ▼
-┌───────────────┐
-│  kis_tokens   │
-│───────────────│
-│id (PK)        │
-│user_id (FK)   │
-│account_type   │
-│access_token   │
-│expiration_time│
-│is_active      │
-└───────────────┘
+│ backtest_trades │
+└─────────────────┘
+
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│strategy_categor │  │    stocks       │  │ fred_indicators │
+│     ies         │  │                 │  │                 │
+└─────────────────┘  └─────────────────┘  └─────────────────┘
 ```
 
 ---
 
-## 참고 문서
-- [Flyway Migration Scripts](/src/main/resources/db/migration)
-- [JPA Entity Package](/src/main/kotlin/com/quantiq/core/adapter/output/persistence/jpa)
-- [MongoDB Domain Package](/src/main/kotlin/com/quantiq/core/domain)
+## 관련 문서
+
+### 아키텍처
+- [시스템 아키텍처](../architecture/시스템_아키텍처.md) - 전체 시스템 구조
+- [하이브리드 데이터베이스 전략](../architecture/하이브리드_데이터베이스_전략.md) - PostgreSQL + MongoDB 전략
+- [데이터베이스 마이그레이션 현황](../architecture/데이터베이스_마이그레이션_현황.md) - 마이그레이션 상태
+- [마이그레이션 히스토리](../architecture/마이그레이션_히스토리.md) - 변경 이력
+
+### 데이터베이스
+- [테이블 관계도](./RELATIONSHIPS.md) - ERD 및 관계
+
+### 설정 가이드
+- [초기 데이터 설정](../setup/초기_데이터_설정.md) - 초기 데이터 구성
+- [환경설정 가이드](../setup/환경설정_가이드.md) - DB 연결 설정
+- [RDB 빠른시작](../setup/RDB_빠른시작.md) - PostgreSQL 빠른 시작
+
+### 소스 코드
+- [Flyway Migration Scripts](../../quant-jump-stock-core/src/main/resources/db/migration)
+- [JPA Entity Package](../../quant-jump-stock-core/src/main/kotlin/com/quantjumpstock/core/adapter/output/persistence/jpa)

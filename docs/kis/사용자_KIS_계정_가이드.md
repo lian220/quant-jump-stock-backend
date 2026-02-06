@@ -362,9 +362,21 @@ APP_ENCRYPTION_KEY=QuantiqSecureKey2026ForKisApiEncryption!@#
 
 ## 📚 관련 문서
 
-- [KIS API 레퍼런스](/docs/kis/KIS_OVERSEAS_STOCK_API.md)
-- [데이터베이스 스키마](/docs/database/schema.md)
-- [보안 가이드](/docs/security/encryption.md)
+### KIS API
+- [KIS API 레퍼런스](./KIS_OVERSEAS_STOCK_API.md) - 해외주식 API 전체 목록
+
+### 아키텍처
+- [시스템 아키텍처](../architecture/시스템_아키텍처.md) - 전체 시스템 구조
+- [KIS 토큰 관리](../architecture/KIS_토큰_관리.md) - 토큰 관리 시스템
+
+### 설정 가이드
+- [환경설정 가이드](../setup/환경설정_가이드.md) - KIS API 키 설정
+- [환경변수 관리 가이드](../setup/환경변수_관리_가이드.md) - 환경변수 관리
+- [인증 가이드](../setup/인증_가이드.md) - 인증 시스템
+
+### 데이터베이스
+- [데이터베이스 스키마](../database/SCHEMA.md) - user_kis_accounts 테이블
+- [데이터베이스 관계](../database/RELATIONSHIPS.md) - 토큰/계정 관계
 
 ---
 

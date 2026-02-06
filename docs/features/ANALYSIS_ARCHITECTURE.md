@@ -556,11 +556,32 @@ MongoDB:
 
 ---
 
-## 🔗 관련 문서
+## 📚 관련 문서
 
-- **docs/migration/** - 마이그레이션 계획
-- **docs/database/** - 데이터베이스 설계
-- **docs/architecture/** - 시스템 아키텍처
+### 아키텍처
+- [시스템 아키텍처](../architecture/시스템_아키텍처.md) - 전체 시스템 구조
+- [이벤트 기반 아키텍처](../architecture/이벤트_기반_아키텍처.md) - Kafka 이벤트
+- [이벤트 스키마](../architecture/이벤트_스키마.md) - Kafka 토픽 스키마
+- [스케줄러 아키텍처](../architecture/스케줄러_아키텍처.md) - Quartz 스케줄러
+
+### 데이터베이스
+- [데이터베이스 스키마](../database/SCHEMA.md) - 전체 스키마
+- [데이터베이스 관계](../database/RELATIONSHIPS.md) - ERD 및 관계
+- [하이브리드 데이터베이스 전략](../architecture/하이브리드_데이터베이스_전략.md) - PostgreSQL + MongoDB
+
+### 설정 가이드
+- [환경설정 가이드](../setup/환경설정_가이드.md) - 개발 환경 설정
+- [명령어 가이드](../setup/명령어_가이드.md) - CLI 명령어
+- [로컬 테스트 가이드](../setup/로컬_테스트_가이드.md) - 테스트 방법
+
+### TODO 및 로드맵
+- [Phase3 스펙](../todo/Phase3_스펙.md) - 차별화 기능 상세
+- [기능 로드맵](../todo/기능_로드맵.md) - 전체 개발 로드맵
+- [다음 작업](../todo/다음_작업.md) - 현재 진행 중인 작업
+
+### 분석 결과
+- [데이터 형식 분석](../analysis/데이터_형식_분석.md) - 데이터 구조
+- [FRED 데이터 분석](../analysis/FRED_데이터_분석_2026-02-01.md) - 경제 지표
 
 ---
 

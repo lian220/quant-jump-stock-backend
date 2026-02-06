@@ -289,7 +289,32 @@ POST /analyze/{ticker}          # 기술적 분석
 
 ## 다음 단계
 
-1. [SETUP_GUIDE.md](SETUP_GUIDE.md) - 개발 환경 설정
-2. [COMMANDS.md](COMMANDS.md) - 주요 개발 명령어
-3. [CODE_STYLE.md](CODE_STYLE.md) - 코딩 컨벤션
-4. [ARCHITECTURE.md](ARCHITECTURE.md) - 상세 아키텍처
+1. [환경설정 가이드](../setup/환경설정_가이드.md) - 개발 환경 설정
+2. [명령어 가이드](../setup/명령어_가이드.md) - 주요 개발 명령어
+3. [코드 스타일 가이드](./CODE_STYLE.md) - 코딩 컨벤션
+4. [시스템 아키텍처](../architecture/시스템_아키텍처.md) - 상세 아키텍처
+
+---
+
+## 📚 관련 문서
+
+### 가이드라인
+- [코드 스타일 가이드](./CODE_STYLE.md) - 코딩 컨벤션
+- [문서 작성 가이드](./문서_작성_가이드.md) - 문서 작성 규칙
+
+### 아키텍처
+- [시스템 아키텍처](../architecture/시스템_아키텍처.md) - 전체 시스템 구조
+- [이벤트 기반 아키텍처](../architecture/이벤트_기반_아키텍처.md) - Kafka 이벤트
+- [하이브리드 데이터베이스 전략](../architecture/하이브리드_데이터베이스_전략.md) - DB 전략
+
+### 설정 가이드
+- [환경설정 가이드](../setup/환경설정_가이드.md) - 개발 환경 설정
+- [배포 운영 가이드](../setup/배포_운영_가이드.md) - 프로덕션 배포
+
+### 데이터베이스
+- [데이터베이스 스키마](../database/SCHEMA.md) - 전체 스키마
+- [데이터베이스 관계](../database/RELATIONSHIPS.md) - ERD 및 관계
+
+### TODO 및 로드맵
+- [기능 로드맵](../todo/기능_로드맵.md) - 전체 개발 로드맵
+- [다음 작업](../todo/다음_작업.md) - 현재 진행 중인 작업

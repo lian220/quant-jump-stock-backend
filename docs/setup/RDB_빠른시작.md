@@ -285,7 +285,27 @@ cd quantiq-core
 각 단계에서 문제가 발생하면:
 
 1. 로그 확인: `docker-compose logs <service-name>`
-2. 문서 참고: `docs/RDB_MIGRATION_PLAN.md`, `docs/DATABASE_IMPLEMENTATION.md`
+2. 문서 참고: 아래 관련 문서 섹션 확인
 3. 상태 확인: `docker-compose ps`, `lsof -i`
 
 모든 것이 정상이면 **이제 RDB 마이그레이션을 시작할 준비가 되었습니다!** 🎉
+
+---
+
+## 📚 관련 문서
+
+### 아키텍처
+- [하이브리드 데이터베이스 전략](../architecture/하이브리드_데이터베이스_전략.md) - PostgreSQL + MongoDB 전략
+- [데이터베이스 마이그레이션 현황](../architecture/데이터베이스_마이그레이션_현황.md) - 마이그레이션 상태
+
+### 데이터베이스
+- [데이터베이스 스키마](../database/SCHEMA.md) - 전체 스키마 정의
+- [테이블 관계도](../database/RELATIONSHIPS.md) - ERD 및 관계
+
+### 설정 가이드
+- [환경설정 가이드](./환경설정_가이드.md) - 전체 환경 설정
+- [초기 데이터 설정](./초기_데이터_설정.md) - 초기 데이터 구성
+- [배포 운영 가이드](./배포_운영_가이드.md) - 프로덕션 배포
+
+### 레거시 (참고용)
+- [마이그레이션 가이드](../legacy/migration/README.md) - MongoDB→PostgreSQL 완료
