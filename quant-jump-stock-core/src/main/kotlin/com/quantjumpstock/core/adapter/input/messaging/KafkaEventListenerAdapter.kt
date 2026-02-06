@@ -3,6 +3,7 @@ package com.quantjumpstock.core.adapter.input.messaging
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.quantjumpstock.core.events.EventTopics
 import com.quantjumpstock.core.application.trading.AutoTradingService
+import com.quantjumpstock.core.application.backtest.BacktestResultSaveService
 import org.slf4j.LoggerFactory
 import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.stereotype.Component
@@ -14,7 +15,8 @@ import org.springframework.stereotype.Component
 @Component
 class KafkaEventListenerAdapter(
     private val objectMapper: ObjectMapper,
-    private val autoTradingService: AutoTradingService
+    private val autoTradingService: AutoTradingService,
+    private val backtestResultSaveService: BacktestResultSaveService
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -142,6 +144,78 @@ class KafkaEventListenerAdapter(
 
         } catch (e: Exception) {
             logger.error("❌ 매매 신호 이벤트 처리 실패: $message", e)
+        }
+    }
+
+    // ============================================================================
+    // Backtest Events
+    // ============================================================================
+
+    /**
+     * 백테스트 완료 이벤트 리스너
+     * quantiq.backtest.completed 토픽을 구독합니다.
+     */
+    @KafkaListener(topics = [EventTopics.BACKTEST_COMPLETED], groupId = "quantiq-core-group")
+    fun listenBacktestCompleted(message: String) {
+        logger.info("=".repeat(80))
+        logger.info("📥 백테스트 완료 이벤트 수신")
+        logger.info("=".repeat(80))
+        logger.debug("메시지: $message")
+
+        try {
+            val event = objectMapper.readTree(message)
+            val payload = event.get("payload")
+
+            val requestId = payload.get("requestId")?.asText() ?: "unknown"
+            val strategyId = payload.get("strategyId")?.asLong() ?: 0L
+            val status = payload.get("status")?.asText() ?: "unknown"
+
+            logger.info("✅ 백테스트 완료")
+            logger.info("Request ID: $requestId")
+            logger.info("Strategy ID: $strategyId")
+            logger.info("Status: $status")
+
+            // 결과 저장
+            backtestResultSaveService.saveBacktestResult(payload)
+
+            logger.info("✅ 백테스트 결과 저장 완료")
+
+        } catch (e: Exception) {
+            logger.error("❌ 백테스트 완료 이벤트 처리 실패: $message", e)
+        }
+    }
+
+    /**
+     * 백테스트 실패 이벤트 리스너
+     * quantiq.backtest.failed 토픽을 구독합니다.
+     */
+    @KafkaListener(topics = [EventTopics.BACKTEST_FAILED], groupId = "quantiq-core-group")
+    fun listenBacktestFailed(message: String) {
+        logger.warn("=".repeat(80))
+        logger.warn("⚠️ 백테스트 실패 이벤트 수신")
+        logger.warn("=".repeat(80))
+        logger.debug("메시지: $message")
+
+        try {
+            val event = objectMapper.readTree(message)
+            val payload = event.get("payload")
+
+            val requestId = payload.get("requestId")?.asText() ?: "unknown"
+            val strategyId = payload.get("strategyId")?.asLong() ?: 0L
+            val errorMessage = payload.get("errorMessage")?.asText() ?: "Unknown error"
+
+            logger.warn("❌ 백테스트 실패")
+            logger.warn("Request ID: $requestId")
+            logger.warn("Strategy ID: $strategyId")
+            logger.warn("Error: $errorMessage")
+
+            // 실패 결과 저장
+            backtestResultSaveService.saveBacktestFailure(payload)
+
+            logger.info("✅ 백테스트 실패 결과 저장 완료")
+
+        } catch (e: Exception) {
+            logger.error("❌ 백테스트 실패 이벤트 처리 실패: $message", e)
         }
     }
 }
