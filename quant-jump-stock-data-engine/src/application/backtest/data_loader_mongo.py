@@ -28,9 +28,6 @@ from .data_loader import DataLoader
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_MONGO_URI = "mongodb://quantiq_user:quantiq_password@localhost:27017/stock_trading?authSource=admin"
-
-
 class MongoDataLoader(DataLoader):
     """
     MongoDB daily_stock_data 컬렉션에서 데이터 로드
@@ -42,19 +39,24 @@ class MongoDataLoader(DataLoader):
 
     def __init__(
         self,
-        uri: str = None,
+        uri: Optional[str] = None,
         database: str = "stock_trading",
         collection: str = "daily_stock_data",
         add_buffer_days: int = 50
     ):
         """
         Args:
-            uri: MongoDB 연결 URI
+            uri: MongoDB 연결 URI (미지정 시 MONGODB_URI 환경 변수 사용)
             database: 데이터베이스 이름
             collection: 컬렉션 이름
             add_buffer_days: 지표 계산을 위한 추가 버퍼 일수 (이동평균 등)
         """
-        self.uri = uri or os.environ.get("MONGODB_URI", _DEFAULT_MONGO_URI)
+        self.uri = uri or os.environ.get("MONGODB_URI")
+        if not self.uri:
+            raise ValueError(
+                "MongoDB URI must be provided via the `uri` parameter "
+                "or the MONGODB_URI environment variable."
+            )
         self.database = database
         self.collection = collection
         self.add_buffer_days = add_buffer_days
@@ -183,6 +185,91 @@ class MongoDataLoader(DataLoader):
                 logger.warning(f"No data for symbol: {symbol}")
 
         return result
+
+    def load_benchmark(
+        self,
+        benchmark_ticker: str,
+        start_date: date,
+        end_date: date,
+        ticker_to_name_map: Optional[Dict[str, str]] = None
+    ) -> Optional[pd.DataFrame]:
+        """
+        벤치마크 데이터 로드
+
+        로딩 전략:
+        1. doc["stocks"][ticker] 에서 로드 (SPY, QQQ 등 ETF)
+        2. 없으면 doc["yfinance_indicators"] 에서 로드 (^GSPC 등 인덱스)
+           - yfinance_indicators의 키는 name이므로 ticker→name 매핑 필요
+
+        Args:
+            benchmark_ticker: 벤치마크 ticker (예: "SPY", "^GSPC")
+            start_date: 시작일
+            end_date: 종료일
+            ticker_to_name_map: ticker→name 매핑 (yfinance_indicators 조회용)
+
+        Returns:
+            DataFrame with close column, or None if not found
+        """
+        client = self._get_client()
+        db = client[self.database]
+        coll = db[self.collection]
+
+        query = {
+            "date": {
+                "$gte": start_date.isoformat(),
+                "$lte": end_date.isoformat()
+            }
+        }
+
+        cursor = coll.find(query).sort("date", 1)
+        documents = list(cursor)
+
+        if not documents:
+            logger.warning(f"No benchmark data for {start_date} ~ {end_date}")
+            return None
+
+        records = []
+
+        # 벤치마크 이름 조회 (yfinance_indicators 키 매핑용)
+        indicator_name = None
+        if ticker_to_name_map:
+            indicator_name = ticker_to_name_map.get(benchmark_ticker)
+
+        for doc in documents:
+            close_value = None
+
+            # 1차 시도: stocks에서 로드 (ETF: SPY, QQQ 등)
+            stocks = doc.get("stocks", {})
+            stock_data = stocks.get(benchmark_ticker)
+            if stock_data:
+                close_value = stock_data.get("close") or stock_data.get("close_price")
+
+            # 2차 시도: yfinance_indicators에서 로드 (인덱스: ^GSPC 등)
+            if close_value is None:
+                yf_indicators = doc.get("yfinance_indicators", {})
+                # ticker로 직접 조회
+                if benchmark_ticker in yf_indicators:
+                    close_value = yf_indicators[benchmark_ticker]
+                # name으로 조회 (ticker→name 매핑)
+                elif indicator_name and indicator_name in yf_indicators:
+                    close_value = yf_indicators[indicator_name]
+
+            if close_value is not None:
+                records.append({
+                    "date": pd.Timestamp(doc["date"]),
+                    "close": float(close_value)
+                })
+
+        if not records:
+            logger.warning(f"No data found for benchmark: {benchmark_ticker}")
+            return None
+
+        df = pd.DataFrame(records)
+        df.set_index("date", inplace=True)
+        df.sort_index(inplace=True)
+
+        logger.info(f"Loaded {len(df)} days of benchmark data for {benchmark_ticker}")
+        return df
 
     def get_available_symbols(self) -> List[str]:
         """사용 가능한 종목 목록 조회"""

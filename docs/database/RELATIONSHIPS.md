@@ -173,7 +173,7 @@ PredictionResult (Vertex AI 예측)
 
 ### 3. 백테스트 Rate Limiting
 
-```
+```text
 백테스트 실행 요청 (POST /api/v1/backtest/run)
     ↓
     │ Authorization 헤더에서 userId 추출

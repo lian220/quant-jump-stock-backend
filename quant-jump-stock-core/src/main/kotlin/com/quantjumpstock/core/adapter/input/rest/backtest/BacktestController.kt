@@ -2,6 +2,7 @@ package com.quantjumpstock.core.adapter.input.rest.backtest
 
 import com.quantjumpstock.core.application.auth.AuthService
 import com.quantjumpstock.core.application.backtest.*
+import com.quantjumpstock.core.domain.port.output.Benchmark
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -51,8 +52,18 @@ class BacktestController(
         val userId = authorization?.let { extractUserId(it) }
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
 
-        // Rate Limit 체크
-        val limitResult = userTierService.checkBacktestLimit(userId)
+        // 벤치마크 검증
+        if (!Benchmark.existsByTicker(request.benchmark)) {
+            return ResponseEntity.badRequest()
+                .body(mapOf(
+                    "error" to "INVALID_BENCHMARK",
+                    "message" to "지원하지 않는 벤치마크입니다: ${request.benchmark}",
+                    "availableBenchmarks" to "/api/v1/backtest/benchmarks"
+                ))
+        }
+
+        // Rate Limit 원자적 체크 + 카운트 증가 (TOCTOU 방지)
+        val limitResult = userTierService.checkAndIncrementBacktestCount(userId)
         if (!limitResult.allowed) {
             val rateLimitResponse = BacktestRateLimitResponse(
                 dailyLimit = limitResult.dailyLimit,
@@ -67,10 +78,23 @@ class BacktestController(
 
         val response = backtestService.runBacktest(request, userId)
 
-        // 성공 시 카운트 증가
-        userTierService.incrementBacktestCount(userId)
-
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(response)
+    }
+
+    /**
+     * 사용 가능한 벤치마크 목록 조회
+     * GET /api/v1/backtest/benchmarks
+     */
+    @GetMapping("/benchmarks")
+    @Operation(
+        summary = "벤치마크 목록 조회",
+        description = "백테스트에 사용할 수 있는 벤치마크 목록을 조회합니다."
+    )
+    @ApiResponse(responseCode = "200", description = "벤치마크 목록 조회 성공")
+    fun getBenchmarks(): ResponseEntity<List<BenchmarkResponse>> {
+        val benchmarks = Benchmark.getAll()
+        val response = benchmarks.map { BenchmarkResponse(it.ticker, it.name, it.type) }
+        return ResponseEntity.ok(response)
     }
 
     /**

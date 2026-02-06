@@ -16,6 +16,12 @@ interface UserTierRepository {
      * 백테스트 카운트 증가 (tier 레코드 없으면 자동 생성)
      */
     fun incrementBacktestCount(userId: String)
+
+    /**
+     * 원자적 체크 + 카운트 증가 (TOCTOU 방지)
+     * 한도 내이면 카운트 증가 후 결과 반환, 초과면 allowed=false 반환
+     */
+    fun checkAndIncrementBacktestCount(userId: String): BacktestLimitInfo
 }
 
 data class BacktestLimitInfo(

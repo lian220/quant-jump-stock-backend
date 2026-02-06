@@ -246,14 +246,14 @@ class BacktestGradeCalculatorTest {
         @Test
         @DisplayName("null 지표가 있어도 계산 가능")
         fun `handles null metrics`() {
-            // sharpe=null, winRate=null → GOOD 2개 / 총 2개 → 3개 미만이므로 WARNING
+            // sharpe=null, winRate=null → GOOD 2개 / 총 2개 → 과반수이므로 GOOD
             val grade = BacktestGradeCalculator.calculateOverallGrade(
                 cagr = BigDecimal("15.0"),
                 mdd = BigDecimal("-10.0"),
                 sharpe = null,
                 winRate = null
             )
-            assertEquals(MetricGrade.WARNING, grade)
+            assertEquals(MetricGrade.GOOD, grade)
         }
     }
 
@@ -326,6 +326,8 @@ class BacktestGradeCalculatorTest {
         totalTrades: Int = 30,
         winRate: BigDecimal? = BigDecimal("55.0")
     ): BacktestResult {
+        val winPct = winRate?.toDouble()?.div(100) ?: 0.55
+        val wins = (totalTrades * winPct).toInt()
         return BacktestResult(
             id = 1L,
             strategyId = 1L,
@@ -342,8 +344,8 @@ class BacktestGradeCalculatorTest {
             volatility = BigDecimal("18.0"),
             winRate = winRate,
             totalTrades = totalTrades,
-            winningTrades = (totalTrades * 0.6).toInt(),
-            losingTrades = totalTrades - (totalTrades * 0.6).toInt(),
+            winningTrades = wins,
+            losingTrades = totalTrades - wins,
             status = BacktestStatus.COMPLETED,
             createdAt = LocalDateTime.now(),
             completedAt = LocalDateTime.now()

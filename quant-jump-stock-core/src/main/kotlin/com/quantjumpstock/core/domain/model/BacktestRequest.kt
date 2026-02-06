@@ -15,7 +15,7 @@ data class BacktestRequest(
     val source: String = "quantiq-core",
     val userId: String? = null,
     val tickers: List<String> = emptyList(),  // 백테스트 대상 종목
-    val benchmark: String = "KOSPI",
+    val benchmark: String = "SPY",
     val rebalancePeriod: String = "MONTHLY",
 
     // SCRUM-258: 리스크 파라미터

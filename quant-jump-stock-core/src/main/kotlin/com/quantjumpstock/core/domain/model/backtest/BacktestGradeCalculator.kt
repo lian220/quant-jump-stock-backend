@@ -262,7 +262,7 @@ object BacktestGradeCalculator {
 
         return when {
             dangerCount >= 2 -> MetricGrade.DANGER
-            goodCount >= 3 -> MetricGrade.GOOD
+            goodCount > grades.size / 2 -> MetricGrade.GOOD
             else -> MetricGrade.WARNING
         }
     }

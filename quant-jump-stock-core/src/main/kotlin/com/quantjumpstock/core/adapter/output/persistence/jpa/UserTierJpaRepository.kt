@@ -77,6 +77,16 @@ interface UserTierJpaRepository : JpaRepository<UserTierEntity, Long> {
     """)
     fun incrementBacktestCount(userId: Long): Int
 
+    // 원자적 조건부 카운트 증가 (TOCTOU 방지)
+    @Modifying
+    @Query("""
+        UPDATE UserTierEntity ut
+        SET ut.backtestCountToday = ut.backtestCountToday + 1
+        WHERE ut.user.id = :userId
+        AND ut.backtestCountToday < :limit
+    """)
+    fun incrementBacktestCountIfBelowLimit(userId: Long, limit: Int): Int
+
     // 통계
     @Query("SELECT COUNT(ut) FROM UserTierEntity ut WHERE ut.tier = :tier")
     fun countByTier(tier: UserTier): Long

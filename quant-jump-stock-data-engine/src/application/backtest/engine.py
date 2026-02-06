@@ -47,6 +47,9 @@ from .metrics import (
     calculate_sharpe_ratio,
     calculate_sortino_ratio,
     calculate_trade_metrics,
+    calculate_benchmark_return,
+    calculate_beta,
+    calculate_alpha,
 )
 
 logger = logging.getLogger(__name__)
@@ -77,6 +80,8 @@ class BacktestConfig:
     max_positions: int = 10
     position_size_pct: Decimal = Decimal("0.1")    # 10%
     rebalance_frequency: str = "daily"
+    benchmark_ticker: Optional[str] = None
+    benchmark_ticker_to_name: Optional[Dict[str, str]] = None
 
 
 class BacktestEngine:
@@ -111,6 +116,10 @@ class BacktestEngine:
         self._risk_manager: Optional[RiskManager] = None
         self._equity_curve: List[EquityCurvePoint] = []
         self._high_watermark: Decimal = Decimal("0")
+
+        # 벤치마크 데이터
+        self._benchmark_data: Optional[pd.DataFrame] = None
+        self._benchmark_values: List[Decimal] = []
 
     def run(self, strategy: StrategyDefinition) -> BacktestResult:
         """
@@ -189,6 +198,8 @@ class BacktestEngine:
         self._equity_curve = []
         self._high_watermark = self.config.initial_capital
         self._data = {}
+        self._benchmark_data = None
+        self._benchmark_values = []
 
     def _load_data(self) -> None:
         """데이터 로드"""
@@ -205,6 +216,23 @@ class BacktestEngine:
         )
 
         logger.info(f"Loaded data for {len(self._data)} symbols")
+
+        # 벤치마크 데이터 로드
+        if self.config.benchmark_ticker and hasattr(self.data_loader, 'load_benchmark'):
+            try:
+                self._benchmark_data = self.data_loader.load_benchmark(
+                    benchmark_ticker=self.config.benchmark_ticker,
+                    start_date=self.config.start_date,
+                    end_date=self.config.end_date,
+                    ticker_to_name_map=self.config.benchmark_ticker_to_name
+                )
+                if self._benchmark_data is not None:
+                    logger.info(f"Loaded benchmark data: {self.config.benchmark_ticker}")
+                else:
+                    logger.warning(f"No benchmark data for: {self.config.benchmark_ticker}")
+            except Exception as e:
+                logger.warning(f"Failed to load benchmark data: {e}")
+                self._benchmark_data = None
 
     def _get_trading_dates(self) -> List[date]:
         """거래일 목록 생성"""
@@ -439,6 +467,14 @@ class BacktestEngine:
 
         self._equity_curve.append(point)
 
+        # 벤치마크 가격 추적
+        if self._benchmark_data is not None:
+            target_dt = pd.Timestamp(current_date)
+            if target_dt in self._benchmark_data.index:
+                bm_close = self._benchmark_data.loc[target_dt, "close"]
+                if pd.notna(bm_close):
+                    self._benchmark_values.append(Decimal(str(bm_close)))
+
     def _create_result(
         self,
         strategy: StrategyDefinition,
@@ -479,6 +515,33 @@ class BacktestEngine:
             if point.drawdown_pct < mdd:
                 mdd = point.drawdown_pct
 
+        # 벤치마크 메트릭 계산
+        bm_return = None
+        bm_alpha = None
+        bm_beta = None
+
+        if self._benchmark_values and len(self._benchmark_values) >= 2:
+            bm_return = calculate_benchmark_return(
+                self._benchmark_values,
+                self.config.start_date,
+                self.config.end_date
+            )
+
+            # 벤치마크 일간 수익률 계산
+            equity_values = [p.equity for p in self._equity_curve]
+            strategy_daily = calculate_daily_returns(equity_values)
+            benchmark_daily = calculate_daily_returns(self._benchmark_values)
+
+            if strategy_daily and benchmark_daily:
+                bm_beta = calculate_beta(strategy_daily, benchmark_daily)
+
+                if bm_beta is not None and bm_return is not None and metrics["cagr"] is not None:
+                    bm_alpha = calculate_alpha(
+                        strategy_cagr=metrics["cagr"],
+                        benchmark_cagr=bm_return,
+                        beta=bm_beta
+                    )
+
         result = BacktestResult(
             strategy_id=0,  # 나중에 DB 저장 시 설정
             strategy_name=strategy.name,
@@ -502,6 +565,9 @@ class BacktestEngine:
             largest_loss=metrics["largest_loss"],
             profit_factor=metrics["profit_factor"],
             avg_holding_days=metrics["avg_holding_days"],
+            benchmark_return=bm_return,
+            alpha=bm_alpha,
+            beta=bm_beta,
             trades=trades,
             equity_curve=self._equity_curve,
             exit_reason_counts=exit_reason_counts,
@@ -510,6 +576,7 @@ class BacktestEngine:
                 "symbols": self.config.tickers,
                 "commission_rate": float(self.config.commission_rate),
                 "slippage_rate": float(self.config.slippage_rate),
+                "benchmark_ticker": self.config.benchmark_ticker,
             }
         )
 

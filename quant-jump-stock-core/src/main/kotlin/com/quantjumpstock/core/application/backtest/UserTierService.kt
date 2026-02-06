@@ -22,4 +22,15 @@ class UserTierService(
     fun incrementBacktestCount(userId: String) {
         userTierRepository.incrementBacktestCount(userId)
     }
+
+    fun checkAndIncrementBacktestCount(userId: String): BacktestLimitResult {
+        val info = userTierRepository.checkAndIncrementBacktestCount(userId)
+        return BacktestLimitResult(
+            allowed = info.allowed,
+            remaining = info.remaining,
+            dailyLimit = info.dailyLimit,
+            tier = info.tier,
+            message = info.message
+        )
+    }
 }

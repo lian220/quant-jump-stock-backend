@@ -360,7 +360,8 @@ class BacktestServiceProtocol(Protocol):
         end_date: str,
         initial_capital: float,
         commission_rate: float,
-        slippage_rate: float
+        slippage_rate: float,
+        benchmark: str = "SPY"
     ) -> object:
         ...
 
@@ -375,7 +376,8 @@ class BacktestServiceProtocol(Protocol):
         slippage_rate: float,
         existing_backtest: Optional[dict],
         checkpoint: Optional[object],
-        equity_curve_data: Optional[list] = None
+        equity_curve_data: Optional[list] = None,
+        benchmark: str = "SPY"
     ) -> object:
         """증분 백테스트 실행"""
         ...
@@ -527,6 +529,7 @@ class BacktestRequestHandler(MessageHandler):
         commission_rate = payload.get("commissionRate", 0.00015)
         slippage_rate = payload.get("slippageRate", 0.0001)
         force_full = payload.get("forceFull", False)  # 강제 전체 실행 옵션
+        benchmark = payload.get("benchmark", "SPY")
 
         if not strategy_id:
             self._publish_failure(message, "strategyId is required", start_time)
@@ -584,7 +587,8 @@ class BacktestRequestHandler(MessageHandler):
                     slippage_rate=slippage_rate,
                     existing_backtest=existing_backtest,
                     checkpoint=checkpoint,
-                    equity_curve_data=equity_curve_data
+                    equity_curve_data=equity_curve_data,
+                    benchmark=benchmark
                 )
 
                 result = incremental_result.result
@@ -675,6 +679,9 @@ class BacktestRequestHandler(MessageHandler):
                     "profitFactor": float(result.profit_factor) if result.profit_factor else None,
                     "avgWin": float(result.avg_win) if result.avg_win else None,
                     "avgLoss": float(result.avg_loss) if result.avg_loss else None,
+                    "benchmarkReturn": float(result.benchmark_return) if result.benchmark_return else None,
+                    "alpha": float(result.alpha) if result.alpha else None,
+                    "beta": float(result.beta) if result.beta else None,
                     "executionTimeSeconds": elapsed
                 })
 

@@ -355,6 +355,100 @@ def calculate_performance_metrics(
     )
 
 
+def calculate_benchmark_return(
+    benchmark_values: List[Decimal],
+    start_date: date,
+    end_date: date
+) -> Optional[Decimal]:
+    """
+    벤치마크 수익률 (CAGR과 동일한 방식)
+
+    Args:
+        benchmark_values: 일별 벤치마크 가격 리스트
+        start_date: 시작일
+        end_date: 종료일
+
+    Returns:
+        벤치마크 CAGR (%), None if insufficient data
+    """
+    if not benchmark_values or len(benchmark_values) < 2:
+        return None
+
+    return calculate_cagr(
+        initial_value=benchmark_values[0],
+        final_value=benchmark_values[-1],
+        start_date=start_date,
+        end_date=end_date
+    )
+
+
+def calculate_beta(
+    strategy_returns: List[float],
+    benchmark_returns: List[float]
+) -> Optional[Decimal]:
+    """
+    Beta 계산
+
+    Beta = Cov(strategy, benchmark) / Var(benchmark)
+
+    Args:
+        strategy_returns: 전략 일간 수익률 리스트
+        benchmark_returns: 벤치마크 일간 수익률 리스트
+
+    Returns:
+        Beta, None if insufficient data or zero variance
+    """
+    if not strategy_returns or not benchmark_returns:
+        return None
+
+    # 길이 맞춤 (짧은 쪽에 맞춤)
+    min_len = min(len(strategy_returns), len(benchmark_returns))
+    if min_len < 2:
+        return None
+
+    s_returns = np.array(strategy_returns[:min_len])
+    b_returns = np.array(benchmark_returns[:min_len])
+
+    benchmark_var = np.var(b_returns, ddof=1)
+    if benchmark_var == 0:
+        return None
+
+    covariance = np.cov(s_returns, b_returns, ddof=1)[0][1]
+    beta = covariance / benchmark_var
+
+    return Decimal(str(beta)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def calculate_alpha(
+    strategy_cagr: Decimal,
+    benchmark_cagr: Decimal,
+    beta: Decimal,
+    risk_free_rate: Decimal = DEFAULT_RISK_FREE_RATE
+) -> Decimal:
+    """
+    Jensen's Alpha 계산
+
+    Alpha = strategy_return - (rf + beta * (benchmark_return - rf))
+
+    Args:
+        strategy_cagr: 전략 CAGR (%)
+        benchmark_cagr: 벤치마크 CAGR (%)
+        beta: 베타
+        risk_free_rate: 무위험 수익률 (소수점, 예: 0.03 = 3%)
+
+    Returns:
+        Alpha (%)
+    """
+    # CAGR을 소수점으로 변환 (15% -> 0.15)
+    strategy_return = strategy_cagr / 100
+    benchmark_return = benchmark_cagr / 100
+
+    expected_return = risk_free_rate + beta * (benchmark_return - risk_free_rate)
+    alpha = (strategy_return - expected_return) * 100
+
+    return alpha.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
 def calculate_trade_metrics(
     trades: List[dict],
 ) -> TradeMetrics:

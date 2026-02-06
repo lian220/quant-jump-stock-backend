@@ -13,7 +13,7 @@ data class BacktestRunRequest(
     val startDate: String,              // yyyy-MM-dd
     val endDate: String,                // yyyy-MM-dd
     val initialCapital: BigDecimal,
-    val benchmark: String = "KOSPI",
+    val benchmark: String = "SPY",
     val rebalancePeriod: RebalancePeriod = RebalancePeriod.MONTHLY,
     val tickers: List<String> = emptyList(),
 
@@ -312,4 +312,14 @@ data class BacktestRateLimitResponse(
     val remaining: Int,
     val tier: String,
     val message: String
+)
+
+/**
+ * 벤치마크 정보 응답 DTO
+ * GET /api/v1/backtest/benchmarks
+ */
+data class BenchmarkResponse(
+    val ticker: String,
+    val name: String,
+    val type: String
 )
