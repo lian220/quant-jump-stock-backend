@@ -117,7 +117,8 @@ class MarketplaceService(
             equityCurve = this.latestBacktest?.equityCurve?.map {
                 EquityCurvePointDto(
                     date = it.date.toString(),
-                    value = it.value
+                    value = it.value,
+                    benchmark = it.benchmark
                 )
             } ?: emptyList(),
             currentHoldings = this.currentHoldings.map {

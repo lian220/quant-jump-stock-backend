@@ -58,7 +58,8 @@ data class BacktestDetailSummary(
  */
 data class EquityCurvePoint(
     val date: LocalDate,
-    val value: BigDecimal
+    val value: BigDecimal,
+    val benchmark: BigDecimal? = null
 )
 
 /**

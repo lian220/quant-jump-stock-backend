@@ -205,9 +205,10 @@ class MarketplacePersistenceAdapter(
             val rawData: List<Map<String, Any>> = objectMapper.readValue(equityCurveJson)
             rawData.mapNotNull { point ->
                 val date = point["date"]?.toString()?.let { LocalDate.parse(it) }
-                val value = point["value"]?.let { BigDecimal(it.toString()) }
+                val value = (point["equity"] ?: point["value"])?.let { BigDecimal(it.toString()) }
+                val benchmark = point["benchmark"]?.let { BigDecimal(it.toString()) }
                 if (date != null && value != null) {
-                    EquityCurvePoint(date = date, value = value)
+                    EquityCurvePoint(date = date, value = value, benchmark = benchmark)
                 } else {
                     null
                 }

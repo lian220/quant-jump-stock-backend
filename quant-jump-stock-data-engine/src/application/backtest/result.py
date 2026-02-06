@@ -20,6 +20,7 @@ class EquityCurvePoint:
     cash: Decimal    # 현금
     positions_value: Decimal  # 포지션 가치
     drawdown_pct: Decimal  # 고점 대비 낙폭 (%)
+    benchmark: Optional[Decimal] = None  # 초기자본 기준 정규화된 벤치마크 가치
 
 
 @dataclass
@@ -155,7 +156,8 @@ class BacktestResult:
                 {
                     "date": p.date.isoformat(),
                     "equity": float(p.equity),
-                    "drawdown_pct": float(p.drawdown_pct)
+                    "drawdown_pct": float(p.drawdown_pct),
+                    "benchmark": float(p.benchmark) if p.benchmark is not None else None
                 }
                 for p in self.equity_curve
             ],

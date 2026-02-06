@@ -243,7 +243,9 @@ class BacktestService(
                 beta = result.beta
             ),
             equityCurve = equityCurve,
-            benchmarkCurve = null,
+            benchmarkCurve = equityCurve?.filter { it.benchmark != null }?.map {
+                EquityCurvePoint(date = it.date, value = it.benchmark!!)
+            }?.ifEmpty { null },
             trades = result.trades.map { mapToTradeResponse(it) },
             createdAt = result.createdAt,
             completedAt = result.completedAt
@@ -299,12 +301,13 @@ class BacktestService(
         return try {
             objectMapper.readValue<List<Map<String, Any>>>(json).mapNotNull { point ->
                 val date = point["date"]?.toString()
-                val value = point["value"]?.toString()?.let { BigDecimal(it) }
+                // Data Engine은 "equity" 키로 저장, 하위호환을 위해 "value"도 지원
+                val value = (point["equity"] ?: point["value"])?.toString()?.let { BigDecimal(it) }
+                val benchmark = point["benchmark"]?.toString()?.let { BigDecimal(it) }
                 if (date.isNullOrBlank() || value == null) {
-                    logger.warn("EquityCurve 포인트 누락된 필드 무시: date=$date, value=${point["value"]}")
                     null
                 } else {
-                    EquityCurvePoint(date = date, value = value)
+                    EquityCurvePoint(date = date, value = value, benchmark = benchmark)
                 }
             }
         } catch (e: Exception) {

@@ -12,7 +12,6 @@ import asyncio
 from typing import Optional
 from decimal import Decimal
 import json
-import psycopg2
 import psycopg2.extras
 from contextlib import contextmanager
 
@@ -60,35 +59,26 @@ class PostgresBacktestRepository:
     Spring 백엔드에서 조회할 수 있도록 합니다.
     """
 
-    def __init__(
-        self,
-        host: str,
-        port: int,
-        database: str,
-        user: str,
-        password: str
-    ):
-        self._conn_params = {
-            "host": host,
-            "port": port,
-            "database": database,
-            "user": user,
-            "password": password
-        }
+    def __init__(self, pool):
+        """
+        Args:
+            pool: psycopg2.pool.ThreadedConnectionPool 인스턴스
+        """
+        self._pool = pool
 
     @contextmanager
     def _get_connection(self):
-        """PostgreSQL 연결 컨텍스트 매니저"""
+        """PostgreSQL 연결 컨텍스트 매니저 (풀에서 가져오고 반환)"""
         conn = None
         try:
-            conn = psycopg2.connect(**self._conn_params)
+            conn = self._pool.getconn()
             yield conn
         except Exception as e:
             logger.error(f"PostgreSQL connection error: {e}")
             raise
         finally:
             if conn:
-                conn.close()
+                self._pool.putconn(conn)
 
     async def save_result(self, result: BacktestResult, request_id: Optional[str] = None) -> int:
         """
@@ -188,7 +178,7 @@ class PostgresBacktestRepository:
                 float(result.benchmark_return) if result.benchmark_return else None,
                 float(result.alpha) if result.alpha else None,
                 float(result.beta) if result.beta else None,
-                json.dumps([{"date": str(p.date), "equity": float(p.equity)} for p in result.equity_curve]) if result.equity_curve else None,
+                json.dumps([{"date": str(p.date), "equity": float(p.equity), "benchmark": float(p.benchmark) if p.benchmark is not None else None} for p in result.equity_curve]) if result.equity_curve else None,
                 "COMPLETED",
                 now,  # created_at
                 now   # completed_at
@@ -255,7 +245,8 @@ class PostgresBacktestRepository:
                 "equity": float(point.equity),
                 "cash": float(point.cash),
                 "positions_value": float(point.positions_value),
-                "drawdown_pct": float(point.drawdown_pct)
+                "drawdown_pct": float(point.drawdown_pct),
+                "benchmark": float(point.benchmark) if point.benchmark is not None else None
             }
             for point in equity_curve
         ]
@@ -384,7 +375,8 @@ class PostgresBacktestRepository:
                     equity=Decimal(str(p["equity"])),
                     cash=Decimal(str(p.get("cash", 0))),
                     positions_value=Decimal(str(p.get("positions_value", 0))),
-                    drawdown_pct=Decimal(str(p.get("drawdown_pct", 0)))
+                    drawdown_pct=Decimal(str(p.get("drawdown_pct", 0))),
+                    benchmark=Decimal(str(p["benchmark"])) if p.get("benchmark") is not None else None
                 )
                 for p in curve_data
             ]
@@ -723,7 +715,8 @@ class PostgresBacktestRepository:
                                     "equity": float(p.equity),
                                     "cash": float(p.cash),
                                     "positions_value": float(p.positions_value),
-                                    "drawdown_pct": float(p.drawdown_pct)
+                                    "drawdown_pct": float(p.drawdown_pct),
+                                    "benchmark": float(p.benchmark) if p.benchmark is not None else None
                                 }
                                 for p in result.equity_curve
                             ]) if result.equity_curve else None,

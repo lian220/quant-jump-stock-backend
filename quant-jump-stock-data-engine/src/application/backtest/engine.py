@@ -121,6 +121,7 @@ class BacktestEngine:
         # 벤치마크 데이터
         self._benchmark_data: Optional[pd.DataFrame] = None
         self._benchmark_values: List[Decimal] = []
+        self._benchmark_first_close: Optional[Decimal] = None
 
     def run(self, strategy: StrategyDefinition) -> BacktestResult:
         """
@@ -201,6 +202,7 @@ class BacktestEngine:
         self._data = {}
         self._benchmark_data = None
         self._benchmark_values = []  # List of (date, Decimal) tuples for date-alignment
+        self._benchmark_first_close = None
 
     def _load_data(self) -> None:
         """데이터 로드"""
@@ -458,23 +460,30 @@ class BacktestEngine:
             p.market_value for p in self._portfolio.positions.values()
         )
 
-        point = EquityCurvePoint(
-            date=current_date,
-            equity=total_value,
-            cash=self._portfolio.cash,
-            positions_value=positions_value,
-            drawdown_pct=drawdown_pct
-        )
-
-        self._equity_curve.append(point)
-
-        # 벤치마크 가격 추적 (날짜와 함께 저장하여 equity_curve와 정렬 가능)
+        # 벤치마크 정규화 값 계산 (초기자본 × close / first_close)
+        benchmark_normalized = None
         if self._benchmark_data is not None:
             target_dt = pd.Timestamp(current_date)
             if target_dt in self._benchmark_data.index:
                 bm_close = self._benchmark_data.loc[target_dt, "close"]
                 if pd.notna(bm_close):
-                    self._benchmark_values.append((current_date, Decimal(str(bm_close))))
+                    bm_close_dec = Decimal(str(bm_close))
+                    self._benchmark_values.append((current_date, bm_close_dec))
+                    if self._benchmark_first_close is None:
+                        self._benchmark_first_close = bm_close_dec
+                    if self._benchmark_first_close and self._benchmark_first_close > 0:
+                        benchmark_normalized = self.config.initial_capital * bm_close_dec / self._benchmark_first_close
+
+        point = EquityCurvePoint(
+            date=current_date,
+            equity=total_value,
+            cash=self._portfolio.cash,
+            positions_value=positions_value,
+            drawdown_pct=drawdown_pct,
+            benchmark=benchmark_normalized
+        )
+
+        self._equity_curve.append(point)
 
     def _create_result(
         self,
@@ -775,12 +784,16 @@ class BacktestEngine:
                     point_date = datetime.fromisoformat(point_date_str).date()
                 else:
                     point_date = point_date_str
+                benchmark_val = None
+                if point_data.get("benchmark") is not None:
+                    benchmark_val = Decimal(str(point_data["benchmark"]))
                 point = EquityCurvePoint(
                     date=point_date,
                     equity=Decimal(str(point_data["equity"])),
                     cash=Decimal(str(point_data.get("cash", 0))),
                     positions_value=Decimal(str(point_data.get("positions_value", 0))),
                     drawdown_pct=Decimal(str(point_data.get("drawdown_pct", 0))),
+                    benchmark=benchmark_val,
                 )
                 self._equity_curve.append(point)
 

@@ -119,7 +119,10 @@ data class EquityCurvePointDto(
     val date: String,
 
     @Schema(description = "자산 가치", example = "10500000")
-    val value: BigDecimal
+    val value: BigDecimal,
+
+    @Schema(description = "벤치마크 가치 (초기자본 기준 정규화)", example = "10200000")
+    val benchmark: BigDecimal? = null
 )
 
 /**
