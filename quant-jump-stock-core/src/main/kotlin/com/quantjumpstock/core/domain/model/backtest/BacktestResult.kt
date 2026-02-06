@@ -12,6 +12,7 @@ import java.time.LocalDateTime
  */
 data class BacktestResult(
     val id: Long? = null,
+    val requestId: String? = null,
     val strategyId: Long,
     val strategyName: String? = null,
     val userId: Long? = null,

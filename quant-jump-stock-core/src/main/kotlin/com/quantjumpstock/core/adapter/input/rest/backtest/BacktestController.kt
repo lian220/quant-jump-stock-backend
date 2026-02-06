@@ -70,15 +70,17 @@ class BacktestController(
         ApiResponse(responseCode = "404", description = "백테스트 결과를 찾을 수 없음")
     )
     fun getBacktestResult(
-        @Parameter(description = "백테스트 ID") @PathVariable id: Long
+        @Parameter(description = "백테스트 ID (DB ID 또는 requestId)") @PathVariable id: String
     ): ResponseEntity<Any> {
         return try {
-            val status = backtestService.getBacktestStatus(id)
+            // DB ID (Long) 또는 requestId (UUID) 모두 지원
+            val resolvedId = backtestService.resolveBacktestId(id)
+            val status = backtestService.getBacktestStatus(resolvedId)
 
             when (status) {
                 "RUNNING" -> {
                     val pendingResponse = BacktestPendingResponse(
-                        id = id,
+                        id = resolvedId,
                         status = "RUNNING",
                         message = "백테스트가 아직 처리 중입니다.",
                         estimatedRemainingTime = 30
@@ -88,12 +90,12 @@ class BacktestController(
                         .body(pendingResponse)
                 }
                 "FAILED" -> {
-                    val result = backtestService.getBacktestResult(id)
+                    val result = backtestService.getBacktestResult(resolvedId)
                     ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                         .body(result)
                 }
                 else -> {
-                    val result = backtestService.getBacktestResult(id)
+                    val result = backtestService.getBacktestResult(resolvedId)
                     ResponseEntity.ok(result)
                 }
             }

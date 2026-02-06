@@ -53,6 +53,11 @@ class BacktestPersistenceAdapter(
         return backtestResultJpaRepository.findById(id).orElse(null)?.let { toDomain(it) }
     }
 
+    override fun findByRequestId(requestId: String): BacktestResult? {
+        logger.debug("백테스트 결과 조회: requestId={}", requestId)
+        return backtestResultJpaRepository.findByRequestId(requestId)?.let { toDomain(it) }
+    }
+
     override fun findByIdWithTrades(id: Long): BacktestResult? {
         logger.debug("백테스트 결과 조회 (거래 포함): id={}", id)
         return backtestResultJpaRepository.findByIdWithTrades(id).orElse(null)?.let { toDomainWithTrades(it) }
@@ -106,6 +111,7 @@ class BacktestPersistenceAdapter(
     private fun toDomain(entity: BacktestResultEntity): BacktestResult {
         return BacktestResult(
             id = entity.id,
+            requestId = entity.requestId,
             strategyId = entity.strategy.id!!,
             strategyName = entity.strategy.name,
             userId = entity.user?.id,
@@ -141,6 +147,7 @@ class BacktestPersistenceAdapter(
     private fun toDomainWithTrades(entity: BacktestResultEntity): BacktestResult {
         return BacktestResult(
             id = entity.id,
+            requestId = entity.requestId,
             strategyId = entity.strategy.id!!,
             strategyName = entity.strategy.name,
             userId = entity.user?.id,
@@ -183,6 +190,7 @@ class BacktestPersistenceAdapter(
 
         return BacktestResultEntity(
             id = domain.id,
+            requestId = domain.requestId,
             strategy = strategyEntity,
             user = userEntity,
             startDate = domain.startDate,

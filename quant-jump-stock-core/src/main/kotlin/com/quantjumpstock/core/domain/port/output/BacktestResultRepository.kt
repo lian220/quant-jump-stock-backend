@@ -25,6 +25,11 @@ interface BacktestResultRepository {
     fun findById(id: Long): BacktestResult?
 
     /**
+     * requestId로 백테스트 결과 조회
+     */
+    fun findByRequestId(requestId: String): BacktestResult?
+
+    /**
      * ID로 백테스트 결과 조회 (거래 내역 포함)
      */
     fun findByIdWithTrades(id: Long): BacktestResult?

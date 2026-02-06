@@ -123,6 +123,19 @@ class BacktestService(
     }
 
     /**
+     * ID 해석: DB ID(Long) 또는 requestId(UUID String) → DB ID(Long)
+     */
+    fun resolveBacktestId(idOrRequestId: String): Long {
+        // Long으로 파싱 가능하면 DB ID
+        idOrRequestId.toLongOrNull()?.let { return it }
+
+        // UUID requestId로 조회
+        val result = backtestResultRepository.findByRequestId(idOrRequestId)
+            ?: throw BacktestNotFoundException("백테스트 결과를 찾을 수 없습니다: requestId=$idOrRequestId")
+        return requireNotNull(result.id) { "BacktestResult.id must not be null" }
+    }
+
+    /**
      * 백테스트 상태 확인
      */
     fun getBacktestStatus(id: Long): String {

@@ -43,6 +43,7 @@ class BacktestResultSaveService(
         val metrics = payload.get("metrics") ?: payload
 
         val backtestResult = BacktestResult(
+            requestId = requestId,
             strategyId = strategyId,
             userId = userId,
             startDate = parseDate(payload.get("startDate")?.asText())
@@ -99,6 +100,7 @@ class BacktestResultSaveService(
         val userId = payload.get("userId")?.asText()?.toLongOrNull()
 
         val backtestResult = BacktestResult(
+            requestId = requestId,
             strategyId = strategyId,
             userId = userId,
             startDate = parseDate(payload.get("startDate")?.asText())
