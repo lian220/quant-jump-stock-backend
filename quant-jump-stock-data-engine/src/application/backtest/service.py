@@ -13,9 +13,7 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Optional, Dict, Any, Tuple
 
-import psycopg2
-
-from config.settings import get_settings
+from core.database import PostgreSQL
 from .engine import BacktestEngine, BacktestConfig
 from .data_loader import DataLoader
 from .data_loader_mongo import MongoDataLoader
@@ -172,31 +170,15 @@ class BacktestApplicationService:
         yfinance_indicators MongoDB 키가 name(예: "S&P 500 지수")이므로
         ticker(예: "^GSPC")로 조회하기 위한 매핑
         """
-        conn = None
         try:
-            settings = get_settings()
-            db_cfg = settings.database
-            if not db_cfg.postgres_user or not db_cfg.postgres_password:
-                logger.warning("DB_USER/DB_PASSWORD not set; skipping benchmark name map")
-                return None
-
-            conn = psycopg2.connect(
-                host=db_cfg.postgres_host,
-                port=db_cfg.postgres_port,
-                dbname=db_cfg.postgres_db,
-                user=db_cfg.postgres_user,
-                password=db_cfg.postgres_password
-            )
-            with conn.cursor() as cursor:
-                cursor.execute("SELECT ticker, name FROM yfinance_indicators WHERE is_active = true")
-                rows = cursor.fetchall()
+            with PostgreSQL.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    cursor.execute("SELECT ticker, name FROM yfinance_indicators WHERE is_active = true")
+                    rows = cursor.fetchall()
             return {row[0]: row[1] for row in rows}
         except Exception as e:
             logger.warning(f"Failed to load benchmark name map: {e}")
             return None
-        finally:
-            if conn is not None:
-                conn.close()
 
     async def run_backtest_incremental(
         self,

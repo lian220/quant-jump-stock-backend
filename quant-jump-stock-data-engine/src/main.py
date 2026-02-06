@@ -21,7 +21,7 @@ import uvicorn
 from config.settings import get_settings
 
 # Legacy imports (점진적 교체 예정)
-from core.database import MongoDB
+from core.database import MongoDB, PostgreSQL
 from features.economic_data.router import router as economic_router
 from features.ml_package.router import router as ml_package_router
 from features.economic_data.service import EconomicDataService
@@ -204,14 +204,11 @@ def main():
     economic_service = LegacyEconomicServiceAdapter(EconomicDataService())
     slack_notifier = LegacySlackNotifierAdapter()
 
-    # 4.1. 새 Hexagonal 분석 서비스 초기화
-    stock_repository = PostgresStockRepository(
-        host=settings.postgres_host,
-        port=settings.postgres_port,
-        database=settings.postgres_db,
-        user=settings.postgres_user,
-        password=settings.postgres_password
-    )
+    # 4.1. PostgreSQL 커넥션 풀 생성 (모든 repository에서 공유)
+    pg_pool = PostgreSQL.get_pool()
+
+    # 4.2. 새 Hexagonal 분석 서비스 초기화
+    stock_repository = PostgresStockRepository(pool=pg_pool)
     price_repository = MongoPriceRepository(db)
     result_repository = MongoAnalysisResultRepository(db)
 
@@ -229,10 +226,10 @@ def main():
         notifier=None
     )
 
-    # 4.2. 새 서비스 어댑터 (핸들러 프로토콜 호환)
+    # 4.3. 새 서비스 어댑터 (핸들러 프로토콜 호환)
     technical_service = NewTechnicalAnalysisAdapter(technical_app_service)
 
-    # 4.3. 레거시 서비스 (점진적 교체 예정)
+    # 4.4. 레거시 서비스 (점진적 교체 예정)
     recommendation_service = RecommendationService()
     sentiment_service = LegacySentimentAnalysisAdapter(recommendation_service)
 
@@ -257,21 +254,8 @@ def main():
     )
 
     # 6.1. 백테스트 핸들러 (SCRUM-186)
-    strategy_pg_repository = PostgresStrategyRepository(
-        host=settings.postgres_host,
-        port=settings.postgres_port,
-        database=settings.postgres_db,
-        user=settings.postgres_user,
-        password=settings.postgres_password
-    )
-
-    backtest_repository = PostgresBacktestRepository(
-        host=settings.postgres_host,
-        port=settings.postgres_port,
-        database=settings.postgres_db,
-        user=settings.postgres_user,
-        password=settings.postgres_password
-    )
+    strategy_pg_repository = PostgresStrategyRepository(pool=pg_pool)
+    backtest_repository = PostgresBacktestRepository(pool=pg_pool)
 
     backtest_service = BacktestApplicationService(
         strategy_repository=strategy_pg_repository
@@ -368,6 +352,7 @@ def main():
     finally:
         consumer.stop()
         kafka_producer.close()
+        PostgreSQL.close_pool()
         logger.info("Data Engine stopped")
 
 
