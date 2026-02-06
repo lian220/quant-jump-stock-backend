@@ -3,6 +3,9 @@ Backtest Data Loader
 
 백테스트용 시장 데이터 로더.
 yfinance 또는 로컬 데이터소스에서 OHLCV 데이터를 로드합니다.
+
+Note:
+    MongoDB 로더는 data_loader_mongo.py의 MongoDataLoader를 사용하세요.
 """
 
 import logging

@@ -14,7 +14,8 @@ from decimal import Decimal
 from typing import List, Optional, Dict, Any, Tuple
 
 from .engine import BacktestEngine, BacktestConfig
-from .data_loader import DataLoader, YFinanceDataLoader
+from .data_loader import DataLoader
+from .data_loader_mongo import MongoDataLoader
 from .result import BacktestResult, BacktestTrade
 from domain.strategy.models import StrategyDefinition
 
@@ -54,10 +55,10 @@ class BacktestApplicationService:
         """
         Args:
             strategy_repository: 전략 저장소 (PostgreSQL 또는 MongoDB)
-            data_loader: 시장 데이터 로더 (기본값: YFinanceDataLoader)
+            data_loader: 시장 데이터 로더 (기본값: MongoDataLoader - 4x 빠름)
         """
         self._strategy_repository = strategy_repository
-        self._data_loader = data_loader or YFinanceDataLoader()
+        self._data_loader = data_loader or MongoDataLoader()
 
     async def run_backtest(
         self,
@@ -162,7 +163,8 @@ class BacktestApplicationService:
         commission_rate: float = 0.00015,
         slippage_rate: float = 0.0001,
         existing_backtest: Optional[Dict[str, Any]] = None,
-        checkpoint: Optional[Dict[str, Any]] = None
+        checkpoint: Optional[Dict[str, Any]] = None,
+        equity_curve_data: Optional[List[Dict[str, Any]]] = None
     ) -> IncrementalBacktestResult:
         """
         증분 백테스트 실행
@@ -180,6 +182,7 @@ class BacktestApplicationService:
             slippage_rate: 슬리피지율
             existing_backtest: 기존 백테스트 정보 (있으면 증분 실행)
             checkpoint: 체크포인트 데이터 (증분 시 필요)
+            equity_curve_data: 수익 곡선 데이터 (backtest_results에서 조회, 증분 시 필요)
 
         Returns:
             IncrementalBacktestResult: 증분 백테스트 결과
@@ -212,9 +215,9 @@ class BacktestApplicationService:
 
         # 4. 증분 실행 또는 전체 실행
         if existing_backtest and checkpoint:
-            # 증분 실행
+            # 증분 실행 (equity_curve는 backtest_results에서 조회한 데이터 사용)
             result, new_trades = await self._run_incremental(
-                engine, strategy, checkpoint
+                engine, strategy, checkpoint, equity_curve_data
             )
             is_incremental = True
             backtest_id = existing_backtest.get("id")
@@ -225,7 +228,7 @@ class BacktestApplicationService:
             is_incremental = False
             backtest_id = None
 
-        # 5. 체크포인트 생성
+        # 5. 체크포인트 생성 (equity_curve 미포함)
         checkpoint_data = engine.create_checkpoint()
 
         # 6. strategy_id 설정
@@ -249,7 +252,8 @@ class BacktestApplicationService:
         self,
         engine: BacktestEngine,
         strategy: StrategyDefinition,
-        checkpoint: Any  # BacktestCheckpoint from repository
+        checkpoint: Any,  # BacktestCheckpoint from repository
+        equity_curve_data: Optional[List[Dict[str, Any]]] = None
     ) -> Tuple[BacktestResult, List[BacktestTrade]]:
         """
         체크포인트에서 증분 실행
@@ -257,21 +261,25 @@ class BacktestApplicationService:
         Args:
             engine: 백테스트 엔진
             strategy: 전략 정의
-            checkpoint: BacktestCheckpoint 객체
+            checkpoint: BacktestCheckpoint 객체 (포트폴리오 상태)
+            equity_curve_data: 수익 곡선 데이터 (backtest_results에서 조회)
 
         Returns:
             (백테스트 결과, 새 거래 목록)
         """
-        # 체크포인트에서 상태 복원
+        # 체크포인트에서 상태 복원 (equity_curve는 별도 파라미터)
         checkpoint_data = {
             "checkpoint_date": checkpoint.checkpoint_date,
             "cash": checkpoint.cash,
             "high_watermark": checkpoint.high_watermark,
             "positions": checkpoint.positions,
-            "equity_curve": checkpoint.equity_curve,
         }
 
-        engine.resume_from_checkpoint(checkpoint_data, strategy)
+        engine.resume_from_checkpoint(
+            checkpoint_data,
+            strategy,
+            equity_curve_data=equity_curve_data
+        )
 
         # 체크포인트 시점의 거래 수 기록
         trade_count_before = checkpoint.trade_count

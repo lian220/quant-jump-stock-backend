@@ -396,6 +396,14 @@ class BacktestRepositoryProtocol(Protocol):
         """최신 체크포인트 조회"""
         ...
 
+    async def get_equity_curve_until(
+        self,
+        backtest_id: int,
+        until_date: object
+    ) -> list:
+        """특정 날짜까지의 equity_curve 조회 (backtest_results에서)"""
+        ...
+
     async def save_checkpoint(self, checkpoint: object) -> int:
         """체크포인트 저장"""
         ...
@@ -536,6 +544,7 @@ class BacktestRequestHandler(MessageHandler):
             async def _execute():
                 existing_backtest = None
                 checkpoint = None
+                equity_curve_data = None
 
                 # 강제 전체 실행이 아닌 경우, 기존 백테스트 및 체크포인트 조회
                 if not force_full:
@@ -549,12 +558,19 @@ class BacktestRequestHandler(MessageHandler):
                         checkpoint = await self.backtest_repository.get_latest_checkpoint(
                             existing_backtest["id"]
                         )
+                        # 체크포인트가 있으면 equity_curve도 조회 (backtest_results에서)
+                        if checkpoint:
+                            equity_curve_data = await self.backtest_repository.get_equity_curve_until(
+                                existing_backtest["id"],
+                                checkpoint.checkpoint_date
+                            )
                         logger.info(
                             f"기존 백테스트 발견: id={existing_backtest['id']}, "
-                            f"checkpoint={'있음' if checkpoint else '없음'}"
+                            f"checkpoint={'있음' if checkpoint else '없음'}, "
+                            f"equity_curve_points={len(equity_curve_data) if equity_curve_data else 0}"
                         )
 
-                # 증분 백테스트 실행
+                # 증분 백테스트 실행 (equity_curve는 backtest_results에서 조회한 데이터 전달)
                 incremental_result = await self.backtest_service.run_backtest_incremental(
                     strategy_id=strategy_id,
                     tickers=tickers,
@@ -564,7 +580,8 @@ class BacktestRequestHandler(MessageHandler):
                     commission_rate=commission_rate,
                     slippage_rate=slippage_rate,
                     existing_backtest=existing_backtest,
-                    checkpoint=checkpoint
+                    checkpoint=checkpoint,
+                    equity_curve_data=equity_curve_data
                 )
 
                 result = incremental_result.result
@@ -588,7 +605,7 @@ class BacktestRequestHandler(MessageHandler):
                     )
                     logger.info(f"새 백테스트 결과 저장: id={result_id}")
 
-                # 체크포인트 저장
+                # 체크포인트 저장 (equity_curve는 backtest_results에 저장되므로 제외)
                 from adapter.output.postgresql.backtest_repository import BacktestCheckpoint
                 from datetime import datetime as dt, date as date_type
                 from decimal import Decimal
@@ -607,7 +624,6 @@ class BacktestRequestHandler(MessageHandler):
                     cash=Decimal(str(checkpoint_data["cash"])),
                     high_watermark=Decimal(str(checkpoint_data["high_watermark"])),
                     positions=checkpoint_data["positions"],
-                    equity_curve=checkpoint_data["equity_curve"],
                     trade_count=checkpoint_data["trade_count"]
                 )
                 await self.backtest_repository.save_checkpoint(new_checkpoint)

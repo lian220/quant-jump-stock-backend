@@ -617,8 +617,11 @@ class BacktestEngine:
         """
         현재 엔진 상태로 체크포인트 생성
 
+        Note: equity_curve는 backtest_results에 저장되므로 체크포인트에 포함하지 않음.
+              중복 저장 방지 및 저장 용량 최적화.
+
         Returns:
-            체크포인트 데이터 딕셔너리
+            체크포인트 데이터 딕셔너리 (equity_curve 제외)
         """
         if not self._portfolio:
             raise ValueError("Portfolio not initialized")
@@ -638,38 +641,27 @@ class BacktestEngine:
             for pos in self._portfolio.positions.values()
         ]
 
-        # 수익 곡선 직렬화
-        equity_curve = [
-            {
-                "date": point.date.isoformat(),
-                "equity": float(point.equity),
-                "cash": float(point.cash),
-                "positions_value": float(point.positions_value),
-                "drawdown_pct": float(point.drawdown_pct),
-            }
-            for point in self._equity_curve
-        ]
-
         return {
             "checkpoint_date": self._portfolio.current_date,
             "cash": self._portfolio.cash,
             "high_watermark": self._high_watermark,
             "positions": positions,
-            "equity_curve": equity_curve,
             "trade_count": len(self._portfolio.trades),
         }
 
     def resume_from_checkpoint(
         self,
         checkpoint_data: Dict[str, any],
-        strategy: StrategyDefinition
+        strategy: StrategyDefinition,
+        equity_curve_data: Optional[List[Dict[str, any]]] = None
     ) -> None:
         """
         체크포인트에서 엔진 상태 복원
 
         Args:
-            checkpoint_data: 체크포인트 데이터
+            checkpoint_data: 체크포인트 데이터 (positions, cash, high_watermark)
             strategy: 전략 정의
+            equity_curve_data: 수익 곡선 데이터 (backtest_results에서 조회)
         """
         from datetime import datetime
 
@@ -697,18 +689,24 @@ class BacktestEngine:
             )
             self._portfolio.positions[pos_data["symbol"]] = position
 
-        # 수익 곡선 복원
+        # 수익 곡선 복원 (backtest_results에서 조회한 데이터)
         self._equity_curve = []
-        for point_data in checkpoint_data.get("equity_curve", []):
-            point_date = datetime.fromisoformat(point_data["date"]).date()
-            point = EquityCurvePoint(
-                date=point_date,
-                equity=Decimal(str(point_data["equity"])),
-                cash=Decimal(str(point_data["cash"])),
-                positions_value=Decimal(str(point_data["positions_value"])),
-                drawdown_pct=Decimal(str(point_data["drawdown_pct"])),
-            )
-            self._equity_curve.append(point)
+        if equity_curve_data:
+            for point_data in equity_curve_data:
+                point_date_str = point_data.get("date", "")
+                # ISO format 또는 date 객체 처리
+                if isinstance(point_date_str, str):
+                    point_date = datetime.fromisoformat(point_date_str).date()
+                else:
+                    point_date = point_date_str
+                point = EquityCurvePoint(
+                    date=point_date,
+                    equity=Decimal(str(point_data["equity"])),
+                    cash=Decimal(str(point_data.get("cash", 0))),
+                    positions_value=Decimal(str(point_data.get("positions_value", 0))),
+                    drawdown_pct=Decimal(str(point_data.get("drawdown_pct", 0))),
+                )
+                self._equity_curve.append(point)
 
         # 리스크 매니저 초기화
         self._risk_manager = RiskManager.from_risk_management(
@@ -717,7 +715,8 @@ class BacktestEngine:
 
         logger.info(
             f"Resumed from checkpoint: date={checkpoint_data.get('checkpoint_date')}, "
-            f"cash={self._portfolio.cash}, positions={len(self._portfolio.positions)}"
+            f"cash={self._portfolio.cash}, positions={len(self._portfolio.positions)}, "
+            f"equity_curve_points={len(self._equity_curve)}"
         )
 
     def run_incremental(

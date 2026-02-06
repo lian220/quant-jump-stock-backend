@@ -17,7 +17,7 @@ MongoDB의 daily_stock_data 컬렉션에서 백테스트용 데이터를 로드�
 """
 
 import logging
-from datetime import date
+from datetime import date, timedelta
 from typing import Dict, List, Optional
 
 import pandas as pd
@@ -41,17 +41,20 @@ class MongoDataLoader(DataLoader):
         self,
         uri: str = "mongodb://quantiq_user:quantiq_password@localhost:27017/stock_trading?authSource=admin",
         database: str = "stock_trading",
-        collection: str = "daily_stock_data"
+        collection: str = "daily_stock_data",
+        add_buffer_days: int = 50
     ):
         """
         Args:
             uri: MongoDB 연결 URI
             database: 데이터베이스 이름
             collection: 컬렉션 이름
+            add_buffer_days: 지표 계산을 위한 추가 버퍼 일수 (이동평균 등)
         """
         self.uri = uri
         self.database = database
         self.collection = collection
+        self.add_buffer_days = add_buffer_days
         self._client: Optional[MongoClient] = None
 
     def _get_client(self) -> MongoClient:
@@ -102,10 +105,18 @@ class MongoDataLoader(DataLoader):
         db = client[self.database]
         coll = db[self.collection]
 
+        # 지표 계산을 위한 버퍼 추가 (이동평균 등)
+        buffered_start = start_date - timedelta(days=self.add_buffer_days)
+
+        logger.info(
+            f"Loading {len(symbols)} symbols from MongoDB: "
+            f"{buffered_start} to {end_date} (buffer: {self.add_buffer_days} days)"
+        )
+
         # 날짜 범위 쿼리
         query = {
             "date": {
-                "$gte": start_date.isoformat(),
+                "$gte": buffered_start.isoformat(),
                 "$lte": end_date.isoformat()
             }
         }
