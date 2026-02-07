@@ -14,7 +14,6 @@ import org.springframework.web.bind.annotation.*
 
 @RestController
 @Tag(name = "Stock", description = "종목 관리 API")
-@CrossOrigin(origins = ["http://localhost:3000", "http://localhost:4000"], allowCredentials = "true")
 class StockController(
     private val stockService: StockService,
     private val authService: AuthService
@@ -131,8 +130,12 @@ class StockController(
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(StockResponse(success = false, message = "인증이 필요합니다"))
 
+        val userIdLong = userId.toLongOrNull()
+            ?: return ResponseEntity.badRequest()
+                .body(StockResponse(success = false, message = "유효하지 않은 사용자 ID입니다"))
+
         return try {
-            val response = stockService.changeDesignation(id, request, userId.toLongOrNull())
+            val response = stockService.changeDesignation(id, request, userIdLong)
             ResponseEntity.ok(response)
         } catch (e: StockException) {
             ResponseEntity.badRequest().body(

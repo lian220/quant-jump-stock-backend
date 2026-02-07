@@ -39,7 +39,8 @@ class UserPortfolioService(
         validatePortfolioOwnership(portfolioId, userId)
 
         val stocks = portfolioStockRepository.findByPortfolioId(portfolioId)
-        val responses = stocks.map { it.toResponse() }
+        val stockMap = loadStockMap(stocks.map { it.stockId })
+        val responses = stocks.map { it.toResponse(stockMap) }
         val totalWeight = responses.sumOf { it.targetWeight }
 
         return PortfolioStockListResponse(
@@ -75,7 +76,8 @@ class UserPortfolioService(
         )
 
         val saved = portfolioStockRepository.save(portfolioStock)
-        return saved.toResponse()
+        val stockMap = loadStockMap(listOf(saved.stockId))
+        return saved.toResponse(stockMap)
     }
 
     /**
@@ -96,7 +98,8 @@ class UserPortfolioService(
         )
 
         val saved = portfolioStockRepository.save(updated)
-        return saved.toResponse()
+        val stockMap = loadStockMap(listOf(saved.stockId))
+        return saved.toResponse(stockMap)
     }
 
     /**
@@ -166,9 +169,9 @@ class UserPortfolioService(
 
     private fun validatePortfolioOwnership(portfolioId: Long, userId: Long) {
         val portfolio = userPortfolioRepository.findById(portfolioId)
-            ?: throw PortfolioException("포트폴리오를 찾을 수 없습니다: $portfolioId")
+            ?: throw PortfolioNotFoundException("포트폴리오를 찾을 수 없습니다: $portfolioId")
         if (portfolio.userId != userId) {
-            throw PortfolioException("포트폴리오에 대한 접근 권한이 없습니다")
+            throw PortfolioAccessDeniedException("포트폴리오에 대한 접근 권한이 없습니다")
         }
     }
 
@@ -186,8 +189,12 @@ class UserPortfolioService(
         )
     }
 
-    private fun PortfolioStock.toResponse(): PortfolioStockResponse {
-        val stock = stockRepository.findById(this.stockId)
+    private fun loadStockMap(stockIds: List<Long>): Map<Long, com.quantjumpstock.core.domain.model.stock.Stock> {
+        return stockRepository.findAllByIds(stockIds.distinct()).associateBy { it.id!! }
+    }
+
+    private fun PortfolioStock.toResponse(stockMap: Map<Long, com.quantjumpstock.core.domain.model.stock.Stock>): PortfolioStockResponse {
+        val stock = stockMap[this.stockId]
         return PortfolioStockResponse(
             id = this.id!!,
             portfolioId = this.portfolioId,

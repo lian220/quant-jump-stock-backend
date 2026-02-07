@@ -94,4 +94,8 @@ data class PortfolioResponse(
     val message: String? = null
 )
 
-class PortfolioException(message: String) : RuntimeException(message)
+open class PortfolioException(message: String) : RuntimeException(message)
+
+class PortfolioNotFoundException(message: String) : PortfolioException(message)
+
+class PortfolioAccessDeniedException(message: String) : PortfolioException(message)

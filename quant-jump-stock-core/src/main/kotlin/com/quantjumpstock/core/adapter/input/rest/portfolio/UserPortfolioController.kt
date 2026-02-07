@@ -13,7 +13,6 @@ import org.springframework.web.bind.annotation.*
 @RestController
 @RequestMapping("/api/v1/portfolios")
 @Tag(name = "User Portfolio", description = "사용자 포트폴리오 관리 API")
-@CrossOrigin(origins = ["http://localhost:3000", "http://localhost:4000"], allowCredentials = "true")
 class UserPortfolioController(
     private val userPortfolioService: UserPortfolioService,
     private val authService: AuthService,
@@ -48,8 +47,12 @@ class UserPortfolioController(
         return try {
             val response = userPortfolioService.getPortfolioStocks(id, userId)
             ResponseEntity.ok(response)
-        } catch (e: PortfolioException) {
+        } catch (e: PortfolioAccessDeniedException) {
+            ResponseEntity.status(HttpStatus.FORBIDDEN).build()
+        } catch (e: PortfolioNotFoundException) {
             ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        } catch (e: PortfolioException) {
+            ResponseEntity.badRequest().build()
         }
     }
 
@@ -67,6 +70,14 @@ class UserPortfolioController(
         return try {
             val response = userPortfolioService.addPortfolioStock(id, request, userId)
             ResponseEntity.status(HttpStatus.CREATED).body(response)
+        } catch (e: PortfolioAccessDeniedException) {
+            ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+                PortfolioResponse(success = false, message = e.message)
+            )
+        } catch (e: PortfolioNotFoundException) {
+            ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                PortfolioResponse(success = false, message = e.message)
+            )
         } catch (e: PortfolioException) {
             ResponseEntity.badRequest().body(
                 PortfolioResponse(success = false, message = e.message)
@@ -89,6 +100,14 @@ class UserPortfolioController(
         return try {
             val response = userPortfolioService.updatePortfolioStock(id, stockId, request, userId)
             ResponseEntity.ok(response)
+        } catch (e: PortfolioAccessDeniedException) {
+            ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+                PortfolioResponse(success = false, message = e.message)
+            )
+        } catch (e: PortfolioNotFoundException) {
+            ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                PortfolioResponse(success = false, message = e.message)
+            )
         } catch (e: PortfolioException) {
             ResponseEntity.badRequest().body(
                 PortfolioResponse(success = false, message = e.message)
@@ -110,6 +129,14 @@ class UserPortfolioController(
         return try {
             val response = userPortfolioService.removePortfolioStock(id, stockId, userId)
             ResponseEntity.ok(response)
+        } catch (e: PortfolioAccessDeniedException) {
+            ResponseEntity.status(HttpStatus.FORBIDDEN).body(
+                PortfolioResponse(success = false, message = e.message)
+            )
+        } catch (e: PortfolioNotFoundException) {
+            ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                PortfolioResponse(success = false, message = e.message)
+            )
         } catch (e: PortfolioException) {
             ResponseEntity.badRequest().body(
                 PortfolioResponse(success = false, message = e.message)

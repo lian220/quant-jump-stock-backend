@@ -27,7 +27,8 @@ class StrategyDefaultStockService(
         validateStrategyExists(strategyId)
 
         val stocks = defaultStockRepository.findByStrategyId(strategyId)
-        val responses = stocks.map { it.toResponse() }
+        val stockMap = loadStockMap(stocks.map { it.stockId })
+        val responses = stocks.map { it.toResponse(stockMap) }
         val totalWeight = responses.sumOf { it.targetWeight }
 
         return DefaultStockListResponse(
@@ -70,7 +71,8 @@ class StrategyDefaultStockService(
         val saved = defaultStockRepository.save(defaultStock)
         logger.info("기본 종목 추가 완료: id=${saved.id}")
 
-        return saved.toResponse()
+        val stockMap = loadStockMap(listOf(saved.stockId))
+        return saved.toResponse(stockMap)
     }
 
     /**
@@ -102,7 +104,8 @@ class StrategyDefaultStockService(
         )
 
         val saved = defaultStockRepository.save(updated)
-        return saved.toResponse()
+        val stockMap = loadStockMap(listOf(saved.stockId))
+        return saved.toResponse(stockMap)
     }
 
     /**
@@ -155,7 +158,8 @@ class StrategyDefaultStockService(
             defaultStockRepository.save(defaultStock)
         }
 
-        val responses = saved.map { it.toResponse() }
+        val stockMap = loadStockMap(saved.map { it.stockId })
+        val responses = saved.map { it.toResponse(stockMap) }
 
         return DefaultStockListResponse(
             stocks = responses,
@@ -187,8 +191,12 @@ class StrategyDefaultStockService(
         }
     }
 
-    private fun StrategyDefaultStock.toResponse(): DefaultStockResponse {
-        val stock = stockRepository.findById(this.stockId)
+    private fun loadStockMap(stockIds: List<Long>): Map<Long, com.quantjumpstock.core.domain.model.stock.Stock> {
+        return stockRepository.findAllByIds(stockIds.distinct()).associateBy { it.id!! }
+    }
+
+    private fun StrategyDefaultStock.toResponse(stockMap: Map<Long, com.quantjumpstock.core.domain.model.stock.Stock>): DefaultStockResponse {
+        val stock = stockMap[this.stockId]
         return DefaultStockResponse(
             id = this.id ?: 0L,
             strategyId = this.strategyId,

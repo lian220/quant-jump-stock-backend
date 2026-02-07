@@ -37,6 +37,8 @@ class SecurityConfig(
                 auth
                     .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                     .requestMatchers("/api/auth/**", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                    .requestMatchers("/api/v1/portfolios/**").authenticated()
+                    .requestMatchers("/api/v1/strategies/*/default-stocks/**").authenticated()
                     .anyRequest().permitAll()
             }
             .addFilterBefore(tokenAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)

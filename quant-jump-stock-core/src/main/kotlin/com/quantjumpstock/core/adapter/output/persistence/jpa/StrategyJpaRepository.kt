@@ -23,9 +23,6 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
 
     fun findByOwnerIdAndStatus(ownerId: Long, status: StrategyStatus): List<StrategyEntity>
 
-    // 공개 전략 조회
-    fun findByIsPublicTrueAndStatus(status: StrategyStatus, pageable: Pageable): Page<StrategyEntity>
-
     @Query("""
         SELECT s FROM StrategyEntity s
         WHERE s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE')

@@ -146,7 +146,13 @@ class StrategyPersistenceAdapter(
 
         val owner = when {
             existingEntity != null -> existingEntity.owner
-            domain.ownerId != null -> userJpaRepository.findById(domain.ownerId).orElse(null)
+            domain.ownerId != null -> {
+                val resolved = userJpaRepository.findById(domain.ownerId).orElse(null)
+                if (resolved == null) {
+                    logger.warn("전략 소유자를 찾을 수 없습니다: ownerId=${domain.ownerId}, strategyName=${domain.name}")
+                }
+                resolved
+            }
             else -> null
         }
 

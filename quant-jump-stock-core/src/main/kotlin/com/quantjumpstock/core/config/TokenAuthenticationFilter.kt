@@ -22,6 +22,8 @@ class TokenAuthenticationFilter(
     private val userJpaRepository: UserJpaRepository
 ) : OncePerRequestFilter() {
 
+    private val log = org.slf4j.LoggerFactory.getLogger(TokenAuthenticationFilter::class.java)
+
     override fun doFilterInternal(
         request: HttpServletRequest,
         response: HttpServletResponse,
@@ -46,6 +48,7 @@ class TokenAuthenticationFilter(
                 }
             }
         } catch (e: Exception) {
+            log.warn("인증 처리 중 오류 발생: ${e.message}", e)
             SecurityContextHolder.clearContext()
         }
 

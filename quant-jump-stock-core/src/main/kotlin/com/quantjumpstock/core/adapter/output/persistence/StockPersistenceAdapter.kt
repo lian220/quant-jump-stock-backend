@@ -57,6 +57,10 @@ class StockPersistenceAdapter(
         return stockJpaRepository.findAll().map { toDomain(it) }
     }
 
+    override fun findAllByIds(ids: List<Long>): List<Stock> {
+        return stockJpaRepository.findAllById(ids).map { toDomain(it) }
+    }
+
     override fun deleteById(id: Long) {
         logger.debug("종목 삭제: id=$id")
         stockJpaRepository.deleteById(id)
@@ -88,10 +92,20 @@ class StockPersistenceAdapter(
             exchange = entity.exchange,
             sector = entity.sector,
             industry = entity.industry,
-            market = try { Market.valueOf(entity.market) } catch (e: Exception) { Market.KR },
+            market = try {
+                Market.valueOf(entity.market)
+            } catch (e: Exception) {
+                logger.warn("알 수 없는 Market 값: '${entity.market}' (ticker=${entity.ticker}), 기본값 KR 사용")
+                Market.KR
+            },
             isEtf = entity.isEtf,
             leverageTicker = entity.leverageTicker,
-            designationStatus = try { DesignationStatus.valueOf(entity.designationStatus) } catch (e: Exception) { DesignationStatus.NORMAL },
+            designationStatus = try {
+                DesignationStatus.valueOf(entity.designationStatus)
+            } catch (e: Exception) {
+                logger.warn("알 수 없는 DesignationStatus 값: '${entity.designationStatus}' (ticker=${entity.ticker}), 기본값 NORMAL 사용")
+                DesignationStatus.NORMAL
+            },
             designationReason = entity.designationReason,
             designatedAt = entity.designatedAt,
             isActive = entity.isActive,

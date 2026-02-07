@@ -30,6 +30,8 @@ interface StockRepository {
 
     fun findAll(): List<Stock>
 
+    fun findAllByIds(ids: List<Long>): List<Stock>
+
     fun deleteById(id: Long)
 
     fun existsById(id: Long): Boolean
