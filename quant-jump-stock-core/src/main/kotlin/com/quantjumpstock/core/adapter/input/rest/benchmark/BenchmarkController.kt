@@ -14,7 +14,6 @@ import java.time.LocalDate
 @RestController
 @RequestMapping("/api/v1/benchmarks")
 @Tag(name = "Benchmark", description = "벤치마크 시계열 API")
-@CrossOrigin(origins = ["http://localhost:3000", "http://localhost:4000"], allowCredentials = "true")
 class BenchmarkController(
     private val benchmarkService: BenchmarkService
 ) {
@@ -37,6 +36,10 @@ class BenchmarkController(
         val tickerList = tickers.split(",").map { it.trim() }.filter { it.isNotBlank() }
 
         if (tickerList.isEmpty()) {
+            return ResponseEntity.badRequest().body(BenchmarkSeriesResponse(emptyList()))
+        }
+
+        if (tickerList.size > 10) {
             return ResponseEntity.badRequest().body(BenchmarkSeriesResponse(emptyList()))
         }
 

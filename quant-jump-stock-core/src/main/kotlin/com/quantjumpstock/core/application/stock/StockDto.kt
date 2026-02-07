@@ -3,26 +3,36 @@ package com.quantjumpstock.core.application.stock
 import com.quantjumpstock.core.domain.model.stock.DesignationStatus
 import com.quantjumpstock.core.domain.model.stock.Market
 import io.swagger.v3.oas.annotations.media.Schema
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Size
 import java.time.LocalDateTime
 
 // ===== Request DTOs =====
 
 data class CreateStockRequest(
+    @field:NotBlank(message = "종목 코드는 필수입니다")
+    @field:Size(max = 20, message = "종목 코드는 20자를 초과할 수 없습니다")
     @Schema(description = "종목 코드", example = "AAPL", required = true)
     val ticker: String,
 
+    @field:NotBlank(message = "종목명은 필수입니다")
+    @field:Size(max = 200, message = "종목명은 200자를 초과할 수 없습니다")
     @Schema(description = "종목명", example = "Apple Inc.", required = true)
     val stockName: String,
 
+    @field:Size(max = 200, message = "영문 종목명은 200자를 초과할 수 없습니다")
     @Schema(description = "영문 종목명", example = "Apple Inc.")
     val stockNameEn: String? = null,
 
+    @field:Size(max = 50, message = "거래소는 50자를 초과할 수 없습니다")
     @Schema(description = "거래소", example = "NASDAQ")
     val exchange: String? = null,
 
+    @field:Size(max = 100, message = "섹터는 100자를 초과할 수 없습니다")
     @Schema(description = "섹터", example = "Technology")
     val sector: String? = null,
 
+    @field:Size(max = 100, message = "산업은 100자를 초과할 수 없습니다")
     @Schema(description = "산업", example = "Consumer Electronics")
     val industry: String? = null,
 
@@ -32,23 +42,29 @@ data class CreateStockRequest(
     @Schema(description = "ETF 여부", example = "false")
     val isEtf: Boolean = false,
 
+    @field:Size(max = 20, message = "레버리지 티커는 20자를 초과할 수 없습니다")
     @Schema(description = "레버리지 티커", example = "TQQQ")
     val leverageTicker: String? = null
 )
 
 data class UpdateStockRequest(
+    @field:Size(max = 200, message = "종목명은 200자를 초과할 수 없습니다")
     @Schema(description = "종목명")
     val stockName: String? = null,
 
+    @field:Size(max = 200, message = "영문 종목명은 200자를 초과할 수 없습니다")
     @Schema(description = "영문 종목명")
     val stockNameEn: String? = null,
 
+    @field:Size(max = 50, message = "거래소는 50자를 초과할 수 없습니다")
     @Schema(description = "거래소")
     val exchange: String? = null,
 
+    @field:Size(max = 100, message = "섹터는 100자를 초과할 수 없습니다")
     @Schema(description = "섹터")
     val sector: String? = null,
 
+    @field:Size(max = 100, message = "산업은 100자를 초과할 수 없습니다")
     @Schema(description = "산업")
     val industry: String? = null,
 
@@ -58,6 +74,7 @@ data class UpdateStockRequest(
     @Schema(description = "ETF 여부")
     val isEtf: Boolean? = null,
 
+    @field:Size(max = 20, message = "레버리지 티커는 20자를 초과할 수 없습니다")
     @Schema(description = "레버리지 티커")
     val leverageTicker: String? = null,
 
@@ -69,6 +86,7 @@ data class ChangeDesignationRequest(
     @Schema(description = "지정 상태", example = "WARNING", required = true)
     val designationStatus: DesignationStatus,
 
+    @field:Size(max = 500, message = "지정 사유는 500자를 초과할 수 없습니다")
     @Schema(description = "지정 사유", example = "투자주의 환기종목 지정")
     val reason: String? = null
 )

@@ -1,6 +1,7 @@
 package com.quantjumpstock.core.application.portfolio
 
 import io.swagger.v3.oas.annotations.media.Schema
+import jakarta.validation.constraints.Size
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
@@ -13,6 +14,7 @@ data class AddDefaultStockRequest(
     @Schema(description = "목표 비중 (%, 0 초과 100 이하)", required = true, example = "25.00")
     val targetWeight: BigDecimal,
 
+    @field:Size(max = 1000, message = "메모는 1000자를 초과할 수 없습니다")
     @Schema(description = "메모")
     val memo: String? = null
 )
@@ -21,6 +23,7 @@ data class UpdateDefaultStockRequest(
     @Schema(description = "목표 비중 (%)", example = "30.00")
     val targetWeight: BigDecimal? = null,
 
+    @field:Size(max = 1000, message = "메모는 1000자를 초과할 수 없습니다")
     @Schema(description = "메모")
     val memo: String? = null
 )
@@ -37,6 +40,7 @@ data class DefaultStockItem(
     @Schema(description = "목표 비중 (%, 0 초과 100 이하)", required = true, example = "25.00")
     val targetWeight: BigDecimal,
 
+    @field:Size(max = 1000, message = "메모는 1000자를 초과할 수 없습니다")
     @Schema(description = "메모")
     val memo: String? = null
 )

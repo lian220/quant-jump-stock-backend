@@ -6,6 +6,7 @@ import com.quantjumpstock.core.domain.model.stock.Market
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
+import jakarta.validation.Valid
 import org.springframework.data.domain.PageRequest
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
@@ -59,7 +60,7 @@ class StockController(
     @PreAuthorize("hasRole('ADMIN')")
     fun createStock(
         @RequestHeader("Authorization") authorization: String,
-        @RequestBody request: CreateStockRequest
+        @Valid @RequestBody request: CreateStockRequest
     ): ResponseEntity<StockResponse> {
         extractUserId(authorization)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -81,7 +82,7 @@ class StockController(
     fun updateStock(
         @Parameter(description = "종목 ID") @PathVariable id: Long,
         @RequestHeader("Authorization") authorization: String,
-        @RequestBody request: UpdateStockRequest
+        @Valid @RequestBody request: UpdateStockRequest
     ): ResponseEntity<StockResponse> {
         extractUserId(authorization)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
@@ -124,7 +125,7 @@ class StockController(
     fun changeDesignation(
         @Parameter(description = "종목 ID") @PathVariable id: Long,
         @RequestHeader("Authorization") authorization: String,
-        @RequestBody request: ChangeDesignationRequest
+        @Valid @RequestBody request: ChangeDesignationRequest
     ): ResponseEntity<StockResponse> {
         val userId = extractUserId(authorization)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
