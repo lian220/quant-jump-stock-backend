@@ -90,6 +90,7 @@ class MarketplaceService(
                 name = this.categoryName
             ),
             isPremium = this.isPremium,
+            stockSelectionType = this.stockSelectionType,
             subscriberCount = this.subscriberCount,
             averageRating = this.averageRating,
             rebalanceFrequency = this.rebalanceFrequency.name,
@@ -119,8 +120,7 @@ class MarketplaceService(
             equityCurve = this.latestBacktest?.equityCurve?.map {
                 EquityCurvePointDto(
                     date = it.date.toString(),
-                    value = it.value,
-                    benchmark = it.benchmark
+                    value = it.value
                 )
             } ?: emptyList(),
             currentHoldings = this.currentHoldings.map {
@@ -167,6 +167,7 @@ class MarketplaceService(
                 name = this.categoryName
             ),
             isPremium = this.isPremium,
+            stockSelectionType = this.stockSelectionType,
             subscriberCount = this.subscriberCount,
             averageRating = this.averageRating,
             rebalanceFrequency = this.rebalanceFrequency.name,

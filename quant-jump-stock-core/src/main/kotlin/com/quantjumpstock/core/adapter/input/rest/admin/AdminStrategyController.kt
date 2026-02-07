@@ -10,6 +10,7 @@ import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.ResponseEntity
+import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.*
 
 /**
@@ -19,7 +20,7 @@ import org.springframework.web.bind.annotation.*
 @RestController
 @RequestMapping("/api/v1/admin/strategies")
 @Tag(name = "Admin Strategy", description = "관리자용 전략 관리 API")
-@CrossOrigin(origins = ["http://localhost:3000", "http://localhost:4000"], allowCredentials = "true")
+@PreAuthorize("hasRole('ADMIN')")
 class AdminStrategyController(
     private val adminStrategyService: AdminStrategyService
 ) {
@@ -88,7 +89,7 @@ class AdminStrategyController(
                 ChangeStrategyStatusResponse(
                     success = false,
                     strategyId = id,
-                    previousStatus = StrategyStatus.DRAFT,
+                    previousStatus = request.status,
                     newStatus = request.status,
                     message = e.message
                 )

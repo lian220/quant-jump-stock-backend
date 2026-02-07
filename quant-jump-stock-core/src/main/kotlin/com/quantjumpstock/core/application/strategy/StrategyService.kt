@@ -1,6 +1,7 @@
 package com.quantjumpstock.core.application.strategy
 
 import com.quantjumpstock.core.domain.model.strategy.Strategy
+import com.quantjumpstock.core.domain.model.strategy.StockSelectionType
 import com.quantjumpstock.core.domain.model.strategy.StrategyStatus
 import com.quantjumpstock.core.domain.model.strategy.RebalanceFrequency
 import com.quantjumpstock.core.domain.port.output.StrategyRepository
@@ -53,6 +54,8 @@ class StrategyService(
             isPublic = request.isPublic,
             isPremium = request.isPremium,
             status = StrategyStatus.DRAFT,
+            stockSelectionType = request.stockSelectionType,
+            investmentPhilosophy = request.investmentPhilosophy,
             conditions = request.conditions,
             rebalanceFrequency = request.rebalanceFrequency
         )
@@ -120,6 +123,8 @@ class StrategyService(
             isPublic = request.isPublic ?: strategy.isPublic,
             isPremium = request.isPremium ?: strategy.isPremium,
             status = request.status ?: strategy.status,
+            stockSelectionType = request.stockSelectionType ?: strategy.stockSelectionType,
+            investmentPhilosophy = request.investmentPhilosophy ?: strategy.investmentPhilosophy,
             conditions = request.conditions ?: strategy.conditions,
             rebalanceFrequency = request.rebalanceFrequency ?: strategy.rebalanceFrequency
         )
@@ -208,6 +213,8 @@ class StrategyService(
             isPublic = this.isPublic,
             isPremium = this.isPremium,
             status = this.status,
+            stockSelectionType = this.stockSelectionType,
+            investmentPhilosophy = this.investmentPhilosophy,
             conditions = this.conditions,
             rebalanceFrequency = this.rebalanceFrequency,
             subscriberCount = this.subscriberCount,
@@ -233,6 +240,7 @@ class StrategyService(
                 name = category?.name ?: ""
             ),
             status = this.status,
+            stockSelectionType = this.stockSelectionType,
             isPublic = this.isPublic,
             isPremium = this.isPremium,
             subscriberCount = this.subscriberCount,

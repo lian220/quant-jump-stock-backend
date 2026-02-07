@@ -36,6 +36,18 @@ data class StockEntity(
     @Column(length = 100)
     val industry: String? = null,
 
+    @Column(length = 10)
+    val market: String = "KR",
+
+    @Column(name = "designation_status", length = 20)
+    val designationStatus: String = "NORMAL",
+
+    @Column(name = "designation_reason", columnDefinition = "TEXT")
+    val designationReason: String? = null,
+
+    @Column(name = "designated_at")
+    val designatedAt: LocalDateTime? = null,
+
     @Column(name = "is_active", nullable = false)
     val isActive: Boolean = true,
 

@@ -8,6 +8,7 @@ import com.quantjumpstock.core.domain.model.marketplace.EquityCurvePoint
 import com.quantjumpstock.core.domain.model.marketplace.MarketplaceStrategy
 import com.quantjumpstock.core.domain.model.marketplace.StrategyDetail
 import com.quantjumpstock.core.domain.model.strategy.RebalanceFrequency
+import com.quantjumpstock.core.domain.model.strategy.StockSelectionType
 import com.quantjumpstock.core.domain.port.output.MarketplaceRepository
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
@@ -77,6 +78,7 @@ class MarketplaceServiceTest {
             categoryCode = "VALUE",
             categoryName = "가치투자",
             isPremium = false,
+            stockSelectionType = StockSelectionType.SCREENING,
             subscriberCount = 100,
             averageRating = BigDecimal("4.5"),
             rebalanceFrequency = RebalanceFrequency.MONTHLY,
@@ -267,6 +269,7 @@ class MarketplaceServiceTest {
             categoryCode = "VALUE",
             categoryName = "가치투자",
             isPremium = false,
+            stockSelectionType = StockSelectionType.SCREENING,
             subscriberCount = 100,
             averageRating = BigDecimal("4.5"),
             rebalanceFrequency = RebalanceFrequency.MONTHLY,
@@ -356,6 +359,7 @@ class MarketplaceServiceTest {
             categoryCode = "MOMENTUM",
             categoryName = "모멘텀",
             isPremium = false,
+            stockSelectionType = StockSelectionType.SCREENING,
             subscriberCount = 0,
             averageRating = BigDecimal.ZERO,
             rebalanceFrequency = RebalanceFrequency.DAILY,

@@ -2,6 +2,7 @@ package com.quantjumpstock.core.domain.model.marketplace
 
 import com.quantjumpstock.core.domain.model.backtest.BacktestSummary
 import com.quantjumpstock.core.domain.model.strategy.RebalanceFrequency
+import com.quantjumpstock.core.domain.model.strategy.StockSelectionType
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -18,6 +19,7 @@ data class StrategyDetail(
     val categoryCode: String,
     val categoryName: String,
     val isPremium: Boolean,
+    val stockSelectionType: StockSelectionType,
     val subscriberCount: Int,
     val averageRating: BigDecimal,
     val rebalanceFrequency: RebalanceFrequency,
@@ -60,8 +62,7 @@ data class BacktestDetailSummary(
  */
 data class EquityCurvePoint(
     val date: LocalDate,
-    val value: BigDecimal,
-    val benchmark: BigDecimal? = null
+    val value: BigDecimal
 )
 
 /**

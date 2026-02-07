@@ -158,6 +158,7 @@ class AdminStrategyService(
             ownerName = null,  // TODO: User 조회로 개선
             ownerEmail = null,  // TODO: User 조회로 개선
             status = this.status,
+            stockSelectionType = this.stockSelectionType,
             isPublic = this.isPublic,
             isPremium = this.isPremium,
             rebalanceFrequency = this.rebalanceFrequency,
