@@ -1,6 +1,7 @@
 package com.quantjumpstock.core.application.admin
 
 import com.quantjumpstock.core.domain.model.strategy.RebalanceFrequency
+import com.quantjumpstock.core.domain.model.strategy.StockSelectionType
 import com.quantjumpstock.core.domain.model.strategy.StrategyStatus
 import io.swagger.v3.oas.annotations.media.Schema
 import java.math.BigDecimal
@@ -56,6 +57,9 @@ data class AdminStrategySummary(
 
     @Schema(description = "상태")
     val status: StrategyStatus,
+
+    @Schema(description = "종목선정 방식")
+    val stockSelectionType: StockSelectionType,
 
     @Schema(description = "공개 여부")
     val isPublic: Boolean,

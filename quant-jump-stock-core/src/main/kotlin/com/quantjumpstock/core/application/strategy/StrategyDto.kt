@@ -1,7 +1,10 @@
 package com.quantjumpstock.core.application.strategy
 
+import com.fasterxml.jackson.databind.annotation.JsonDeserialize
 import com.quantjumpstock.core.domain.model.strategy.RebalanceFrequency
+import com.quantjumpstock.core.domain.model.strategy.StockSelectionType
 import com.quantjumpstock.core.domain.model.strategy.StrategyStatus
+import com.quantjumpstock.core.infrastructure.json.JsonStringDeserializer
 import io.swagger.v3.oas.annotations.media.Schema
 import java.math.BigDecimal
 import java.time.LocalDateTime
@@ -39,7 +42,14 @@ data class CreateStrategyRequest(
     @Schema(description = "프리미엄 여부", example = "false")
     val isPremium: Boolean = false,
 
+    @Schema(description = "종목선정 방식", example = "SCREENING")
+    val stockSelectionType: StockSelectionType = StockSelectionType.SCREENING,
+
+    @Schema(description = "투자 철학 (AI 매매 판단 시 참고)", example = "장기 가치투자, 경제적 해자 중시")
+    val investmentPhilosophy: String? = null,
+
     @Schema(description = "전략 조건 (JSON)", example = "{\"indicators\": [\"RSI\", \"MACD\"]}")
+    @JsonDeserialize(using = JsonStringDeserializer::class)
     val conditions: String = "{}",
 
     @Schema(description = "리밸런싱 주기", example = "MONTHLY")
@@ -68,7 +78,14 @@ data class UpdateStrategyRequest(
     @Schema(description = "전략 상태")
     val status: StrategyStatus? = null,
 
+    @Schema(description = "종목선정 방식")
+    val stockSelectionType: StockSelectionType? = null,
+
+    @Schema(description = "투자 철학 (AI 매매 판단 시 참고)")
+    val investmentPhilosophy: String? = null,
+
     @Schema(description = "전략 조건 (JSON)")
+    @JsonDeserialize(using = JsonStringDeserializer::class)
     val conditions: String? = null,
 
     @Schema(description = "리밸런싱 주기")
@@ -105,6 +122,12 @@ data class StrategyDetailResponse(
 
     @Schema(description = "상태")
     val status: StrategyStatus,
+
+    @Schema(description = "종목선정 방식")
+    val stockSelectionType: StockSelectionType,
+
+    @Schema(description = "투자 철학")
+    val investmentPhilosophy: String?,
 
     @Schema(description = "전략 조건 (JSON)")
     val conditions: String,
@@ -183,6 +206,9 @@ data class StrategySummary(
 
     @Schema(description = "상태")
     val status: StrategyStatus,
+
+    @Schema(description = "종목선정 방식")
+    val stockSelectionType: StockSelectionType,
 
     @Schema(description = "공개 여부")
     val isPublic: Boolean,

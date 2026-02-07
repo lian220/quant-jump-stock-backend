@@ -6,47 +6,54 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.config.http.SessionCreationPolicy
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
-import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.web.SecurityFilterChain
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
+import org.springframework.web.cors.CorsConfiguration
+import org.springframework.web.cors.CorsConfigurationSource
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 
 /**
  * Spring Security 설정
  *
- * 현재 상태: 모든 요청 허용 (개발 단계)
- * TODO: JWT 인증 필터 추가 시 활성화
+ * TokenAuthenticationFilter를 통해 Bearer 토큰 인증을 수행하고,
+ * Admin API에 대한 역할 기반 접근 제어를 적용합니다.
  */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity(prePostEnabled = true)
-class SecurityConfig {
+class SecurityConfig(
+    private val tokenAuthenticationFilter: TokenAuthenticationFilter
+) {
 
-    /**
-     * Security Filter Chain 설정
-     *
-     * 현재: 모든 요청 허용
-     * 향후: JWT 인증 필터 추가 예정
-     */
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
         http
             .csrf { it.disable() }
-            .cors { it.disable() }
+            .cors { it.configurationSource(corsConfigurationSource()) }
             .sessionManagement {
                 it.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
             }
             .authorizeHttpRequests { auth ->
-                auth.anyRequest().permitAll()
+                auth
+                    .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
+                    .requestMatchers("/api/auth/**", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                    .anyRequest().permitAll()
             }
+            .addFilterBefore(tokenAuthenticationFilter, UsernamePasswordAuthenticationFilter::class.java)
 
         return http.build()
     }
 
-    /**
-     * 비밀번호 인코더
-     */
     @Bean
-    fun passwordEncoder(): PasswordEncoder {
-        return BCryptPasswordEncoder()
+    fun corsConfigurationSource(): CorsConfigurationSource {
+        val configuration = CorsConfiguration()
+        configuration.allowedOrigins = listOf("http://localhost:3000", "http://localhost:4000")
+        configuration.allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
+        configuration.allowedHeaders = listOf("*")
+        configuration.allowCredentials = true
+        val source = UrlBasedCorsConfigurationSource()
+        source.registerCorsConfiguration("/**", configuration)
+        return source
     }
+
 }

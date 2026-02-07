@@ -3,9 +3,12 @@ package com.quantjumpstock.core.adapter.output.persistence
 import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyEntity
 import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyJpaRepository
 import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyCategoryJpaRepository
+import com.quantjumpstock.core.adapter.output.persistence.jpa.UserJpaRepository
 import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyStatus as JpaStrategyStatus
+import com.quantjumpstock.core.adapter.output.persistence.jpa.StockSelectionType as JpaStockSelectionType
 import com.quantjumpstock.core.adapter.output.persistence.jpa.RebalanceFrequency as JpaRebalanceFrequency
 import com.quantjumpstock.core.domain.model.strategy.Strategy
+import com.quantjumpstock.core.domain.model.strategy.StockSelectionType
 import com.quantjumpstock.core.domain.model.strategy.StrategyStatus
 import com.quantjumpstock.core.domain.model.strategy.RebalanceFrequency
 import com.quantjumpstock.core.domain.port.output.StrategyRepository
@@ -25,7 +28,8 @@ import org.springframework.stereotype.Component
 @Component("strategyPersistenceAdapterV2")
 class StrategyPersistenceAdapter(
     private val strategyJpaRepository: StrategyJpaRepository,
-    private val categoryJpaRepository: StrategyCategoryJpaRepository
+    private val categoryJpaRepository: StrategyCategoryJpaRepository,
+    private val userJpaRepository: UserJpaRepository
 ) : StrategyRepository {
 
     private val logger = LoggerFactory.getLogger(this::class.java)
@@ -119,7 +123,12 @@ class StrategyPersistenceAdapter(
             isPublic = entity.isPublic,
             isPremium = entity.isPremium,
             status = mapStatus(entity.status),
+            stockSelectionType = mapStockSelectionType(entity.stockSelectionType),
+            investmentPhilosophy = entity.investmentPhilosophy,
             conditions = entity.conditions,
+            riskSettings = entity.riskSettings,
+            positionSizing = entity.positionSizing,
+            tradingCosts = entity.tradingCosts,
             rebalanceFrequency = mapRebalanceFrequency(entity.rebalanceFrequency),
             subscriberCount = entity.subscriberCount,
             averageRating = entity.averageRating,
@@ -135,16 +144,27 @@ class StrategyPersistenceAdapter(
         // 기존 Entity가 있으면 조회하여 연관관계 유지
         val existingEntity = domain.id?.let { strategyJpaRepository.findById(it).orElse(null) }
 
+        val owner = when {
+            existingEntity != null -> existingEntity.owner
+            domain.ownerId != null -> userJpaRepository.findById(domain.ownerId).orElse(null)
+            else -> null
+        }
+
         return StrategyEntity(
             id = domain.id,
             name = domain.name,
             description = domain.description,
             category = category,
-            owner = existingEntity?.owner,  // 기존 owner 관계 유지
+            owner = owner,
             isPublic = domain.isPublic,
             isPremium = domain.isPremium,
             status = mapStatus(domain.status),
+            stockSelectionType = mapStockSelectionType(domain.stockSelectionType),
+            investmentPhilosophy = domain.investmentPhilosophy,
             conditions = domain.conditions,
+            riskSettings = domain.riskSettings,
+            positionSizing = domain.positionSizing,
+            tradingCosts = domain.tradingCosts,
             rebalanceFrequency = mapRebalanceFrequency(domain.rebalanceFrequency),
             subscriberCount = domain.subscriberCount,
             averageRating = domain.averageRating,
@@ -171,6 +191,16 @@ class StrategyPersistenceAdapter(
         StrategyStatus.REJECTED -> JpaStrategyStatus.REJECTED
         StrategyStatus.ACTIVE -> JpaStrategyStatus.ACTIVE
         StrategyStatus.ARCHIVED -> JpaStrategyStatus.ARCHIVED
+    }
+
+    private fun mapStockSelectionType(jpaType: JpaStockSelectionType): StockSelectionType = when (jpaType) {
+        JpaStockSelectionType.SCREENING -> StockSelectionType.SCREENING
+        JpaStockSelectionType.PORTFOLIO -> StockSelectionType.PORTFOLIO
+    }
+
+    private fun mapStockSelectionType(domainType: StockSelectionType): JpaStockSelectionType = when (domainType) {
+        StockSelectionType.SCREENING -> JpaStockSelectionType.SCREENING
+        StockSelectionType.PORTFOLIO -> JpaStockSelectionType.PORTFOLIO
     }
 
     private fun mapRebalanceFrequency(jpaFreq: JpaRebalanceFrequency): RebalanceFrequency = when (jpaFreq) {

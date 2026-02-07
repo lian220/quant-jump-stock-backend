@@ -1,6 +1,7 @@
 package com.quantjumpstock.core.application.marketplace
 
 import com.quantjumpstock.core.application.strategy.CategoryInfo
+import com.quantjumpstock.core.domain.model.strategy.StockSelectionType
 import io.swagger.v3.oas.annotations.media.Schema
 import java.math.BigDecimal
 import java.time.LocalDateTime
@@ -31,6 +32,9 @@ data class StrategyDto(
 
     @Schema(description = "프리미엄 여부")
     val isPremium: Boolean,
+
+    @Schema(description = "종목선정 방식")
+    val stockSelectionType: StockSelectionType,
 
     @Schema(description = "구독자 수")
     val subscriberCount: Int,

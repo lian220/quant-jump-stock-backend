@@ -19,6 +19,8 @@ import com.quantjumpstock.core.domain.model.marketplace.MarketplaceStrategy
 import com.quantjumpstock.core.domain.model.marketplace.StrategyDetail
 import com.quantjumpstock.core.domain.model.marketplace.BacktestTradeDetail
 import com.quantjumpstock.core.domain.model.strategy.RebalanceFrequency
+import com.quantjumpstock.core.domain.model.strategy.StockSelectionType
+import com.quantjumpstock.core.adapter.output.persistence.jpa.StockSelectionType as JpaStockSelectionType
 import com.quantjumpstock.core.domain.port.output.MarketplaceRepository
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
@@ -90,9 +92,13 @@ class MarketplacePersistenceAdapter(
     // ===== Mapping Functions =====
 
     private fun toMarketplaceStrategy(entity: StrategyEntity): MarketplaceStrategy {
-        val latestBacktest = entity.backtestResults
+        // equity_curve가 있는 최신 COMPLETED 백테스트 우선 선택
+        val completedBacktests = entity.backtestResults
             .filter { it.status == JpaBacktestStatus.COMPLETED }
+        val latestBacktest = completedBacktests
+            .filter { !it.equityCurve.isNullOrBlank() }
             .maxByOrNull { it.createdAt }
+            ?: completedBacktests.maxByOrNull { it.createdAt }
 
         return MarketplaceStrategy(
             id = entity.id!!,
@@ -102,6 +108,7 @@ class MarketplacePersistenceAdapter(
             categoryCode = entity.category.code,
             categoryName = entity.category.name,
             isPremium = entity.isPremium,
+            stockSelectionType = mapStockSelectionType(entity.stockSelectionType),
             subscriberCount = entity.subscriberCount,
             averageRating = entity.averageRating,
             rebalanceFrequency = mapRebalanceFrequency(entity.rebalanceFrequency),
@@ -134,6 +141,11 @@ class MarketplacePersistenceAdapter(
         JpaRebalanceFrequency.NONE -> RebalanceFrequency.NONE
     }
 
+    private fun mapStockSelectionType(jpaType: JpaStockSelectionType): StockSelectionType = when (jpaType) {
+        JpaStockSelectionType.SCREENING -> StockSelectionType.SCREENING
+        JpaStockSelectionType.PORTFOLIO -> StockSelectionType.PORTFOLIO
+    }
+
     private fun mapBacktestStatus(jpaStatus: JpaBacktestStatus): BacktestStatus = when (jpaStatus) {
         JpaBacktestStatus.RUNNING -> BacktestStatus.RUNNING
         JpaBacktestStatus.COMPLETED -> BacktestStatus.COMPLETED
@@ -141,9 +153,13 @@ class MarketplacePersistenceAdapter(
     }
 
     private fun toStrategyDetail(entity: StrategyEntity, currentHoldings: List<CurrentHolding>): StrategyDetail {
-        val latestBacktest = entity.backtestResults
+        // equity_curve가 있는 최신 COMPLETED 백테스트 우선 선택, 없으면 최신 COMPLETED
+        val completedBacktests = entity.backtestResults
             .filter { it.status == JpaBacktestStatus.COMPLETED }
+        val latestBacktest = completedBacktests
+            .filter { !it.equityCurve.isNullOrBlank() }
             .maxByOrNull { it.createdAt }
+            ?: completedBacktests.maxByOrNull { it.createdAt }
 
         return StrategyDetail(
             id = entity.id!!,
@@ -153,6 +169,7 @@ class MarketplacePersistenceAdapter(
             categoryCode = entity.category.code,
             categoryName = entity.category.name,
             isPremium = entity.isPremium,
+            stockSelectionType = mapStockSelectionType(entity.stockSelectionType),
             subscriberCount = entity.subscriberCount,
             averageRating = entity.averageRating,
             rebalanceFrequency = mapRebalanceFrequency(entity.rebalanceFrequency),
@@ -222,9 +239,8 @@ class MarketplacePersistenceAdapter(
             rawData.mapNotNull { point ->
                 val date = point["date"]?.toString()?.let { LocalDate.parse(it) }
                 val value = (point["equity"] ?: point["value"])?.let { BigDecimal(it.toString()) }
-                val benchmark = point["benchmark"]?.let { BigDecimal(it.toString()) }
                 if (date != null && value != null) {
-                    EquityCurvePoint(date = date, value = value, benchmark = benchmark)
+                    EquityCurvePoint(date = date, value = value)
                 } else {
                     null
                 }

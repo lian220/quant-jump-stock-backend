@@ -28,21 +28,21 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
 
     @Query("""
         SELECT s FROM StrategyEntity s
-        WHERE s.isPublic = true AND s.status = 'ACTIVE'
+        WHERE s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE')
         ORDER BY s.subscriberCount DESC
     """)
     fun findPopularStrategies(pageable: Pageable): Page<StrategyEntity>
 
     @Query("""
         SELECT s FROM StrategyEntity s
-        WHERE s.isPublic = true AND s.status = 'ACTIVE'
+        WHERE s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE')
         ORDER BY s.averageRating DESC
     """)
     fun findTopRatedStrategies(pageable: Pageable): Page<StrategyEntity>
 
     @Query("""
         SELECT s FROM StrategyEntity s
-        WHERE s.isPublic = true AND s.status = 'ACTIVE'
+        WHERE s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE')
         ORDER BY s.createdAt DESC
     """)
     fun findNewestStrategies(pageable: Pageable): Page<StrategyEntity>
@@ -50,7 +50,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     // 카테고리별 공개 전략
     @Query("""
         SELECT s FROM StrategyEntity s
-        WHERE s.isPublic = true AND s.status = 'ACTIVE' AND s.category.code = :categoryCode
+        WHERE s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE') AND s.category.code = :categoryCode
         ORDER BY s.subscriberCount DESC
     """)
     fun findPublicByCategoryCode(categoryCode: String, pageable: Pageable): Page<StrategyEntity>
@@ -58,7 +58,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     // 무료 전략만
     @Query("""
         SELECT s FROM StrategyEntity s
-        WHERE s.isPublic = true AND s.status = 'ACTIVE' AND s.isPremium = false
+        WHERE s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE') AND s.isPremium = false
         ORDER BY s.subscriberCount DESC
     """)
     fun findFreeStrategies(pageable: Pageable): Page<StrategyEntity>
@@ -66,7 +66,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     // 프리미엄 전략만
     @Query("""
         SELECT s FROM StrategyEntity s
-        WHERE s.isPublic = true AND s.status = 'ACTIVE' AND s.isPremium = true
+        WHERE s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE') AND s.isPremium = true
         ORDER BY s.subscriberCount DESC
     """)
     fun findPremiumStrategies(pageable: Pageable): Page<StrategyEntity>
@@ -74,7 +74,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     // 검색
     @Query("""
         SELECT s FROM StrategyEntity s
-        WHERE s.isPublic = true AND s.status = 'ACTIVE'
+        WHERE s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE')
         AND (LOWER(s.name) LIKE LOWER(CONCAT('%', :keyword, '%'))
              OR LOWER(s.description) LIKE LOWER(CONCAT('%', :keyword, '%')))
         ORDER BY s.subscriberCount DESC
@@ -94,7 +94,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
         SELECT s FROM StrategyEntity s
         LEFT JOIN FETCH s.backtestResults
         LEFT JOIN FETCH s.category
-        WHERE s.id = :id AND s.isPublic = true AND s.status = 'ACTIVE'
+        WHERE s.id = :id AND s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE')
     """)
     fun findPublicByIdWithBacktestResults(id: Long): Optional<StrategyEntity>
 
@@ -115,10 +115,10 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     @Query("SELECT COUNT(s) FROM StrategyEntity s WHERE s.owner.id = :ownerId")
     fun countByOwnerId(ownerId: Long): Long
 
-    @Query("SELECT COUNT(s) FROM StrategyEntity s WHERE s.isPublic = true AND s.status = 'ACTIVE'")
+    @Query("SELECT COUNT(s) FROM StrategyEntity s WHERE s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE')")
     fun countActivePublicStrategies(): Long
 
-    @Query("SELECT COUNT(s) FROM StrategyEntity s WHERE s.status = 'ACTIVE'")
+    @Query("SELECT COUNT(s) FROM StrategyEntity s WHERE s.status IN ('PUBLISHED', 'ACTIVE')")
     fun countActiveStrategies(): Long
 
     // === 관리자용 쿼리 ===
@@ -147,7 +147,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     @EntityGraph(value = "Strategy.withBacktestResults", type = EntityGraph.EntityGraphType.LOAD)
     @Query("""
         SELECT DISTINCT s FROM StrategyEntity s
-        WHERE s.isPublic = true AND s.status = 'ACTIVE'
+        WHERE s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE')
         AND (:categoryCode IS NULL OR s.category.code = :categoryCode)
         AND (:minCagr IS NULL OR EXISTS (
             SELECT 1 FROM BacktestResultEntity br2
@@ -161,7 +161,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     """,
     countQuery = """
         SELECT COUNT(DISTINCT s) FROM StrategyEntity s
-        WHERE s.isPublic = true AND s.status = 'ACTIVE'
+        WHERE s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE')
         AND (:categoryCode IS NULL OR s.category.code = :categoryCode)
         AND (:minCagr IS NULL OR EXISTS (
             SELECT 1 FROM BacktestResultEntity br
@@ -183,7 +183,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     @EntityGraph(value = "Strategy.withBacktestResults", type = EntityGraph.EntityGraphType.LOAD)
     @Query("""
         SELECT DISTINCT s FROM StrategyEntity s
-        WHERE s.isPublic = true AND s.status = 'ACTIVE'
+        WHERE s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE')
         AND (:categoryCode IS NULL OR s.category.code = :categoryCode)
         AND EXISTS (
             SELECT 1 FROM BacktestResultEntity br2
@@ -194,7 +194,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     """,
     countQuery = """
         SELECT COUNT(DISTINCT s) FROM StrategyEntity s
-        WHERE s.isPublic = true AND s.status = 'ACTIVE'
+        WHERE s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE')
         AND (:categoryCode IS NULL OR s.category.code = :categoryCode)
         AND EXISTS (
             SELECT 1 FROM BacktestResultEntity br
@@ -214,7 +214,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     @EntityGraph(value = "Strategy.withBacktestResults", type = EntityGraph.EntityGraphType.LOAD)
     @Query("""
         SELECT DISTINCT s FROM StrategyEntity s
-        WHERE s.isPublic = true AND s.status = 'ACTIVE'
+        WHERE s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE')
         AND (:categoryCode IS NULL OR s.category.code = :categoryCode)
         AND EXISTS (
             SELECT 1 FROM BacktestResultEntity br2
@@ -226,7 +226,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     """,
     countQuery = """
         SELECT COUNT(DISTINCT s) FROM StrategyEntity s
-        WHERE s.isPublic = true AND s.status = 'ACTIVE'
+        WHERE s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE')
         AND (:categoryCode IS NULL OR s.category.code = :categoryCode)
         AND EXISTS (
             SELECT 1 FROM BacktestResultEntity br

@@ -1,0 +1,168 @@
+package com.quantjumpstock.core.adapter.input.rest.stock
+
+import com.quantjumpstock.core.application.auth.AuthService
+import com.quantjumpstock.core.application.stock.*
+import com.quantjumpstock.core.domain.model.stock.Market
+import io.swagger.v3.oas.annotations.Operation
+import io.swagger.v3.oas.annotations.Parameter
+import io.swagger.v3.oas.annotations.tags.Tag
+import org.springframework.data.domain.PageRequest
+import org.springframework.http.HttpStatus
+import org.springframework.http.ResponseEntity
+import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.web.bind.annotation.*
+
+@RestController
+@Tag(name = "Stock", description = "종목 관리 API")
+@CrossOrigin(origins = ["http://localhost:3000", "http://localhost:4000"], allowCredentials = "true")
+class StockController(
+    private val stockService: StockService,
+    private val authService: AuthService
+) {
+
+    // ===== 일반 사용자 API =====
+
+    @GetMapping("/api/v1/stocks")
+    @Operation(summary = "종목 검색/목록", description = "종목을 검색하고 목록을 조회합니다. 페이징, 시장/섹터 필터를 지원합니다.")
+    fun searchStocks(
+        @Parameter(description = "검색어 (티커, 종목명)") @RequestParam(required = false) query: String?,
+        @Parameter(description = "시장 구분") @RequestParam(required = false) market: Market?,
+        @Parameter(description = "섹터") @RequestParam(required = false) sector: String?,
+        @Parameter(description = "활성 여부") @RequestParam(required = false, defaultValue = "true") isActive: Boolean?,
+        @Parameter(description = "페이지 번호 (0부터)") @RequestParam(defaultValue = "0") page: Int,
+        @Parameter(description = "페이지 크기") @RequestParam(defaultValue = "20") size: Int
+    ): ResponseEntity<StockSearchResponse> {
+        return try {
+            val response = stockService.searchStocks(query, market, sector, isActive, PageRequest.of(page, size))
+            ResponseEntity.ok(response)
+        } catch (e: StockException) {
+            ResponseEntity.badRequest().build()
+        }
+    }
+
+    @GetMapping("/api/v1/stocks/{id}")
+    @Operation(summary = "종목 상세 조회", description = "종목 ID로 상세 정보를 조회합니다.")
+    fun getStock(
+        @Parameter(description = "종목 ID") @PathVariable id: Long
+    ): ResponseEntity<StockDetailResponse> {
+        return try {
+            val response = stockService.getStock(id)
+            ResponseEntity.ok(response)
+        } catch (e: StockException) {
+            ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        }
+    }
+
+    // ===== 관리자 API =====
+
+    @PostMapping("/api/v1/admin/stocks")
+    @Operation(summary = "종목 등록 (관리자)", description = "새로운 종목을 등록합니다.")
+    @PreAuthorize("hasRole('ADMIN')")
+    fun createStock(
+        @RequestHeader("Authorization") authorization: String,
+        @RequestBody request: CreateStockRequest
+    ): ResponseEntity<StockResponse> {
+        extractUserId(authorization)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(StockResponse(success = false, message = "인증이 필요합니다"))
+
+        return try {
+            val response = stockService.createStock(request)
+            ResponseEntity.status(HttpStatus.CREATED).body(response)
+        } catch (e: StockException) {
+            ResponseEntity.badRequest().body(
+                StockResponse(success = false, message = e.message)
+            )
+        }
+    }
+
+    @PutMapping("/api/v1/admin/stocks/{id}")
+    @Operation(summary = "종목 수정 (관리자)", description = "종목 정보를 수정합니다.")
+    @PreAuthorize("hasRole('ADMIN')")
+    fun updateStock(
+        @Parameter(description = "종목 ID") @PathVariable id: Long,
+        @RequestHeader("Authorization") authorization: String,
+        @RequestBody request: UpdateStockRequest
+    ): ResponseEntity<StockResponse> {
+        extractUserId(authorization)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(StockResponse(success = false, message = "인증이 필요합니다"))
+
+        return try {
+            val response = stockService.updateStock(id, request)
+            ResponseEntity.ok(response)
+        } catch (e: StockException) {
+            ResponseEntity.badRequest().body(
+                StockResponse(success = false, message = e.message)
+            )
+        }
+    }
+
+    @DeleteMapping("/api/v1/admin/stocks/{id}")
+    @Operation(summary = "종목 삭제 (관리자)", description = "종목을 삭제합니다.")
+    @PreAuthorize("hasRole('ADMIN')")
+    fun deleteStock(
+        @Parameter(description = "종목 ID") @PathVariable id: Long,
+        @RequestHeader("Authorization") authorization: String
+    ): ResponseEntity<StockResponse> {
+        extractUserId(authorization)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(StockResponse(success = false, message = "인증이 필요합니다"))
+
+        return try {
+            val response = stockService.deleteStock(id)
+            ResponseEntity.ok(response)
+        } catch (e: StockException) {
+            ResponseEntity.badRequest().body(
+                StockResponse(success = false, message = e.message)
+            )
+        }
+    }
+
+    @PutMapping("/api/v1/admin/stocks/{id}/designation")
+    @Operation(summary = "종목 지정상태 변경 (관리자)", description = "종목의 지정 상태를 변경하고 이력을 기록합니다.")
+    @PreAuthorize("hasRole('ADMIN')")
+    fun changeDesignation(
+        @Parameter(description = "종목 ID") @PathVariable id: Long,
+        @RequestHeader("Authorization") authorization: String,
+        @RequestBody request: ChangeDesignationRequest
+    ): ResponseEntity<StockResponse> {
+        val userId = extractUserId(authorization)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(StockResponse(success = false, message = "인증이 필요합니다"))
+
+        return try {
+            val response = stockService.changeDesignation(id, request, userId.toLongOrNull())
+            ResponseEntity.ok(response)
+        } catch (e: StockException) {
+            ResponseEntity.badRequest().body(
+                StockResponse(success = false, message = e.message)
+            )
+        }
+    }
+
+    @GetMapping("/api/v1/admin/stocks/{id}/designation-history")
+    @Operation(summary = "종목 지정상태 변경 이력 (관리자)", description = "종목의 지정 상태 변경 이력을 조회합니다.")
+    @PreAuthorize("hasRole('ADMIN')")
+    fun getDesignationHistory(
+        @Parameter(description = "종목 ID") @PathVariable id: Long,
+        @RequestHeader("Authorization") authorization: String
+    ): ResponseEntity<List<DesignationHistoryResponse>> {
+        extractUserId(authorization)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        return try {
+            val response = stockService.getDesignationHistory(id)
+            ResponseEntity.ok(response)
+        } catch (e: StockException) {
+            ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        }
+    }
+
+    private fun extractUserId(authorization: String): String? {
+        if (!authorization.startsWith("Bearer ")) return null
+        val token = authorization.removePrefix("Bearer ")
+        val loginResponse = authService.validateToken(token) ?: return null
+        return loginResponse.user?.userId
+    }
+}

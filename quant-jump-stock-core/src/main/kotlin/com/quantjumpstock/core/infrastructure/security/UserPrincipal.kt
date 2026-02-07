@@ -43,6 +43,7 @@ data class UserPrincipal(
                 userId = user.userId,
                 email = user.email,
                 password = user.passwordHash ?: "",
+                roles = setOf(user.role.name),
                 enabled = user.status == com.quantjumpstock.core.adapter.output.persistence.jpa.UserStatus.ACTIVE
             )
         }

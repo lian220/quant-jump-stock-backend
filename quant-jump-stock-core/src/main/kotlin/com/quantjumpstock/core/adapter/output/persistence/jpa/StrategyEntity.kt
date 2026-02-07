@@ -47,6 +47,13 @@ data class StrategyEntity(
     @Column(length = 20)
     var status: StrategyStatus = StrategyStatus.DRAFT,
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "stock_selection_type", length = 20, nullable = false)
+    val stockSelectionType: StockSelectionType = StockSelectionType.SCREENING,
+
+    @Column(name = "investment_philosophy", columnDefinition = "TEXT")
+    val investmentPhilosophy: String? = null,
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb", nullable = false)
     val conditions: String = "{}",
@@ -100,6 +107,11 @@ enum class StrategyStatus {
     REJECTED,        // 반려됨 - 관리자가 반려
     ACTIVE,          // 활성 (레거시 호환)
     ARCHIVED         // 보관됨 - 비활성화
+}
+
+enum class StockSelectionType {
+    SCREENING,   // 조건으로 전체 종목 필터링
+    PORTFOLIO    // 고정 포트폴리오에 조건 적용
 }
 
 enum class RebalanceFrequency {

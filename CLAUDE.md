@@ -212,15 +212,13 @@ class EntityName(
 - 잡 정의: `adapter/input/scheduler/`
 - Quartz 테이블: `V3__Create_Quartz_Tables.sql`
 
-## 테스트
+## 테스트 규칙
 
-```bash
-# 전체 테스트
-./gradlew test
+상세: **[TESTING_RULES.md](./TESTING_RULES.md)** 참조
 
-# 특정 테스트 클래스
-./gradlew test --tests "com.quantjumpstock.core.SomeTest"
-```
+- 항상 Docker 실행 (Core 재빌드 필수, Data Engine 자동 반영)
+- 단위 테스트: `cd quant-jump-stock-core && ./gradlew test`
+- 통합 테스트: 사용자 요청 시에만 수행 (플랜 → API → E2E → 결과 보고)
 
 ## 환경 변수
 
