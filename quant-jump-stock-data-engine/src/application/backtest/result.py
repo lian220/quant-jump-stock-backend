@@ -91,6 +91,9 @@ class BacktestResult:
     # 청산 사유별 통계
     exit_reason_counts: Dict[str, int] = field(default_factory=dict)
 
+    # 사용자 정보
+    user_id: Optional[int] = None
+
     # 메타데이터
     execution_time_seconds: float = 0.0
     error_message: Optional[str] = None

@@ -7,6 +7,7 @@ import com.quantjumpstock.core.domain.model.backtest.BacktestStatus
 import com.quantjumpstock.core.domain.model.backtest.BacktestTrade
 import com.quantjumpstock.core.domain.model.backtest.BacktestTradeSide
 import com.quantjumpstock.core.domain.port.output.Benchmark
+import com.quantjumpstock.core.domain.port.output.UserRepository
 import com.quantjumpstock.core.domain.port.output.BacktestResultRepository
 import com.quantjumpstock.core.domain.port.output.BacktestTradeRepository
 import org.slf4j.LoggerFactory
@@ -24,12 +25,14 @@ import java.time.LocalDateTime
 class BacktestResultSaveService(
     private val backtestResultRepository: BacktestResultRepository,
     private val backtestTradeRepository: BacktestTradeRepository,
+    private val userRepository: UserRepository,
     private val objectMapper: ObjectMapper
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
     /**
      * 백테스트 완료 결과 저장
+     * Data Engine이 직접 PostgreSQL에 저장하므로, 이미 존재하면 userId만 업데이트
      */
     @Transactional
     fun saveBacktestResult(payload: JsonNode) {
@@ -38,7 +41,21 @@ class BacktestResultSaveService(
 
         logger.info("백테스트 결과 저장 시작: requestId=$requestId, strategyId=$strategyId")
 
-        val userId = payload.get("userId")?.asText()?.toLongOrNull()
+        // Data Engine이 이미 직접 저장한 경우 중복 방지
+        val existing = backtestResultRepository.findByRequestId(requestId)
+        if (existing != null) {
+            logger.info("백테스트 결과 이미 존재 (Data Engine 직접 저장): requestId=$requestId, id=${existing.id}")
+            // userId가 누락된 경우 업데이트
+            val userId = resolveUserId(payload.get("userId")?.asText())
+            if (userId != null && existing.userId == null) {
+                val updated = existing.copy(userId = userId)
+                backtestResultRepository.save(updated)
+                logger.info("userId 업데이트: requestId=$requestId, userId=$userId")
+            }
+            return
+        }
+
+        val userId = resolveUserId(payload.get("userId")?.asText())
 
         // 메트릭 파싱
         val metrics = payload.get("metrics") ?: payload
@@ -98,7 +115,7 @@ class BacktestResultSaveService(
 
         logger.info("백테스트 실패 결과 저장 시작: requestId=$requestId, strategyId=$strategyId")
 
-        val userId = payload.get("userId")?.asText()?.toLongOrNull()
+        val userId = resolveUserId(payload.get("userId")?.asText())
 
         val backtestResult = BacktestResult(
             requestId = requestId,
@@ -188,6 +205,24 @@ class BacktestResultSaveService(
             "BUY" -> BacktestTradeSide.BUY
             "SELL" -> BacktestTradeSide.SELL
             else -> throw IllegalArgumentException("Unknown trade side: $side")
+        }
+    }
+
+    /**
+     * userId 문자열을 DB PK(Long)로 변환
+     * - 숫자 문자열이면 그대로 Long 변환
+     * - 문자열(로그인 ID)이면 users 테이블에서 PK 조회
+     */
+    private fun resolveUserId(userIdStr: String?): Long? {
+        if (userIdStr.isNullOrBlank()) return null
+        // 숫자면 바로 반환
+        userIdStr.toLongOrNull()?.let { return it }
+        // 문자열 userId로 DB 조회
+        return try {
+            userRepository.findByUserId(userIdStr)?.id
+        } catch (e: Exception) {
+            logger.warn("userId 조회 실패: userId=$userIdStr, error=${e.message}")
+            null
         }
     }
 }

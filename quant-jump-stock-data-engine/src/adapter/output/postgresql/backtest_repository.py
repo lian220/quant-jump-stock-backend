@@ -104,7 +104,7 @@ class PostgresBacktestRepository:
             with self._get_connection() as conn:
                 with conn.cursor() as cursor:
                     # 1. backtest_results 저장
-                    result_id = self._insert_result(cursor, result)
+                    result_id = self._insert_result(cursor, result, request_id)
 
                     # 2. backtest_trades 저장
                     if result.trades:
@@ -126,13 +126,15 @@ class PostgresBacktestRepository:
             logger.error(f"Failed to save backtest result: {e}")
             raise
 
-    def _insert_result(self, cursor, result: BacktestResult) -> int:
+    def _insert_result(self, cursor, result: BacktestResult, request_id: Optional[str] = None) -> int:
         """backtest_results 테이블에 삽입"""
         now = get_kst_now()
         cursor.execute(
             """
             INSERT INTO backtest_results (
                 strategy_id,
+                user_id,
+                request_id,
                 start_date,
                 end_date,
                 initial_capital,
@@ -159,11 +161,13 @@ class PostgresBacktestRepository:
             ) VALUES (
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s
             ) RETURNING id
             """,
             (
                 result.strategy_id,
+                result.user_id,
+                request_id,
                 result.start_date,
                 result.end_date,
                 float(result.initial_capital),
