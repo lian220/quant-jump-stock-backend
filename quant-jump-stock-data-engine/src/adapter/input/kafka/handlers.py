@@ -531,6 +531,12 @@ class BacktestRequestHandler(MessageHandler):
         slippage_rate = payload.get("slippageRate", 0.0001)
         force_full = payload.get("forceFull", False)  # 강제 전체 실행 옵션
         benchmark = payload.get("benchmark", DEFAULT_BENCHMARK)
+        user_id = payload.get("userId")
+        if user_id is not None:
+            try:
+                user_id = int(user_id)
+            except (ValueError, TypeError):
+                user_id = None
 
         if not strategy_id:
             self._publish_failure(message, "strategyId is required", start_time)
@@ -589,7 +595,8 @@ class BacktestRequestHandler(MessageHandler):
                     existing_backtest=existing_backtest,
                     checkpoint=checkpoint,
                     equity_curve_data=equity_curve_data,
-                    benchmark=benchmark
+                    benchmark=benchmark,
+                    user_id=user_id
                 )
 
                 result = incremental_result.result
@@ -606,7 +613,8 @@ class BacktestRequestHandler(MessageHandler):
                     result_id = incremental_result.backtest_id
                     logger.info(f"증분 백테스트 결과 업데이트: id={result_id}")
                 else:
-                    # 전체: 새 결과 저장
+                    # 전체: 새 결과 저장 (user_id 포함)
+                    result.user_id = user_id
                     result_id = await self.backtest_repository.save_result(
                         result,
                         request_id=message.request_id
@@ -663,6 +671,7 @@ class BacktestRequestHandler(MessageHandler):
                     "backtestResultId": result_id,
                     "strategyId": strategy_id,
                     "strategyName": result.strategy_name,
+                    "userId": user_id,
                     "tickers": tickers,
                     "startDate": start_date,
                     "endDate": end_date,

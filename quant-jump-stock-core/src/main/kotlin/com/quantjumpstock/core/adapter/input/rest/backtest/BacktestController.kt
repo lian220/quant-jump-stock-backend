@@ -2,6 +2,7 @@ package com.quantjumpstock.core.adapter.input.rest.backtest
 
 import com.quantjumpstock.core.application.auth.AuthService
 import com.quantjumpstock.core.application.backtest.*
+import com.quantjumpstock.core.domain.port.output.UserRepository
 import com.quantjumpstock.core.domain.port.output.Benchmark
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
@@ -25,7 +26,8 @@ import org.springframework.web.bind.annotation.*
 class BacktestController(
     private val backtestService: BacktestService,
     private val authService: AuthService,
-    private val userTierService: UserTierService
+    private val userTierService: UserTierService,
+    private val userRepository: UserRepository
 ) {
 
     /**
@@ -49,8 +51,21 @@ class BacktestController(
         @RequestHeader("Authorization", required = false) authorization: String?,
         @RequestBody request: BacktestRunRequest
     ): ResponseEntity<Any> {
-        val userId = authorization?.let { extractUserId(it) }
+        val userLoginId = authorization?.let { extractUserId(it) }
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        // 문자열 userId → DB PK(Long) 변환하여 Kafka에 숫자 ID로 전달
+        val userDbId = userRepository.findByUserId(userLoginId)?.id
+        val userId = userDbId?.toString() ?: userLoginId
+
+        // tickers 검증
+        if (request.tickers.isEmpty()) {
+            return ResponseEntity.badRequest()
+                .body(mapOf(
+                    "error" to "TICKERS_REQUIRED",
+                    "message" to "백테스트 대상 종목(tickers)을 1개 이상 지정해야 합니다."
+                ))
+        }
 
         // 벤치마크 검증
         if (!Benchmark.existsByTicker(request.benchmark)) {
@@ -63,7 +78,7 @@ class BacktestController(
         }
 
         // Rate Limit 원자적 체크 + 카운트 증가 (TOCTOU 방지)
-        val limitResult = userTierService.checkAndIncrementBacktestCount(userId)
+        val limitResult = userTierService.checkAndIncrementBacktestCount(userLoginId)
         if (!limitResult.allowed) {
             val rateLimitResponse = BacktestRateLimitResponse(
                 dailyLimit = limitResult.dailyLimit,

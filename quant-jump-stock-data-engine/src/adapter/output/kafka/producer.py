@@ -114,9 +114,9 @@ class KafkaProducerAdapter:
             "STRATEGY_EXECUTION_FAILED": "strategy.execution.failed",
             # 매매 신호
             "TRADING_SIGNAL_GENERATED": "trading.signal.generated",
-            # 백테스트 (SCRUM-186)
-            "BACKTEST_COMPLETED": "backtest.results.completed",
-            "BACKTEST_FAILED": "backtest.results.failed",
+            # 백테스트 (SCRUM-186) - Core API EventTopics와 동기화
+            "BACKTEST_COMPLETED": "quantiq.backtest.completed",
+            "BACKTEST_FAILED": "quantiq.backtest.failed",
         }
 
         return topic_mapping.get(event_type, "data-engine.events")

@@ -192,7 +192,8 @@ class BacktestApplicationService:
         existing_backtest: Optional[Dict[str, Any]] = None,
         checkpoint: Optional[Dict[str, Any]] = None,
         equity_curve_data: Optional[List[Dict[str, Any]]] = None,
-        benchmark: str = DEFAULT_BENCHMARK
+        benchmark: str = DEFAULT_BENCHMARK,
+        user_id: Optional[int] = None
     ) -> IncrementalBacktestResult:
         """
         증분 백테스트 실행
@@ -264,8 +265,9 @@ class BacktestApplicationService:
         # 5. 체크포인트 생성 (equity_curve 미포함)
         checkpoint_data = engine.create_checkpoint()
 
-        # 6. strategy_id 설정
+        # 6. strategy_id, user_id 설정
         result.strategy_id = strategy_id
+        result.user_id = user_id
 
         logger.info(
             f"{'Incremental' if is_incremental else 'Full'} backtest completed: "

@@ -40,6 +40,9 @@ class IndicatorType(str, Enum):
     BOLLINGER_LOWER = "bollinger_lower"  # 볼린저 하단
     VOLUME = "volume"    # 거래량
     PRICE = "price"      # 현재가
+    PER = "per"                      # 주가수익비율
+    PBR = "pbr"                      # 주가순자산비율
+    DIVIDEND_YIELD = "dividend_yield"  # 배당수익률
 
 
 class SignalType(str, Enum):

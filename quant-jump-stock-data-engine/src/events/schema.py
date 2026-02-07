@@ -273,10 +273,10 @@ class EventTopics:
     ECONOMIC_DATA_UPDATED = "quantiq.economic.data.updated"
     ECONOMIC_DATA_SYNC_FAILED = "quantiq.economic.data.sync.failed"
 
-    # Backtest
+    # Backtest - Core API EventTopics와 동기화
     BACKTEST_REQUEST = "quantiq.backtest.request"
-    BACKTEST_COMPLETED = "backtest.results.completed"
-    BACKTEST_FAILED = "backtest.results.failed"
+    BACKTEST_COMPLETED = "quantiq.backtest.completed"
+    BACKTEST_FAILED = "quantiq.backtest.failed"
 
     # Legacy (backward compatibility)
     LEGACY_ANALYSIS_REQUEST = "quantiq.analysis.request"

@@ -204,6 +204,27 @@ class StrategyInterpreter:
                 elif indicator_type == IndicatorType.PRICE:
                     indicators["price"] = close
 
+                elif indicator_type == IndicatorType.PER:
+                    if 'per' in data.columns:
+                        indicators["per"] = data['per']
+                    else:
+                        logger.warning("PER data not available in market_data")
+                        indicators["per"] = pd.Series(dtype=float)
+
+                elif indicator_type == IndicatorType.PBR:
+                    if 'pbr' in data.columns:
+                        indicators["pbr"] = data['pbr']
+                    else:
+                        logger.warning("PBR data not available in market_data")
+                        indicators["pbr"] = pd.Series(dtype=float)
+
+                elif indicator_type == IndicatorType.DIVIDEND_YIELD:
+                    if 'dividend_yield' in data.columns:
+                        indicators["dividend_yield"] = data['dividend_yield']
+                    else:
+                        logger.warning("Dividend yield data not available in market_data")
+                        indicators["dividend_yield"] = pd.Series(dtype=float)
+
             except InsufficientDataError as e:
                 logger.warning(f"Insufficient data for {key}: {e}")
                 indicators[key] = pd.Series(dtype=float)

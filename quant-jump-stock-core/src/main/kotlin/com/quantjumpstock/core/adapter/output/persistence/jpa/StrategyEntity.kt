@@ -51,6 +51,18 @@ data class StrategyEntity(
     @Column(columnDefinition = "jsonb", nullable = false)
     val conditions: String = "{}",
 
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "risk_settings", columnDefinition = "jsonb")
+    val riskSettings: String = "{}",
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "position_sizing", columnDefinition = "jsonb")
+    val positionSizing: String = "{}",
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "trading_costs", columnDefinition = "jsonb")
+    val tradingCosts: String = "{}",
+
     @Enumerated(EnumType.STRING)
     @Column(name = "rebalance_frequency", length = 20)
     val rebalanceFrequency: RebalanceFrequency = RebalanceFrequency.MONTHLY,
