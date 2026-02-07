@@ -56,7 +56,9 @@ class BacktestController(
 
         // 문자열 userId → DB PK(Long) 변환하여 Kafka에 숫자 ID로 전달
         val userDbId = userRepository.findByUserId(userLoginId)?.id
-        val userId = userDbId?.toString() ?: userLoginId
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(mapOf("error" to "USER_NOT_FOUND", "message" to "사용자를 찾을 수 없습니다."))
+        val userId = userDbId.toString()
 
         // tickers 검증
         if (request.tickers.isEmpty()) {

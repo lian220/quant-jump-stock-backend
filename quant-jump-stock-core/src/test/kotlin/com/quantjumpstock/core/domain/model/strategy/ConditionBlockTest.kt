@@ -179,13 +179,15 @@ class ConditionBlockTest : DescribeSpec({
             block.threshold shouldBe BigDecimal("15")
         }
 
-        it("threshold 0 이하 시 예외") {
-            shouldThrow<IllegalArgumentException> {
-                ConditionBlock.PerFilter(
-                    operator = ConditionOperator.LT,
-                    threshold = BigDecimal.ZERO
-                )
-            }
+        it("threshold 0 허용 (수익 있는 기업 필터)") {
+            val block = ConditionBlock.PerFilter(
+                operator = ConditionOperator.GT,
+                threshold = BigDecimal.ZERO
+            )
+            block.threshold shouldBe BigDecimal.ZERO
+        }
+
+        it("threshold 음수 시 예외") {
             shouldThrow<IllegalArgumentException> {
                 ConditionBlock.PerFilter(
                     operator = ConditionOperator.LT,
@@ -216,11 +218,19 @@ class ConditionBlockTest : DescribeSpec({
             block.threshold shouldBe BigDecimal("1.5")
         }
 
-        it("threshold 0 이하 시 예외") {
+        it("threshold 0 허용") {
+            val block = ConditionBlock.PbrFilter(
+                operator = ConditionOperator.GT,
+                threshold = BigDecimal.ZERO
+            )
+            block.threshold shouldBe BigDecimal.ZERO
+        }
+
+        it("threshold 음수 시 예외") {
             shouldThrow<IllegalArgumentException> {
                 ConditionBlock.PbrFilter(
                     operator = ConditionOperator.LT,
-                    threshold = BigDecimal.ZERO
+                    threshold = BigDecimal("-1")
                 )
             }
         }

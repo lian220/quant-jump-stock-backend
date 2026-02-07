@@ -108,8 +108,8 @@ sealed class ConditionBlock {
             require(!operator.isCrossOperator()) {
                 "PER filter does not support cross operators, got: $operator"
             }
-            require(threshold > BigDecimal.ZERO) {
-                "PER threshold must be positive, got: $threshold"
+            require(threshold >= BigDecimal.ZERO) {
+                "PER threshold must be non-negative, got: $threshold"
             }
         }
     }
@@ -129,8 +129,8 @@ sealed class ConditionBlock {
             require(!operator.isCrossOperator()) {
                 "PBR filter does not support cross operators, got: $operator"
             }
-            require(threshold > BigDecimal.ZERO) {
-                "PBR threshold must be positive, got: $threshold"
+            require(threshold >= BigDecimal.ZERO) {
+                "PBR threshold must be non-negative, got: $threshold"
             }
         }
     }
