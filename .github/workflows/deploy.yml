@@ -109,7 +109,7 @@ jobs:
             echo "Waiting for Core API startup..."
             for i in $(seq 1 12); do
               sleep 10
-              if curl -sf http://localhost:8080/actuator/health > /dev/null 2>&1; then
+              if curl -sf http://localhost/api/actuator/health > /dev/null 2>&1; then
                 echo "✅ Core API healthy!"
                 exit 0
               fi
