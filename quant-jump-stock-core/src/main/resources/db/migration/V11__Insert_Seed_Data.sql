@@ -4,6 +4,11 @@
 -- ============================================
 
 -- ============================================
+-- 0. 스키마 수정 (strategy_id에 UNIQUE 제약 추가)
+-- ============================================
+ALTER TABLE strategies ADD CONSTRAINT strategies_strategy_id_unique UNIQUE (strategy_id);
+
+-- ============================================
 -- 1. Stocks 초기 데이터
 -- ============================================
 INSERT INTO stocks (ticker, stock_name, stock_name_en, is_etf, leverage_ticker) VALUES
