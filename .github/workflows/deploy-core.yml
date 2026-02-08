@@ -66,7 +66,7 @@ jobs:
           username: ${{ secrets.GCE_USERNAME }}
           key: ${{ secrets.GCE_SSH_PRIVATE_KEY }}
           script: |
-            cd /opt/quant-jump-stock
+            cd /home/deploy/app
 
             # Pull .env from Secret Manager
             gcloud secrets versions access latest --secret=qjs-env-common \
