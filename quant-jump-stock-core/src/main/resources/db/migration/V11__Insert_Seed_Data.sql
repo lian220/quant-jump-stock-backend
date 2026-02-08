@@ -217,10 +217,24 @@ AND p.code IN ('STRATEGY_VIEW', 'BACKTEST_RUN', 'ANALYTICS_VIEW', 'TRADING_VIEW'
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- ============================================
--- 8. Admin 사용자 역할 할당
+-- 8. 기본 사용자 데이터 삽입
 -- ============================================
 
--- Admin 사용자에게 ADMIN 역할 할당 (사용자는 V1에서 이미 생성됨)
+-- Insert default admin user
+INSERT INTO users (id, user_id, name, email, password_hash, status, oauth_provider, oauth_provider_id, profile_image_url, role, created_at, updated_at)
+VALUES (1, 'lian', 'Admin User', 'admin@quantiq.com', '$2a$10$mn0xp93Wy/brEz7nP909PeA5vDvSJeJJOQVyyrGfrFY5cshP/Oxq.', 'ACTIVE', null, null, null, 'ADMIN', '2026-02-08 15:24:33.485631', '2026-02-08 15:24:33.485631')
+ON CONFLICT (id) DO NOTHING;
+
+-- Insert default test user
+INSERT INTO users (id, user_id, name, email, password_hash, status, oauth_provider, oauth_provider_id, profile_image_url, role, created_at, updated_at)
+VALUES (2, 'lian_test', 'lian test', 'lian_test@quantiq.com', '$2a$10$mn0xp93Wy/brEz7nP909PeA5vDvSJeJJOQVyyrGfrFY5cshP/Oxq.', 'ACTIVE', null, null, null, 'USER', '2026-02-08 15:24:33.485631', '2026-02-08 15:24:33.485631')
+ON CONFLICT (id) DO NOTHING;
+
+-- ============================================
+-- 9. Admin 사용자 역할 할당
+-- ============================================
+
+-- Admin 사용자에게 ADMIN 역할 할당
 INSERT INTO user_roles (user_id, role_id)
 SELECT u.id, r.id
 FROM users u
@@ -230,7 +244,7 @@ AND r.name = 'ADMIN'
 ON CONFLICT (user_id, role_id) DO NOTHING;
 
 -- ============================================
--- 9. Trading Config 초기화
+-- 10. Trading Config 초기화
 -- ============================================
 INSERT INTO trading_configs (user_id, enabled, auto_trading_enabled)
 SELECT id, FALSE, FALSE
@@ -239,7 +253,7 @@ WHERE user_id = 'lian'
 ON CONFLICT (user_id) DO NOTHING;
 
 -- ============================================
--- 10. Account Balance 초기화
+-- 11. Account Balance 초기화
 -- ============================================
 INSERT INTO account_balances (user_id, cash, total_value)
 SELECT id, 0.00, 0.00
@@ -248,7 +262,7 @@ WHERE user_id = 'lian'
 ON CONFLICT (user_id) DO NOTHING;
 
 -- ============================================
--- 11. User Tiers 초기화 (기존 사용자 FREE 티어)
+-- 12. User Tiers 초기화 (기존 사용자 FREE 티어)
 -- ============================================
 INSERT INTO user_tiers (user_id, tier)
 SELECT id, 'FREE'
@@ -257,7 +271,7 @@ WHERE id NOT IN (SELECT user_id FROM user_tiers)
 ON CONFLICT (user_id) DO NOTHING;
 
 -- ============================================
--- 12. DSL 형식 시드 전략 (V18 기반, 총 20개)
+-- 13. DSL 형식 시드 전략 (V18 기반, 총 20개)
 -- ============================================
 
 -- =====================================================================
