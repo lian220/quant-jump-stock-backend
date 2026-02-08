@@ -104,8 +104,9 @@ def health_check():
 
 def run_api():
     """REST API 서버 실행 (별도 스레드)"""
-    logger.info("Starting Data Engine API server on port 8000")
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="warning")
+    port = settings.server_port
+    logger.info(f"Starting Data Engine API server on port {port}")
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="warning")
 
 
 # ============================================================

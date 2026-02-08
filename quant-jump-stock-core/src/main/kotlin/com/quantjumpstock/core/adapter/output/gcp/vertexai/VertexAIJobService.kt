@@ -110,12 +110,10 @@ class VertexAIJobService(
             logger.info("SLACK_THREAD_TS 환경변수 추가됨: $it")
         }
 
-        // MongoDB 환경변수 - Spring Environment에서 로드
-        environment.getProperty("MONGO_URL")?.let { envVars["MONGO_URL"] = it }
-        environment.getProperty("MONGO_USER")?.let { envVars["MONGO_USER"] = it }
-        environment.getProperty("MONGO_PASSWORD")?.let { envVars["MONGO_PASSWORD"] = it }
-        environment.getProperty("MONGODB_DATABASE")?.let { envVars["MONGODB_DATABASE"] = it }
-            ?: run { envVars["MONGODB_DATABASE"] = "stock_trading" }
+        // MongoDB 환경변수 - MONGODB_URI 하나로 통일
+        environment.getProperty("MONGODB_URI")?.let { envVars["VERTEX_AI_MONGODB_URI"] = it }
+        val mongoDbName = environment.getProperty("MONGODB_DB_NAME") ?: "stock_trading"
+        envVars["VERTEX_AI_MONGODB_DATABASE"] = mongoDbName
 
         // PostgreSQL 환경변수 (stocks, indicators 조회용)
         // Vertex AI는 GCP에서 실행되므로 외부 접근 가능한 DB 설정 필요
@@ -157,7 +155,7 @@ class VertexAIJobService(
     }
 
     private fun logEnvVarsSafely(envVars: Map<String, String>) {
-        val sensitiveKeys = setOf("PASSWORD", "SECRET", "TOKEN", "KEY")
+        val sensitiveKeys = setOf("PASSWORD", "SECRET", "TOKEN", "KEY", "URI")
         envVars.forEach { (key, value) ->
             val maskedValue = if (sensitiveKeys.any { key.uppercase().contains(it) }) "***" else value
             logger.info("  $key: $maskedValue")

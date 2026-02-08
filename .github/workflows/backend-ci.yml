@@ -22,11 +22,38 @@ permissions:
 
 jobs:
   # ============================================
+  # 변경된 파일 감지
+  # ============================================
+  detect-changes:
+    name: Detect Changed Services
+    runs-on: ubuntu-latest
+    outputs:
+      core: ${{ steps.filter.outputs.core }}
+      data-engine: ${{ steps.filter.outputs.data-engine }}
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔍 Detect changed paths
+        uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            core:
+              - 'quant-jump-stock-core/**'
+              - '.github/workflows/backend-ci.yml'
+            data-engine:
+              - 'quant-jump-stock-data-engine/**'
+              - '.github/workflows/backend-ci.yml'
+
+  # ============================================
   # Kotlin/Spring Boot Core API 테스트
   # ============================================
   test-kotlin-core:
     name: Test Kotlin Core API
     runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.core == 'true'
 
     services:
       # PostgreSQL 서비스
@@ -143,6 +170,8 @@ jobs:
   test-python-data-engine:
     name: Test Python Data Engine
     runs-on: ubuntu-latest
+    needs: detect-changes
+    if: needs.detect-changes.outputs.data-engine == 'true'
 
     services:
       mongodb:
@@ -206,16 +235,27 @@ jobs:
   ci-status:
     name: CI Status Check
     runs-on: ubuntu-latest
-    needs: [test-kotlin-core, test-python-data-engine]
+    needs: [detect-changes, test-kotlin-core, test-python-data-engine]
     if: always()
 
     steps:
+      - name: 📊 Check test results
+        run: |
+          echo "Core changed: ${{ needs.detect-changes.outputs.core }}"
+          echo "Data Engine changed: ${{ needs.detect-changes.outputs.data-engine }}"
+          echo "Core test result: ${{ needs.test-kotlin-core.result }}"
+          echo "Data Engine test result: ${{ needs.test-python-data-engine.result }}"
+
       - name: ✅ All tests passed
-        if: ${{ needs.test-kotlin-core.result == 'success' && needs.test-python-data-engine.result == 'success' }}
+        if: |
+          (needs.detect-changes.outputs.core != 'true' || needs.test-kotlin-core.result == 'success') &&
+          (needs.detect-changes.outputs.data-engine != 'true' || needs.test-python-data-engine.result == 'success')
         run: echo "✅ All backend tests passed!"
 
       - name: ❌ Some tests failed
-        if: ${{ needs.test-kotlin-core.result != 'success' || needs.test-python-data-engine.result != 'success' }}
+        if: |
+          (needs.detect-changes.outputs.core == 'true' && needs.test-kotlin-core.result != 'success') ||
+          (needs.detect-changes.outputs.data-engine == 'true' && needs.test-python-data-engine.result != 'success')
         run: |
           echo "❌ Backend tests failed!"
           echo "Kotlin Core: ${{ needs.test-kotlin-core.result }}"

@@ -121,6 +121,7 @@ logging:
     com.quantiq: DEBUG
     org.springframework.data.mongodb: DEBUG
     org.hibernate.SQL: DEBUG
+    org.flywaydb: WARN
 
 # ============================================
 # SpringDoc OpenAPI (Swagger) Configuration
@@ -128,10 +129,10 @@ logging:
 springdoc:
   api-docs:
     path: /api-docs
-    enabled: true
+    enabled: ${SWAGGER_ENABLED:true}
   swagger-ui:
     path: /swagger-ui.html
-    enabled: true
+    enabled: ${SWAGGER_ENABLED:true}
     operationsSorter: method
     tagsSorter: alpha
     display-request-duration: true

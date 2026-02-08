@@ -19,37 +19,21 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error
 # MongoDB 연결 설정
 from pymongo import MongoClient, UpdateOne
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
-from urllib.parse import quote_plus
 
-# MongoDB 연결 설정 (VERTEX_AI_ prefix 통일)
-mongodb_uri: str = os.getenv("VERTEX_AI_MONGODB_URI") or ""
-mongodb_database: str = os.getenv("VERTEX_AI_MONGODB_DATABASE") or "stock_trading"
-# 하위 호환성 (레거시 변수)
-mongodb_url: str = os.getenv("MONGO_URL") or os.getenv("MONGODB_URL") or "mongodb://localhost:27017"
-mongo_user: str = os.getenv("MONGO_USER") or os.getenv("MONGODB_USER") or ""
-mongo_password: str = os.getenv("MONGO_PASSWORD") or os.getenv("MONGODB_PASSWORD") or ""
+# MongoDB 연결 설정 (MONGODB_URI 통일)
+mongodb_uri: str = os.getenv("VERTEX_AI_MONGODB_URI") or os.getenv("MONGODB_URI") or ""
+mongodb_database: str = os.getenv("VERTEX_AI_MONGODB_DATABASE") or os.getenv("MONGODB_DB_NAME") or "stock_trading"
 
-def get_mongodb_client(mongodb_url: str, mongo_user: str, mongo_password: str, mongodb_database: str, mongodb_uri: str = ""):
+def get_mongodb_client(mongodb_uri: str, mongodb_database: str):
     """MongoDB 클라이언트 연결"""
     print("\n=== MongoDB 연결 시도 ===")
-    print(f"VERTEX_AI_MONGODB_URI 설정 여부: {'설정됨' if mongodb_uri else '없음'}")
-    print(f"VERTEX_AI_MONGODB_DATABASE: {mongodb_database}")
-    print(f"MONGODB_URL (레거시) 설정 여부: {'설정됨' if mongodb_url and mongodb_url != 'mongodb://localhost:27017' else '기본값 사용 (localhost)'}")
+    print(f"MONGODB_URI 설정 여부: {'설정됨' if mongodb_uri else '없음'}")
+    print(f"MONGODB_DATABASE: {mongodb_database}")
 
-    # VERTEX_AI_MONGODB_URI가 설정되어 있으면 직접 사용 (mongodb+srv:// 지원)
-    if mongodb_uri:
-        final_url = mongodb_uri
-        print("✅ VERTEX_AI_MONGODB_URI 사용 (직접 연결 문자열)")
-    else:
-        final_url = mongodb_url
-        # 인증 정보 처리
-        if mongo_user and mongo_password:
-            if "://" in mongodb_url:
-                if "@" not in mongodb_url:
-                    schema, rest = mongodb_url.split("://", 1)
-                    final_url = f"{schema}://{quote_plus(mongo_user)}:{quote_plus(mongo_password)}@{rest}"
-            else:
-                final_url = f"mongodb+srv://{quote_plus(mongo_user)}:{quote_plus(mongo_password)}@{mongodb_url}"
+    if not mongodb_uri:
+        raise ValueError("MONGODB_URI 환경변수가 설정되지 않았습니다. VERTEX_AI_MONGODB_URI 또는 MONGODB_URI를 설정해주세요.")
+
+    final_url = mongodb_uri
     
     # URL에서 비밀번호 부분은 마스킹
     masked_url = final_url
@@ -84,7 +68,7 @@ def get_mongodb_client(mongodb_url: str, mongo_user: str, mongo_password: str, m
 
 # MongoDB 클라이언트 및 데이터베이스 연결
 try:
-    mongodb_client, db = get_mongodb_client(mongodb_url, mongo_user, mongo_password, mongodb_database, mongodb_uri)
+    mongodb_client, db = get_mongodb_client(mongodb_uri, mongodb_database)
 except Exception as e:
     print(f"\n❌ 경고: MongoDB 연결 실패")
     print(f"   에러 타입: {type(e).__name__}")
@@ -325,7 +309,7 @@ def get_stock_data_from_db():
         if db is None:
             print("❌ MongoDB 연결이 없습니다!")
             print("MongoDB 연결 정보를 확인해주세요.")
-            print(f"  MONGODB_URL: {mongodb_url[:50] if mongodb_url else 'None'}...")
+            print(f"  MONGODB_URI: {mongodb_uri[:50] if mongodb_uri else 'None'}...")
             print(f"  MONGODB_DATABASE: {mongodb_database}")
             return None
         else:
@@ -811,7 +795,7 @@ economic_features = get_economic_features_from_postgres()
 
 # MongoDB 조회 실패 시 빈 리스트 대신 경고 출력
 if not economic_features:
-    print("⚠️ 경고: MongoDB에서 지표를 가져오지 못했습니다. economic_features가 비어있습니다.")
+    print("⚠️ 경고: PostgreSQL에서 지표를 가져오지 못했습니다. economic_features가 비어있습니다.")
     print("   데이터가 없을 수 있으니 확인이 필요합니다.")
 
 print("Scaling data...")

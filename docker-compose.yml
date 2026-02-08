@@ -118,9 +118,9 @@ services:
       - .env.common
       - ${ENV_FILE:-.env.local}
     environment:
-      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER:-quantiq_user}
-      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD:-quantiq_password}
-      MONGO_INITDB_DATABASE: ${MONGO_DB_NAME:-stock_trading}
+      MONGO_INITDB_ROOT_USERNAME: quantiq_user
+      MONGO_INITDB_ROOT_PASSWORD: quantiq_password
+      MONGO_INITDB_DATABASE: stock_trading
     command: mongod --auth --wiredTigerCacheSizeGB 0.5
     volumes:
       - ./data/mongodb:/data/db
@@ -143,7 +143,7 @@ services:
       dockerfile: Dockerfile
     container_name: qjs-data-engine
     ports:
-      - "10020:8000"
+      - "10020:10020"
     depends_on:
       kafka:
         condition: service_started
@@ -152,10 +152,15 @@ services:
       - ${ENV_FILE:-.env.local}
     environment:
       TZ: "Asia/Seoul"
-      # MongoDB - Docker 내부에서는 서비스 이름 사용
+      # MongoDB - env var 우선, 미설정시 로컬 Docker
       MONGODB_URI: ${MONGODB_URI:-mongodb://quantiq_user:quantiq_password@mongodb:27017/stock_trading?authSource=admin}
+      # PostgreSQL - env var 우선, 미설정시 로컬 Docker
+      DB_HOST: ${DB_HOST:-postgresql}
+      DB_PORT: ${DB_PORT:-5432}
+      # Server Port
+      SERVER_PORT: ${SERVER_PORT:-10020}
       # Kafka
-      KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
       # APIs
       FRED_API_KEY: ${FRED_API_KEY}
       # Slack (SLACK_BOT_TOKEN은 .env.common에서 로드)
@@ -199,20 +204,19 @@ services:
       - ./scripts:/scripts
     environment:
       TZ: "Asia/Seoul"
-      # PostgreSQL - Use env vars from env_file
-      SPRING_DATASOURCE_URL: jdbc:postgresql://${DB_HOST:-postgresql}:${DB_PORT:-5432}/${DB_NAME:-quantiq}
+      # PostgreSQL - env var 우선, 미설정시 로컬 Docker
+      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://${DB_HOST:-postgresql}:${DB_PORT:-5432}/${DB_NAME:-quantiq}}
       SPRING_DATASOURCE_USERNAME: ${DB_USER:-quantiq_user}
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-quantiq_password}
-      # PostgreSQL - for application.yml (Quartz uses these)
       DB_HOST: ${DB_HOST:-postgresql}
       DB_PORT: ${DB_PORT:-5432}
       DB_NAME: ${DB_NAME:-quantiq}
       DB_USER: ${DB_USER:-quantiq_user}
       DB_PASSWORD: ${DB_PASSWORD:-quantiq_password}
-      # MongoDB - use env vars (supports both local and prod)
+      # MongoDB - env var 우선, 미설정시 로컬 Docker
       SPRING_DATA_MONGODB_URI: ${MONGODB_URI:-mongodb://quantiq_user:quantiq_password@mongodb:27017/stock_trading?authSource=admin}
       # Kafka
-      KAFKA_BOOTSTRAP_SERVERS: "kafka:29092"
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
       # Slack (SLACK_BOT_TOKEN은 .env.common에서 로드)
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL_TRADING}
       SLACK_CHANNEL: "C0A1XASTLH2"
