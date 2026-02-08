@@ -15,7 +15,7 @@ class MongoDB:
     def get_client(cls):
         if cls._client is None:
             try:
-                cls._client = MongoClient(settings.MONGODB_URI)
+                cls._client = MongoClient(settings.MONGODB_URI, maxPoolSize=3)
                 # Test connection
                 cls._client.admin.command('ping')
                 logger.info("MongoDB connection successful")
@@ -48,15 +48,15 @@ class PostgreSQL:
 
     @classmethod
     def get_pool(cls):
-        """ThreadedConnectionPool 싱글톤 반환 (minconn=2, maxconn=10)"""
+        """ThreadedConnectionPool 싱글톤 반환 (minconn=1, maxconn=4)"""
         if cls._connection_pool is None:
             try:
                 cls._connection_pool = psycopg2.pool.ThreadedConnectionPool(
-                    minconn=2,
-                    maxconn=10,
+                    minconn=1,
+                    maxconn=4,
                     **cls.get_connection_params()
                 )
-                logger.info("PostgreSQL ThreadedConnectionPool created (min=2, max=10)")
+                logger.info("PostgreSQL ThreadedConnectionPool created (min=1, max=3)")
             except Exception as e:
                 logger.error(f"Failed to create PostgreSQL connection pool: {e}")
                 raise

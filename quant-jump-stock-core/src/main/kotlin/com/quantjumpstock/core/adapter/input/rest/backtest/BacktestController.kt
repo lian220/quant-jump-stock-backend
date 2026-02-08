@@ -2,8 +2,10 @@ package com.quantjumpstock.core.adapter.input.rest.backtest
 
 import com.quantjumpstock.core.application.auth.AuthService
 import com.quantjumpstock.core.application.backtest.*
+import com.quantjumpstock.core.application.portfolio.StrategyDefaultStockService
 import com.quantjumpstock.core.domain.port.output.UserRepository
 import com.quantjumpstock.core.domain.port.output.Benchmark
+import com.quantjumpstock.core.domain.port.output.StockRepository
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -27,7 +29,9 @@ class BacktestController(
     private val backtestService: BacktestService,
     private val authService: AuthService,
     private val userTierService: UserTierService,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val defaultStockService: StrategyDefaultStockService,
+    private val stockRepository: StockRepository
 ) {
 
     /**
@@ -60,21 +64,39 @@ class BacktestController(
                 .body(mapOf("error" to "USER_NOT_FOUND", "message" to "사용자를 찾을 수 없습니다."))
         val userId = userDbId.toString()
 
-        // tickers 검증
-        if (request.tickers.isEmpty()) {
+        // tickers가 비어있으면 전략 기본 종목 → stocks 테이블 전체 순서로 fallback
+        val effectiveTickers = if (request.tickers.isEmpty()) {
+            val fromDefault = try {
+                val defaultStocks = defaultStockService.getDefaultStocks(request.strategyId)
+                defaultStocks.stocks.mapNotNull { it.ticker }
+            } catch (e: Exception) {
+                emptyList()
+            }
+
+            fromDefault.ifEmpty {
+                // 기본 종목 없으면 stocks 테이블 전체 종목 사용
+                stockRepository.findAll().mapNotNull { it.ticker }
+            }
+        } else {
+            request.tickers
+        }
+
+        if (effectiveTickers.isEmpty()) {
             return ResponseEntity.badRequest()
                 .body(mapOf(
                     "error" to "TICKERS_REQUIRED",
-                    "message" to "백테스트 대상 종목(tickers)을 1개 이상 지정해야 합니다."
+                    "message" to "백테스트 대상 종목이 없습니다. stocks 테이블에 종목을 등록해주세요."
                 ))
         }
 
+        val effectiveRequest = request.copy(tickers = effectiveTickers)
+
         // 벤치마크 검증
-        if (!Benchmark.existsByTicker(request.benchmark)) {
+        if (!Benchmark.existsByTicker(effectiveRequest.benchmark)) {
             return ResponseEntity.badRequest()
                 .body(mapOf(
                     "error" to "INVALID_BENCHMARK",
-                    "message" to "지원하지 않는 벤치마크입니다: ${request.benchmark}",
+                    "message" to "지원하지 않는 벤치마크입니다: ${effectiveRequest.benchmark}",
                     "availableBenchmarks" to "/api/v1/backtest/benchmarks"
                 ))
         }
@@ -94,7 +116,7 @@ class BacktestController(
         }
 
         return try {
-            val response = backtestService.runBacktest(request, userId)
+            val response = backtestService.runBacktest(effectiveRequest, userId)
             ResponseEntity.status(HttpStatus.ACCEPTED).body(response)
         } catch (e: Exception) {
             ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)

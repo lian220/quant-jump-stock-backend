@@ -98,6 +98,23 @@ class AdminStrategyController(
     }
 
     /**
+     * 전략 검토 제출
+     * POST /api/v1/admin/strategies/{id}/submit
+     */
+    @PostMapping("/{id}/submit")
+    @Operation(
+        summary = "전략 검토 제출",
+        description = "전략을 검토 대기 상태로 변경합니다."
+    )
+    fun submitStrategy(
+        @Parameter(description = "전략 ID")
+        @PathVariable id: Long
+    ): ResponseEntity<ChangeStrategyStatusResponse> {
+        val request = ChangeStrategyStatusRequest(status = StrategyStatus.PENDING_REVIEW)
+        return changeStatus(id, request)
+    }
+
+    /**
      * 전략 승인
      * POST /api/v1/admin/strategies/{id}/approve
      */

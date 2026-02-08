@@ -3,6 +3,7 @@ package com.quantjumpstock.core.adapter.input.rest.stock
 import com.quantjumpstock.core.application.auth.AuthService
 import com.quantjumpstock.core.application.stock.*
 import com.quantjumpstock.core.domain.model.stock.Market
+import com.quantjumpstock.core.domain.port.output.UserRepository
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
@@ -17,7 +18,8 @@ import org.springframework.web.bind.annotation.*
 @Tag(name = "Stock", description = "종목 관리 API")
 class StockController(
     private val stockService: StockService,
-    private val authService: AuthService
+    private val authService: AuthService,
+    private val userRepository: UserRepository
 ) {
 
     // ===== 일반 사용자 API =====
@@ -131,7 +133,7 @@ class StockController(
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(StockResponse(success = false, message = "인증이 필요합니다"))
 
-        val userIdLong = userId.toLongOrNull()
+        val userIdLong = userRepository.findByUserId(userId)?.id
             ?: return ResponseEntity.badRequest()
                 .body(StockResponse(success = false, message = "유효하지 않은 사용자 ID입니다"))
 
