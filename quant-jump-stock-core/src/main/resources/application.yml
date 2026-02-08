@@ -5,11 +5,10 @@ server:
   port: ${SERVER_PORT:10010}
 
 spring:
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:local}
   application:
     name: quantiq-core
-  # .env.prod 파일에서 추가 설정 로드 (Vertex AI, API 키 등)
-  config:
-    import: optional:file:/app/.env.prod[.properties]
 
   # ============================================
   # PostgreSQL (RDB) Configuration
@@ -89,34 +88,7 @@ spring:
   # Quartz Scheduler Configuration
   # ============================================
   quartz:
-    job-store-type: jdbc
-    jdbc:
-      initialize-schema: never  # Flyway로 관리
-    properties:
-      org:
-        quartz:
-          scheduler:
-            instanceName: quantiqScheduler
-            instanceId: AUTO
-          threadPool:
-            class: org.quartz.simpl.SimpleThreadPool
-            threadCount: 10
-            threadPriority: 5
-          jobStore:
-            class: org.quartz.impl.jdbcjobstore.JobStoreTX
-            driverDelegateClass: org.quartz.impl.jdbcjobstore.PostgreSQLDelegate
-            tablePrefix: quartz_
-            isClustered: false
-            useProperties: false
-            dataSource: quartzDataSource
-          dataSource:
-            quartzDataSource:
-              driver: org.postgresql.Driver
-              URL: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/${DB_NAME:quantiq}?prepareThreshold=0
-              user: ${DB_USER:quantiq_user}
-              password: ${DB_PASSWORD:quantiq_password}
-              maxConnections: 2
-              provider: hikaricp
+    job-store-type: memory
 
   # ============================================
   # Kafka Configuration (Already set at line 66)
