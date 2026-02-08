@@ -217,27 +217,10 @@ AND p.code IN ('STRATEGY_VIEW', 'BACKTEST_RUN', 'ANALYTICS_VIEW', 'TRADING_VIEW'
 ON CONFLICT (role_id, permission_id) DO NOTHING;
 
 -- ============================================
--- 8. Admin 사용자 생성
+-- 8. Admin 사용자 역할 할당
 -- ============================================
 
--- pgcrypto extension 활성화 (BCrypt 지원)
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
-
--- Admin 사용자 생성
--- 주의: 비밀번호는 NULL로 설정됩니다.
--- 배포 후 환경변수 ADMIN_PASSWORD를 사용하여 비밀번호를 설정해야 합니다.
--- 또는 첫 로그인 시 비밀번호 재설정을 요구하세요.
-INSERT INTO users (user_id, name, email, password_hash, status)
-VALUES (
-    'lian',
-    'Admin User',
-    'admin@quantiq.com',
-    NULL,  -- 비밀번호는 배포 후 별도로 설정 필요
-    'ACTIVE'
-)
-ON CONFLICT (user_id) DO NOTHING;
-
--- Admin 사용자에게 ADMIN 역할 할당
+-- Admin 사용자에게 ADMIN 역할 할당 (사용자는 V1에서 이미 생성됨)
 INSERT INTO user_roles (user_id, role_id)
 SELECT u.id, r.id
 FROM users u
