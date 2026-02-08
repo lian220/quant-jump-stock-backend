@@ -227,17 +227,15 @@ CREATE EXTENSION IF NOT EXISTS pgcrypto;
 -- 주의: 비밀번호는 NULL로 설정됩니다.
 -- 배포 후 환경변수 ADMIN_PASSWORD를 사용하여 비밀번호를 설정해야 합니다.
 -- 또는 첫 로그인 시 비밀번호 재설정을 요구하세요.
-INSERT INTO users (id, user_id, name, email, password_hash, status, oauth_provider, oauth_provider_id, profile_image_url, role, created_at, updated_at)
-VALUES (1, 'lian', 'Admin User', 'admin@quantiq.com', '$2a$10$mn0xp93Wy/brEz7nP909PeA5vDvSJeJJOQVyyrGfrFY5cshP/Oxq.', 'ACTIVE', null, null, null, 'ADMIN', '2026-02-08 15:24:33.485631', '2026-02-08 15:24:33.485631')
-ON CONFLICT (id) DO NOTHING;
-
--- Insert default test user
-INSERT INTO users (id, user_id, name, email, password_hash, status, oauth_provider, oauth_provider_id, profile_image_url, role, created_at, updated_at)
-VALUES (2, 'lian_test', 'lian test', 'lian_test@quantiq.com', '$2a$10$mn0xp93Wy/brEz7nP909PeA5vDvSJeJJOQVyyrGfrFY5cshP/Oxq.', 'ACTIVE', null, null, null, 'USER', '2026-02-08 15:24:33.485631', '2026-02-08 15:24:33.485631')
-ON CONFLICT (id) DO NOTHING;
-
--- Update sequence to prevent ID conflicts
-SELECT setval('users_id_seq', (SELECT MAX(id) FROM users), true);
+INSERT INTO users (user_id, name, email, password_hash, status)
+VALUES (
+    'lian',
+    'Admin User',
+    'admin@quantiq.com',
+    NULL,  -- 비밀번호는 배포 후 별도로 설정 필요
+    'ACTIVE'
+)
+ON CONFLICT (user_id) DO NOTHING;
 
 -- Admin 사용자에게 ADMIN 역할 할당
 INSERT INTO user_roles (user_id, role_id)
