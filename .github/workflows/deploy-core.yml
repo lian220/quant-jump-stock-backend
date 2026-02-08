@@ -1,0 +1,100 @@
+name: Deploy Core API
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'quant-jump-stock-core/**'
+      - '.github/workflows/deploy-core.yml'
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+env:
+  REGION: asia-northeast3
+  AR_REPO: asia-northeast3-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/qjs-docker
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      # ── Java Build ──────────────────────────────────
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: '21'
+          distribution: 'temurin'
+
+      - name: Build Core JAR
+        working-directory: quant-jump-stock-core
+        run: |
+          chmod +x ./gradlew
+          ./gradlew clean build -x test
+
+      # ── Docker Build & Push ─────────────────────────
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & Push Core
+        uses: docker/build-push-action@v5
+        with:
+          context: ./quant-jump-stock-core
+          push: true
+          tags: ${{ env.AR_REPO }}/qjs-core:latest
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ── Deploy to VM ────────────────────────────────
+      - name: Deploy Core to VM
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.GCE_HOST }}
+          username: ${{ secrets.GCE_USERNAME }}
+          key: ${{ secrets.GCE_SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/quant-jump-stock
+
+            # Pull .env from Secret Manager
+            gcloud secrets versions access latest --secret=qjs-env-common \
+              > ./quant-jump-stock-backend/.env.common 2>/dev/null || true
+            gcloud secrets versions access latest --secret=qjs-env-prod \
+              > ./quant-jump-stock-backend/.env.prod 2>/dev/null || true
+
+            # Create docker-compose .env
+            : > .env
+            [ -f ./quant-jump-stock-backend/.env.common ] && grep -v '^\s*#' ./quant-jump-stock-backend/.env.common | grep -v '^\s*$' >> .env
+            [ -f ./quant-jump-stock-backend/.env.prod ] && grep -v '^\s*#' ./quant-jump-stock-backend/.env.prod | grep -v '^\s*$' >> .env
+            echo "AR_REPO=asia-northeast3-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/qjs-docker" >> .env
+
+            # Pull & restart Core only
+            docker compose -f docker-compose.prod.yml pull core
+            docker compose -f docker-compose.prod.yml up -d --no-deps core
+            docker image prune -f
+
+            # Health check
+            echo "⏳ Waiting for Core API startup..."
+            for i in $(seq 1 30); do
+              sleep 5
+              if curl -sf http://localhost/api/actuator/health > /dev/null 2>&1; then
+                echo "✅ Core API is healthy!"
+                exit 0
+              fi
+              echo "  ...attempt $i/30"
+            done
+            echo "❌ Core API not ready after 150s"
+            exit 1

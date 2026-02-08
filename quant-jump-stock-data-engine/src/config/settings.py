@@ -107,6 +107,7 @@ class Settings(BaseSettings):
     # 환경
     environment: str = Field(default="local", alias="ENVIRONMENT")
     log_level: str = Field(default="INFO", alias="LOG_LEVEL")
+    server_port: int = Field(default=10020, alias="SERVER_PORT")
 
     # 하위 설정
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)

@@ -1,0 +1,87 @@
+name: Deploy Data Engine
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'quant-jump-stock-data-engine/**'
+      - '.github/workflows/deploy-data-engine.yml'
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+
+env:
+  REGION: asia-northeast3
+  AR_REPO: asia-northeast3-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/qjs-docker
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      # ── Docker Build & Push ─────────────────────────
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & Push Data Engine
+        uses: docker/build-push-action@v5
+        with:
+          context: ./quant-jump-stock-data-engine
+          push: true
+          tags: ${{ env.AR_REPO }}/qjs-data-engine:latest
+          platforms: linux/amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ── Deploy to VM ────────────────────────────────
+      - name: Deploy Data Engine to VM
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.GCE_HOST }}
+          username: ${{ secrets.GCE_USERNAME }}
+          key: ${{ secrets.GCE_SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/quant-jump-stock
+
+            # Pull .env from Secret Manager
+            gcloud secrets versions access latest --secret=qjs-env-common \
+              > ./quant-jump-stock-backend/.env.common 2>/dev/null || true
+            gcloud secrets versions access latest --secret=qjs-env-prod \
+              > ./quant-jump-stock-backend/.env.prod 2>/dev/null || true
+
+            # Create docker-compose .env
+            : > .env
+            [ -f ./quant-jump-stock-backend/.env.common ] && grep -v '^\s*#' ./quant-jump-stock-backend/.env.common | grep -v '^\s*$' >> .env
+            [ -f ./quant-jump-stock-backend/.env.prod ] && grep -v '^\s*#' ./quant-jump-stock-backend/.env.prod | grep -v '^\s*$' >> .env
+            echo "AR_REPO=asia-northeast3-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/qjs-docker" >> .env
+
+            # Pull & restart Data Engine only
+            docker compose -f docker-compose.prod.yml pull data-engine
+            docker compose -f docker-compose.prod.yml up -d --no-deps data-engine
+            docker image prune -f
+
+            # Health check
+            echo "⏳ Waiting for Data Engine startup..."
+            for i in $(seq 1 20); do
+              sleep 3
+              if curl -sf http://localhost/data-api/health > /dev/null 2>&1; then
+                echo "✅ Data Engine is healthy!"
+                exit 0
+              fi
+              echo "  ...attempt $i/20"
+            done
+            echo "❌ Data Engine not ready after 60s"
+            exit 1

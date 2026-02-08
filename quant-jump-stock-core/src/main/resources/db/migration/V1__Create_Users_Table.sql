@@ -40,3 +40,19 @@ COMMENT ON COLUMN users.oauth_provider IS 'OAuth provider: GOOGLE, NAVER';
 COMMENT ON COLUMN users.oauth_provider_id IS 'User ID from OAuth provider';
 COMMENT ON COLUMN users.profile_image_url IS 'User profile image URL';
 COMMENT ON COLUMN users.role IS 'Simple user role for quick permission check';
+
+-- ============================================
+-- 4. Default Users
+-- ============================================
+-- Insert default admin user
+INSERT INTO users (id, user_id, name, email, password_hash, status, oauth_provider, oauth_provider_id, profile_image_url, role, created_at, updated_at)
+VALUES (1, 'lian', 'Admin User', 'admin@quantiq.com', '$2a$10$mn0xp93Wy/brEz7nP909PeA5vDvSJeJJOQVyyrGfrFY5cshP/Oxq.', 'ACTIVE', null, null, null, 'ADMIN', '2026-02-08 15:24:33.485631', '2026-02-08 15:24:33.485631')
+ON CONFLICT (id) DO NOTHING;
+
+-- Insert default test user
+INSERT INTO users (id, user_id, name, email, password_hash, status, oauth_provider, oauth_provider_id, profile_image_url, role, created_at, updated_at)
+VALUES (2, 'lian_test', 'lian test', 'lian_test@quantiq.com', '$2a$10$mn0xp93Wy/brEz7nP909PeA5vDvSJeJJOQVyyrGfrFY5cshP/Oxq.', 'ACTIVE', null, null, null, 'USER', '2026-02-08 15:24:33.485631', '2026-02-08 15:24:33.485631')
+ON CONFLICT (id) DO NOTHING;
+
+-- Update sequence to prevent ID conflicts
+SELECT setval('users_id_seq', (SELECT MAX(id) FROM users), true);
