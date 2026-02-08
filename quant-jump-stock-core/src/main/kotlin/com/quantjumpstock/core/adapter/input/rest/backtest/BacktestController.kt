@@ -24,7 +24,6 @@ import org.springframework.web.bind.annotation.*
 @RestController
 @RequestMapping("/api/v1/backtest")
 @Tag(name = "Backtest", description = "백테스트 API")
-@CrossOrigin(origins = ["http://localhost:3000", "http://localhost:4000"], allowCredentials = "true")
 class BacktestController(
     private val backtestService: BacktestService,
     private val authService: AuthService,

@@ -19,7 +19,6 @@ import org.springframework.web.bind.annotation.*
 @RestController
 @RequestMapping("/api/v1/auth")
 @Tag(name = "Auth", description = "인증 API")
-@CrossOrigin(origins = ["http://localhost:3000", "http://localhost:4000"], allowCredentials = "true")
 class AuthController(
     private val authService: AuthService,
     private val oAuthService: OAuthService
