@@ -155,7 +155,7 @@ class VertexAIJobService(
     }
 
     private fun logEnvVarsSafely(envVars: Map<String, String>) {
-        val sensitiveKeys = setOf("PASSWORD", "SECRET", "TOKEN", "KEY")
+        val sensitiveKeys = setOf("PASSWORD", "SECRET", "TOKEN", "KEY", "URI")
         envVars.forEach { (key, value) ->
             val maskedValue = if (sensitiveKeys.any { key.uppercase().contains(it) }) "***" else value
             logger.info("  $key: $maskedValue")

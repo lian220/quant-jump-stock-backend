@@ -30,7 +30,6 @@ CREATE TABLE IF NOT EXISTS stocks (
 );
 
 -- 인덱스 생성
-CREATE INDEX idx_stocks_ticker ON stocks(ticker);
 CREATE INDEX idx_stocks_is_active ON stocks(is_active) WHERE is_active = TRUE;
 CREATE INDEX idx_stocks_sector ON stocks(sector) WHERE sector IS NOT NULL;
 CREATE INDEX idx_stocks_industry ON stocks(industry) WHERE industry IS NOT NULL;

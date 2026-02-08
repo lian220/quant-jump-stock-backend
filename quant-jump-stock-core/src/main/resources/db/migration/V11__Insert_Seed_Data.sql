@@ -223,16 +223,21 @@ ON CONFLICT (role_id, permission_id) DO NOTHING;
 -- pgcrypto extension 활성화 (BCrypt 지원)
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
--- Admin 사용자 생성 (BCrypt로 비밀번호 해싱)
-INSERT INTO users (user_id, name, email, password_hash, status)
-VALUES (
-    'lian',
-    'Admin User',
-    'admin@quantiq.com',
-    crypt('sfn0008', gen_salt('bf', 10)),
-    'ACTIVE'
-)
-ON CONFLICT (user_id) DO NOTHING;
+-- Admin 사용자 생성
+-- 주의: 비밀번호는 NULL로 설정됩니다.
+-- 배포 후 환경변수 ADMIN_PASSWORD를 사용하여 비밀번호를 설정해야 합니다.
+-- 또는 첫 로그인 시 비밀번호 재설정을 요구하세요.
+INSERT INTO users (id, user_id, name, email, password_hash, status, oauth_provider, oauth_provider_id, profile_image_url, role, created_at, updated_at)
+VALUES (1, 'lian', 'Admin User', 'admin@quantiq.com', '$2a$10$mn0xp93Wy/brEz7nP909PeA5vDvSJeJJOQVyyrGfrFY5cshP/Oxq.', 'ACTIVE', null, null, null, 'ADMIN', '2026-02-08 15:24:33.485631', '2026-02-08 15:24:33.485631')
+ON CONFLICT (id) DO NOTHING;
+
+-- Insert default test user
+INSERT INTO users (id, user_id, name, email, password_hash, status, oauth_provider, oauth_provider_id, profile_image_url, role, created_at, updated_at)
+VALUES (2, 'lian_test', 'lian test', 'lian_test@quantiq.com', '$2a$10$mn0xp93Wy/brEz7nP909PeA5vDvSJeJJOQVyyrGfrFY5cshP/Oxq.', 'ACTIVE', null, null, null, 'USER', '2026-02-08 15:24:33.485631', '2026-02-08 15:24:33.485631')
+ON CONFLICT (id) DO NOTHING;
+
+-- Update sequence to prevent ID conflicts
+SELECT setval('users_id_seq', (SELECT MAX(id) FROM users), true);
 
 -- Admin 사용자에게 ADMIN 역할 할당
 INSERT INTO user_roles (user_id, role_id)
@@ -323,7 +328,8 @@ INSERT INTO strategies (
     '1.0',
     NOW(),
     NOW()
-);
+)
+ON CONFLICT (strategy_id) DO NOTHING;
 
 -- 12.2 RSI 과매도 반등
 INSERT INTO strategies (
@@ -370,7 +376,8 @@ INSERT INTO strategies (
     '1.0',
     NOW(),
     NOW()
-);
+)
+ON CONFLICT (strategy_id) DO NOTHING;
 
 -- 12.3 MACD 크로스오버
 INSERT INTO strategies (
@@ -417,7 +424,8 @@ INSERT INTO strategies (
     '1.0',
     NOW(),
     NOW()
-);
+)
+ON CONFLICT (strategy_id) DO NOTHING;
 
 -- 12.4 볼린저 밴드 스퀴즈
 INSERT INTO strategies (
@@ -464,7 +472,8 @@ INSERT INTO strategies (
     '1.0',
     NOW(),
     NOW()
-);
+)
+ON CONFLICT (strategy_id) DO NOTHING;
 
 -- 12.5 모멘텀 브레이크아웃
 INSERT INTO strategies (
@@ -513,7 +522,8 @@ INSERT INTO strategies (
     '1.0',
     NOW(),
     NOW()
-);
+)
+ON CONFLICT (strategy_id) DO NOTHING;
 
 -- 12.6 추세 추종
 INSERT INTO strategies (
@@ -563,7 +573,8 @@ INSERT INTO strategies (
     '1.0',
     NOW(),
     NOW()
-);
+)
+ON CONFLICT (strategy_id) DO NOTHING;
 
 -- =====================================================================
 -- QUANT_COMPOSITE 전략 (4개)
@@ -618,7 +629,8 @@ INSERT INTO strategies (
     '1.0',
     NOW(),
     NOW()
-);
+)
+ON CONFLICT (strategy_id) DO NOTHING;
 
 -- 12.8 평균 회귀
 INSERT INTO strategies (
@@ -667,7 +679,8 @@ INSERT INTO strategies (
     '1.0',
     NOW(),
     NOW()
-);
+)
+ON CONFLICT (strategy_id) DO NOTHING;
 
 -- 12.9 듀얼 모멘텀
 INSERT INTO strategies (
@@ -716,7 +729,8 @@ INSERT INTO strategies (
     '1.0',
     NOW(),
     NOW()
-);
+)
+ON CONFLICT (strategy_id) DO NOTHING;
 
 -- 12.10 RSI 스캘핑
 INSERT INTO strategies (
@@ -763,7 +777,8 @@ INSERT INTO strategies (
     '1.0',
     NOW(),
     NOW()
-);
+)
+ON CONFLICT (strategy_id) DO NOTHING;
 
 -- =====================================================================
 -- VALUE 전략 (2개)
@@ -815,7 +830,8 @@ INSERT INTO strategies (
     '1.0',
     NOW(),
     NOW()
-);
+)
+ON CONFLICT (strategy_id) DO NOTHING;
 
 -- 12.12 고배당 가치주
 INSERT INTO strategies (
@@ -863,7 +879,8 @@ INSERT INTO strategies (
     '1.0',
     NOW(),
     NOW()
-);
+)
+ON CONFLICT (strategy_id) DO NOTHING;
 
 -- =====================================================================
 -- ASSET_ALLOCATION 전략 (3개)
@@ -908,7 +925,8 @@ INSERT INTO strategies (
     '1.0',
     NOW(),
     NOW()
-);
+)
+ON CONFLICT (strategy_id) DO NOTHING;
 
 -- 12.14 금리 연동 동적 배분
 INSERT INTO strategies (
@@ -960,7 +978,8 @@ INSERT INTO strategies (
     '1.0',
     NOW(),
     NOW()
-);
+)
+ON CONFLICT (strategy_id) DO NOTHING;
 
 -- 12.15 올웨더 포트폴리오
 INSERT INTO strategies (
@@ -1004,7 +1023,8 @@ INSERT INTO strategies (
     '1.0',
     NOW(),
     NOW()
-);
+)
+ON CONFLICT (strategy_id) DO NOTHING;
 
 -- =====================================================================
 -- SEASONAL 전략 (3개)
@@ -1060,7 +1080,8 @@ INSERT INTO strategies (
     '1.0',
     NOW(),
     NOW()
-);
+)
+ON CONFLICT (strategy_id) DO NOTHING;
 
 -- 12.17 Sell in May
 INSERT INTO strategies (
@@ -1111,7 +1132,8 @@ INSERT INTO strategies (
     '1.0',
     NOW(),
     NOW()
-);
+)
+ON CONFLICT (strategy_id) DO NOTHING;
 
 -- 12.18 분기말 모멘텀 리밸런싱
 INSERT INTO strategies (
@@ -1158,7 +1180,8 @@ INSERT INTO strategies (
     '1.0',
     NOW(),
     NOW()
-);
+)
+ON CONFLICT (strategy_id) DO NOTHING;
 
 -- =====================================================================
 -- ML_PREDICTION 전략 (2개)
@@ -1214,7 +1237,8 @@ INSERT INTO strategies (
     '1.0',
     NOW(),
     NOW()
-);
+)
+ON CONFLICT (strategy_id) DO NOTHING;
 
 -- 12.20 AI + 기술적 분석 하이브리드
 INSERT INTO strategies (
@@ -1265,7 +1289,8 @@ INSERT INTO strategies (
     '1.0',
     NOW(),
     NOW()
-);
+)
+ON CONFLICT (strategy_id) DO NOTHING;
 
 -- ============================================
 -- 13. 시드 전략 기본 trading_costs 설정 (V26)

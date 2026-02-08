@@ -24,7 +24,6 @@ CREATE TABLE IF NOT EXISTS user_kis_accounts (
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
-CREATE INDEX IF NOT EXISTS idx_user_kis_accounts_user_id ON user_kis_accounts(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_kis_accounts_account_type ON user_kis_accounts(account_type);
 CREATE INDEX IF NOT EXISTS idx_user_kis_accounts_enabled ON user_kis_accounts(enabled);
 
@@ -57,7 +56,6 @@ CREATE TABLE IF NOT EXISTS kis_tokens (
         UNIQUE(user_id, account_type)
 );
 
-CREATE INDEX IF NOT EXISTS idx_kis_tokens_user_account ON kis_tokens(user_id, account_type);
 CREATE INDEX IF NOT EXISTS idx_kis_tokens_expiration ON kis_tokens(expiration_time);
 CREATE INDEX IF NOT EXISTS idx_kis_tokens_active ON kis_tokens(is_active) WHERE is_active = TRUE;
 

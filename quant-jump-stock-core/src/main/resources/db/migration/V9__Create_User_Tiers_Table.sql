@@ -22,7 +22,6 @@ CREATE TABLE IF NOT EXISTS user_tiers (
 -- ============================================
 -- 2. Indexes
 -- ============================================
-CREATE INDEX IF NOT EXISTS idx_user_tiers_user_id ON user_tiers(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_tiers_tier ON user_tiers(tier);
 CREATE INDEX IF NOT EXISTS idx_user_tiers_expires_at ON user_tiers(expires_at);
 

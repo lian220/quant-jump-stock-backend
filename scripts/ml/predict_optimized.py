@@ -309,7 +309,7 @@ def get_stock_data_from_db():
         if db is None:
             print("❌ MongoDB 연결이 없습니다!")
             print("MongoDB 연결 정보를 확인해주세요.")
-            print(f"  MONGODB_URL: {mongodb_url[:50] if mongodb_url else 'None'}...")
+            print(f"  MONGODB_URI: {mongodb_uri[:50] if mongodb_uri else 'None'}...")
             print(f"  MONGODB_DATABASE: {mongodb_database}")
             return None
         else:
@@ -795,7 +795,7 @@ economic_features = get_economic_features_from_postgres()
 
 # MongoDB 조회 실패 시 빈 리스트 대신 경고 출력
 if not economic_features:
-    print("⚠️ 경고: MongoDB에서 지표를 가져오지 못했습니다. economic_features가 비어있습니다.")
+    print("⚠️ 경고: PostgreSQL에서 지표를 가져오지 못했습니다. economic_features가 비어있습니다.")
     print("   데이터가 없을 수 있으니 확인이 필요합니다.")
 
 print("Scaling data...")

@@ -6,9 +6,8 @@ on:
     paths:
       - 'quant-jump-stock-data-engine/**'
       - '.github/workflows/deploy-data-engine.yml'
-    paths-ignore:
-      - '**.md'
-      - 'docs/**'
+      - '!**.md'
+      - '!docs/**'
 
 env:
   REGION: asia-northeast3
@@ -58,14 +57,20 @@ jobs:
 
             # Pull .env from Secret Manager
             gcloud secrets versions access latest --secret=qjs-env-common \
-              > ./quant-jump-stock-backend/.env.common 2>/dev/null || true
+              > ./quant-jump-stock-backend/.env.common 2>/dev/null
             gcloud secrets versions access latest --secret=qjs-env-prod \
-              > ./quant-jump-stock-backend/.env.prod 2>/dev/null || true
+              > ./quant-jump-stock-backend/.env.prod 2>/dev/null
+
+            # Validate secrets were fetched
+            if [ ! -s ./quant-jump-stock-backend/.env.common ] || [ ! -s ./quant-jump-stock-backend/.env.prod ]; then
+              echo "❌ Failed to fetch secrets from Secret Manager"
+              exit 1
+            fi
 
             # Create docker-compose .env
             : > .env
-            [ -f ./quant-jump-stock-backend/.env.common ] && grep -v '^\s*#' ./quant-jump-stock-backend/.env.common | grep -v '^\s*$' >> .env
-            [ -f ./quant-jump-stock-backend/.env.prod ] && grep -v '^\s*#' ./quant-jump-stock-backend/.env.prod | grep -v '^\s*$' >> .env
+            grep -v '^\s*#' ./quant-jump-stock-backend/.env.common | grep -v '^\s*$' >> .env
+            grep -v '^\s*#' ./quant-jump-stock-backend/.env.prod | grep -v '^\s*$' >> .env
             echo "AR_REPO=asia-northeast3-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/qjs-docker" >> .env
 
             # Pull & restart Data Engine only

@@ -16,7 +16,6 @@ CREATE TABLE IF NOT EXISTS roles (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_roles_name ON roles(name);
 
 COMMENT ON TABLE roles IS '역할 정보';
 COMMENT ON COLUMN roles.is_system IS '시스템 역할 여부 (삭제 불가)';
@@ -33,7 +32,6 @@ CREATE TABLE IF NOT EXISTS permissions (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE INDEX IF NOT EXISTS idx_permissions_code ON permissions(code);
 CREATE INDEX IF NOT EXISTS idx_permissions_category ON permissions(category);
 
 COMMENT ON TABLE permissions IS '권한 정보';
@@ -55,7 +53,6 @@ CREATE TABLE IF NOT EXISTS user_roles (
     UNIQUE (user_id, role_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_user_roles_user_id ON user_roles(user_id);
 CREATE INDEX IF NOT EXISTS idx_user_roles_role_id ON user_roles(role_id);
 CREATE INDEX IF NOT EXISTS idx_user_roles_assigned_at ON user_roles(assigned_at);
 CREATE INDEX IF NOT EXISTS idx_user_roles_assigned_by ON user_roles(assigned_by);
@@ -77,7 +74,6 @@ CREATE TABLE IF NOT EXISTS role_permissions (
     UNIQUE (role_id, permission_id)
 );
 
-CREATE INDEX IF NOT EXISTS idx_role_permissions_role_id ON role_permissions(role_id);
 CREATE INDEX IF NOT EXISTS idx_role_permissions_permission_id ON role_permissions(permission_id);
 
 COMMENT ON TABLE role_permissions IS '역할-권한 매핑';

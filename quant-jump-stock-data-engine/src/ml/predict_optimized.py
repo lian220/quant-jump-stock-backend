@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
 # MongoDB 연결 설정
@@ -309,7 +309,7 @@ def get_stock_data_from_db():
         if db is None:
             print("❌ MongoDB 연결이 없습니다!")
             print("MongoDB 연결 정보를 확인해주세요.")
-            print(f"  MONGODB_URL: {mongodb_url[:50] if mongodb_url else 'None'}...")
+            print(f"  MONGODB_URI: {mongodb_uri[:50] if mongodb_uri else 'None'}...")
             print(f"  MONGODB_DATABASE: {mongodb_database}")
             return None
         else:
@@ -795,7 +795,7 @@ economic_features = get_economic_features_from_postgres()
 
 # MongoDB 조회 실패 시 빈 리스트 대신 경고 출력
 if not economic_features:
-    print("⚠️ 경고: MongoDB에서 지표를 가져오지 못했습니다. economic_features가 비어있습니다.")
+    print("⚠️ 경고: PostgreSQL에서 지표를 가져오지 못했습니다. economic_features가 비어있습니다.")
     print("   데이터가 없을 수 있으니 확인이 필요합니다.")
 
 print("Scaling data...")
@@ -1270,7 +1270,7 @@ def save_predictions_to_db(result_df):
                         try:
                             date_obj = datetime.strptime(date_str, '%Y-%m-%d')
                             date_str = date_obj.strftime('%Y-%m-%d')
-                        except:
+                        except (ValueError, TypeError):
                             continue
                     elif hasattr(date_str, 'strftime'):
                         date_str = date_str.strftime('%Y-%m-%d')
@@ -1302,7 +1302,7 @@ def save_predictions_to_db(result_df):
                 
                 # 1. daily_stock_data.predictions 필드에 저장 (날짜별 통합) - Bulk Write 사용
                 print(f"MongoDB daily_stock_data에 {len(date_predictions)}개 날짜의 예측 데이터 저장 중...")
-                now_utc = datetime.utcnow()  # 한 번만 호출하여 재사용 (성능 최적화)
+                now_utc = datetime.now(timezone.utc)  # 한 번만 호출하여 재사용 (성능 최적화)
                 
                 daily_stock_updates = []
                 for date_str, ticker_predictions in date_predictions.items():
@@ -1365,33 +1365,35 @@ def save_predictions_to_db(result_df):
                 # 2. stock_predictions 컬렉션에 저장 (종목별 시계열) - Bulk Write 사용
                 print(f"MongoDB stock_predictions 컬렉션에 종목별 예측 데이터 저장 중...")
                 stock_predictions_updates = []
-                
+                stock_predictions_data = []  # fallback용 원본 데이터 저장
+
                 for date_str, ticker_predictions in date_predictions.items():
                     try:
                         date_obj = datetime.strptime(date_str, '%Y-%m-%d')
-                        
+
                         for ticker, pred_data in ticker_predictions.items():
                             try:
-                                stock_predictions_updates.append(
-                                    UpdateOne(
-                                        {
-                                            "date": date_obj,
-                                            "ticker": ticker
+                                update_op = UpdateOne(
+                                    {
+                                        "date": date_obj,
+                                        "ticker": ticker
+                                    },
+                                    {
+                                        "$set": {
+                                            "predicted_price": pred_data.get('predicted_price'),
+                                            "actual_price": pred_data.get('actual_price'),
+                                            "forecast_horizon": 14,
+                                            "updated_at": now_utc
                                         },
-                                        {
-                                            "$set": {
-                                                "predicted_price": pred_data.get('predicted_price'),
-                                                "actual_price": pred_data.get('actual_price'),
-                                                "forecast_horizon": 14,
-                                                "updated_at": now_utc
-                                            },
-                                            "$setOnInsert": {
-                                                "created_at": now_utc
-                                            }
-                                        },
-                                        upsert=True
-                                    )
+                                        "$setOnInsert": {
+                                            "created_at": now_utc
+                                        }
+                                    },
+                                    upsert=True
                                 )
+                                stock_predictions_updates.append(update_op)
+                                # fallback용 원본 데이터 저장 (tuple)
+                                stock_predictions_data.append((date_obj, ticker, pred_data))
                             except Exception as e:
                                 print(f"⚠️ {ticker} ({date_str}) 데이터 준비 실패: {str(e)}")
                     except Exception as e:
@@ -1411,37 +1413,29 @@ def save_predictions_to_db(result_df):
                             print(f"  배치 {i//batch_size + 1}: {len(batch)}개 처리 완료 (총 {total_processed}개)")
                         except Exception as e:
                             print(f"⚠️ stock_predictions batch {i//batch_size + 1} bulk_write 실패: {str(e)}")
-                            # 실패 시 개별 업데이트로 fallback (배치의 원본 데이터 사용)
-                            batch_start_idx = i
-                            batch_end_idx = min(i + batch_size, len(date_predictions))
-                            batch_dates = list(date_predictions.keys())[batch_start_idx:batch_end_idx]
-                            
-                            for date_str in batch_dates:
+                            # 실패 시 개별 업데이트로 fallback
+                            # 실패한 배치에 해당하는 원본 데이터로 재시도
+                            batch_data = stock_predictions_data[i:i + batch_size]
+
+                            for date_obj, ticker, pred_data in batch_data:
                                 try:
-                                    date_obj = datetime.strptime(date_str, '%Y-%m-%d')
-                                    ticker_predictions = date_predictions[date_str]
-                                    
-                                    for ticker, pred_data in ticker_predictions.items():
-                                        try:
-                                            db.stock_predictions.update_one(
-                                                {"date": date_obj, "ticker": ticker},
-                                                {
-                                                    "$set": {
-                                                        "predicted_price": pred_data.get('predicted_price'),
-                                                        "actual_price": pred_data.get('actual_price'),
-                                                        "forecast_horizon": 14,
-                                                        "updated_at": now_utc
-                                                    },
-                                                    "$setOnInsert": {
-                                                        "created_at": now_utc
-                                                    }
-                                                },
-                                                upsert=True
-                                            )
-                                        except Exception as ticker_e:
-                                            print(f"⚠️ {ticker} ({date_str}) Fallback 업데이트 실패: {str(ticker_e)}")
-                                except Exception as date_e:
-                                    print(f"⚠️ {date_str} Fallback 업데이트 실패: {str(date_e)}")
+                                    db.stock_predictions.update_one(
+                                        {"date": date_obj, "ticker": ticker},
+                                        {
+                                            "$set": {
+                                                "predicted_price": pred_data.get('predicted_price'),
+                                                "actual_price": pred_data.get('actual_price'),
+                                                "forecast_horizon": 14,
+                                                "updated_at": now_utc
+                                            },
+                                            "$setOnInsert": {
+                                                "created_at": now_utc
+                                            }
+                                        },
+                                        upsert=True
+                                    )
+                                except Exception as fallback_e:
+                                    print(f"⚠️ {ticker} ({date_obj.strftime('%Y-%m-%d')}) Fallback 업데이트 실패: {str(fallback_e)}")
                     
                     print(f"✅ MongoDB stock_predictions 컬렉션에 총 {total_processed}개 문서 저장 완료")
                 
@@ -1691,7 +1685,7 @@ def save_analysis_to_db(result_df):
                 # 오늘 날짜로 저장 (분석 기준일)
                 today_str = datetime.now().strftime('%Y-%m-%d')
                 today_obj = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-                now_utc = datetime.utcnow()
+                now_utc = datetime.now(timezone.utc)
                 
                 # 레코드를 한 번만 순회하면서 두 컬렉션에 필요한 데이터 모두 준비 (성능 최적화)
                 print(f"MongoDB stock_analysis 컬렉션 및 daily_stock_data.analysis 필드에 분석 데이터 저장 중...")
@@ -1788,18 +1782,10 @@ def save_analysis_to_db(result_df):
                             print(f"  배치 {i//batch_size + 1}: {len(batch)}개 처리 완료 (총 {total_processed}개)")
                         except Exception as e:
                             print(f"⚠️ stock_analysis batch {i//batch_size + 1} bulk_write 실패: {str(e)}")
-                            # 실패 시 개별 업데이트로 fallback
-                            for update_op in batch:
-                                try:
-                                    filter_dict = update_op._filter
-                                    update_dict = update_op._doc
-                                    db.stock_analysis.update_one(
-                                        filter_dict,
-                                        update_dict,
-                                        upsert=True
-                                    )
-                                except Exception as fallback_e:
-                                    print(f"⚠️ Fallback 업데이트 실패: {str(fallback_e)}")
+                            # 배치 실패는 로그만 남기고 계속 진행
+                            # UpdateOne의 private attribute 접근을 피하기 위해 fallback 생략
+                            print(f"⚠️ 배치 {i//batch_size + 1} ({len(batch)}개)의 일부 또는 전체가 실패했습니다.")
+                            print("   → MongoDB 연결 상태를 확인하거나 수동으로 재시도가 필요할 수 있습니다.")
                     
                     print(f"✅ MongoDB stock_analysis 컬렉션에 총 {total_processed}개 문서 저장 완료")
                 else:

@@ -23,7 +23,6 @@ COMMENT ON COLUMN strategy_categories.name IS '카테고리 이름 (한글)';
 COMMENT ON COLUMN strategy_categories.icon IS '카테고리 아이콘 (optional)';
 COMMENT ON COLUMN strategy_categories.sort_order IS '정렬 순서';
 
-CREATE INDEX idx_strategy_categories_code ON strategy_categories(code);
 CREATE INDEX idx_strategy_categories_is_active ON strategy_categories(is_active);
 
 -- 기본 카테고리 시드 데이터
@@ -45,7 +44,7 @@ CREATE TABLE strategies (
     description TEXT,
 
     -- 카테고리 (V17: category_id FK로 전환)
-    category_id BIGINT NOT NULL REFERENCES strategy_categories(id),
+    category_id BIGINT NOT NULL,
 
     -- 전략 식별 (V18: DSL 형식)
     strategy_id VARCHAR(50),
