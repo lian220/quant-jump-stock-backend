@@ -203,6 +203,199 @@ HTTP/HTTPS 요청 정상 처리 중
 
 ---
 
+## ⚠️ 내일 프론트엔드 배포 전 확인사항
+
+### ✅ 정상 작동 예상 항목
+
+1. **API 경로 설정**: ✅ 문제 없음
+   - `next.config.ts`의 rewrites가 환경 변수 사용 (`API_URL`, `NEXT_PUBLIC_API_URL`)
+   - GitHub Actions 워크플로우가 Secret에서 환경 변수 주입 (`secrets.API_BASE_URL`)
+   - nginx 설정이 `/api/` prefix 보존하도록 수정 완료
+
+2. **CORS 설정**: ✅ 문제 없음
+   - nginx 레벨에서 CORS 처리 (`set $cors_origin $http_origin`)
+   - Cloud Run 프론트엔드 → VM nginx → Backend 경로에서 CORS 정상 작동
+   - Backend Controller의 `@CrossOrigin(localhost만 허용)` 설정은 nginx CORS가 우선하므로 무관
+
+3. **HTTPS/SSL**: ✅ 문제 없음
+   - SSL 인증서 정상 로드 및 HTTPS 작동 확인
+   - Cloud Run → HTTPS → api.alphafoundry.app 경로 정상
+
+### ⚠️ 확인 필요 사항
+
+1. **GitHub Secrets 검증**: ⚠️ 배포 전 필수 확인
+   ```bash
+   # .github/workflows/deploy.yml 확인
+   # secrets.API_BASE_URL 값이 "https://api.alphafoundry.app"인지 확인
+   ```
+   - Secret 이름: `API_BASE_URL`
+   - 기대값: `https://api.alphafoundry.app`
+   - 주입 환경변수: `API_URL`, `NEXT_PUBLIC_API_URL`
+
+2. **next.config.ts rewrites 동작**: ⚠️ 배포 후 확인 필요
+   - 현재 코드: 환경 변수 fallback 체인 (`NEXT_PUBLIC_API_URL || API_URL || 'https://api.alphafoundry.app'`)
+   - 빌드 타임에 환경 변수가 제대로 주입되는지 Cloud Run 로그 확인
+
+3. **Backend CORS 설정 (보안 개선 권장)**: ℹ️ 급하지 않음
+   - 현재: 모든 Controller가 `localhost:3000`, `localhost:4000`만 허용
+   - nginx가 CORS를 처리하므로 당장 문제는 없음
+   - **향후 개선**: Controller에서 Cloud Run URL 추가 또는 nginx에만 의존
+
+### 🔍 배포 후 검증 체크리스트
+
+#### 1. Cloud Run 배포 확인
+```bash
+# GitHub Actions 워크플로우 성공 확인
+# https://github.com/{org}/{repo}/actions
+
+# Cloud Run 서비스 상태 확인
+gcloud run services describe qjs-frontend --region=asia-northeast3
+```
+
+#### 2. 환경 변수 주입 검증
+```bash
+# Cloud Run 인스턴스 로그 확인
+gcloud logging read "resource.type=cloud_run_revision AND resource.labels.service_name=qjs-frontend" --limit 50
+
+# 빌드 로그에서 env 확인
+# "API_URL=https://api.alphafoundry.app" 포함 여부 확인
+```
+
+#### 3. API 호출 테스트
+```bash
+# 프론트엔드 URL에서 API 호출 확인
+curl -i "https://qjs-frontend-{PROJECT_ID}.asia-northeast3.run.app/api/v1/marketplace/strategies?page=0&size=3"
+
+# 기대 결과: 302 Redirect 또는 200 OK
+# rewrites가 정상 작동하면 api.alphafoundry.app로 프록시됨
+```
+
+#### 4. 브라우저 실제 테스트
+- [ ] 프론트엔드 URL 접속: `https://qjs-frontend-{PROJECT_ID}.asia-northeast3.run.app`
+- [ ] 마켓플레이스 페이지 이동
+- [ ] 개발자 도구 Network 탭 확인:
+  - `/api/v1/marketplace/strategies` 요청이 200 OK
+  - Response에 전략 데이터 포함
+- [ ] Console에 CORS 에러 없음 확인
+
+#### 5. nginx 로그 모니터링
+```bash
+# VM에서 nginx 로그 실시간 확인
+ssh deploy@34.64.166.56
+docker logs -f qjs-nginx
+
+# 프론트엔드 요청이 들어오는지 확인
+# 200 응답 확인, 에러 로그 없음 확인
+```
+
+### 🚨 문제 발생 시 대응 방안
+
+#### 문제 1: 500 Internal Server Error
+**증상**: 프론트엔드에서 API 호출 시 500 에러
+**가능 원인**:
+1. GitHub Secrets `API_BASE_URL` 값이 잘못됨
+2. 환경 변수가 빌드 타임에 주입되지 않음
+
+**해결**:
+```bash
+# 1. GitHub Secrets 확인 및 수정
+# Settings → Secrets and variables → Actions → API_BASE_URL 값 확인
+
+# 2. 워크플로우 재실행
+# Actions 탭에서 실패한 워크플로우 "Re-run all jobs"
+
+# 3. 긴급 수정: next.config.ts에 하드코딩 (임시)
+async rewrites() {
+  return [
+    { source: '/api/:path*', destination: 'https://api.alphafoundry.app/api/:path*' }
+  ];
+}
+```
+
+#### 문제 2: CORS 에러
+**증상**: 브라우저 Console에 CORS policy 에러
+**가능 원인**: nginx CORS 설정이 Cloud Run Origin을 차단
+
+**해결**:
+```bash
+# VM에서 nginx.conf 수정
+ssh deploy@34.64.166.56
+cd /home/deploy/app
+vi nginx/nginx.conf
+
+# set $cors_origin 확인 - 현재는 $http_origin (모든 origin 허용)
+# 문제 없어야 하지만, 특정 origin만 허용하려면:
+# set $cors_origin "https://qjs-frontend-{PROJECT_ID}.asia-northeast3.run.app";
+
+# nginx 재시작
+docker compose -f docker-compose.prod.yml restart nginx
+```
+
+#### 문제 3: rewrites가 작동하지 않음
+**증상**: `/api/` 호출이 404 Not Found
+**가능 원인**: Cloud Run에서 rewrites가 적용되지 않음
+
+**긴급 롤백**:
+```bash
+# GitHub에서 이전 커밋으로 롤백
+git revert eb22185  # rewrites 추가 커밋
+git push origin main
+
+# 또는 프론트엔드 코드 수정:
+# API 호출 URL을 직접 https://api.alphafoundry.app/api/v1/... 로 변경
+```
+
+#### 문제 4: VM nginx가 응답하지 않음
+**증상**: VM API가 502 Bad Gateway
+**확인**:
+```bash
+ssh deploy@34.64.166.56
+docker ps  # nginx, core, data-engine 컨테이너 Up 상태 확인
+docker logs qjs-nginx  # 에러 로그 확인
+```
+
+**해결**:
+```bash
+# 컨테이너 재시작
+docker compose -f docker-compose.prod.yml restart nginx core data-engine
+
+# 전체 재시작 필요시
+docker compose -f docker-compose.prod.yml down
+docker compose -f docker-compose.prod.yml up -d
+```
+
+### 📊 모니터링 포인트
+
+배포 후 24시간 동안 다음 항목 모니터링:
+
+1. **Cloud Run 메트릭**:
+   - Request count (정상 트래픽 확인)
+   - Error rate (5xx 에러 비율)
+   - Request latency (응답 시간)
+
+2. **VM nginx 로그**:
+   - 프론트엔드 origin 요청 증가 확인
+   - 502/504 게이트웨이 에러 없음
+   - CORS 관련 에러 없음
+
+3. **Backend Core 로그**:
+   ```bash
+   ssh deploy@34.64.166.56
+   docker logs -f qjs-core
+   # NoResourceFoundException 없음 확인
+   ```
+
+### ✅ 배포 성공 기준
+
+- [ ] Cloud Run 서비스 정상 배포 (상태: Ready)
+- [ ] 프론트엔드 페이지 접속 가능
+- [ ] 마켓플레이스 API 호출 200 OK
+- [ ] Console CORS 에러 없음
+- [ ] VM nginx 200 응답 로그 확인
+- [ ] 5분간 에러 없음 유지
+
+---
+
 ## 📝 관련 커밋
 
 | 커밋 | 내용 | 파일 |
