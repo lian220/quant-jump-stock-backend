@@ -1,0 +1,118 @@
+name: Build & Deploy Backend
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "**.md"
+
+env:
+  REGION: asia-northeast3
+  AR_REPO: asia-northeast3-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/qjs-docker
+
+jobs:
+  # ════════════════════════════════════════════════════════════
+  # Build & Push Docker Images
+  # ════════════════════════════════════════════════════════════
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
+
+      # ── Core: Gradle Build ──────────────────────────────────
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: "temurin"
+
+      - name: Build Core JAR
+        working-directory: quant-jump-stock-core
+        run: |
+          chmod +x ./gradlew
+          ./gradlew clean build -x test
+
+      # ── Docker Build & Push ─────────────────────────────────
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & Push Core
+        uses: docker/build-push-action@v5
+        with:
+          context: ./quant-jump-stock-core
+          push: true
+          tags: ${{ env.AR_REPO }}/qjs-core:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build & Push Data Engine
+        uses: docker/build-push-action@v5
+        with:
+          context: ./quant-jump-stock-data-engine
+          push: true
+          tags: ${{ env.AR_REPO }}/qjs-data-engine:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ════════════════════════════════════════════════════════════
+  # Deploy to VM
+  # ════════════════════════════════════════════════════════════
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.GCE_HOST }}
+          username: ${{ secrets.GCE_USERNAME }}
+          key: ${{ secrets.GCE_SSH_PRIVATE_KEY }}
+          script: |
+            cd /opt/quant-jump-stock
+
+            # Secret Manager에서 환경변수 pull
+            gcloud secrets versions access latest --secret=qjs-env-common \
+              > ./quant-jump-stock-backend/.env.common 2>/dev/null \
+              && echo "✅ .env.common pulled" \
+              || echo "⚠ .env.common: not found in Secret Manager"
+
+            gcloud secrets versions access latest --secret=qjs-env-prod \
+              > ./quant-jump-stock-backend/.env.prod 2>/dev/null \
+              && echo "✅ .env.prod pulled" \
+              || echo "⚠ .env.prod: not found in Secret Manager"
+
+            # docker compose 변수용 .env 생성
+            : > .env
+            [ -f ./quant-jump-stock-backend/.env.common ] && grep -v '^\s*#' ./quant-jump-stock-backend/.env.common | grep -v '^\s*$' >> .env
+            [ -f ./quant-jump-stock-backend/.env.prod ] && grep -v '^\s*#' ./quant-jump-stock-backend/.env.prod | grep -v '^\s*$' >> .env
+            echo "AR_REPO=asia-northeast3-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/qjs-docker" >> .env
+
+            # Pull & restart backend services only
+            docker compose -f docker-compose.prod.yml --env-file .env pull core data-engine
+            docker compose -f docker-compose.prod.yml --env-file .env up -d --no-deps core data-engine
+            docker image prune -f
+
+            # Health check
+            echo "Waiting for Core API startup..."
+            for i in $(seq 1 12); do
+              sleep 10
+              if curl -sf http://localhost:8080/actuator/health > /dev/null 2>&1; then
+                echo "✅ Core API healthy!"
+                exit 0
+              fi
+              echo "  ...attempt $i/12"
+            done
+            echo "⚠ Core API not ready after 120s"
