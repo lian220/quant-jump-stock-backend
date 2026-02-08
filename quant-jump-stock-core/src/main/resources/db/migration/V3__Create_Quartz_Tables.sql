@@ -1,8 +1,11 @@
 -- =====================================================
 -- Quartz Scheduler Tables (PostgreSQL)
+-- 사용하지 않음 (job-store-type: memory 모드 사용)
+-- V19 코멘트, V34 정리 SQL도 여기에 통합 후 주석처리
 -- =====================================================
 
--- QRTZ_JOB_DETAILS (부모 테이블 먼저)
+/*
+-- QRTZ_JOB_DETAILS
 CREATE TABLE IF NOT EXISTS quartz_job_details
 (
     sched_name        VARCHAR(120) NOT NULL,
@@ -17,8 +20,9 @@ CREATE TABLE IF NOT EXISTS quartz_job_details
     job_data          BYTEA,
     PRIMARY KEY (sched_name, job_name, job_group)
 );
+COMMENT ON TABLE quartz_job_details IS 'Quartz 스케줄러 Job 정의 정보';
 
--- QRTZ_TRIGGERS (job_details 참조)
+-- QRTZ_TRIGGERS
 CREATE TABLE IF NOT EXISTS quartz_triggers
 (
     sched_name     VARCHAR(120) NOT NULL,
@@ -41,8 +45,9 @@ CREATE TABLE IF NOT EXISTS quartz_triggers
     FOREIGN KEY (sched_name, job_name, job_group)
         REFERENCES quartz_job_details (sched_name, job_name, job_group)
 );
+COMMENT ON TABLE quartz_triggers IS 'Quartz 스케줄러 트리거 정보';
 
--- QRTZ_CRON_TRIGGERS (triggers 참조)
+-- QRTZ_CRON_TRIGGERS
 CREATE TABLE IF NOT EXISTS quartz_cron_triggers
 (
     sched_name      VARCHAR(120) NOT NULL,
@@ -54,8 +59,9 @@ CREATE TABLE IF NOT EXISTS quartz_cron_triggers
     FOREIGN KEY (sched_name, trigger_name, trigger_group)
         REFERENCES quartz_triggers (sched_name, trigger_name, trigger_group)
 );
+COMMENT ON TABLE quartz_cron_triggers IS 'Quartz Cron 트리거 정보';
 
--- QRTZ_SIMPLE_TRIGGERS (triggers 참조)
+-- QRTZ_SIMPLE_TRIGGERS
 CREATE TABLE IF NOT EXISTS quartz_simple_triggers
 (
     sched_name      VARCHAR(120) NOT NULL,
@@ -68,8 +74,9 @@ CREATE TABLE IF NOT EXISTS quartz_simple_triggers
     FOREIGN KEY (sched_name, trigger_name, trigger_group)
         REFERENCES quartz_triggers (sched_name, trigger_name, trigger_group)
 );
+COMMENT ON TABLE quartz_simple_triggers IS 'Quartz Simple 트리거 정보';
 
--- QRTZ_SIMPROP_TRIGGERS (triggers 참조)
+-- QRTZ_SIMPROP_TRIGGERS
 CREATE TABLE IF NOT EXISTS quartz_simprop_triggers
 (
     sched_name    VARCHAR(120) NOT NULL,
@@ -90,8 +97,9 @@ CREATE TABLE IF NOT EXISTS quartz_simprop_triggers
     FOREIGN KEY (sched_name, trigger_name, trigger_group)
         REFERENCES quartz_triggers (sched_name, trigger_name, trigger_group)
 );
+COMMENT ON TABLE quartz_simprop_triggers IS 'Quartz Simple Property 트리거';
 
--- QRTZ_CALENDARS (독립 테이블)
+-- QRTZ_CALENDARS
 CREATE TABLE IF NOT EXISTS quartz_calendars
 (
     sched_name    VARCHAR(120) NOT NULL,
@@ -99,8 +107,9 @@ CREATE TABLE IF NOT EXISTS quartz_calendars
     calendar      BYTEA        NOT NULL,
     PRIMARY KEY (sched_name, calendar_name)
 );
+COMMENT ON TABLE quartz_calendars IS 'Quartz 캘린더 정의';
 
--- QRTZ_FIRED_TRIGGERS (독립 테이블)
+-- QRTZ_FIRED_TRIGGERS
 CREATE TABLE IF NOT EXISTS quartz_fired_triggers
 (
     sched_name        VARCHAR(120) NOT NULL,
@@ -118,24 +127,27 @@ CREATE TABLE IF NOT EXISTS quartz_fired_triggers
     requests_recovery BOOLEAN,
     PRIMARY KEY (sched_name, entry_id)
 );
+COMMENT ON TABLE quartz_fired_triggers IS 'Quartz 현재 실행 중인 트리거 정보';
 
--- QRTZ_LOCKS (독립 테이블)
+-- QRTZ_LOCKS
 CREATE TABLE IF NOT EXISTS quartz_locks
 (
     sched_name VARCHAR(120) NOT NULL,
     lock_name  VARCHAR(40)  NOT NULL,
     PRIMARY KEY (sched_name, lock_name)
 );
+COMMENT ON TABLE quartz_locks IS 'Quartz 클러스터 락 정보';
 
--- QRTZ_PAUSED_TRIGGER_GRPS (독립 테이블)
+-- QRTZ_PAUSED_TRIGGER_GRPS
 CREATE TABLE IF NOT EXISTS quartz_paused_trigger_grps
 (
     sched_name    VARCHAR(120) NOT NULL,
     trigger_group VARCHAR(200) NOT NULL,
     PRIMARY KEY (sched_name, trigger_group)
 );
+COMMENT ON TABLE quartz_paused_trigger_grps IS 'Quartz 일시 중지된 트리거 그룹';
 
--- QRTZ_SCHEDULER_STATE (독립 테이블)
+-- QRTZ_SCHEDULER_STATE
 CREATE TABLE IF NOT EXISTS quartz_scheduler_state
 (
     sched_name        VARCHAR(120) NOT NULL,
@@ -144,8 +156,16 @@ CREATE TABLE IF NOT EXISTS quartz_scheduler_state
     checkin_interval  BIGINT       NOT NULL,
     PRIMARY KEY (sched_name, instance_name)
 );
+COMMENT ON TABLE quartz_scheduler_state IS 'Quartz 스케줄러 클러스터 상태 정보';
 
--- Index for performance
+-- Indexes
 CREATE INDEX IF NOT EXISTS idx_quartz_triggers_next_fire_time ON quartz_triggers (sched_name, next_fire_time);
 CREATE INDEX IF NOT EXISTS idx_quartz_triggers_trigger_state ON quartz_triggers (sched_name, trigger_state);
 CREATE INDEX IF NOT EXISTS idx_quartz_fired_triggers_instance_name ON quartz_fired_triggers (sched_name, instance_name);
+
+-- V34 통합: Stale Quartz Job 정리
+DELETE FROM quartz_cron_triggers WHERE trigger_name = 'combinedAnalysisTrigger' AND trigger_group = 'DEFAULT';
+DELETE FROM quartz_simple_triggers WHERE trigger_name = 'combinedAnalysisTrigger' AND trigger_group = 'DEFAULT';
+DELETE FROM quartz_triggers WHERE job_name = 'combinedAnalysisJob' AND job_group = 'DEFAULT';
+DELETE FROM quartz_job_details WHERE job_name = 'combinedAnalysisJob' AND job_group = 'DEFAULT';
+*/

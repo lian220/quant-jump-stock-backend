@@ -23,5 +23,7 @@ COPY . .
 # Set Python path to include src directory
 ENV PYTHONPATH=/app/src
 
+EXPOSE 10020
+
 # Run the application
 CMD ["python", "-m", "src.main"]

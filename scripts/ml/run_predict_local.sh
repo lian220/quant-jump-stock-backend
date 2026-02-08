@@ -18,7 +18,7 @@ fi
 echo "✅ .env.prod 파일 발견"
 
 # 기존 환경변수 클리어
-unset MONGO_URL MONGODB_URL MONGO_USER MONGODB_USER MONGO_PASSWORD MONGODB_PASSWORD MONGODB_DATABASE
+unset MONGODB_URI MONGODB_DB_NAME
 unset DB_HOST DB_PORT DB_NAME DB_USER DB_PASSWORD
 
 # .env.prod에서 환경변수 로드
@@ -29,10 +29,8 @@ source "$ENV_FILE"
 set +a
 
 echo "[MongoDB]"
-[ -n "$MONGO_URL" ] && echo "  MONGO_URL: $MONGO_URL" || echo "  MONGO_URL: ❌ 없음"
-[ -n "$MONGO_USER" ] && echo "  MONGO_USER: $MONGO_USER" || echo "  MONGO_USER: ❌ 없음"
-[ -n "$MONGO_PASSWORD" ] && echo "  MONGO_PASSWORD: ****" || echo "  MONGO_PASSWORD: ❌ 없음"
-[ -n "$MONGODB_DATABASE" ] && echo "  MONGODB_DATABASE: $MONGODB_DATABASE" || echo "  MONGODB_DATABASE: ❌ 없음"
+[ -n "$MONGODB_URI" ] && echo "  MONGODB_URI: ****" || echo "  MONGODB_URI: ❌ 없음"
+[ -n "$MONGODB_DB_NAME" ] && echo "  MONGODB_DB_NAME: $MONGODB_DB_NAME" || echo "  MONGODB_DB_NAME: ❌ 없음"
 echo ""
 echo "[PostgreSQL]"
 [ -n "$DB_HOST" ] && echo "  DB_HOST: $DB_HOST" || echo "  DB_HOST: ❌ 없음"

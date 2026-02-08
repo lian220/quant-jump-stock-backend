@@ -14,6 +14,6 @@ RUN pip3 install --no-cache-dir google-cloud-aiplatform google-cloud-storage pym
 # Copy Spring Boot fat JAR (not the -plain.jar)
 COPY build/libs/quant-jump-stock-core-0.0.1-SNAPSHOT.jar app.jar
 
-EXPOSE 8080
+EXPOSE 10010
 
 ENTRYPOINT ["java", "-jar", "app.jar"]

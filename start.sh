@@ -132,7 +132,7 @@ if [ "$SKIP_INFRA" = false ]; then
     if [ "$ENV_MODE" = "prod" ]; then
         # Prod mode: Only start Kafka (use remote PostgreSQL/MongoDB)
         echo -e "${CYAN}   → Using production PostgreSQL: ${DB_HOST}${NC}"
-        echo -e "${CYAN}   → Using production MongoDB: ${MONGO_URL}${NC}"
+        echo -e "${CYAN}   → Using production MongoDB: ${MONGODB_URI}${NC}"
         docker compose up -d zookeeper kafka kafka-ui
     else
         # Local mode: Start all infrastructure with local profile
@@ -207,7 +207,7 @@ if [ "$ENV_MODE" = "local" ]; then
     echo "   • MongoDB:     localhost:27017"
 else
     echo "   • PostgreSQL:  ${DB_HOST}:${DB_PORT} (production)"
-    echo "   • MongoDB:     ${MONGO_URL} (production)"
+    echo "   • MongoDB:     ${MONGODB_URI} (production)"
 fi
 echo ""
 echo "📝 Logs: docker logs -f qjs-core"
