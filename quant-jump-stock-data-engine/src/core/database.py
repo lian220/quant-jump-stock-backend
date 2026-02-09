@@ -3,7 +3,7 @@ import psycopg2
 import psycopg2.extras
 import psycopg2.pool
 from contextlib import contextmanager
-from src.core.config import settings
+from core.config import settings
 import logging
 
 logger = logging.getLogger(__name__)

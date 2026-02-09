@@ -15,7 +15,7 @@ import org.springframework.data.mongodb.core.mapping.Field
 @Document(collection = "stock_predictions")
 @CompoundIndexes(
     CompoundIndex(
-        name = "idx_date_ticker",
+        name = "date_ticker_unique",
         def = "{'date': 1, 'ticker': 1}",
         unique = true,
         background = true

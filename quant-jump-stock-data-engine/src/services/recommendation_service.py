@@ -6,9 +6,9 @@ import logging
 from typing import Dict, Any, List
 from datetime import datetime
 
-from src.services.technical_analysis import TechnicalAnalysisService
-from src.services.sentiment_analysis import SentimentAnalysisService
-from src.services.slack_notifier import SlackNotifier
+from services.technical_analysis import TechnicalAnalysisService
+from services.sentiment_analysis import SentimentAnalysisService
+from services.slack_notifier import SlackNotifier
 
 logger = logging.getLogger(__name__)
 

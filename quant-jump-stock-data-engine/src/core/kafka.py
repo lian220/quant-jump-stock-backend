@@ -1,7 +1,7 @@
 """Kafka 이벤트 발행"""
 import logging
 from typing import Dict, Any
-from src.events.publisher import publish_event
+from events.publisher import publish_event
 
 logger = logging.getLogger(__name__)
 

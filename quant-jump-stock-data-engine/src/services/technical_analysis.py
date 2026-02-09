@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 import logging
-from src.core.database import MongoDB, PostgreSQL
+from core.database import MongoDB, PostgreSQL
 
 logger = logging.getLogger(__name__)
 
