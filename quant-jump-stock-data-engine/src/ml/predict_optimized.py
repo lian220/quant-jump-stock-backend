@@ -1777,11 +1777,11 @@ def save_analysis_to_db(result_df):
                     for i in range(0, len(stock_analysis_updates), batch_size):
                         batch = stock_analysis_updates[i:i + batch_size]
                         try:
-                            result = db.stock_analysis.bulk_write(batch, ordered=False)
+                            result = db.stock_analysis_results.bulk_write(batch, ordered=False)
                             total_processed += result.upserted_count + result.modified_count
                             print(f"  배치 {i//batch_size + 1}: {len(batch)}개 처리 완료 (총 {total_processed}개)")
                         except Exception as e:
-                            print(f"⚠️ stock_analysis batch {i//batch_size + 1} bulk_write 실패: {str(e)}")
+                            print(f"⚠️ stock_analysis_results batch {i//batch_size + 1} bulk_write 실패: {str(e)}")
                             # 배치 실패는 로그만 남기고 계속 진행
                             # UpdateOne의 private attribute 접근을 피하기 위해 fallback 생략
                             print(f"⚠️ 배치 {i//batch_size + 1} ({len(batch)}개)의 일부 또는 전체가 실패했습니다.")

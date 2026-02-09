@@ -35,7 +35,9 @@ try:
     # MongoDB URI 확인
     mongodb_uri = os.environ.get("MONGODB_URI")
     if mongodb_uri:
-        print(f"   MongoDB: {mongodb_uri[:50]}...")
+        # credential 마스킹: mongodb://user:pass@host... -> mongodb://****@host...
+        masked_uri = mongodb_uri.split('@')[-1] if '@' in mongodb_uri else mongodb_uri
+        print(f"   MongoDB: {masked_uri}")
 except Exception as e:
     print(f"⚠️  .env 파일 로드 실패: {e}")
 

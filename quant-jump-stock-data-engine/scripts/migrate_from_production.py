@@ -95,7 +95,7 @@ def ensure_unique_index(collection, index_name: str = "ticker_date_unique"):
         else:
             # Compound unique index 생성
             collection.create_index(
-                [("ticker", ASCENDING), ("date", ASCENDING)],
+                [("date", ASCENDING), ("ticker", ASCENDING)],
                 unique=True,
                 name=index_name
             )
@@ -116,8 +116,9 @@ def get_mongodb_connections():
     # 로컬 MongoDB URI
     local_uri = os.environ.get("LOCAL_MONGODB_URI") or os.environ.get("MONGODB_URI")
     if not local_uri:
-        local_uri = "mongodb://quantiq_user:quantiq_password@localhost:27017/stock_trading?authSource=admin"
-        print_warning(f"LOCAL_MONGODB_URI 미설정, 기본값 사용: {local_uri}")
+        print_error("LOCAL_MONGODB_URI 또는 MONGODB_URI 환경변수가 설정되지 않았습니다.")
+        print_info("예시: export LOCAL_MONGODB_URI='mongodb://<user>:<password>@localhost:27017/stock_trading?authSource=admin'")
+        exit(1)
 
     try:
         print_info("운영 MongoDB 연결 중...")
@@ -233,7 +234,7 @@ def migrate_collection(
         return 0
 
     # 6. 통계 출력
-    print(f"\n📊 마이그레이션 통계:")
+    print("\n📊 마이그레이션 통계:")
     print(f"   - 운영 조회: {len(prod_docs)} 건")
     print(f"   - 로컬 기존: {existing_count} 건")
     print(f"   - 신규 삽입: {len(new_docs)} 건")
@@ -259,7 +260,7 @@ def show_sample_data(db, collection_name: str, limit: int = 3):
         elif collection_name == "sentiment_analysis":
             print(f"      Score: {doc.get('average_sentiment_score')}, Count: {doc.get('article_count')}")
 
-        elif collection_name == "stock_analysis":
+        elif collection_name == "stock_analysis_results":
             print(f"      Recommendation: {doc.get('recommendation')}, Score: {doc.get('recommendation_score')}")
             print(f"      Analysis: {doc.get('analysis_type', 'N/A')}")
 
@@ -278,7 +279,7 @@ def main():
         collections = [
             "sentiment_analysis",
             "stock_predictions",
-            "stock_analysis"
+            "stock_analysis_results"
         ]
 
         total_migrated = 0

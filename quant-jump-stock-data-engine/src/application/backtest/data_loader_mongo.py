@@ -237,11 +237,11 @@ class MongoDataLoader(DataLoader):
                             count = int(sent_doc.get("article_count", 0))
                             record["sentiment_score"] = score
                             record["sentiment_count"] = count
-                            print(f"✅ {sent_key} -> score={score:.4f}, count={count}")
+                            logger.debug(f"Sentiment matched {sent_key}: score={score:.4f}, count={count}")
                         else:
                             record["sentiment_score"] = 0.0
                             record["sentiment_count"] = 0
-                            print(f"❌ {sent_key} -> NOT FOUND")
+                            logger.debug(f"Sentiment not found for {sent_key}, using defaults")
 
                     # Left Join: 추천 데이터 추가
                     if include_recommendations:

@@ -1,5 +1,6 @@
 package com.quantjumpstock.core.domain
 
+import java.time.LocalDate
 import java.time.LocalDateTime
 import org.springframework.data.annotation.Id
 import org.springframework.data.mongodb.core.index.CompoundIndex
@@ -24,7 +25,7 @@ import org.springframework.data.mongodb.core.mapping.Field
 data class StockPrediction(
         @Id val id: String? = null,
         val ticker: String,
-        val date: LocalDateTime,
+        val date: LocalDate,
         @Field("predicted_price") val predictedPrice: Double? = null,
         @Field("actual_price") val actualPrice: Double? = null,
         @Field("error") val error: Double? = null,

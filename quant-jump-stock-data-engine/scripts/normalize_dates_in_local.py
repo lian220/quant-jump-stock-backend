@@ -137,7 +137,7 @@ def normalize_collection_dates(collection, collection_name: str):
                 updated_count += 1
 
     # 통계 출력
-    print(f"\n📊 변환 통계:")
+    print("\n📊 변환 통계:")
     print(f"   - 총 문서: {total_count} 건")
     print(f"   - datetime 타입: {datetime_count} 건")
     print(f"   - string 타입: {string_count} 건")
@@ -185,7 +185,7 @@ def main():
         collections = [
             "sentiment_analysis",
             "stock_predictions",
-            "stock_analysis"
+            "stock_analysis_results"
         ]
 
         total_updated = 0

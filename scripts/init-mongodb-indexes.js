@@ -51,7 +51,7 @@ try {
     // date 단일 인덱스 (시계열 조회 최적화)
     const hasDateIndex = existingIndexes.some(idx =>
         idx.name === 'idx_date' ||
-        (idx.key && idx.key.date === 1 && Object.keys(idx.key).length === 1)
+        (idx.key && idx.key.date === -1 && Object.keys(idx.key).length === 1)
     );
 
     if (!hasDateIndex) {
@@ -74,22 +74,22 @@ print("2. stock_predictions 컬렉션 인덱스 생성...");
 try {
     const existingIndexes = db.stock_predictions.getIndexes();
     const hasDateTickerIndex = existingIndexes.some(idx =>
-        idx.name === 'idx_date_ticker' ||
+        idx.name === 'date_ticker_unique' ||
         (idx.key && idx.key.date === 1 && idx.key.ticker === 1)
     );
 
     if (hasDateTickerIndex) {
-        print("   ✅ idx_date_ticker 인덱스가 이미 존재합니다.");
+        print("   ✅ date_ticker_unique 인덱스가 이미 존재합니다.");
     } else {
         db.stock_predictions.createIndex(
             { date: 1, ticker: 1 },
             {
                 unique: true,
-                name: "idx_date_ticker",
+                name: "date_ticker_unique",
                 background: true
             }
         );
-        print("   ✅ idx_date_ticker 인덱스 생성 완료");
+        print("   ✅ date_ticker_unique 인덱스 생성 완료");
     }
 
     // ticker 단일 인덱스
@@ -111,7 +111,7 @@ try {
     // date 단일 인덱스
     const hasDateIndex = existingIndexes.some(idx =>
         idx.name === 'idx_date' ||
-        (idx.key && idx.key.date === 1 && Object.keys(idx.key).length === 1)
+        (idx.key && idx.key.date === -1 && Object.keys(idx.key).length === 1)
     );
 
     if (!hasDateIndex) {
