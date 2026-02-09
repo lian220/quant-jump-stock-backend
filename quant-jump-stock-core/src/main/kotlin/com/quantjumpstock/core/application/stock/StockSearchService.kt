@@ -14,10 +14,20 @@ class StockSearchService(
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
+    companion object {
+        private const val MAX_PAGE_SIZE = 100
+    }
+
     fun searchStocks(request: StockSearchRequest): StockSearchResponse {
         logger.info("종목 검색: query=${request.query}, market=${request.market}, page=${request.page}, size=${request.size}")
 
-        val pageable = PageRequest.of(request.page, request.size)
+        // 페이지 크기 검증 및 제한
+        val validatedSize = request.size.coerceAtMost(MAX_PAGE_SIZE)
+        if (validatedSize != request.size) {
+            logger.warn("페이지 크기가 제한되었습니다: ${request.size} -> $validatedSize")
+        }
+
+        val pageable = PageRequest.of(request.page, validatedSize)
         val page = stockRepository.search(
             query = request.query,
             market = request.market,

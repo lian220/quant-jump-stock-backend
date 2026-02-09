@@ -100,10 +100,10 @@ volumes:
 
 ```bash
 # nginx.conf 복사
-scp nginx/nginx.conf deploy@34.64.166.56:/home/deploy/app/nginx/nginx.conf
+scp nginx/nginx.conf deploy@<VM_IP>:/home/deploy/app/nginx/nginx.conf
 
 # docker-compose.prod.yml 복사
-scp docker-compose.prod.yml deploy@34.64.166.56:/home/deploy/app/docker-compose.prod.yml
+scp docker-compose.prod.yml deploy@<VM_IP>:/home/deploy/app/docker-compose.prod.yml
 
 # nginx 컨테이너 재빌드 및 재시작
 docker compose -f docker-compose.prod.yml up -d --build nginx
@@ -215,7 +215,7 @@ HTTP/HTTPS 요청 정상 처리 중
 2. **CORS 설정**: ✅ 문제 없음
    - nginx 레벨에서 CORS 처리 (`set $cors_origin $http_origin`)
    - Cloud Run 프론트엔드 → VM nginx → Backend 경로에서 CORS 정상 작동
-   - Backend Controller의 `@CrossOrigin(localhost만 허용)` 설정은 nginx CORS가 우선하므로 무관
+   - Backend는 `CorsConfig.kt`에서 글로벌 CORS 설정 (`app.cors.allowed-origins` 환경변수로 제어)
 
 3. **HTTPS/SSL**: ✅ 문제 없음
    - SSL 인증서 정상 로드 및 HTTPS 작동 확인

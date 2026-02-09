@@ -23,7 +23,7 @@ class CorsConfig(
 ) : WebMvcConfigurer {
 
     override fun addCorsMappings(registry: CorsRegistry) {
-        val origins = allowedOrigins.split(",").map { it.trim() }.toTypedArray()
+        val origins = parseOrigins()
 
         registry.addMapping("/**")
             .allowedOrigins(*origins)
@@ -33,19 +33,11 @@ class CorsConfig(
             .maxAge(3600)
     }
 
-    @Bean
-    fun corsConfigurationSource(): CorsConfigurationSource {
-        val origins = allowedOrigins.split(",").map { it.trim() }
-
-        val configuration = CorsConfiguration()
-        configuration.allowedOrigins = origins
-        configuration.allowedMethods = listOf("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
-        configuration.allowedHeaders = listOf("*")
-        configuration.allowCredentials = true
-        configuration.maxAge = 3600
-
-        val source = UrlBasedCorsConfigurationSource()
-        source.registerCorsConfiguration("/**", configuration)
-        return source
+    /**
+     * 환경변수에서 CORS origins를 파싱합니다.
+     * 쉼표로 구분된 문자열을 배열로 변환합니다.
+     */
+    private fun parseOrigins(): Array<String> {
+        return allowedOrigins.split(",").map { it.trim() }.toTypedArray()
     }
 }
