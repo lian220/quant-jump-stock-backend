@@ -8,7 +8,11 @@ import org.springframework.data.mongodb.core.index.Indexed
 import org.springframework.data.mongodb.core.mapping.Document
 import org.springframework.data.mongodb.core.mapping.Field
 
-@Document(collection = "stock_analysis_results")
+/**
+ * 주식 예측 결과
+ * MongoDB stock_predictions 컬렉션과 매핑
+ */
+@Document(collection = "stock_predictions")
 @CompoundIndexes(
     CompoundIndex(
         name = "idx_date_ticker",
@@ -17,26 +21,15 @@ import org.springframework.data.mongodb.core.mapping.Field
         background = true
     )
 )
-data class StockAnalysis(
+data class StockPrediction(
         @Id val id: String? = null,
         @Indexed val ticker: String,
         @Indexed val date: LocalDateTime,
-        val metrics: AnalysisMetrics? = null,
-        val predictions: AnalysisPredictions? = null,
-        val recommendation: String? = null,
-        val analysis: String? = null,
-        @Field("created_at") val createdAt: LocalDateTime = LocalDateTime.now()
-)
-
-data class AnalysisMetrics(
-        val mae: Double? = null,
-        val rmse: Double? = null,
-        val accuracy: Double? = null
-)
-
-data class AnalysisPredictions(
-        @Field("last_actual_price") val lastActualPrice: Double? = null,
-        @Field("predicted_future_price") val predictedFuturePrice: Double? = null,
+        @Field("predicted_price") val predictedPrice: Double? = null,
+        @Field("actual_price") val actualPrice: Double? = null,
+        @Field("error") val error: Double? = null,
         @Field("predicted_rise") val predictedRise: Boolean? = null,
-        @Field("rise_probability") val riseProbability: Double? = null
+        @Field("actual_rise") val actualRise: Boolean? = null,
+        @Field("created_at") val createdAt: LocalDateTime = LocalDateTime.now(),
+        @Field("updated_at") val updatedAt: LocalDateTime = LocalDateTime.now()
 )
