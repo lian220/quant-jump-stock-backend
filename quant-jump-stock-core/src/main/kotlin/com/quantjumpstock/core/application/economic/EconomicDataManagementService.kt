@@ -6,6 +6,7 @@ import com.quantjumpstock.core.domain.economic.port.output.NotificationSender
 import com.quantjumpstock.core.domain.economic.port.output.RestApiClient
 import com.quantjumpstock.core.domain.model.EconomicDataUpdateRequest
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
 import java.time.ZonedDateTime
 import java.time.ZoneId
@@ -20,7 +21,9 @@ import java.util.concurrent.CompletableFuture
 class EconomicDataManagementService(
     private val messagePublisher: MessagePublisher,
     private val notificationSender: NotificationSender,
-    private val restApiClient: RestApiClient
+    private val restApiClient: RestApiClient,
+    @Value("\${data-engine.base-url:http://localhost:10020}")
+    private val dataEngineBaseUrl: String
 ) : EconomicDataUseCase {
 
     private val logger = LoggerFactory.getLogger(this::class.java)
@@ -83,7 +86,7 @@ class EconomicDataManagementService(
 
             // REST API 호출 (Output Port 사용, targetDate 전달)
             restApiClient.callEconomicDataCollectionApi(
-                "http://localhost:10020/api/economic/collect",
+                "$dataEngineBaseUrl/api/economic/collect",
                 targetDate
             )
         } catch (e: Exception) {

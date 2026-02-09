@@ -22,7 +22,6 @@ import java.math.BigDecimal
 @RestController
 @RequestMapping("/api/v1/marketplace")
 @Tag(name = "Marketplace", description = "마켓플레이스 API - 공개 전략 조회")
-@CrossOrigin(origins = ["http://localhost:3000", "http://localhost:4000"], allowCredentials = "true")
 class MarketplaceController(
     private val marketplaceService: MarketplaceService
 ) {

@@ -26,6 +26,11 @@ from pymongo import MongoClient
 
 from .data_loader import DataLoader
 
+_DEFAULT_MONGODB_URI = os.getenv(
+    "MONGODB_URI",
+    "mongodb://quantiq_user:quantiq_password@localhost:27017/stock_trading?authSource=admin"
+)
+
 logger = logging.getLogger(__name__)
 
 # 레거시 데이터 포맷 (close_price만 있는 경우) OHLCV 추정 배율
