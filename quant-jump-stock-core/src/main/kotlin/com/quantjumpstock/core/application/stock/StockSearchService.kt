@@ -39,7 +39,7 @@ class StockSearchService(
         )
     }
 
-    fun getStockDetail(id: Long): StockDetailDto {
+    fun getStockDetail(id: Long): StockDetailResponse {
         logger.info("종목 상세 조회: id=$id")
 
         val stock = stockJpaRepository.findById(id)
@@ -50,8 +50,8 @@ class StockSearchService(
         return stock.toDetailDto()
     }
 
-    private fun StockEntity.toSummaryDto(): StockSummaryDto {
-        return StockSummaryDto(
+    private fun StockEntity.toSummaryDto(): StockSummary {
+        return StockSummary(
             id = this.id!!,
             ticker = this.ticker,
             stockName = this.stockName,
@@ -64,8 +64,8 @@ class StockSearchService(
         )
     }
 
-    private fun StockEntity.toDetailDto(): StockDetailDto {
-        return StockDetailDto(
+    private fun StockEntity.toDetailDto(): StockDetailResponse {
+        return StockDetailResponse(
             id = this.id!!,
             ticker = this.ticker,
             stockName = this.stockName,
@@ -78,10 +78,10 @@ class StockSearchService(
             leverageTicker = this.leverageTicker,
             designationStatus = this.designationStatus,
             designationReason = this.designationReason,
-            designatedAt = this.designatedAt?.format(dateTimeFormatter),
+            designatedAt = this.designatedAt,
             isActive = this.isActive,
-            createdAt = this.createdAt.format(dateTimeFormatter),
-            updatedAt = this.updatedAt.format(dateTimeFormatter)
+            createdAt = this.createdAt,
+            updatedAt = this.updatedAt
         )
     }
 }

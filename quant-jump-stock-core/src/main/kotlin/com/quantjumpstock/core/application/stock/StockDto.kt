@@ -91,6 +91,23 @@ data class ChangeDesignationRequest(
     val reason: String? = null
 )
 
+data class StockSearchRequest(
+    @Schema(description = "검색어 (종목 코드 또는 종목명)", example = "AAPL")
+    val query: String? = null,
+
+    @Schema(description = "시장 구분", example = "US")
+    val market: Market? = null,
+
+    @Schema(description = "활성 여부", example = "true")
+    val isActive: Boolean? = null,
+
+    @Schema(description = "페이지 번호 (0부터 시작)", example = "0")
+    val page: Int = 0,
+
+    @Schema(description = "페이지 크기", example = "20")
+    val size: Int = 20
+)
+
 // ===== Response DTOs =====
 
 data class StockResponse(
