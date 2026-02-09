@@ -36,10 +36,10 @@ data class StockEntity(
     @Column(length = 100)
     val industry: String? = null,
 
-    @Column(length = 10)
-    val market: String = "KR",
+    @Column(length = 10, nullable = false)
+    val market: String = "US",
 
-    @Column(name = "designation_status", length = 20)
+    @Column(name = "designation_status", length = 20, nullable = false)
     val designationStatus: String = "NORMAL",
 
     @Column(name = "designation_reason", columnDefinition = "TEXT")
