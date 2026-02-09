@@ -99,7 +99,7 @@ class OAuthService(
     }
 
     /**
-     * Naver OAuth 콜백 처리
+     * Naver OAuth 콜백 처리 (Server-side OAuth)
      */
     fun handleNaverCallback(code: String, state: String?): OAuthResult {
         try {
@@ -136,6 +136,51 @@ class OAuthService(
                 success = false,
                 error = e.message ?: "네이버 로그인 실패",
                 redirectUrl = "$frontendUrl?error=${URLEncoder.encode(e.message ?: "login_failed", StandardCharsets.UTF_8)}"
+            )
+        }
+    }
+
+    /**
+     * Naver OAuth 코드 교환 (Client-side OAuth)
+     * 프론트엔드에서 받은 인증 코드를 토큰으로 교환하고 사용자 정보를 반환
+     */
+    fun exchangeNaverCode(code: String): LoginResponse {
+        try {
+            // 1. Access Token 획득 (state 불필요, 프론트엔드에서 이미 검증)
+            val tokenResponse = getNaverAccessToken(code, null)
+
+            // 2. 사용자 정보 조회
+            val userInfo = getNaverUserInfo(tokenResponse.accessToken)
+
+            // 3. 사용자 생성 또는 조회
+            val user = findOrCreateOAuthUser(
+                provider = OAuthProvider.NAVER,
+                providerId = userInfo.response.id,
+                email = userInfo.response.email,
+                name = userInfo.response.name ?: userInfo.response.nickname,
+                profileImageUrl = userInfo.response.profileImage
+            )
+
+            // 4. 세션 토큰 생성
+            val token = authService.createSessionToken(user)
+
+            // 5. LoginResponse 반환
+            return LoginResponse(
+                success = true,
+                token = token,
+                user = UserInfo(
+                    userId = user.userId,
+                    name = user.name,
+                    email = user.email,
+                    role = user.role.name,
+                    status = user.status.name
+                )
+            )
+        } catch (e: Exception) {
+            logger.error("Naver OAuth 코드 교환 실패", e)
+            return LoginResponse(
+                success = false,
+                error = e.message ?: "네이버 로그인 실패"
             )
         }
     }

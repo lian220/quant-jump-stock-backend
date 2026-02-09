@@ -36,7 +36,7 @@ class SecurityConfig(
             .authorizeHttpRequests { auth ->
                 auth
                     .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
-                    .requestMatchers("/api/auth/**", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                    .requestMatchers("/api/v1/auth/**", "/api/auth/**", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                     .requestMatchers("/api/v1/portfolios/**").authenticated()
                     .requestMatchers("/api/v1/strategies/*/default-stocks/**").authenticated()
                     .anyRequest().permitAll()
@@ -49,7 +49,12 @@ class SecurityConfig(
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
         val configuration = CorsConfiguration()
-        configuration.allowedOrigins = listOf("http://localhost:3000", "http://localhost:4000")
+        configuration.allowedOrigins = listOf(
+            "http://localhost:3000",
+            "http://localhost:4000",
+            "https://alphafoundry.app",
+            "https://qjs-frontend-449118661566.asia-northeast3.run.app"
+        )
         configuration.allowedMethods = listOf("GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS")
         configuration.allowedHeaders = listOf("*")
         configuration.allowCredentials = true

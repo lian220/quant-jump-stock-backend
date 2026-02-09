@@ -148,4 +148,31 @@ class AuthController(
         val result = oAuthService.handleNaverCallback(code, state)
         response.sendRedirect(result.redirectUrl)
     }
+
+    /**
+     * Naver OAuth 토큰 교환 (Client-side OAuth)
+     * POST /api/v1/auth/naver/token
+     */
+    @PostMapping("/naver/token")
+    @Operation(summary = "Naver OAuth 토큰 교환", description = "프론트엔드에서 받은 code로 토큰 교환")
+    fun naverTokenExchange(@RequestBody request: Map<String, String>): ResponseEntity<LoginResponse> {
+        val code = request["code"] ?: return ResponseEntity.badRequest().body(
+            LoginResponse(
+                success = false,
+                error = "code parameter is required"
+            )
+        )
+
+        return try {
+            val result = oAuthService.exchangeNaverCode(code)
+            ResponseEntity.ok(result)
+        } catch (e: Exception) {
+            ResponseEntity.status(500).body(
+                LoginResponse(
+                    success = false,
+                    error = e.message ?: "Token exchange failed"
+                )
+            )
+        }
+    }
 }
