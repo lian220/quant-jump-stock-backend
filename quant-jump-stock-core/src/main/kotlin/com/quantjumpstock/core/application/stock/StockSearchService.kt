@@ -2,6 +2,8 @@ package com.quantjumpstock.core.application.stock
 
 import com.quantjumpstock.core.adapter.output.persistence.jpa.StockEntity
 import com.quantjumpstock.core.adapter.output.persistence.jpa.StockJpaRepository
+import com.quantjumpstock.core.domain.model.stock.DesignationStatus
+import com.quantjumpstock.core.domain.model.stock.Market
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.PageRequest
 import org.springframework.stereotype.Service
@@ -20,14 +22,15 @@ class StockSearchService(
         logger.info("종목 검색: query=${request.query}, market=${request.market}, page=${request.page}, size=${request.size}")
 
         val pageable = PageRequest.of(request.page, request.size)
-        val page = stockJpaRepository.searchStocks(
+        val page = stockJpaRepository.search(
             query = request.query,
-            market = request.market,
+            market = request.market?.name,
+            sector = null,
             isActive = request.isActive,
             pageable = pageable
         )
 
-        val stocks = page.content.map { it.toSummaryDto() }
+        val stocks = page.content.map { entity -> entity.toSummaryDto() }
 
         logger.info("종목 검색 완료: 총 ${page.totalElements}개, ${page.totalPages} 페이지")
 
@@ -56,10 +59,10 @@ class StockSearchService(
             ticker = this.ticker,
             stockName = this.stockName,
             stockNameEn = this.stockNameEn,
-            market = this.market,
+            market = Market.valueOf(this.market),
             sector = this.sector,
             isEtf = this.isEtf,
-            designationStatus = this.designationStatus,
+            designationStatus = DesignationStatus.valueOf(this.designationStatus),
             isActive = this.isActive
         )
     }
@@ -73,10 +76,10 @@ class StockSearchService(
             exchange = this.exchange,
             sector = this.sector,
             industry = this.industry,
-            market = this.market,
+            market = Market.valueOf(this.market),
             isEtf = this.isEtf,
             leverageTicker = this.leverageTicker,
-            designationStatus = this.designationStatus,
+            designationStatus = DesignationStatus.valueOf(this.designationStatus),
             designationReason = this.designationReason,
             designatedAt = this.designatedAt,
             isActive = this.isActive,
