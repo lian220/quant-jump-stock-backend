@@ -168,6 +168,8 @@ class MongoDataLoader(DataLoader):
                     key = (doc.get("ticker"), doc.get("date"))
                     sentiment_data[key] = doc
                 logger.info(f"Loaded {len(sentiment_docs)} sentiment records")
+                if sentiment_docs:
+                    logger.debug(f"Sample sentiment keys: {list(sentiment_data.keys())[:5]}")
 
             if include_recommendations:
                 rec_coll = db["stock_recommendations"]
@@ -231,11 +233,15 @@ class MongoDataLoader(DataLoader):
                         sent_key = (symbol, date_str)
                         sent_doc = sentiment_data.get(sent_key)
                         if sent_doc:
-                            record["sentiment_score"] = float(sent_doc.get("average_sentiment_score", 0.0))
-                            record["sentiment_count"] = int(sent_doc.get("article_count", 0))
+                            score = float(sent_doc.get("average_sentiment_score", 0.0))
+                            count = int(sent_doc.get("article_count", 0))
+                            record["sentiment_score"] = score
+                            record["sentiment_count"] = count
+                            print(f"✅ {sent_key} -> score={score:.4f}, count={count}")
                         else:
                             record["sentiment_score"] = 0.0
                             record["sentiment_count"] = 0
+                            print(f"❌ {sent_key} -> NOT FOUND")
 
                     # Left Join: 추천 데이터 추가
                     if include_recommendations:
