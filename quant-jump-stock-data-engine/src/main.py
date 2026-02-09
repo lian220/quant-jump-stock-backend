@@ -47,6 +47,7 @@ from adapter.output.mongodb.analysis_repository import (
     MongoPriceRepository,
     MongoAnalysisResultRepository,
 )
+from adapter.output.slack import SlackAnalysisNotifierAdapter
 
 # New Application Services
 from application.analysis import (
@@ -212,19 +213,20 @@ def main():
     stock_repository = PostgresStockRepository(pool=pg_pool)
     price_repository = MongoPriceRepository(db)
     result_repository = MongoAnalysisResultRepository(db)
+    analysis_notifier = SlackAnalysisNotifierAdapter(settings)
 
     technical_app_service = TechnicalAnalysisApplicationService(
         stock_repository=stock_repository,
         price_repository=price_repository,
         result_repository=result_repository,
-        notifier=None,  # TODO: Slack notifier adapter 연결
+        notifier=analysis_notifier,
         lookback_days=180
     )
 
     recommendation_app_service = RecommendationApplicationService(
         technical_service=technical_app_service,
         sentiment_service=None,  # TODO: 감정 분석 서비스 연결
-        notifier=None
+        notifier=analysis_notifier
     )
 
     # 4.3. 새 서비스 어댑터 (핸들러 프로토콜 호환)
