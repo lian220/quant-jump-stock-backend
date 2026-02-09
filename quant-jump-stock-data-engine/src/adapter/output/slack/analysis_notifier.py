@@ -5,9 +5,10 @@ Slack 분석 알림 어댑터.
 AnalysisNotifierPort 인터페이스 구현.
 """
 
+import asyncio
 import logging
 import requests
-from typing import Optional
+from typing import Optional, List
 from datetime import datetime
 from pytz import timezone
 
@@ -24,24 +25,49 @@ class SlackAnalysisNotifierAdapter(AnalysisNotifierPort):
 
     기술적 분석 및 감정 분석의 시작/완료/오류 알림을 Slack으로 전송합니다.
     스레드 답글 지원.
+
+    Attributes:
+        SLACK_API_URL: Slack API 엔드포인트
+        settings: 애플리케이션 설정
     """
 
     SLACK_API_URL = "https://slack.com/api/chat.postMessage"
 
     def __init__(self, settings: Settings):
+        """
+        어댑터 초기화
+
+        Args:
+            settings: 애플리케이션 설정 (SLACK_BOT_TOKEN 또는 SLACK_WEBHOOK_URL 필요)
+        """
         self.settings = settings
 
     def _can_send(self) -> bool:
-        """Slack 설정 확인"""
+        """
+        Slack 설정 확인
+
+        Returns:
+            Slack 전송 가능 여부
+        """
         return bool(self.settings.SLACK_BOT_TOKEN or self.settings.SLACK_WEBHOOK_URL)
 
     def _post_message(
         self,
         text: str,
-        attachments: list = None,
+        attachments: Optional[List[dict]] = None,
         thread_ts: Optional[str] = None
     ) -> Optional[str]:
-        """메시지 전송"""
+        """
+        메시지 전송
+
+        Args:
+            text: 메시지 텍스트
+            attachments: Slack 첨부 파일 리스트
+            thread_ts: 스레드 타임스탬프
+
+        Returns:
+            메시지 타임스탬프 (API) 또는 None (Webhook)
+        """
         if not self._can_send():
             logger.warning("Slack configuration not found")
             return None
@@ -54,10 +80,20 @@ class SlackAnalysisNotifierAdapter(AnalysisNotifierPort):
     def _post_via_api(
         self,
         text: str,
-        attachments: list = None,
+        attachments: Optional[List[dict]] = None,
         thread_ts: Optional[str] = None
     ) -> Optional[str]:
-        """Slack API 사용"""
+        """
+        Slack API 사용
+
+        Args:
+            text: 메시지 텍스트
+            attachments: Slack 첨부 파일 리스트
+            thread_ts: 스레드 타임스탬프
+
+        Returns:
+            메시지 타임스탬프
+        """
         try:
             headers = {
                 "Authorization": f"Bearer {self.settings.SLACK_BOT_TOKEN}",
@@ -90,11 +126,24 @@ class SlackAnalysisNotifierAdapter(AnalysisNotifierPort):
                 return None
 
         except Exception as e:
-            logger.error(f"Slack message failed: {e}")
+            logger.exception(f"Slack message failed: {e}")
             return None
 
-    def _post_via_webhook(self, text: str, attachments: list = None) -> Optional[str]:
-        """Slack Webhook 사용"""
+    def _post_via_webhook(
+        self,
+        text: str,
+        attachments: Optional[List[dict]] = None
+    ) -> Optional[str]:
+        """
+        Slack Webhook 사용
+
+        Args:
+            text: 메시지 텍스트
+            attachments: Slack 첨부 파일 리스트
+
+        Returns:
+            None (Webhook은 타임스탬프 반환하지 않음)
+        """
         try:
             payload = {"text": text}
             if attachments:
@@ -109,7 +158,7 @@ class SlackAnalysisNotifierAdapter(AnalysisNotifierPort):
             return None
 
         except Exception as e:
-            logger.error(f"Slack webhook failed: {e}")
+            logger.exception(f"Slack webhook failed: {e}")
             return None
 
     async def notify_analysis_start(
@@ -117,7 +166,13 @@ class SlackAnalysisNotifierAdapter(AnalysisNotifierPort):
         analysis_type: str,
         thread_ts: Optional[str]
     ) -> None:
-        """분석 시작 알림"""
+        """
+        분석 시작 알림
+
+        Args:
+            analysis_type: 분석 유형 ("technical" 또는 "sentiment")
+            thread_ts: 스레드 타임스탬프
+        """
         emoji_map = {
             "technical": "📊",
             "sentiment": "💬"
@@ -138,7 +193,8 @@ class SlackAnalysisNotifierAdapter(AnalysisNotifierPort):
             }
         ]
 
-        self._post_message(text, attachments, thread_ts)
+        # 동기 requests 호출을 블로킹하지 않도록 thread에서 실행
+        await asyncio.to_thread(self._post_message, text, attachments, thread_ts)
 
     async def notify_analysis_complete(
         self,
@@ -147,7 +203,15 @@ class SlackAnalysisNotifierAdapter(AnalysisNotifierPort):
         recommended_count: int,
         thread_ts: Optional[str]
     ) -> None:
-        """분석 완료 알림"""
+        """
+        분석 완료 알림
+
+        Args:
+            analysis_type: 분석 유형 ("technical" 또는 "sentiment")
+            total_analyzed: 총 분석 종목 수
+            recommended_count: 추천 종목 수
+            thread_ts: 스레드 타임스탬프
+        """
         type_name = "기술적 분석" if analysis_type == "technical" else "뉴스 감정 분석"
 
         text = f"✅ {type_name} 완료"
@@ -166,7 +230,8 @@ class SlackAnalysisNotifierAdapter(AnalysisNotifierPort):
             }
         ]
 
-        self._post_message(text, attachments, thread_ts)
+        # 동기 requests 호출을 블로킹하지 않도록 thread에서 실행
+        await asyncio.to_thread(self._post_message, text, attachments, thread_ts)
 
     async def notify_analysis_error(
         self,
@@ -174,7 +239,14 @@ class SlackAnalysisNotifierAdapter(AnalysisNotifierPort):
         error: str,
         thread_ts: Optional[str]
     ) -> None:
-        """분석 오류 알림"""
+        """
+        분석 오류 알림
+
+        Args:
+            analysis_type: 분석 유형 ("technical" 또는 "sentiment")
+            error: 오류 메시지
+            thread_ts: 스레드 타임스탬프
+        """
         type_name = "기술적 분석" if analysis_type == "technical" else "뉴스 감정 분석"
 
         text = f"❌ {type_name} 실패"
@@ -192,4 +264,5 @@ class SlackAnalysisNotifierAdapter(AnalysisNotifierPort):
             }
         ]
 
-        self._post_message(text, attachments, thread_ts)
+        # 동기 requests 호출을 블로킹하지 않도록 thread에서 실행
+        await asyncio.to_thread(self._post_message, text, attachments, thread_ts)

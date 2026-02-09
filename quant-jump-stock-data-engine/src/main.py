@@ -223,7 +223,8 @@ def main():
         lookback_days=180
     )
 
-    recommendation_app_service = RecommendationApplicationService(
+    # RecommendationApplicationService는 향후 사용 예정
+    _recommendation_app_service = RecommendationApplicationService(
         technical_service=technical_app_service,
         sentiment_service=None,  # TODO: 감정 분석 서비스 연결
         notifier=analysis_notifier
