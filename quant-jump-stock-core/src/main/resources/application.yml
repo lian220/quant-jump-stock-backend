@@ -9,6 +9,8 @@ spring:
     active: ${SPRING_PROFILES_ACTIVE:local}
   application:
     name: quantiq-core
+  main:
+    allow-bean-definition-overriding: true
 
   # ============================================
   # PostgreSQL (RDB) Configuration
