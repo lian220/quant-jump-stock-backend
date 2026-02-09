@@ -15,7 +15,6 @@ import org.springframework.web.bind.annotation.*
 @RestController
 @RequestMapping("/api/v1/categories")
 @Tag(name = "Category", description = "전략 카테고리 API")
-@CrossOrigin(origins = ["http://localhost:3000", "http://localhost:4000"], allowCredentials = "true")
 class CategoryController(
     private val categoryService: CategoryService
 ) {

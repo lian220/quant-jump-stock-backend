@@ -22,7 +22,6 @@ import org.springframework.web.bind.annotation.*
 @RestController
 @RequestMapping("/api/v1/strategies")
 @Tag(name = "Strategy", description = "전략 관리 API")
-@CrossOrigin(origins = ["http://localhost:3000", "http://localhost:4000"], allowCredentials = "true")
 class StrategyController(
     private val strategyService: StrategyService,
     private val authService: AuthService

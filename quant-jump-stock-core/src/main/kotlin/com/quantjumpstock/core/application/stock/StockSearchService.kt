@@ -1,0 +1,96 @@
+package com.quantjumpstock.core.application.stock
+
+import com.quantjumpstock.core.domain.model.stock.Stock
+import com.quantjumpstock.core.domain.port.output.StockRepository
+import org.slf4j.LoggerFactory
+import org.springframework.data.domain.PageRequest
+import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
+
+@Service
+@Transactional(readOnly = true)
+class StockSearchService(
+    private val stockRepository: StockRepository
+) {
+    private val logger = LoggerFactory.getLogger(javaClass)
+
+    companion object {
+        private const val MAX_PAGE_SIZE = 100
+    }
+
+    fun searchStocks(request: StockSearchRequest): StockSearchResponse {
+        logger.info("종목 검색: query=${request.query}, market=${request.market}, page=${request.page}, size=${request.size}")
+
+        // 페이지 크기 검증 및 제한
+        val validatedSize = request.size.coerceAtMost(MAX_PAGE_SIZE)
+        if (validatedSize != request.size) {
+            logger.warn("페이지 크기가 제한되었습니다: ${request.size} -> $validatedSize")
+        }
+
+        val pageable = PageRequest.of(request.page, validatedSize)
+        val page = stockRepository.search(
+            query = request.query,
+            market = request.market,
+            sector = null,
+            isActive = request.isActive,
+            pageable = pageable
+        )
+
+        val stocks = page.content.map { it.toSummaryDto() }
+
+        logger.info("종목 검색 완료: 총 ${page.totalElements}개, ${page.totalPages} 페이지")
+
+        return StockSearchResponse(
+            stocks = stocks,
+            totalElements = page.totalElements,
+            totalPages = page.totalPages,
+            currentPage = page.number
+        )
+    }
+
+    fun getStockDetail(id: Long): StockDetailResponse {
+        logger.info("종목 상세 조회: id=$id")
+
+        val stock = stockRepository.findById(id)
+            ?: throw NoSuchElementException("종목을 찾을 수 없습니다: id=$id")
+
+        logger.info("종목 상세 조회 완료: ${stock.ticker}")
+
+        return stock.toDetailDto()
+    }
+
+    private fun Stock.toSummaryDto(): StockSummary {
+        return StockSummary(
+            id = this.id!!,
+            ticker = this.ticker,
+            stockName = this.stockName,
+            stockNameEn = this.stockNameEn,
+            market = this.market,
+            sector = this.sector,
+            isEtf = this.isEtf,
+            designationStatus = this.designationStatus,
+            isActive = this.isActive
+        )
+    }
+
+    private fun Stock.toDetailDto(): StockDetailResponse {
+        return StockDetailResponse(
+            id = this.id!!,
+            ticker = this.ticker,
+            stockName = this.stockName,
+            stockNameEn = this.stockNameEn,
+            exchange = this.exchange,
+            sector = this.sector,
+            industry = this.industry,
+            market = this.market,
+            isEtf = this.isEtf,
+            leverageTicker = this.leverageTicker,
+            designationStatus = this.designationStatus,
+            designationReason = this.designationReason,
+            designatedAt = this.designatedAt,
+            isActive = this.isActive,
+            createdAt = this.createdAt,
+            updatedAt = this.updatedAt
+        )
+    }
+}

@@ -121,6 +121,22 @@ class GlobalExceptionHandler(
     }
 
     /**
+     * 리소스 없음 예외 처리 (종목, 전략 등)
+     */
+    @ExceptionHandler(NoSuchElementException::class)
+    fun handleNoSuchElementException(ex: NoSuchElementException): ResponseEntity<ErrorResponse> {
+        logger.warn("🔍 Resource not found: {}", ex.message)
+
+        return ResponseEntity
+            .status(HttpStatus.NOT_FOUND)
+            .body(ErrorResponse(
+                error = "Not Found",
+                message = ex.message ?: "Resource not found",
+                status = HttpStatus.NOT_FOUND.value()
+            ))
+    }
+
+    /**
      * 일반 예외 처리
      */
     @ExceptionHandler(IllegalArgumentException::class)

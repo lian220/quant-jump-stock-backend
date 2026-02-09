@@ -5,11 +5,15 @@ import io.swagger.v3.oas.models.info.Contact
 import io.swagger.v3.oas.models.info.Info
 import io.swagger.v3.oas.models.info.License
 import io.swagger.v3.oas.models.servers.Server
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 
 @Configuration
-class SwaggerConfig {
+class SwaggerConfig(
+    @Value("\${server.port:10010}")
+    private val serverPort: String
+) {
 
     @Bean
     fun openAPI(): OpenAPI {
@@ -33,7 +37,7 @@ class SwaggerConfig {
             .servers(
                 listOf(
                     Server()
-                        .url("http://localhost:10010")
+                        .url("http://localhost:$serverPort")
                         .description("개발 서버")
                 )
             )
