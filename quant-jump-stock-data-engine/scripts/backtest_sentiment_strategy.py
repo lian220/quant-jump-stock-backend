@@ -17,19 +17,25 @@ from decimal import Decimal
 import pandas as pd
 import numpy as np
 
-# 환경 변수 로드
+# 환경 변수 로드 (프로덕션 DB 사용)
 try:
     from dotenv import load_dotenv
     project_root = Path(__file__).parent.parent.parent
-    env_file = project_root / ".env.local"
+
+    # 프로덕션 MongoDB 사용 (.env.prod 우선)
+    env_file = project_root / ".env.prod"
+    if not env_file.exists():
+        env_file = project_root / ".env.local"
     if not env_file.exists():
         env_file = project_root / ".env"
-    load_dotenv(env_file)
 
+    load_dotenv(env_file)
+    print(f"✅ 환경 변수 로드: {env_file}")
+
+    # MongoDB URI 확인
     mongodb_uri = os.environ.get("MONGODB_URI")
     if mongodb_uri:
-        os.environ["MONGODB_URI"] = mongodb_uri.replace("mongodb:27017", "localhost:27017")
-        print(f"✅ 환경 변수 로드: {env_file}")
+        print(f"   MongoDB: {mongodb_uri[:50]}...")
 except Exception as e:
     print(f"⚠️  .env 파일 로드 실패: {e}")
 
