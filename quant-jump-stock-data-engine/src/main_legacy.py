@@ -15,14 +15,14 @@ from confluent_kafka import Consumer, KafkaError
 from datetime import datetime
 from pytz import timezone
 
-from src.core.config import settings
-from src.core.database import MongoDB
-from src.features.economic_data.router import router as economic_router
-from src.features.ml_package.router import router as ml_package_router
-from src.features.economic_data.service import EconomicDataService
-from src.services.recommendation_service import RecommendationService
-from src.services.slack_notifier import SlackNotifier
-from src.core.kafka import KafkaEventPublisher
+from core.config import settings
+from core.database import MongoDB
+from features.economic_data.router import router as economic_router
+from features.ml_package.router import router as ml_package_router
+from features.economic_data.service import EconomicDataService
+from services.recommendation_service import RecommendationService
+from services.slack_notifier import SlackNotifier
+from core.kafka import KafkaEventPublisher
 
 KST = timezone('Asia/Seoul')
 

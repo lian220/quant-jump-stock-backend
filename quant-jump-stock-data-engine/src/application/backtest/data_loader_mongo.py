@@ -98,19 +98,25 @@ class MongoDataLoader(DataLoader):
         self,
         symbols: List[str],
         start_date: date,
-        end_date: date
+        end_date: date,
+        include_sentiment: bool = False,
+        include_recommendations: bool = False
     ) -> Dict[str, pd.DataFrame]:
         """
-        MongoDB에서 주식 데이터 로드
+        MongoDB에서 주식 데이터 로드 (감성 분석 + 추천 지표 통합)
 
         Args:
             symbols: 종목 코드 리스트 (예: ["AAPL", "NVDA"])
             start_date: 시작일
             end_date: 종료일
+            include_sentiment: 감성 분석 데이터 포함 여부
+            include_recommendations: 기술적 추천 데이터 포함 여부
 
         Returns:
             {symbol: DataFrame} 딕셔너리
             DataFrame columns: open, high, low, close, volume
+                              [sentiment_score, sentiment_count] (옵션)
+                              [is_recommended, rec_rsi, rec_score] (옵션)
         """
         client = self._get_client()
         db = client[self.database]
@@ -142,13 +148,51 @@ class MongoDataLoader(DataLoader):
 
         logger.info(f"Loaded {len(documents)} days from MongoDB")
 
-        # 종목별 데이터 변환
+        # 감성 분석 / 추천 데이터 로드 (옵션)
+        sentiment_data = {}
+        recommendation_data = {}
+
+        if include_sentiment or include_recommendations:
+            db = client[self.database]
+
+            if include_sentiment:
+                sentiment_coll = db["sentiment_analysis"]
+                sentiment_docs = list(sentiment_coll.find({
+                    "date": {
+                        "$gte": buffered_start.isoformat(),
+                        "$lte": end_date.isoformat()
+                    }
+                }))
+                # {(ticker, date): {...}}
+                for doc in sentiment_docs:
+                    key = (doc.get("ticker"), doc.get("date"))
+                    sentiment_data[key] = doc
+                logger.info(f"Loaded {len(sentiment_docs)} sentiment records")
+                if sentiment_docs:
+                    logger.debug(f"Sample sentiment keys: {list(sentiment_data.keys())[:5]}")
+
+            if include_recommendations:
+                rec_coll = db["stock_recommendations"]
+                rec_docs = list(rec_coll.find({
+                    "date": {
+                        "$gte": buffered_start.isoformat(),
+                        "$lte": end_date.isoformat()
+                    }
+                }))
+                # {(ticker, date): {...}}
+                for doc in rec_docs:
+                    key = (doc.get("ticker"), doc.get("date"))
+                    recommendation_data[key] = doc
+                logger.info(f"Loaded {len(rec_docs)} recommendation records")
+
+        # 종목별 데이터 변환 (Left Join 적용)
         result: Dict[str, pd.DataFrame] = {}
 
         for symbol in symbols:
             records = []
 
             for doc in documents:
+                date_str = doc["date"]
                 stocks = doc.get("stocks", {})
                 stock_data = stocks.get(symbol)
 
@@ -160,10 +204,14 @@ class MongoDataLoader(DataLoader):
 
                     close = float(close)
 
+                    # 기본 OHLCV 레코드 생성
+                    record = {
+                        "date": pd.Timestamp(date_str)
+                    }
+
                     # 새 포맷 (OHLCV 전체)
                     if "open" in stock_data:
-                        records.append({
-                            "date": pd.Timestamp(doc["date"]),
+                        record.update({
                             "open": float(stock_data["open"]) if stock_data.get("open") else close,
                             "high": float(stock_data["high"]) if stock_data.get("high") else close,
                             "low": float(stock_data["low"]) if stock_data.get("low") else close,
@@ -172,8 +220,7 @@ class MongoDataLoader(DataLoader):
                         })
                     else:
                         # 레거시 포맷 (close_price만 있는 경우) - 추정값 사용
-                        records.append({
-                            "date": pd.Timestamp(doc["date"]),
+                        record.update({
                             "open": close * _LEGACY_OPEN_RATIO,
                             "high": close * _LEGACY_HIGH_RATIO,
                             "low": close * _LEGACY_LOW_RATIO,
@@ -181,12 +228,42 @@ class MongoDataLoader(DataLoader):
                             "volume": _LEGACY_VOLUME_DEFAULT
                         })
 
+                    # Left Join: 감성 분석 데이터 추가
+                    if include_sentiment:
+                        sent_key = (symbol, date_str)
+                        sent_doc = sentiment_data.get(sent_key)
+                        if sent_doc:
+                            score = float(sent_doc.get("average_sentiment_score", 0.0))
+                            count = int(sent_doc.get("article_count", 0))
+                            record["sentiment_score"] = score
+                            record["sentiment_count"] = count
+                            logger.debug(f"Sentiment matched {sent_key}: score={score:.4f}, count={count}")
+                        else:
+                            record["sentiment_score"] = 0.0
+                            record["sentiment_count"] = 0
+                            logger.debug(f"Sentiment not found for {sent_key}, using defaults")
+
+                    # Left Join: 추천 데이터 추가
+                    if include_recommendations:
+                        rec_key = (symbol, date_str)
+                        rec_doc = recommendation_data.get(rec_key)
+                        if rec_doc:
+                            record["is_recommended"] = bool(rec_doc.get("is_recommended", False))
+                            record["rec_rsi"] = float(rec_doc.get("rsi", 0.0))
+                            record["rec_score"] = float(rec_doc.get("recommendation_score", 0.0))
+                        else:
+                            record["is_recommended"] = False
+                            record["rec_rsi"] = 0.0
+                            record["rec_score"] = 0.0
+
+                    records.append(record)
+
             if records:
                 df = pd.DataFrame(records)
                 df.set_index("date", inplace=True)
                 df.sort_index(inplace=True)
                 result[symbol] = df
-                logger.debug(f"Loaded {len(df)} days for {symbol}")
+                logger.debug(f"Loaded {len(df)} days for {symbol} (sentiment={include_sentiment}, rec={include_recommendations})")
             else:
                 logger.warning(f"No data for symbol: {symbol}")
 

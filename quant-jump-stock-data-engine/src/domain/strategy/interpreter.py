@@ -29,7 +29,7 @@ from .indicators import (
     crosses_above,
     crosses_below,
 )
-from src.domain.common.exceptions import (
+from domain.common.exceptions import (
     StrategyError,
     IndicatorError,
     InsufficientDataError,
@@ -224,6 +224,43 @@ class StrategyInterpreter:
                     else:
                         logger.warning("Dividend yield data not available in market_data")
                         indicators["dividend_yield"] = pd.Series(dtype=float)
+
+                # === 감성 분석 지표 (SCRUM-324) ===
+                elif indicator_type == IndicatorType.SENTIMENT_SCORE:
+                    if 'sentiment_score' in data.columns:
+                        indicators["sentiment_score"] = data['sentiment_score']
+                    else:
+                        logger.warning("Sentiment score data not available in market_data")
+                        indicators["sentiment_score"] = pd.Series(0.0, index=data.index)
+
+                elif indicator_type == IndicatorType.SENTIMENT_COUNT:
+                    if 'sentiment_count' in data.columns:
+                        indicators["sentiment_count"] = data['sentiment_count']
+                    else:
+                        logger.warning("Sentiment count data not available in market_data")
+                        indicators["sentiment_count"] = pd.Series(0, index=data.index)
+
+                # === 기술적 추천 지표 (SCRUM-324) ===
+                elif indicator_type == IndicatorType.IS_RECOMMENDED:
+                    if 'is_recommended' in data.columns:
+                        indicators["is_recommended"] = data['is_recommended'].astype(int)
+                    else:
+                        logger.warning("Recommendation data not available in market_data")
+                        indicators["is_recommended"] = pd.Series(0, index=data.index)
+
+                elif indicator_type == IndicatorType.REC_RSI:
+                    if 'rec_rsi' in data.columns:
+                        indicators["rec_rsi"] = data['rec_rsi']
+                    else:
+                        logger.warning("Recommendation RSI data not available in market_data")
+                        indicators["rec_rsi"] = pd.Series(dtype=float)
+
+                elif indicator_type == IndicatorType.REC_SCORE:
+                    if 'rec_score' in data.columns:
+                        indicators["rec_score"] = data['rec_score']
+                    else:
+                        logger.warning("Recommendation score data not available in market_data")
+                        indicators["rec_score"] = pd.Series(dtype=float)
 
             except InsufficientDataError as e:
                 logger.warning(f"Insufficient data for {key}: {e}")

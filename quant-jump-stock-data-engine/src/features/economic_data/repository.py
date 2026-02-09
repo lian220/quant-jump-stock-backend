@@ -4,8 +4,8 @@ from typing import Dict, Any, List
 from datetime import datetime
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from src.core.database import MongoDB
-from src.core.config import settings
+from core.database import MongoDB
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 

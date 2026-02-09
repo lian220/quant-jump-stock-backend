@@ -2,7 +2,7 @@ import requests
 import logging
 from datetime import datetime
 from pytz import timezone
-from src.core.config import settings
+from core.config import settings
 from typing import Optional, Dict
 
 KST = timezone('Asia/Seoul')

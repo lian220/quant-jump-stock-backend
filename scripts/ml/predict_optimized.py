@@ -1694,7 +1694,7 @@ def save_analysis_to_db(result_df):
                 now_utc = datetime.utcnow()
                 
                 # 레코드를 한 번만 순회하면서 두 컬렉션에 필요한 데이터 모두 준비 (성능 최적화)
-                print(f"MongoDB stock_analysis 컬렉션 및 daily_stock_data.analysis 필드에 분석 데이터 저장 중...")
+                print(f"MongoDB stock_analysis_results 컬렉션 및 daily_stock_data.analysis 필드에 분석 데이터 저장 중...")
                 stock_analysis_updates = []
                 analysis_data = {}
                 
@@ -1733,13 +1733,12 @@ def save_analysis_to_db(result_df):
                             'rise_probability': record.get('Rise Probability (%)')
                         }
                         
-                        # 1. stock_analysis 컬렉션용 업데이트 추가
+                        # 1. stock_analysis_results 컬렉션용 업데이트 추가
                         stock_analysis_updates.append(
                             UpdateOne(
                                 {
                                     "date": today_obj,
-                                    "ticker": ticker,
-                                    "user_id": None  # 전역 분석
+                                    "ticker": ticker
                                 },
                                 {
                                     "$set": {
@@ -1783,7 +1782,7 @@ def save_analysis_to_db(result_df):
                     for i in range(0, len(stock_analysis_updates), batch_size):
                         batch = stock_analysis_updates[i:i + batch_size]
                         try:
-                            result = db.stock_analysis.bulk_write(batch, ordered=False)
+                            result = db.stock_analysis_results.bulk_write(batch, ordered=False)
                             total_processed += result.upserted_count + result.modified_count
                             print(f"  배치 {i//batch_size + 1}: {len(batch)}개 처리 완료 (총 {total_processed}개)")
                         except Exception as e:
@@ -1793,7 +1792,7 @@ def save_analysis_to_db(result_df):
                                 try:
                                     filter_dict = update_op._filter
                                     update_dict = update_op._doc
-                                    db.stock_analysis.update_one(
+                                    db.stock_analysis_results.update_one(
                                         filter_dict,
                                         update_dict,
                                         upsert=True
@@ -1801,7 +1800,7 @@ def save_analysis_to_db(result_df):
                                 except Exception as fallback_e:
                                     print(f"⚠️ Fallback 업데이트 실패: {str(fallback_e)}")
                     
-                    print(f"✅ MongoDB stock_analysis 컬렉션에 총 {total_processed}개 문서 저장 완료")
+                    print(f"✅ MongoDB stock_analysis_results 컬렉션에 총 {total_processed}개 문서 저장 완료")
                 else:
                     print(f"⚠️ stock_analysis_updates가 비어있습니다. 저장할 데이터가 없습니다.")
                 
@@ -2189,7 +2188,7 @@ final_results = final_results[column_order]
 
 # 9) Save final results to MongoDB
 save_analysis_to_db(final_results)
-print("\n분석 결과가 MongoDB 'stock_analysis' 컬렉션에 저장되었습니다.")
+print("\n분석 결과가 MongoDB 'stock_analysis_results' 컬렉션에 저장되었습니다.")
 
 # 10) Print final report
 print("=============== Final Report ===============")

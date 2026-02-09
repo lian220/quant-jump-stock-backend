@@ -8,8 +8,8 @@ from confluent_kafka import Producer
 import json
 import logging
 from datetime import datetime
-from src.core.config import settings
-from src.events.schema import BaseEvent
+from core.config import settings
+from events.schema import BaseEvent
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +111,7 @@ def publish_event(event_type: str, payload: dict):
 
     Deprecated: create_event()와 EventPublisher.publish()를 직접 사용하세요
     """
-    from src.events.schema import create_event
+    from events.schema import create_event
 
     logger.warning("⚠️ publish_event() is deprecated. Use EventPublisher.publish() instead.")
 

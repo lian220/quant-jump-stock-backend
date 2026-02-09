@@ -5,7 +5,7 @@
 DB 접근, API 호출 등 사이드 이펙트가 없습니다.
 
 사용 예시:
-    from src.domain.strategy.indicators import calculate_sma, calculate_rsi
+    from domain.strategy.indicators import calculate_sma, calculate_rsi
 
     sma_20 = calculate_sma(close_prices, period=20)
     rsi_14 = calculate_rsi(close_prices, period=14)
@@ -14,7 +14,7 @@ import numpy as np
 import pandas as pd
 from typing import Tuple, Optional
 
-from src.domain.common.exceptions import InsufficientDataError, IndicatorError
+from domain.common.exceptions import InsufficientDataError, IndicatorError
 
 
 def calculate_sma(series: pd.Series, period: int) -> pd.Series:

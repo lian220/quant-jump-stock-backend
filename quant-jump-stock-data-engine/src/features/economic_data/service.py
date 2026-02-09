@@ -8,7 +8,7 @@ from typing import Dict, Any
 from collections import defaultdict
 
 from .repository import EconomicDataRepository
-from src.core.config import settings
+from core.config import settings
 
 logger = logging.getLogger(__name__)
 
