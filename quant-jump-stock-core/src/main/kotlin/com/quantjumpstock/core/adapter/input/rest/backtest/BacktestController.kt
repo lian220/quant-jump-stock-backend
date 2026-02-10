@@ -6,6 +6,7 @@ import com.quantjumpstock.core.application.portfolio.StrategyDefaultStockService
 import com.quantjumpstock.core.domain.port.output.UserRepository
 import com.quantjumpstock.core.domain.port.output.Benchmark
 import com.quantjumpstock.core.domain.port.output.StockRepository
+import com.quantjumpstock.core.domain.port.output.StrategyRepository
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -33,7 +34,8 @@ class BacktestController(
     private val userTierService: UserTierService,
     private val userRepository: UserRepository,
     private val defaultStockService: StrategyDefaultStockService,
-    private val stockRepository: StockRepository
+    private val stockRepository: StockRepository,
+    private val strategyRepository: StrategyRepository
 ) {
 
     /**
@@ -64,6 +66,15 @@ class BacktestController(
         val periodValidation = validateBacktestPeriod(request.startDate, request.endDate)
         if (periodValidation != null) {
             return ResponseEntity.badRequest().body(periodValidation)
+        }
+
+        // 전략 존재 여부 검증
+        if (!strategyRepository.existsById(request.strategyId)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(mapOf(
+                    "error" to "STRATEGY_NOT_FOUND",
+                    "message" to "전략을 찾을 수 없습니다: ${request.strategyId}"
+                ))
         }
 
         // 문자열 userId → DB PK(Long) 변환하여 Kafka에 숫자 ID로 전달
