@@ -34,7 +34,7 @@ class AuthService(
             throw AuthException("계정이 비활성화 상태입니다")
         }
 
-        val token = jwtService.generateToken(user.userId, user.email, user.role.name)
+        val token = jwtService.generateToken(user.userId, user.email, user.role.name, user.id)
 
         return LoginResponse(
             success = true,

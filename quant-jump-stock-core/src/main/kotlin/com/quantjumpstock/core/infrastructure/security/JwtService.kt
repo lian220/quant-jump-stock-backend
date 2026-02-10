@@ -17,25 +17,36 @@ class JwtService(
     @Value("\${jwt.issuer}") private val issuer: String
 ) {
     private val logger = LoggerFactory.getLogger(JwtService::class.java)
-    private val signer: JWSSigner = MACSigner(secret.toByteArray().copyOf(32))
-    private val verifier: JWSVerifier = MACVerifier(secret.toByteArray().copyOf(32))
 
-    fun generateToken(userId: String, email: String?, role: String): String {
+    init {
+        require(secret.toByteArray().size >= 32) {
+            "JWT secret must be at least 32 bytes, got ${secret.toByteArray().size}"
+        }
+    }
+
+    private val secretBytes = secret.toByteArray().copyOf(32)
+    private val signer: JWSSigner = MACSigner(secretBytes)
+    private val verifier: JWSVerifier = MACVerifier(secretBytes)
+
+    fun generateToken(userId: String, email: String?, role: String, dbId: Long? = null): String {
         val now = Date()
         val expiration = Date(now.time + expirationHours * 3600 * 1000)
 
-        val claimsSet = JWTClaimsSet.Builder()
+        val builder = JWTClaimsSet.Builder()
             .subject(userId)
             .issuer(issuer)
             .claim("role", role)
             .claim("email", email ?: "")
             .issueTime(now)
             .expirationTime(expiration)
-            .build()
+
+        if (dbId != null) {
+            builder.claim("dbId", dbId)
+        }
 
         val signedJWT = SignedJWT(
             JWSHeader(JWSAlgorithm.HS256),
-            claimsSet
+            builder.build()
         )
         signedJWT.sign(signer)
 
@@ -53,12 +64,14 @@ class JwtService(
 
             val claims = signedJWT.jwtClaimsSet
 
-            if (claims.expirationTime.before(Date())) {
+            val expirationTime = claims.expirationTime
+            if (expirationTime == null || expirationTime.before(Date())) {
                 logger.debug("JWT 만료됨")
                 return null
             }
 
             JwtClaims(
+                dbId = claims.getLongClaim("dbId"),
                 userId = claims.subject,
                 email = claims.getStringClaim("email"),
                 role = claims.getStringClaim("role") ?: "USER"
@@ -71,6 +84,7 @@ class JwtService(
 }
 
 data class JwtClaims(
+    val dbId: Long?,
     val userId: String,
     val email: String?,
     val role: String

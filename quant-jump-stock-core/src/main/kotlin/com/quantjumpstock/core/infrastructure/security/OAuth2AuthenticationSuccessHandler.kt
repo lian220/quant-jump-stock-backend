@@ -28,10 +28,11 @@ class OAuth2AuthenticationSuccessHandler(
 
         val userId = oauth2User.getAttribute<String>("internal_user_id")
             ?: throw IllegalStateException("OAuth2User에 internal_user_id가 없습니다")
+        val dbId = oauth2User.getAttribute<Long>("internal_user_db_id")
         val role = oauth2User.getAttribute<String>("internal_user_role") ?: "USER"
         val email = oauth2User.getAttribute<String>("internal_user_email")
 
-        val jwt = jwtService.generateToken(userId, email, role)
+        val jwt = jwtService.generateToken(userId, email, role, dbId)
 
         val redirectUrl = "$frontendRedirectUrl?token=$jwt"
         log.info("OAuth2 로그인 성공: userId=$userId, redirecting to frontend")

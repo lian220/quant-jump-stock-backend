@@ -42,6 +42,7 @@ class CustomOAuth2UserService(
 
         val attributes = HashMap(oauth2User.attributes).apply {
             put("internal_user_id", user.userId)
+            put("internal_user_db_id", user.id)
             put("internal_user_role", user.role.name)
             put("internal_user_email", user.email ?: "")
         }
@@ -59,7 +60,9 @@ class CustomOAuth2UserService(
     private fun extractUserInfo(provider: OAuthProvider, oauth2User: OAuth2User): OAuthUserInfo {
         return when (provider) {
             OAuthProvider.GOOGLE -> OAuthUserInfo(
-                providerId = oauth2User.getAttribute<String>("sub") ?: oauth2User.getAttribute("id") ?: "",
+                providerId = oauth2User.getAttribute<String>("sub")
+                    ?: oauth2User.getAttribute("id")
+                    ?: throw IllegalStateException("Google OAuth2 사용자의 ID를 찾을 수 없습니다"),
                 email = oauth2User.getAttribute("email"),
                 name = oauth2User.getAttribute("name"),
                 profileImageUrl = oauth2User.getAttribute("picture")
@@ -69,7 +72,8 @@ class CustomOAuth2UserService(
                 val response = oauth2User.getAttribute<Map<String, Any>>("response")
                     ?: throw IllegalStateException("네이버 사용자 정보의 response 필드가 없습니다")
                 OAuthUserInfo(
-                    providerId = response["id"] as? String ?: "",
+                    providerId = response["id"] as? String
+                        ?: throw IllegalStateException("네이버 OAuth2 사용자의 ID를 찾을 수 없습니다"),
                     email = response["email"] as? String,
                     name = response["name"] as? String ?: response["nickname"] as? String,
                     profileImageUrl = response["profile_image"] as? String
@@ -85,21 +89,19 @@ class CustomOAuth2UserService(
         name: String?,
         profileImageUrl: String?
     ): User {
-        val existingUser = userRepository.findByOAuthProviderAndProviderId(provider, providerId)
-        if (existingUser != null) {
-            logger.info("기존 OAuth 사용자 로그인: ${existingUser.userId}")
-            return existingUser
+        userRepository.findByOAuthProviderAndProviderId(provider, providerId)?.let {
+            logger.info("기존 OAuth 사용자 로그인: ${it.userId}")
+            return it
         }
 
         if (email != null) {
-            val userByEmail = userRepository.findByEmail(email)
-            if (userByEmail != null) {
-                val updatedUser = userByEmail.linkOAuth(
+            userRepository.findByEmail(email)?.let { existingUser ->
+                logger.warn("이메일 기반 계정 연결 (이메일 소유권 미검증): provider=$provider, email=$email, userId=${existingUser.userId}")
+                val updatedUser = existingUser.linkOAuth(
                     provider = provider,
                     providerId = providerId,
                     profileImage = profileImageUrl
                 )
-                logger.info("기존 계정에 OAuth 연결: ${userByEmail.userId}")
                 return userRepository.save(updatedUser)
             }
         }
@@ -117,8 +119,14 @@ class CustomOAuth2UserService(
             role = UserRole.USER
         )
 
-        logger.info("새 OAuth 사용자 생성: $userId")
-        return userRepository.save(newUser)
+        return try {
+            logger.info("새 OAuth 사용자 생성: $userId")
+            userRepository.save(newUser)
+        } catch (e: Exception) {
+            logger.warn("OAuth 사용자 생성 중 충돌 발생, 재조회 시도: ${e.message}")
+            userRepository.findByOAuthProviderAndProviderId(provider, providerId)
+                ?: throw e
+        }
     }
 
     private fun generateUniqueUserId(provider: OAuthProvider, name: String?): String {
@@ -127,8 +135,16 @@ class CustomOAuth2UserService(
             OAuthProvider.NAVER -> "n"
         }
         val baseName = name?.replace(" ", "")?.take(10) ?: "user"
-        val randomSuffix = UUID.randomUUID().toString().take(6)
-        return "${prefix}_${baseName}_$randomSuffix"
+
+        repeat(5) {
+            val randomSuffix = UUID.randomUUID().toString().replace("-", "").take(8)
+            val candidate = "${prefix}_${baseName}_$randomSuffix"
+            if (!userRepository.existsByUserId(candidate)) {
+                return candidate
+            }
+        }
+
+        return "${prefix}_${baseName}_${UUID.randomUUID()}"
     }
 }
 

@@ -31,7 +31,7 @@ class JwtAuthenticationFilter(
                 val claims = jwtService.validateToken(token)
                 if (claims != null) {
                     val principal = UserPrincipal(
-                        id = 0,
+                        id = claims.dbId ?: 0,
                         userId = claims.userId,
                         email = claims.email,
                         password = "",

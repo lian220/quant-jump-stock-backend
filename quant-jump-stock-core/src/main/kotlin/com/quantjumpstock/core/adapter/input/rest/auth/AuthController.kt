@@ -7,9 +7,9 @@ import com.quantjumpstock.core.application.auth.SignupRequest
 import com.quantjumpstock.core.application.auth.SignupResponse
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder
 
 /**
  * 인증 Controller
@@ -23,8 +23,7 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/api/v1/auth")
 @Tag(name = "Auth", description = "인증 API")
 class AuthController(
-    private val authService: AuthService,
-    @Value("\${server.port:10010}") private val serverPort: String
+    private val authService: AuthService
 ) {
 
     @PostMapping("/login")
@@ -79,9 +78,8 @@ class AuthController(
     @GetMapping("/oauth2/urls")
     @Operation(summary = "OAuth2 로그인 URL 목록", description = "프론트엔드에서 사용할 OAuth2 로그인 URL 제공")
     fun getOAuth2Urls(): ResponseEntity<Map<String, String>> {
-        val baseUrl = "http://localhost:$serverPort"
+        val baseUrl = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString()
         return ResponseEntity.ok(mapOf(
-            "google" to "$baseUrl/api/v1/auth/oauth2/authorize/google",
             "naver" to "$baseUrl/api/v1/auth/oauth2/authorize/naver"
         ))
     }
