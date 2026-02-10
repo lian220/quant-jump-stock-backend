@@ -73,10 +73,17 @@ jobs:
             grep -v '^\s*#' ./quant-jump-stock-backend/.env.prod | grep -v '^\s*$' >> .env
             echo "AR_REPO=asia-northeast3-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/qjs-docker" >> .env
 
+            # Sync config files from repo (nginx.conf, docker-compose 등)
+            git fetch origin main --quiet 2>/dev/null || true
+            git checkout origin/main -- docker-compose.prod.yml nginx/ 2>/dev/null || true
+
             # Pull & restart Data Engine only
             docker compose -f docker-compose.prod.yml pull data-engine
             docker compose -f docker-compose.prod.yml up -d --no-deps data-engine
             docker image prune -f
+
+            # Nginx graceful reload → 새 컨테이너 IP 즉시 반영 (다운타임 없음)
+            docker exec qjs-nginx nginx -s reload 2>/dev/null || true
 
             # Health check
             echo "⏳ Waiting for Data Engine startup..."
