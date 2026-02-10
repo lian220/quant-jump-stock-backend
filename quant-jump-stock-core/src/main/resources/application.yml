@@ -221,8 +221,8 @@ app:
 spring.security.oauth2.client:
   registration:
     naver:
-      client-id: ${NAVER_CLIENT_ID:}
-      client-secret: ${NAVER_CLIENT_SECRET:}
+      client-id: ${NAVER_CLIENT_ID:not-configured}
+      client-secret: ${NAVER_CLIENT_SECRET:not-configured}
       redirect-uri: "{baseUrl}/api/v1/auth/oauth2/callback/{registrationId}"
       authorization-grant-type: authorization_code
       client-authentication-method: client_secret_post
