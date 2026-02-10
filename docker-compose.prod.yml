@@ -35,6 +35,8 @@ services:
     image: ${AR_REPO}/qjs-core:latest
     container_name: qjs-core
     env_file:
+      - path: ./quant-jump-stock-backend/.env.common
+        required: false
       - path: ./quant-jump-stock-backend/.env.prod
         required: false
     environment:
@@ -73,6 +75,8 @@ services:
     image: ${AR_REPO}/qjs-data-engine:latest
     container_name: qjs-data-engine
     env_file:
+      - path: ./quant-jump-stock-backend/.env.common
+        required: false
       - path: ./quant-jump-stock-backend/.env.prod
         required: false
     environment:

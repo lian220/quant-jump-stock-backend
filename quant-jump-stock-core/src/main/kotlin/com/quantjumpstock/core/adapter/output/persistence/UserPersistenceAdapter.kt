@@ -11,6 +11,7 @@ import com.quantjumpstock.core.domain.model.user.UserRole
 import com.quantjumpstock.core.domain.model.user.UserStatus
 import com.quantjumpstock.core.domain.port.output.UserRepository
 import org.springframework.stereotype.Component
+import org.springframework.transaction.annotation.Transactional
 
 /**
  * User Persistence Adapter (Output Adapter)
@@ -21,6 +22,7 @@ class UserPersistenceAdapter(
     private val userJpaRepository: UserJpaRepository
 ) : UserRepository {
 
+    @Transactional
     override fun save(user: User): User {
         val entity = toEntity(user)
         val saved = userJpaRepository.save(entity)

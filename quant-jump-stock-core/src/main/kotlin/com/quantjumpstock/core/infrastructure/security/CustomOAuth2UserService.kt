@@ -12,6 +12,7 @@ import org.springframework.security.oauth2.core.user.DefaultOAuth2User
 import org.springframework.security.oauth2.core.user.OAuth2User
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 @Service
@@ -83,7 +84,8 @@ class CustomOAuth2UserService(
         }
     }
 
-    private fun findOrCreateOAuthUser(
+    @Transactional
+    fun findOrCreateOAuthUser(
         provider: OAuthProvider,
         providerId: String,
         email: String?,
@@ -91,7 +93,7 @@ class CustomOAuth2UserService(
         profileImageUrl: String?
     ): User {
         userRepository.findByOAuthProviderAndProviderId(provider, providerId)?.let {
-            logger.info("기존 OAuth 사용자 로그인: ${it.userId}")
+            logger.info("기존 OAuth 사용자 로그인: userId=${it.userId}, id=${it.id}")
             return it
         }
 
@@ -103,7 +105,9 @@ class CustomOAuth2UserService(
                     providerId = providerId,
                     profileImage = profileImageUrl
                 )
-                return userRepository.save(updatedUser)
+                val saved = userRepository.save(updatedUser)
+                logger.info("OAuth 계정 연결 완료: userId=${saved.userId}, id=${saved.id}")
+                return saved
             }
         }
 
@@ -121,12 +125,17 @@ class CustomOAuth2UserService(
         )
 
         return try {
-            logger.info("새 OAuth 사용자 생성: $userId")
-            userRepository.save(newUser)
+            logger.info("새 OAuth 사용자 생성 시도: userId=$userId, provider=$provider, providerId=$providerId, email=$email")
+            val saved = userRepository.save(newUser)
+            logger.info("새 OAuth 사용자 생성 완료: userId=${saved.userId}, id=${saved.id}")
+            saved
         } catch (e: DataIntegrityViolationException) {
             logger.warn("OAuth 사용자 생성 중 충돌 발생, 재조회 시도: ${e.message}")
             userRepository.findByOAuthProviderAndProviderId(provider, providerId)
                 ?: throw e
+        } catch (e: Exception) {
+            logger.error("OAuth 사용자 저장 실패: userId=$userId, error=${e.javaClass.simpleName}: ${e.message}", e)
+            throw e
         }
     }
 
