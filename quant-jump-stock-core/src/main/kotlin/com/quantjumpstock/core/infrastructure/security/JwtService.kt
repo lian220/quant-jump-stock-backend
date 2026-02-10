@@ -22,6 +22,9 @@ class JwtService(
         require(secret.toByteArray().size >= 32) {
             "JWT secret must be at least 32 bytes, got ${secret.toByteArray().size}"
         }
+        if (secret.startsWith("quant-jump-stock-dev-secret")) {
+            logger.warn("개발용 기본 JWT secret 사용 중 - 프로덕션 환경에서는 반드시 JWT_SECRET 환경변수를 설정하세요")
+        }
     }
 
     private val secretBytes = secret.toByteArray().copyOf(32)

@@ -10,6 +10,7 @@ import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserServ
 import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest
 import org.springframework.security.oauth2.core.user.DefaultOAuth2User
 import org.springframework.security.oauth2.core.user.OAuth2User
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import java.util.UUID
 
@@ -122,7 +123,7 @@ class CustomOAuth2UserService(
         return try {
             logger.info("새 OAuth 사용자 생성: $userId")
             userRepository.save(newUser)
-        } catch (e: Exception) {
+        } catch (e: DataIntegrityViolationException) {
             logger.warn("OAuth 사용자 생성 중 충돌 발생, 재조회 시도: ${e.message}")
             userRepository.findByOAuthProviderAndProviderId(provider, providerId)
                 ?: throw e
@@ -144,7 +145,7 @@ class CustomOAuth2UserService(
             }
         }
 
-        return "${prefix}_${baseName}_${UUID.randomUUID()}"
+        throw IllegalStateException("고유한 사용자 ID 생성에 실패했습니다: prefix=$prefix, baseName=$baseName")
     }
 }
 

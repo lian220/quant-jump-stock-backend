@@ -29,6 +29,7 @@ class SecurityConfig(
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
         http
                 .csrf { it.disable() }
+                // IF_REQUIRED: OAuth2 Client 플로우에서 AuthorizationRequest 유지를 위해 세션 필요
                 .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED) }
                 .authorizeHttpRequests { auth ->
                     auth.requestMatchers("/api/v1/admin/**")
@@ -36,7 +37,6 @@ class SecurityConfig(
                             .requestMatchers(
                                     "/api/v1/auth/**",
                                     "/api/auth/**",
-                                    "/api/v1/auth/oauth2/**",
                                     "/swagger-ui/**",
                                     "/v3/api-docs/**"
                             )
