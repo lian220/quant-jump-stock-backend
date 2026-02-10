@@ -98,15 +98,15 @@ jobs:
             # Nginx graceful reload → 새 컨테이너 IP 즉시 반영 (다운타임 없음)
             docker exec qjs-nginx nginx -s reload 2>/dev/null || true
 
-            # Health check
+            # Health check (nginx /api/ → core:10010 prefix 유지이므로 실제 API 엔드포인트로 확인)
             echo "⏳ Waiting for Core API startup..."
-            for i in $(seq 1 30); do
+            for i in $(seq 1 60); do
               sleep 5
-              if curl -sf http://localhost/api/actuator/health > /dev/null 2>&1; then
+              if curl -sf http://localhost/api/v1/auth/oauth2/urls > /dev/null 2>&1; then
                 echo "✅ Core API is healthy!"
                 exit 0
               fi
-              echo "  ...attempt $i/30"
+              echo "  ...attempt $i/60"
             done
-            echo "❌ Core API not ready after 150s"
+            echo "❌ Core API not ready after 300s"
             exit 1
