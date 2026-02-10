@@ -216,22 +216,34 @@ app:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:4000}
 
 # ============================================
-# OAuth2 Configuration
+# Spring Security OAuth2 Client Configuration
+# ============================================
+spring.security.oauth2.client:
+  registration:
+    naver:
+      client-id: ${NAVER_CLIENT_ID:not-configured}
+      client-secret: ${NAVER_CLIENT_SECRET:not-configured}
+      redirect-uri: "{baseUrl}/api/v1/auth/oauth2/callback/{registrationId}"
+      authorization-grant-type: authorization_code
+      client-authentication-method: client_secret_post
+      client-name: Naver
+  provider:
+    naver:
+      authorization-uri: https://nid.naver.com/oauth2.0/authorize
+      token-uri: https://nid.naver.com/oauth2.0/token
+      user-info-uri: https://openapi.naver.com/v1/nid/me
+      user-name-attribute: response
+
+# ============================================
+# JWT Configuration
+# ============================================
+jwt:
+  secret: ${JWT_SECRET:quant-jump-stock-dev-secret-minimum-32-characters}
+  expiration-hours: ${JWT_EXPIRATION_HOURS:24}
+  issuer: ${JWT_ISSUER:quant-jump-stock}
+
+# ============================================
+# OAuth2 Frontend Configuration
 # ============================================
 oauth2:
-  google:
-    client-id: ${GOOGLE_CLIENT_ID:}
-    client-secret: ${GOOGLE_CLIENT_SECRET:}
-    redirect-uri: ${GOOGLE_REDIRECT_URI:http://localhost:10010/api/v1/auth/google/callback}
-    auth-url: https://accounts.google.com/o/oauth2/v2/auth
-    token-url: https://oauth2.googleapis.com/token
-    user-info-url: https://www.googleapis.com/oauth2/v2/userinfo
-    scope: openid,email,profile
-  naver:
-    client-id: ${NAVER_CLIENT_ID:}
-    client-secret: ${NAVER_CLIENT_SECRET:}
-    redirect-uri: ${NAVER_REDIRECT_URI:http://localhost:10010/api/v1/auth/naver/callback}
-    auth-url: https://nid.naver.com/oauth2.0/authorize
-    token-url: https://nid.naver.com/oauth2.0/token
-    user-info-url: https://openapi.naver.com/v1/nid/me
-  frontend-redirect-url: ${OAUTH_FRONTEND_REDIRECT_URL:http://localhost:3000/auth}
+  frontend-redirect-url: ${OAUTH_FRONTEND_REDIRECT_URL:http://localhost:3000/auth/callback}
