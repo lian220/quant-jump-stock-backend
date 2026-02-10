@@ -309,7 +309,13 @@ class BacktestController(
     fun requestBacktest(
         @RequestHeader("Authorization", required = false) authorization: String?,
         @RequestBody request: BacktestRequestDto
-    ): ResponseEntity<BacktestResponse> {
+    ): ResponseEntity<*> {
+        // 백테스트 기간 검증 (최대 1년)
+        val periodValidation = validateBacktestPeriod(request.startDate, request.endDate)
+        if (periodValidation != null) {
+            return ResponseEntity.badRequest().body(periodValidation)
+        }
+
         val userId = authorization?.let { extractUserId(it) }
 
         @Suppress("DEPRECATION")

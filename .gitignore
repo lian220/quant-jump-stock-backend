@@ -9,6 +9,7 @@ data/
 .env.local
 .env.common
 .env.*.local
+.env.github
 
 # IDE
 .vscode/
