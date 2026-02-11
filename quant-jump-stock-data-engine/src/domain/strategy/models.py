@@ -43,6 +43,15 @@ class IndicatorType(str, Enum):
     PER = "per"                      # 주가수익비율
     PBR = "pbr"                      # 주가순자산비율
     DIVIDEND_YIELD = "dividend_yield"  # 배당수익률
+    # AI/ML 지표
+    ENSEMBLE_SCORE = "ensemble_score"        # AI 앙상블 스코어
+    ML_PREDICTION = "ml_prediction"          # ML 예측값
+    # 매크로/팩터 지표
+    CALENDAR = "calendar"                    # 캘린더 (분기별 등)
+    MOMENTUM_3M = "momentum_3m"              # 3개월 모멘텀
+    PER_SECTOR_RATIO = "per_sector_ratio"    # 섹터 대비 PER
+    PORTFOLIO_DRIFT = "portfolio_drift"      # 포트폴리오 드리프트
+    TREASURY_10Y = "treasury_10y"            # 미국 10년물 국채금리
 
 
 class SignalType(str, Enum):
