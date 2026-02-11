@@ -1,11 +1,10 @@
 package com.quantjumpstock.core.application.auth
 
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserTierEntity
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserTierJpaRepository
 import com.quantjumpstock.core.domain.model.user.User
 import com.quantjumpstock.core.domain.model.user.UserRole
 import com.quantjumpstock.core.domain.model.user.UserStatus
 import com.quantjumpstock.core.domain.port.output.UserRepository
+import com.quantjumpstock.core.domain.port.output.UserTierRepository
 import com.quantjumpstock.core.infrastructure.security.JwtService
 import org.slf4j.LoggerFactory
 import org.springframework.security.crypto.password.PasswordEncoder
@@ -20,7 +19,7 @@ class AuthService(
     private val userRepository: UserRepository,
     private val passwordEncoder: PasswordEncoder,
     private val jwtService: JwtService,
-    private val userTierJpaRepository: UserTierJpaRepository
+    private val userTierRepository: UserTierRepository
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -121,11 +120,9 @@ class AuthService(
 
         // 무료 티어 자동 생성
         try {
-            val userTier = UserTierEntity(user = savedUser)
-            userTierJpaRepository.save(userTier)
-            logger.info("사용자 무료 티어 생성 완료: userId=${savedUser.userId}, tier=FREE")
+            userTierRepository.createFreeTierForUser(savedUser.userId)
         } catch (e: Exception) {
-            logger.warn("사용자 티어 생성 실패 (무시): userId=${savedUser.userId}, error=${e.message}")
+            logger.warn("사용자 티어 생성 실패: userId=${savedUser.userId}, error=${e.message}", e)
         }
 
         return SignupResponse(

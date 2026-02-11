@@ -58,6 +58,23 @@ class UserTierPersistenceAdapter(
     }
 
     @Transactional
+    override fun createFreeTierForUser(userId: String) {
+        val userEntity = userJpaRepository.findByUserId(userId).orElse(null) ?: run {
+            logger.warn("무료 티어 생성 실패 - 사용자 없음: userId=$userId")
+            return
+        }
+
+        val userPk = userEntity.id!!
+        if (userTierJpaRepository.existsByUserId(userPk)) {
+            logger.debug("이미 티어가 존재합니다: userId=$userId")
+            return
+        }
+
+        userTierJpaRepository.save(UserTierEntity(user = userEntity))
+        logger.info("사용자 무료 티어 생성 완료: userId=$userId, tier=FREE")
+    }
+
+    @Transactional
     override fun incrementBacktestCount(userId: String) {
         val userEntity = userJpaRepository.findByUserId(userId).orElseThrow {
             IllegalArgumentException("사용자를 찾을 수 없습니다: $userId")
