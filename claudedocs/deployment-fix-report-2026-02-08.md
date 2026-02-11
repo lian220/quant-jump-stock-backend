@@ -11,7 +11,7 @@
 프론트엔드에서 백엔드 API 호출 시 500 Internal Server Error 발생
 
 ```
-Request: https://qjs-frontend-449118661566.asia-northeast3.run.app/api/strategies
+Request: https://qjs-frontend-<GCP_PROJECT_NUMBER>.asia-northeast3.run.app/api/strategies
 Response: 500 Internal Server Error (from service worker)
 ```
 
@@ -281,7 +281,7 @@ curl -i "https://qjs-frontend-{PROJECT_ID}.asia-northeast3.run.app/api/v1/market
 #### 5. nginx 로그 모니터링
 ```bash
 # VM에서 nginx 로그 실시간 확인
-ssh deploy@34.64.166.56
+ssh <GCE_USERNAME>@<VM_IP>
 docker logs -f qjs-nginx
 
 # 프론트엔드 요청이 들어오는지 확인
@@ -319,7 +319,7 @@ async rewrites() {
 **해결**:
 ```bash
 # VM에서 nginx.conf 수정
-ssh deploy@34.64.166.56
+ssh <GCE_USERNAME>@<VM_IP>
 cd /home/deploy/app
 vi nginx/nginx.conf
 
@@ -349,7 +349,7 @@ git push origin main
 **증상**: VM API가 502 Bad Gateway
 **확인**:
 ```bash
-ssh deploy@34.64.166.56
+ssh <GCE_USERNAME>@<VM_IP>
 docker ps  # nginx, core, data-engine 컨테이너 Up 상태 확인
 docker logs qjs-nginx  # 에러 로그 확인
 ```
@@ -380,7 +380,7 @@ docker compose -f docker-compose.prod.yml up -d
 
 3. **Backend Core 로그**:
    ```bash
-   ssh deploy@34.64.166.56
+   ssh <GCE_USERNAME>@<VM_IP>
    docker logs -f qjs-core
    # NoResourceFoundException 없음 확인
    ```

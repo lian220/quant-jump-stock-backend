@@ -67,6 +67,14 @@ jobs:
               exit 1
             fi
 
+            # Vertex AI credentials
+            mkdir -p ./credentials
+            gcloud secrets versions access latest --secret=qjs-vertex-ai-key \
+              > ./credentials/vertex-ai-key.json 2>/dev/null || echo "⚠️ qjs-vertex-ai-key not found (Vertex AI disabled)"
+            if [ -f ./credentials/vertex-ai-key.json ] && [ -s ./credentials/vertex-ai-key.json ]; then
+              chmod 600 ./credentials/vertex-ai-key.json
+            fi
+
             # Create docker-compose .env
             : > .env
             grep -v '^\s*#' ./quant-jump-stock-backend/.env.common | grep -v '^\s*$' >> .env
