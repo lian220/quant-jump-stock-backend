@@ -717,11 +717,17 @@ class BacktestRequestHandler(MessageHandler):
     ):
         """실패 이벤트 발행"""
         if self.publisher:
+            payload = message.payload
             self.publisher.publish("BACKTEST_FAILED", {
                 "status": "failed",
                 "timestamp": datetime.now(KST).isoformat(),
                 "requestId": message.request_id,
-                "strategyId": message.payload.get("strategyId"),
+                "strategyId": payload.get("strategyId"),
+                "startDate": payload.get("startDate"),
+                "endDate": payload.get("endDate"),
+                "initialCapital": payload.get("initialCapital", 10000000.0),
+                "benchmark": payload.get("benchmark", DEFAULT_BENCHMARK),
+                "userId": payload.get("userId"),
                 "errorCode": "BACKTEST_EXECUTION_ERROR",
                 "errorMessage": error_message,
                 "retryable": True,
