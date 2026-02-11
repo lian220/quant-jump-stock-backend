@@ -6,7 +6,7 @@
 
 set -e
 
-APP_DIR="/home/deploy/app"
+APP_DIR="/opt/quant-jump-stock"
 GITHUB_REPO="https://github.com/lian220/quant-jump-stock.git"
 
 # Colors
