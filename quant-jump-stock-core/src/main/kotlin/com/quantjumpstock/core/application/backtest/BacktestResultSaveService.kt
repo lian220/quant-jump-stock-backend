@@ -117,6 +117,19 @@ class BacktestResultSaveService(
 
         logger.info("백테스트 실패 결과 저장 시작: requestId=$requestId, strategyId=$strategyId")
 
+        // RUNNING placeholder가 이미 있으면 상태만 업데이트
+        val existing = backtestResultRepository.findByRequestId(requestId)
+        if (existing != null) {
+            val updated = existing.copy(
+                status = BacktestStatus.FAILED,
+                errorMessage = errorMessage,
+                completedAt = LocalDateTime.now()
+            )
+            backtestResultRepository.save(updated)
+            logger.info("백테스트 실패 상태 업데이트 완료: requestId=$requestId, backtestId=${existing.id}, error=$errorMessage")
+            return
+        }
+
         val userId = resolveUserId(payload.get("userId")?.asText())
 
         val backtestResult = BacktestResult(

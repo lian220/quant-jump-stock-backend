@@ -165,7 +165,7 @@ class PostgresBacktestRepository:
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s
             )
-            ON CONFLICT (request_id) DO UPDATE SET
+            ON CONFLICT (request_id) WHERE request_id IS NOT NULL DO UPDATE SET
                 final_value = EXCLUDED.final_value,
                 total_return = EXCLUDED.total_return,
                 cagr = EXCLUDED.cagr,
