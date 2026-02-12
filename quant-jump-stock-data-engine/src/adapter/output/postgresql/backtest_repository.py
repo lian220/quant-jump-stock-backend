@@ -127,8 +127,10 @@ class PostgresBacktestRepository:
             raise
 
     def _insert_result(self, cursor, result: BacktestResult, request_id: Optional[str] = None) -> int:
-        """backtest_results 테이블에 삽입"""
+        """backtest_results 테이블에 삽입 (Core에서 RUNNING placeholder를 미리 생성하므로 upsert)"""
         now = get_kst_now()
+        equity_curve_json = json.dumps([{"date": str(p.date), "equity": float(p.equity), "benchmark": float(p.benchmark) if p.benchmark is not None else None} for p in result.equity_curve]) if result.equity_curve else None
+
         cursor.execute(
             """
             INSERT INTO backtest_results (
@@ -162,7 +164,28 @@ class PostgresBacktestRepository:
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s
-            ) RETURNING id
+            )
+            ON CONFLICT (request_id) DO UPDATE SET
+                final_value = EXCLUDED.final_value,
+                total_return = EXCLUDED.total_return,
+                cagr = EXCLUDED.cagr,
+                mdd = EXCLUDED.mdd,
+                sharpe_ratio = EXCLUDED.sharpe_ratio,
+                sortino_ratio = EXCLUDED.sortino_ratio,
+                volatility = EXCLUDED.volatility,
+                total_trades = EXCLUDED.total_trades,
+                winning_trades = EXCLUDED.winning_trades,
+                losing_trades = EXCLUDED.losing_trades,
+                win_rate = EXCLUDED.win_rate,
+                avg_win = EXCLUDED.avg_win,
+                avg_loss = EXCLUDED.avg_loss,
+                benchmark_return = EXCLUDED.benchmark_return,
+                alpha = EXCLUDED.alpha,
+                beta = EXCLUDED.beta,
+                equity_curve = EXCLUDED.equity_curve,
+                status = EXCLUDED.status,
+                completed_at = EXCLUDED.completed_at
+            RETURNING id
             """,
             (
                 result.strategy_id,
@@ -187,7 +210,7 @@ class PostgresBacktestRepository:
                 float(result.benchmark_return) if result.benchmark_return else None,
                 float(result.alpha) if result.alpha else None,
                 float(result.beta) if result.beta else None,
-                json.dumps([{"date": str(p.date), "equity": float(p.equity), "benchmark": float(p.benchmark) if p.benchmark is not None else None} for p in result.equity_curve]) if result.equity_curve else None,
+                equity_curve_json,
                 "COMPLETED",
                 now,  # created_at
                 now   # completed_at
