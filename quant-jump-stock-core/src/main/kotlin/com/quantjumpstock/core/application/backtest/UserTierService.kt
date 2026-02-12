@@ -24,6 +24,15 @@ class UserTierService(
     }
 
     fun checkAndIncrementBacktestCount(userId: String): BacktestLimitResult {
+        if (userId == UNLIMITED_USER) {
+            return BacktestLimitResult(
+                allowed = true,
+                remaining = Int.MAX_VALUE,
+                dailyLimit = Int.MAX_VALUE,
+                tier = "ADMIN",
+                message = null
+            )
+        }
         val info = userTierRepository.checkAndIncrementBacktestCount(userId)
         return BacktestLimitResult(
             allowed = info.allowed,
@@ -32,5 +41,9 @@ class UserTierService(
             tier = info.tier,
             message = info.message
         )
+    }
+
+    companion object {
+        private const val UNLIMITED_USER = "lian_test"
     }
 }

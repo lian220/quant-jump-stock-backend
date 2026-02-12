@@ -41,14 +41,95 @@ class BacktestResultSaveService(
 
         logger.info("백테스트 결과 저장 시작: requestId=$requestId, strategyId=$strategyId")
 
-        // Data Engine이 이미 직접 저장한 경우 중복 방지
-        val existing = backtestResultRepository.findByRequestId(requestId)
-        if (existing != null) {
-            logger.info("백테스트 결과 이미 존재 (Data Engine 직접 저장): requestId=$requestId, id=${existing.id}")
-            // userId가 누락된 경우 업데이트
+        // Data Engine이 실제 결과를 직접 저장한 레코드 (backtestResultId로 조회)
+        val backtestResultId = payload.get("backtestResultId")?.asLong()
+        val actualResult = backtestResultId?.let { backtestResultRepository.findByIdWithTrades(it) }
+
+        // RUNNING placeholder 확인
+        val placeholder = backtestResultRepository.findByRequestId(requestId)
+
+        if (placeholder != null && placeholder.status == BacktestStatus.RUNNING) {
+            if (actualResult != null && actualResult.id != placeholder.id) {
+                // Data Engine이 별도 레코드에 결과 저장한 경우 (증분 백테스트)
+                // → RUNNING placeholder에 실제 결과 복사
+                val userId = resolveUserId(payload.get("userId")?.asText())
+                val updated = placeholder.copy(
+                    userId = userId ?: actualResult.userId ?: placeholder.userId,
+                    finalValue = actualResult.finalValue,
+                    totalReturn = actualResult.totalReturn,
+                    cagr = actualResult.cagr,
+                    mdd = actualResult.mdd,
+                    sharpeRatio = actualResult.sharpeRatio,
+                    sortinoRatio = actualResult.sortinoRatio,
+                    volatility = actualResult.volatility,
+                    winRate = actualResult.winRate,
+                    totalTrades = actualResult.totalTrades,
+                    winningTrades = actualResult.winningTrades,
+                    losingTrades = actualResult.losingTrades,
+                    avgWin = actualResult.avgWin,
+                    avgLoss = actualResult.avgLoss,
+                    benchmarkReturn = actualResult.benchmarkReturn,
+                    alpha = actualResult.alpha,
+                    beta = actualResult.beta,
+                    equityCurve = actualResult.equityCurve,
+                    status = BacktestStatus.COMPLETED,
+                    completedAt = LocalDateTime.now()
+                )
+                val saved = backtestResultRepository.save(updated)
+                logger.info("백테스트 RUNNING → COMPLETED (증분 결과 복사): requestId=$requestId, placeholder=${placeholder.id}, source=${actualResult.id}")
+
+                // 거래 내역도 복사
+                if (actualResult.trades.isNotEmpty()) {
+                    val copiedTrades = actualResult.trades.map { trade ->
+                        trade.copy(id = null, backtestResultId = saved.id)
+                    }
+                    backtestTradeRepository.saveAll(copiedTrades)
+                    logger.info("거래 내역 복사: ${copiedTrades.size} 건")
+                }
+                return
+            }
+
+            // Data Engine이 직접 저장한 결과가 없는 경우 (이벤트 payload에서 metrics 파싱)
+            val metrics = payload.get("metrics") ?: payload
             val userId = resolveUserId(payload.get("userId")?.asText())
-            if (userId != null && existing.userId == null) {
-                val updated = existing.copy(userId = userId)
+            val updated = placeholder.copy(
+                userId = userId ?: placeholder.userId,
+                finalValue = parseBigDecimal(metrics.get("finalValue")) ?: placeholder.finalValue,
+                totalReturn = parseBigDecimal(metrics.get("totalReturn")) ?: placeholder.totalReturn,
+                cagr = parseBigDecimal(metrics.get("cagr")) ?: placeholder.cagr,
+                mdd = parseBigDecimal(metrics.get("mdd")) ?: placeholder.mdd,
+                sharpeRatio = parseBigDecimalOrNull(metrics.get("sharpeRatio")),
+                sortinoRatio = parseBigDecimalOrNull(metrics.get("sortinoRatio")),
+                volatility = parseBigDecimalOrNull(metrics.get("volatility")),
+                winRate = parseBigDecimalOrNull(metrics.get("winRate")),
+                totalTrades = metrics.get("totalTrades")?.asInt() ?: placeholder.totalTrades,
+                winningTrades = metrics.get("winningTrades")?.asInt() ?: placeholder.winningTrades,
+                losingTrades = metrics.get("losingTrades")?.asInt() ?: placeholder.losingTrades,
+                avgWin = parseBigDecimalOrNull(metrics.get("avgWin")),
+                avgLoss = parseBigDecimalOrNull(metrics.get("avgLoss")),
+                benchmarkReturn = parseBigDecimalOrNull(metrics.get("benchmarkReturn")),
+                alpha = parseBigDecimalOrNull(metrics.get("alpha")),
+                beta = parseBigDecimalOrNull(metrics.get("beta")),
+                equityCurve = payload.get("equityCurve")?.toString() ?: placeholder.equityCurve,
+                status = BacktestStatus.COMPLETED,
+                completedAt = LocalDateTime.now()
+            )
+            backtestResultRepository.save(updated)
+            logger.info("백테스트 RUNNING → COMPLETED 업데이트: requestId=$requestId, id=${placeholder.id}")
+
+            // 이벤트에 trades가 있으면 저장
+            val trades = payload.get("trades")
+            if (trades != null && trades.isArray) {
+                saveTrades(updated, trades)
+            }
+            return
+        }
+
+        if (placeholder != null) {
+            logger.info("백테스트 결과 이미 존재 (Data Engine 직접 저장): requestId=$requestId, id=${placeholder.id}")
+            val userId = resolveUserId(payload.get("userId")?.asText())
+            if (userId != null && placeholder.userId == null) {
+                val updated = placeholder.copy(userId = userId)
                 backtestResultRepository.save(updated)
                 logger.info("userId 업데이트: requestId=$requestId, userId=$userId")
             }
