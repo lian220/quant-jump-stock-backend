@@ -43,7 +43,8 @@ class CustomOAuth2UserService(
                 providerId = userInfo.providerId,
                 email = userInfo.email,
                 name = userInfo.name,
-                profileImageUrl = userInfo.profileImageUrl
+                profileImageUrl = userInfo.profileImageUrl,
+                phone = userInfo.phone
             )
         } ?: throw IllegalStateException("OAuth 사용자 생성/조회에 실패했습니다")
 
@@ -83,7 +84,8 @@ class CustomOAuth2UserService(
                         ?: throw IllegalStateException("네이버 OAuth2 사용자의 ID를 찾을 수 없습니다"),
                     email = response["email"] as? String,
                     name = response["name"] as? String ?: response["nickname"] as? String,
-                    profileImageUrl = response["profile_image"] as? String
+                    profileImageUrl = response["profile_image"] as? String,
+                    phone = response["mobile"] as? String
                 )
             }
         }
@@ -94,11 +96,16 @@ class CustomOAuth2UserService(
         providerId: String,
         email: String?,
         name: String?,
-        profileImageUrl: String?
+        profileImageUrl: String?,
+        phone: String? = null
     ): User {
-        userRepository.findByOAuthProviderAndProviderId(provider, providerId)?.let {
-            logger.info("기존 OAuth 사용자 로그인: userId=${it.userId}")
-            return it
+        userRepository.findByOAuthProviderAndProviderId(provider, providerId)?.let { existingUser ->
+            logger.info("기존 OAuth 사용자 로그인: userId=${existingUser.userId}")
+            if (phone != null && existingUser.phone == null) {
+                val updated = existingUser.copy(phone = phone)
+                return userRepository.save(updated)
+            }
+            return existingUser
         }
 
         if (email != null) {
@@ -124,6 +131,7 @@ class CustomOAuth2UserService(
             oauthProvider = provider,
             oauthProviderId = providerId,
             profileImageUrl = profileImageUrl,
+            phone = phone,
             status = UserStatus.ACTIVE,
             role = UserRole.USER
         )
@@ -174,5 +182,6 @@ private data class OAuthUserInfo(
     val providerId: String,
     val email: String?,
     val name: String?,
-    val profileImageUrl: String?
+    val profileImageUrl: String?,
+    val phone: String? = null
 )

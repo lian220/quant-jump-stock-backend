@@ -14,6 +14,7 @@ data class User(
     val oauthProvider: OAuthProvider? = null,
     val oauthProviderId: String? = null,
     val profileImageUrl: String? = null,
+    val phone: String? = null,
     val status: UserStatus = UserStatus.ACTIVE,
     val role: UserRole = UserRole.USER,
     val createdAt: LocalDateTime = LocalDateTime.now(),
