@@ -111,11 +111,14 @@ class CustomOAuth2UserService(
         if (email != null) {
             userRepository.findByEmail(email)?.let { existingUser ->
                 logger.warn("이메일 기반 계정 연결: provider=$provider, userId=${existingUser.userId}")
-                val updatedUser = existingUser.linkOAuth(
+                var updatedUser = existingUser.linkOAuth(
                     provider = provider,
                     providerId = providerId,
                     profileImage = profileImageUrl
                 )
+                if (phone != null && updatedUser.phone == null) {
+                    updatedUser = updatedUser.copy(phone = phone)
+                }
                 val saved = userRepository.save(updatedUser)
                 logger.info("OAuth 계정 연결 완료: userId=${saved.userId}")
                 return saved

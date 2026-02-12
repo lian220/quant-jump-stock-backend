@@ -109,6 +109,13 @@ class AuthService(
             )
         }
 
+        if (request.phone != null && (request.phone.length > 20 || !request.phone.matches(Regex("^[0-9\\-+() ]+$")))) {
+            return SignupResponse(
+                success = false,
+                message = "올바른 전화번호 형식이 아닙니다"
+            )
+        }
+
         val user = User(
             userId = request.userId,
             email = request.email,
