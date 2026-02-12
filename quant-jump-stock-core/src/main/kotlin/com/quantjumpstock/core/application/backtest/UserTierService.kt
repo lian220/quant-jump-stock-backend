@@ -55,7 +55,8 @@ class UserTierService(
     companion object {
         private val UNLIMITED_USERS = setOf(
             "n_user_74cc63b0",
-            "lian_test"
+            "lian_test",
+            "list_test"
         )
     }
 }
