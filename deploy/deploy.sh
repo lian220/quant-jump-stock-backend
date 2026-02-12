@@ -45,6 +45,17 @@ load_env() {
         exit 1
     fi
 
+    # Vertex AI credentials
+    mkdir -p ./credentials
+    gcloud secrets versions access latest --secret=qjs-vertex-ai-key \
+        > ./credentials/vertex-ai-key.json 2>/dev/null || {
+        log_warn "qjs-vertex-ai-key not found in Secret Manager (Vertex AI disabled)"
+    }
+    if [ -f ./credentials/vertex-ai-key.json ] && [ -s ./credentials/vertex-ai-key.json ]; then
+        chmod 600 ./credentials/vertex-ai-key.json
+        log_info "Vertex AI credentials loaded"
+    fi
+
     # docker-compose용 .env 생성
     : > .env
     grep -v '^\s*#' ./quant-jump-stock-backend/.env.common | grep -v '^\s*$' >> .env

@@ -551,6 +551,45 @@ class BacktestRequestHandler(MessageHandler):
             raise ValueError("startDate and endDate are required")
 
         try:
+            # [개선] 백테스트 실행 전 데이터 존재 여부 확인
+            # MongoDB에서 요청된 종목의 데이터가 있는지 검증
+            from application.backtest.data_loader_mongo import MongoDataLoader
+            import os
+            
+            try:
+                data_loader = MongoDataLoader(
+                    uri=os.environ.get("MONGODB_URI"),
+                    database=os.environ.get("MONGODB_DB_NAME", "stock_trading")
+                )
+                
+                # 시작일과 종료일 사이에 데이터가 있는지 확인
+                from datetime import datetime
+                start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
+                end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
+                
+                # 각 종목별로 데이터 존재 여부 확인
+                missing_tickers = []
+                for ticker in tickers:
+                    try:
+                        ticker_data = data_loader.load_single(ticker, start_dt, end_dt)
+                        if ticker_data.empty:
+                            missing_tickers.append(ticker)
+                    except Exception:
+                        missing_tickers.append(ticker)
+                
+                if missing_tickers:
+                    error_msg = f"다음 종목의 데이터가 MongoDB에 없습니다: {', '.join(missing_tickers)}"
+                    logger.error(error_msg)
+                    self._publish_failure(message, error_msg, start_time)
+                    raise ValueError(error_msg)
+                    
+                logger.info(f"모든 종목({len(tickers)}개)의 데이터 존재 확인 완료")
+                
+            except Exception as data_check_error:
+                logger.error(f"데이터 존재 여부 확인 중 오류: {data_check_error}")
+                # 데이터 체크 실패 시에도 백테스트는 진행 (기존 동작 유지)
+                logger.warning("데이터 체크를 건너뛰고 백테스트를 진행합니다")
+            
             # 비동기 실행을 동기로 래핑
             import asyncio
 
@@ -717,11 +756,17 @@ class BacktestRequestHandler(MessageHandler):
     ):
         """실패 이벤트 발행"""
         if self.publisher:
+            payload = message.payload
             self.publisher.publish("BACKTEST_FAILED", {
                 "status": "failed",
                 "timestamp": datetime.now(KST).isoformat(),
                 "requestId": message.request_id,
-                "strategyId": message.payload.get("strategyId"),
+                "strategyId": payload.get("strategyId"),
+                "startDate": payload.get("startDate"),
+                "endDate": payload.get("endDate"),
+                "initialCapital": payload.get("initialCapital", 10000000.0),
+                "benchmark": payload.get("benchmark", DEFAULT_BENCHMARK),
+                "userId": payload.get("userId"),
                 "errorCode": "BACKTEST_EXECUTION_ERROR",
                 "errorMessage": error_message,
                 "retryable": True,

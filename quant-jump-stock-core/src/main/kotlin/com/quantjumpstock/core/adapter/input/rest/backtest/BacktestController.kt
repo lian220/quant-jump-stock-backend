@@ -6,6 +6,7 @@ import com.quantjumpstock.core.application.portfolio.StrategyDefaultStockService
 import com.quantjumpstock.core.domain.port.output.UserRepository
 import com.quantjumpstock.core.domain.port.output.Benchmark
 import com.quantjumpstock.core.domain.port.output.StockRepository
+import com.quantjumpstock.core.domain.port.output.StrategyRepository
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -16,6 +17,9 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import java.time.LocalDate
+import java.time.format.DateTimeParseException
+import java.time.temporal.ChronoUnit
 
 /**
  * Backtest Controller
@@ -30,7 +34,8 @@ class BacktestController(
     private val userTierService: UserTierService,
     private val userRepository: UserRepository,
     private val defaultStockService: StrategyDefaultStockService,
-    private val stockRepository: StockRepository
+    private val stockRepository: StockRepository,
+    private val strategyRepository: StrategyRepository
 ) {
 
     /**
@@ -56,6 +61,21 @@ class BacktestController(
     ): ResponseEntity<Any> {
         val userLoginId = authorization?.let { extractUserId(it) }
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+
+        // 백테스트 기간 검증 (최대 1년)
+        val periodValidation = validateBacktestPeriod(request.startDate, request.endDate)
+        if (periodValidation != null) {
+            return ResponseEntity.badRequest().body(periodValidation)
+        }
+
+        // 전략 존재 여부 검증
+        if (!strategyRepository.existsById(request.strategyId)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(mapOf(
+                    "error" to "STRATEGY_NOT_FOUND",
+                    "message" to "전략을 찾을 수 없습니다: ${request.strategyId}"
+                ))
+        }
 
         // 문자열 userId → DB PK(Long) 변환하여 Kafka에 숫자 ID로 전달
         val userDbId = userRepository.findByUserId(userLoginId)?.id
@@ -289,7 +309,13 @@ class BacktestController(
     fun requestBacktest(
         @RequestHeader("Authorization", required = false) authorization: String?,
         @RequestBody request: BacktestRequestDto
-    ): ResponseEntity<BacktestResponse> {
+    ): ResponseEntity<*> {
+        // 백테스트 기간 검증 (최대 1년)
+        val periodValidation = validateBacktestPeriod(request.startDate, request.endDate)
+        if (periodValidation != null) {
+            return ResponseEntity.badRequest().body(periodValidation)
+        }
+
         val userId = authorization?.let { extractUserId(it) }
 
         @Suppress("DEPRECATION")
@@ -325,5 +351,45 @@ class BacktestController(
      */
     private fun extractUserIdAsLong(authorization: String): Long? {
         return extractUserId(authorization)?.toLongOrNull()
+    }
+
+    /**
+     * 백테스트 기간 검증 (최대 365일)
+     * @return 검증 실패 시 에러 맵, 성공 시 null
+     */
+    private fun validateBacktestPeriod(startDate: String, endDate: String): Map<String, Any>? {
+        val start: LocalDate
+        val end: LocalDate
+
+        try {
+            start = LocalDate.parse(startDate)
+            end = LocalDate.parse(endDate)
+        } catch (e: DateTimeParseException) {
+            return mapOf(
+                "error" to "INVALID_DATE_FORMAT",
+                "message" to "올바른 날짜 형식이 아닙니다. (yyyy-MM-dd)"
+            )
+        }
+
+        if (end.isBefore(start)) {
+            return mapOf(
+                "error" to "INVALID_DATE_RANGE",
+                "message" to "종료일은 시작일 이후여야 합니다."
+            )
+        }
+
+        val diffDays = ChronoUnit.DAYS.between(start, end)
+        if (diffDays > MAX_BACKTEST_DAYS) {
+            return mapOf(
+                "error" to "BACKTEST_PERIOD_EXCEEDED",
+                "message" to "백테스트 기간은 최대 1년(${MAX_BACKTEST_DAYS}일)까지 가능합니다. 현재: ${diffDays}일"
+            )
+        }
+
+        return null
+    }
+
+    companion object {
+        private const val MAX_BACKTEST_DAYS = 365L
     }
 }

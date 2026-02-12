@@ -1,7 +1,7 @@
 # GCE VM 배포 가이드
 
-**최종 업데이트:** 2026-02-10
-**VM IP:** 34.64.166.56
+**최종 업데이트:** 2026-02-11
+**VM IP:** `<VM_IP>` (terraform output vm_ip 으로 확인)
 **도메인:** https://api.alphafoundry.app
 
 ---
@@ -24,7 +24,7 @@
 cd terraform
 terraform init
 terraform apply
-# VM IP 메모: 34.64.166.56
+# VM IP 메모: <VM_IP> (terraform output vm_ip)
 ```
 
 ### 2. Secret Manager 환경변수 등록
@@ -39,19 +39,19 @@ gcloud secrets create qjs-env-prod \
 ### 3. GitHub Secrets 설정
 ```
 Settings → Secrets → Actions:
-- GCE_HOST: 34.64.166.56
-- GCE_USERNAME: deploy
+- GCE_HOST: <VM_IP>
+- GCE_USERNAME: <GCE_USERNAME>
 - GCE_SSH_PRIVATE_KEY: (SSH 개인키)
-- GCP_PROJECT_ID: focal-limiter-486614-u8
+- GCP_PROJECT_ID: <GCP_PROJECT_ID>
 - GCP_SA_KEY: (Service Account JSON)
-- API_BASE_URL: https://api.alphafoundry.app
+- API_BASE_URL: <API_BASE_URL>
 ```
 
 ### 4. VM 초기 설정
 ```bash
-ssh deploy@34.64.166.56
+ssh <GCE_USERNAME>@<VM_IP>
 cd /home/deploy/app
-git clone https://github.com/lian220/quant-jump-stock.git .
+git clone https://github.com/<GITHUB_USERNAME>/quant-jump-stock.git .
 ./quant-jump-stock-backend/deploy/setup-gce.sh
 ```
 
@@ -73,10 +73,10 @@ git push origin main
 ### 배포 확인
 ```bash
 # GitHub Actions 로그
-# https://github.com/lian220/quant-jump-stock/actions
+# https://github.com/<GITHUB_USERNAME>/quant-jump-stock/actions
 
 # VM 상태 확인
-ssh deploy@34.64.166.56
+ssh <GCE_USERNAME>@<VM_IP>
 cd /home/deploy/app
 ./quant-jump-stock-backend/deploy/deploy.sh status
 ./quant-jump-stock-backend/deploy/deploy.sh health
@@ -95,7 +95,7 @@ git commit -am "fix: nginx 설정 수정"
 git push origin main
 
 # 2. VM에서 수동 반영
-ssh deploy@34.64.166.56
+ssh <GCE_USERNAME>@<VM_IP>
 cd /home/deploy/app
 git pull origin main
 docker compose -f docker-compose.prod.yml restart nginx
@@ -280,7 +280,7 @@ git commit -m "fix: nginx proxy_pass trailing slash 제거 - API 경로 유지"
 git push origin main
 
 # 3. VM 적용
-ssh deploy@34.64.166.56
+ssh <GCE_USERNAME>@<VM_IP>
 cd /home/deploy/app
 git pull origin main
 docker compose -f docker-compose.prod.yml restart nginx

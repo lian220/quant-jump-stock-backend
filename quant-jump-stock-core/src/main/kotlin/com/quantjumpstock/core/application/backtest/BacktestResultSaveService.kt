@@ -106,6 +106,8 @@ class BacktestResultSaveService(
 
     /**
      * 백테스트 실패 결과 저장
+     * Data Engine에서 실패 이벤트에 startDate/endDate/initialCapital이 누락될 수 있으므로
+     * 기본값으로 처리하여 반드시 DB에 실패 레코드를 남긴다.
      */
     @Transactional
     fun saveBacktestFailure(payload: JsonNode) {
@@ -121,12 +123,9 @@ class BacktestResultSaveService(
             requestId = requestId,
             strategyId = strategyId,
             userId = userId,
-            startDate = parseDate(payload.get("startDate")?.asText())
-                ?: throw IllegalArgumentException("startDate is required"),
-            endDate = parseDate(payload.get("endDate")?.asText())
-                ?: throw IllegalArgumentException("endDate is required"),
-            initialCapital = parseBigDecimal(payload.get("initialCapital"))
-                ?: throw IllegalArgumentException("initialCapital is required"),
+            startDate = parseDate(payload.get("startDate")?.asText()) ?: LocalDate.now(),
+            endDate = parseDate(payload.get("endDate")?.asText()) ?: LocalDate.now(),
+            initialCapital = parseBigDecimal(payload.get("initialCapital")) ?: BigDecimal.ZERO,
             benchmark = payload.get("benchmark")?.asText() ?: Benchmark.DEFAULT_TICKER,
             finalValue = BigDecimal.ZERO,
             totalReturn = BigDecimal.ZERO,

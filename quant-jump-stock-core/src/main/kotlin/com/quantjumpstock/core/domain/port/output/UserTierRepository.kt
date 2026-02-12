@@ -22,6 +22,12 @@ interface UserTierRepository {
      * 한도 내이면 카운트 증가 후 결과 반환, 초과면 allowed=false 반환
      */
     fun checkAndIncrementBacktestCount(userId: String): BacktestLimitInfo
+
+    /**
+     * 신규 사용자에 대해 무료 티어 생성
+     * 이미 존재하면 무시
+     */
+    fun createFreeTierForUser(userId: String)
 }
 
 data class BacktestLimitInfo(

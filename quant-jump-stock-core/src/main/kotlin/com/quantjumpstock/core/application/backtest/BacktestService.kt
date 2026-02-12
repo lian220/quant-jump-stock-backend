@@ -59,6 +59,27 @@ class BacktestService(
         )
 
         try {
+            // [개선] 백테스트 요청 시 즉시 RUNNING 상태의 레코드를 DB에 생성
+            // 이를 통해 프론트엔드가 폴링 시 404 대신 RUNNING 상태를 확인할 수 있음
+            val placeholderResult = BacktestResult(
+                requestId = requestId,
+                strategyId = request.strategyId,
+                userId = userId?.toLongOrNull(),
+                startDate = java.time.LocalDate.parse(request.startDate),
+                endDate = java.time.LocalDate.parse(request.endDate),
+                initialCapital = request.initialCapital,
+                benchmark = request.benchmark,
+                finalValue = BigDecimal.ZERO,
+                totalReturn = BigDecimal.ZERO,
+                cagr = BigDecimal.ZERO,
+                mdd = BigDecimal.ZERO,
+                status = com.quantjumpstock.core.domain.model.backtest.BacktestStatus.RUNNING,
+                errorMessage = null
+            )
+            
+            backtestResultRepository.save(placeholderResult)
+            logger.info("백테스트 RUNNING 상태 레코드 생성: requestId=$requestId")
+
             messagePublisher.publishBacktestRequest(
                 topic = EventTopics.BACKTEST_REQUEST,
                 request = backtestRequest

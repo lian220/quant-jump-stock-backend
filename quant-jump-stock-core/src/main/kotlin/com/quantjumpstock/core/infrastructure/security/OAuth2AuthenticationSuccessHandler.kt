@@ -38,11 +38,18 @@ class OAuth2AuthenticationSuccessHandler(
         val role = oauth2User.getAttribute<String>("internal_user_role") ?: "USER"
         val email = oauth2User.getAttribute<String>("internal_user_email")
 
+        if (dbId == null) {
+            log.error("OAuth2 사용자 DB 저장 실패: userId=$userId (DB에 사용자가 저장되지 않음)")
+            val errorUrl = "$frontendRedirectUrl?error=oauth_user_save_failed"
+            response.sendRedirect(errorUrl)
+            return
+        }
+
         val jwt = jwtService.generateToken(userId, email, role, dbId)
 
         val encodedToken = URLEncoder.encode(jwt, StandardCharsets.UTF_8)
         val redirectUrl = "$frontendRedirectUrl?token=$encodedToken"
-        log.info("OAuth2 로그인 성공: userId=$userId, redirecting to frontend")
+        log.info("OAuth2 로그인 성공: userId=$userId, role=$role")
 
         response.sendRedirect(redirectUrl)
     }

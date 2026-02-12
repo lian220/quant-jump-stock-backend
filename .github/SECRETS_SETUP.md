@@ -103,6 +103,42 @@ Docker Compose로 컨테이너 재시작
 
 **중요**: `.env.prod`를 수정했다면 반드시 Secret Manager에 재업로드해야 합니다!
 
+## Vertex AI 키 등록 (필수 - Vertex AI 사용 시)
+
+Vertex AI Service Account 키(`vertex-ai-key.json`)는 별도 Secret으로 관리합니다.
+
+### 최초 등록
+
+```bash
+# credentials 디렉토리의 키 파일을 Secret Manager에 등록
+gcloud secrets create qjs-vertex-ai-key \
+  --data-file=./credentials/vertex-ai-key.json \
+  --replication-policy=automatic
+
+# 등록 확인
+gcloud secrets versions list qjs-vertex-ai-key
+```
+
+### 키 갱신
+
+```bash
+# 새 버전 추가
+gcloud secrets versions add qjs-vertex-ai-key \
+  --data-file=./credentials/vertex-ai-key.json
+
+# 확인
+gcloud secrets versions list qjs-vertex-ai-key
+```
+
+### 배포 시 동작
+
+배포 시 `deploy.sh`와 GitHub Actions 워크플로우가 자동으로:
+1. Secret Manager에서 `qjs-vertex-ai-key` 다운로드
+2. `./credentials/vertex-ai-key.json`에 저장
+3. `docker-compose.prod.yml`이 컨테이너에 볼륨 마운트
+
+Secret이 없으면 경고만 출력하고 배포는 계속 진행됩니다 (Vertex AI 기능만 비활성화).
+
 ## 확인 방법
 
 ```bash
