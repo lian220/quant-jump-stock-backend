@@ -9,7 +9,7 @@ class UserTierService(
 ) {
 
     fun checkBacktestLimit(userId: String): BacktestLimitResult {
-        if (userId == UNLIMITED_USER) {
+        if (userId in UNLIMITED_USERS) {
             return BacktestLimitResult(
                 allowed = true,
                 remaining = Int.MAX_VALUE,
@@ -33,7 +33,7 @@ class UserTierService(
     }
 
     fun checkAndIncrementBacktestCount(userId: String): BacktestLimitResult {
-        if (userId == UNLIMITED_USER) {
+        if (userId in UNLIMITED_USERS) {
             return BacktestLimitResult(
                 allowed = true,
                 remaining = Int.MAX_VALUE,
@@ -53,6 +53,9 @@ class UserTierService(
     }
 
     companion object {
-        private const val UNLIMITED_USER = "n_user_74cc63b0"
+        private val UNLIMITED_USERS = setOf(
+            "n_user_74cc63b0",
+            "lian_test"
+        )
     }
 }
