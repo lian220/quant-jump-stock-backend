@@ -13,6 +13,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.MissingRequestHeaderException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.servlet.resource.NoResourceFoundException
 
 /**
  * 전역 예외 처리 핸들러
@@ -149,6 +150,22 @@ class GlobalExceptionHandler(
                 error = "Bad Request",
                 message = ex.message ?: "Invalid request",
                 status = HttpStatus.BAD_REQUEST.value()
+            ))
+    }
+
+    /**
+     * 존재하지 않는 경로 접근 (봇/스캐너 차단용 - Slack 알림 제외)
+     */
+    @ExceptionHandler(NoResourceFoundException::class)
+    fun handleNoResourceFoundException(ex: NoResourceFoundException, request: HttpServletRequest): ResponseEntity<ErrorResponse> {
+        logger.debug("🤖 Scanner/bot blocked: {} {}", request.method, request.requestURI)
+
+        return ResponseEntity
+            .status(HttpStatus.NOT_FOUND)
+            .body(ErrorResponse(
+                error = "Not Found",
+                message = "Resource not found",
+                status = HttpStatus.NOT_FOUND.value()
             ))
     }
 
