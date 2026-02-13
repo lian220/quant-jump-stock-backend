@@ -1,6 +1,6 @@
 package com.quantjumpstock.core.adapter.input.scheduler
 
-import com.quantjumpstock.core.adapter.output.gcp.vertexai.VertexAIJobService
+import com.quantjumpstock.core.application.vertexai.VertexAIService
 import com.quantjumpstock.core.domain.economic.port.input.EconomicDataUseCase
 import org.quartz.Job
 import org.quartz.JobExecutionContext
@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component
  *
  * 역할:
  * - 경제 데이터 재수집 (경제지표 업데이트)
- * - Vertex AI 예측 모델 실행 (Google Cloud SDK 직접 호출)
+ * - Vertex AI 예측 모델 실행 (Kafka → Data Engine → Vertex AI)
  *
  * 참고: GCP가 활성화되지 않으면 이 Job은 등록되지 않습니다.
  */
@@ -28,7 +28,7 @@ import org.springframework.stereotype.Component
 )
 class EconomicDataUpdate2JobAdapter(
     private val economicDataUseCase: EconomicDataUseCase,
-    private val vertexAIJobService: VertexAIJobService
+    private val vertexAIService: VertexAIService
 ) : Job {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
@@ -51,10 +51,10 @@ class EconomicDataUpdate2JobAdapter(
                 }
                 .get()
 
-            // 2단계: Vertex AI 예측 실행
-            logger.info("[2/2] Vertex AI 예측 실행 중...")
-            val jobId = vertexAIJobService.createAndRunCustomJob()
-            logger.info("✅ Vertex AI Job 실행 완료: $jobId")
+            // 2단계: Vertex AI 예측 실행 (Kafka 경로)
+            logger.info("[2/2] Vertex AI 예측 실행 중 (Kafka → Data Engine)...")
+            val result = vertexAIService.runPrediction()
+            logger.info("✅ Vertex AI 예측 요청 완료: requestId=${result.requestId}")
 
             logger.info("=".repeat(80))
             logger.info("경제 데이터 재수집 + Vertex AI 예측 완료")
