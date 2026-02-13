@@ -47,6 +47,7 @@ class AuthService(
                 userId = user.userId,
                 name = user.name,
                 email = user.email,
+                phone = user.phone,
                 role = user.role.name,
                 status = user.status.name
             )
@@ -68,6 +69,7 @@ class AuthService(
                 userId = user.userId,
                 name = user.name,
                 email = user.email,
+                phone = user.phone,
                 role = user.role.name,
                 status = user.status.name
             )
@@ -107,11 +109,19 @@ class AuthService(
             )
         }
 
+        if (request.phone != null && (request.phone.length > 20 || !request.phone.matches(Regex("^[0-9\\-+() ]+$")))) {
+            return SignupResponse(
+                success = false,
+                message = "올바른 전화번호 형식이 아닙니다"
+            )
+        }
+
         val user = User(
             userId = request.userId,
             email = request.email,
             name = request.name,
             passwordHash = passwordEncoder.encode(request.password),
+            phone = request.phone,
             status = UserStatus.ACTIVE,
             role = UserRole.USER
         )
@@ -165,6 +175,7 @@ data class UserInfo(
     val userId: String,
     val name: String?,
     val email: String?,
+    val phone: String? = null,
     val role: String,
     val status: String
 )
@@ -176,7 +187,8 @@ data class SignupRequest(
     val userId: String,
     val email: String,
     val password: String,
-    val name: String? = null
+    val name: String? = null,
+    val phone: String? = null
 )
 
 /**

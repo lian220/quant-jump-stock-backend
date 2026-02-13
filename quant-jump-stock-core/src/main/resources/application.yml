@@ -221,6 +221,7 @@ spring.security.oauth2.client:
       authorization-grant-type: authorization_code
       client-authentication-method: client_secret_post
       client-name: Naver
+      scope: name,email,profile_image,mobile
   provider:
     naver:
       authorization-uri: https://nid.naver.com/oauth2.0/authorize

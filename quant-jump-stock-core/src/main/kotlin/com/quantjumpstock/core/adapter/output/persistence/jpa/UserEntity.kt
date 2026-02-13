@@ -34,6 +34,9 @@ data class UserEntity(
     @Column(name = "profile_image_url", length = 500)
     val profileImageUrl: String? = null,
 
+    @Column(name = "phone", length = 20)
+    val phone: String? = null,
+
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
     val status: UserStatus = UserStatus.ACTIVE,
