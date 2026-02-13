@@ -220,6 +220,21 @@ class TechnicalAnalysisHandler(MessageHandler):
 
             self._log_success("기술적 분석", start_time)
 
+            # 🆕 MongoDB → PostgreSQL 동기화 (분석 완료 후)
+            try:
+                from application.recommendation.sync_service import RecommendationSyncService
+
+                # 분석 날짜 결정 (end_date 또는 오늘)
+                analysis_date = message.end_date or date.today().isoformat()
+
+                sync_service = RecommendationSyncService()
+                sync_result = sync_service.sync_latest_recommendations(analysis_date)
+
+                logger.info(f"🔄 동기화 완료: {sync_result.get('synced_count', 0)}개 종목")
+            except Exception as sync_error:
+                logger.error(f"⚠️ 동기화 실패 (분석은 성공): {sync_error}")
+                # 동기화 실패해도 분석 성공은 유지
+
             if self.publisher:
                 self.publisher.publish("ANALYSIS_TECHNICAL_COMPLETED", {
                     "status": "success",
