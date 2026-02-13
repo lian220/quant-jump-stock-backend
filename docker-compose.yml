@@ -148,7 +148,7 @@ services:
       dockerfile: Dockerfile
     container_name: qjs-data-engine
     ports:
-      - "10020:10020"
+      - "${DATA_ENGINE_PORT:-10020}:${DATA_ENGINE_PORT:-10020}"
     depends_on:
       kafka:
         condition: service_started
@@ -195,7 +195,7 @@ services:
       dockerfile: Dockerfile
     container_name: qjs-core
     ports:
-      - "10010:10010"
+      - "${CORE_API_PORT:-10010}:${CORE_API_PORT:-10010}"
     depends_on:
       kafka:
         condition: service_started

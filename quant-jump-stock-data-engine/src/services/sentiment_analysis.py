@@ -54,6 +54,8 @@ class SentimentAnalysisService:
             # 🆕 최대 3번 재시도 (키 로테이션)
             max_retries = min(3, len(self.key_rotator.keys))
             success = False
+            all_keys_rate_limited_count = 0  # 모든 키 Rate Limit 카운터
+            MAX_ALL_KEYS_RATE_LIMITED = 3  # 모든 키 Rate Limit 시 최대 재시도
 
             for attempt in range(max_retries):
                 # 다음 API 키 가져오기
@@ -73,7 +75,22 @@ class SentimentAnalysisService:
                     # Rate Limit 감지 (429 또는 특정 메시지)
                     if response.status_code == 429:
                         logger.warning(f"Rate Limit (429) for {ticker}, attempt {attempt + 1}/{max_retries}")
-                        self.key_rotator.wait_if_needed(current_key, is_rate_limited=True)
+                        self.key_rotator.mark_rate_limited(current_key)
+
+                        # 모든 키가 Rate Limit 걸렸는지 확인
+                        if self.key_rotator.should_backoff():
+                            all_keys_rate_limited_count += 1
+                            if all_keys_rate_limited_count >= MAX_ALL_KEYS_RATE_LIMITED:
+                                logger.error(
+                                    f"⛔ {ticker}: 모든 API 키 Rate Limit, "
+                                    f"{MAX_ALL_KEYS_RATE_LIMITED}회 재시도 실패 - 스킵"
+                                )
+                                break
+                            logger.warning(
+                                f"⏳ 모든 키 Rate Limit ({all_keys_rate_limited_count}/{MAX_ALL_KEYS_RATE_LIMITED}), "
+                                f"{self.key_rotator.BACKOFF_DELAY}초 대기..."
+                            )
+                            time.sleep(self.key_rotator.BACKOFF_DELAY)
                         continue
 
                     if response.status_code != 200:
