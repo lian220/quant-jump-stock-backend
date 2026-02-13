@@ -281,18 +281,20 @@ class MongoDataLoader(DataLoader):
 
         로딩 전략:
         1. doc["stocks"][ticker] 에서 로드 (SPY, QQQ 등 ETF)
-        2. 없으면 doc["yfinance_indicators"] 에서 로드 (^GSPC 등 인덱스)
-           - yfinance_indicators의 키는 name이므로 ticker→name 매핑 필요
+        2. 없으면 doc["yfinance_indicators"][ticker] 에서 로드 (^GSPC 등 인덱스)
 
         Args:
             benchmark_ticker: 벤치마크 ticker (예: "SPY", "^GSPC")
             start_date: 시작일
             end_date: 종료일
-            ticker_to_name_map: ticker→name 매핑 (yfinance_indicators 조회용)
+            ticker_to_name_map: (deprecated, 미사용) 하위 호환용 파라미터. 향후 제거 예정.
 
         Returns:
             DataFrame with close column, or None if not found
         """
+        if ticker_to_name_map is not None:
+            logger.warning("ticker_to_name_map is deprecated and will be removed in a future version")
+
         client = self._get_client()
         db = client[self.database]
         coll = db[self.collection]
@@ -313,11 +315,6 @@ class MongoDataLoader(DataLoader):
 
         records = []
 
-        # 벤치마크 이름 조회 (yfinance_indicators 키 매핑용)
-        indicator_name = None
-        if ticker_to_name_map:
-            indicator_name = ticker_to_name_map.get(benchmark_ticker)
-
         for doc in documents:
             close_value = None
 
@@ -327,15 +324,16 @@ class MongoDataLoader(DataLoader):
             if stock_data:
                 close_value = stock_data.get("close") or stock_data.get("close_price")
 
-            # 2차 시도: yfinance_indicators에서 로드 (인덱스: ^GSPC 등)
+            # 2차 시도: yfinance_indicators에서 ticker로 직접 조회
             if close_value is None:
                 yf_indicators = doc.get("yfinance_indicators", {})
-                # ticker로 직접 조회
-                if benchmark_ticker in yf_indicators:
-                    close_value = yf_indicators[benchmark_ticker]
-                # name으로 조회 (ticker→name 매핑)
-                elif indicator_name and indicator_name in yf_indicators:
-                    close_value = yf_indicators[indicator_name]
+                raw_value = yf_indicators.get(benchmark_ticker)
+
+                # dict(OHLCV)이면 close 추출, float이면 그대로 (레거시 호환)
+                if isinstance(raw_value, dict):
+                    close_value = raw_value.get("close") or raw_value.get("close_price")
+                else:
+                    close_value = raw_value
 
             if close_value is not None:
                 records.append({

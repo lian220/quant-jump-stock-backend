@@ -81,7 +81,6 @@ class BacktestConfig:
     position_size_pct: Decimal = Decimal("0.1")    # 10%
     rebalance_frequency: str = "daily"
     benchmark_ticker: Optional[str] = None
-    benchmark_ticker_to_name: Optional[Dict[str, str]] = None
     min_historical_bars: int = 50  # 전략 실행에 필요한 최소 과거 데이터 수
 
 
@@ -227,7 +226,6 @@ class BacktestEngine:
                     benchmark_ticker=self.config.benchmark_ticker,
                     start_date=self.config.start_date,
                     end_date=self.config.end_date,
-                    ticker_to_name_map=self.config.benchmark_ticker_to_name
                 )
                 if self._benchmark_data is not None:
                     logger.info(f"Loaded benchmark data: {self.config.benchmark_ticker}")

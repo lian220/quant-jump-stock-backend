@@ -13,7 +13,6 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import List, Optional, Dict, Any, Tuple
 
-from core.database import PostgreSQL
 from .engine import BacktestEngine, BacktestConfig
 from .data_loader import DataLoader
 from .data_loader_mongo import MongoDataLoader
@@ -104,10 +103,7 @@ class BacktestApplicationService:
         if not strategy:
             raise ValueError(f"Strategy not found: {strategy_id}")
 
-        # 2. 벤치마크 ticker→name 매핑 로드
-        benchmark_name_map = self._load_benchmark_name_map()
-
-        # 3. 백테스트 설정
+        # 2. 백테스트 설정
         config = BacktestConfig(
             start_date=self._parse_date(start_date),
             end_date=self._parse_date(end_date),
@@ -116,10 +112,9 @@ class BacktestApplicationService:
             commission_rate=Decimal(str(commission_rate)),
             slippage_rate=Decimal(str(slippage_rate)),
             benchmark_ticker=benchmark,
-            benchmark_ticker_to_name=benchmark_name_map
         )
 
-        # 4. 엔진 생성 및 실행
+        # 3. 엔진 생성 및 실행
         engine = BacktestEngine(
             data_loader=self._data_loader,
             config=config
@@ -127,7 +122,7 @@ class BacktestApplicationService:
 
         result = engine.run(strategy)
 
-        # 5. strategy_id를 DB PK로 설정
+        # 4. strategy_id를 DB PK로 설정
         result.strategy_id = strategy_id
 
         logger.info(
@@ -162,23 +157,6 @@ class BacktestApplicationService:
     def _parse_date(self, date_str: str) -> date:
         """날짜 문자열 파싱"""
         return datetime.strptime(date_str, "%Y-%m-%d").date()
-
-    def _load_benchmark_name_map(self) -> Optional[Dict[str, str]]:
-        """
-        PostgreSQL yfinance_indicators 테이블에서 ticker→name 매핑 로드
-
-        yfinance_indicators MongoDB 키가 name(예: "S&P 500 지수")이므로
-        ticker(예: "^GSPC")로 조회하기 위한 매핑
-        """
-        try:
-            with PostgreSQL.get_connection() as conn:
-                with conn.cursor() as cursor:
-                    cursor.execute("SELECT ticker, name FROM yfinance_indicators WHERE is_active = true")
-                    rows = cursor.fetchall()
-            return {row[0]: row[1] for row in rows}
-        except Exception as e:
-            logger.warning(f"Failed to load benchmark name map: {e}")
-            return None
 
     async def run_backtest_incremental(
         self,
@@ -226,10 +204,7 @@ class BacktestApplicationService:
         if not strategy:
             raise ValueError(f"Strategy not found: {strategy_id}")
 
-        # 2. 벤치마크 ticker→name 매핑 로드
-        benchmark_name_map = self._load_benchmark_name_map()
-
-        # 3. 백테스트 설정
+        # 2. 백테스트 설정
         config = BacktestConfig(
             start_date=self._parse_date(start_date),
             end_date=self._parse_date(end_date),
@@ -238,10 +213,9 @@ class BacktestApplicationService:
             commission_rate=Decimal(str(commission_rate)),
             slippage_rate=Decimal(str(slippage_rate)),
             benchmark_ticker=benchmark,
-            benchmark_ticker_to_name=benchmark_name_map
         )
 
-        # 4. 엔진 생성
+        # 3. 엔진 생성
         engine = BacktestEngine(
             data_loader=self._data_loader,
             config=config
