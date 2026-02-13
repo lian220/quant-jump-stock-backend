@@ -534,17 +534,71 @@ QuantiQ 시스템은 **PostgreSQL**과 **MongoDB** 두 가지 데이터베이스
       "close": 231.42,                      // 종가
       "volume": 48523100,                   // 거래량
       "close_price": 231.42,                // 종가 (하위 호환)
-      "info": {                             // yfinance 펀더멘탈 (종목별 스냅샷)
-        "trailingPE": 28.5,                 // PER (후행)
-        "forwardPE": 25.2,                  // PER (선행)
-        "priceToBook": 45.3,               // PBR
-        "returnOnEquity": 1.47,             // ROE
-        "dividendYield": 0.0054,            // 배당수익률
-        "marketCap": 3560000000000,         // 시가총액
-        "enterpriseValue": 3620000000000,   // 기업가치
+      "info": {                             // yfinance 펀더멘탈 (최신 날짜에만 저장, ~40개 필드)
+        // === 밸류에이션 ===
+        "trailingPE": 33.13,                // PER 후행 (주가/EPS)
+        "forwardPE": 28.17,                 // PER 선행 (주가/예상EPS)
+        "priceToBook": 43.64,               // PBR (주가/장부가)
+        "priceToSalesTrailing12Months": 8.83, // PSR (주가/매출)
+        "enterpriseToEbitda": 25.29,        // EV/EBITDA
+        "enterpriseToRevenue": 8.88,        // EV/매출
+        "trailingPegRatio": 2.36,           // PEG (PER/이익성장률)
+        // === 수익성 ===
+        "profitMargins": 0.27,              // 순이익률
+        "operatingMargins": 0.354,          // 영업이익률
+        "grossMargins": 0.473,              // 매출총이익률
+        "ebitdaMargins": 0.351,             // EBITDA 마진
+        "returnOnAssets": 0.244,            // ROA (총자산수익률)
+        "returnOnEquity": 1.52,             // ROE (자기자본수익률)
+        // === 성장성 ===
+        "earningsGrowth": 0.183,            // 이익 성장률 (YoY)
+        "revenueGrowth": 0.157,             // 매출 성장률 (YoY)
+        "earningsQuarterlyGrowth": 0.159,   // 분기 이익 성장률
+        // === 재무 건전성 ===
+        "debtToEquity": 102.63,             // 부채비율 (%)
+        "currentRatio": 0.974,              // 유동비율
+        "quickRatio": 0.845,                // 당좌비율
+        "freeCashflow": 106312753152,       // 잉여현금흐름
+        "totalCash": 66907000832,           // 총 현금
+        "totalDebt": 90509000704,           // 총 부채
+        // === 주당 지표 ===
+        "epsTrailingTwelveMonths": 7.9,     // EPS 후행 (12개월)
+        "epsForward": 9.29,                 // EPS 선행 (예상)
+        "bookValue": 5.998,                 // 주당 장부가
+        "revenuePerShare": 29.31,           // 주당 매출
+        "totalCashPerShare": 4.56,          // 주당 현금
+        // === 배당 ===
+        "dividendYield": 0.004,             // 배당수익률
+        "dividendRate": 1.04,               // 배당금 (연간)
+        "payoutRatio": 0.13,                // 배당성향
+        // === 시장 데이터 ===
+        "marketCap": 3846888226816,         // 시가총액
+        "enterpriseValue": 3866096828416,   // 기업가치 (EV)
+        "beta": 1.107,                      // 베타 (시장 대비 변동성)
+        "sharesOutstanding": 14681140000,   // 발행주식수
+        "floatShares": 14655594816,         // 유통주식수
+        // === 애널리스트 ===
+        "recommendationMean": 1.96,         // 투자의견 평균 (1=Strong Buy ~ 5=Sell)
+        "targetMeanPrice": 293.07,          // 목표주가 평균
+        "targetMedianPrice": 300.0,         // 목표주가 중앙값
+        "targetHighPrice": 350.0,           // 목표주가 최고
+        "targetLowPrice": 205.0,            // 목표주가 최저
+        "numberOfAnalystOpinions": 41,      // 애널리스트 수
+        // === 공매도 ===
+        "shortRatio": 2.36,                 // 공매도 비율 (일수)
+        "shortPercentOfFloat": 0.008,       // 유통주식 대비 공매도 비율
+        // === 52주 / 이동평균 ===
+        "fiftyTwoWeekHigh": 288.62,         // 52주 최고가
+        "fiftyTwoWeekLow": 169.21,          // 52주 최저가
+        "52WeekChange": 0.126,              // 52주 수익률
+        "fiftyDayAverage": 268.51,          // 50일 이동평균
+        "twoHundredDayAverage": 239.58,     // 200일 이동평균
+        // === 거래량 ===
+        "averageVolume": 47953918,          // 평균 거래량 (3개월)
+        "averageDailyVolume10Day": 62291260,// 평균 거래량 (10일)
+        // === 분류 ===
         "sector": "Technology",             // 섹터
-        "industry": "Consumer Electronics", // 산업
-        // ... yf.Ticker().info 전체 필드
+        "industry": "Consumer Electronics"  // 산업
       }
     },
     "NVDA": { /* 동일 구조 */ },
@@ -581,6 +635,7 @@ QuantiQ 시스템은 **PostgreSQL**과 **MongoDB** 두 가지 데이터베이스
 **참고**:
 - `yfinance_indicators` 키는 ticker (e.g., `^GSPC`), `fred_indicators` 키는 code (e.g., `FEDFUNDS`). 표시명은 각 값의 `name` 필드에 포함.
 - 소비자 코드는 dict/float 양쪽 모두 처리 가능 (레거시 호환).
+- `stocks.*.info`는 최신 날짜에만 저장 (yfinance 현재 스냅샷, ~40개 퀀트 분석용 필드). 필드 목록은 `EconomicDataService._INFO_FIELDS` 참조.
 
 ---
 

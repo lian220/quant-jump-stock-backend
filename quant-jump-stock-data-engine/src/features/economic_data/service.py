@@ -6,7 +6,7 @@ import requests
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from collections import defaultdict
 
 from .repository import EconomicDataRepository
@@ -340,8 +340,42 @@ class EconomicDataService:
         logger.info(f"📊 개별 종목 데이터 수집 완료: {success_count}/{len(tickers)}개")
         return success_count
 
-    def _fetch_ticker_info(self, ticker: str, stock_obj: yf.Ticker = None) -> Dict[str, Any] | None:
-        """yfinance에서 종목 펀더멘탈 정보를 가져옵니다.
+    # 퀀트 분석에 필요한 펀더멘탈 필드 (~40개)
+    _INFO_FIELDS = {
+        # 밸류에이션
+        "trailingPE", "forwardPE", "priceToBook", "priceToSalesTrailing12Months",
+        "enterpriseToEbitda", "enterpriseToRevenue", "trailingPegRatio",
+        # 수익성
+        "profitMargins", "operatingMargins", "grossMargins", "ebitdaMargins",
+        "returnOnAssets", "returnOnEquity",
+        # 성장성
+        "earningsGrowth", "revenueGrowth", "earningsQuarterlyGrowth",
+        # 재무 건전성
+        "debtToEquity", "currentRatio", "quickRatio", "freeCashflow",
+        "totalCash", "totalDebt",
+        # 주당 지표
+        "epsTrailingTwelveMonths", "epsForward", "bookValue",
+        "revenuePerShare", "totalCashPerShare",
+        # 배당
+        "dividendYield", "dividendRate", "payoutRatio",
+        # 시장 데이터
+        "marketCap", "enterpriseValue", "beta", "sharesOutstanding", "floatShares",
+        # 애널리스트
+        "recommendationMean", "targetMeanPrice", "targetMedianPrice",
+        "targetHighPrice", "targetLowPrice", "numberOfAnalystOpinions",
+        # 공매도
+        "shortRatio", "shortPercentOfFloat",
+        # 52주 / 이동평균
+        "fiftyTwoWeekHigh", "fiftyTwoWeekLow", "52WeekChange",
+        "fiftyDayAverage", "twoHundredDayAverage",
+        # 거래량
+        "averageVolume", "averageDailyVolume10Day",
+        # 분류
+        "sector", "industry",
+    }
+
+    def _fetch_ticker_info(self, ticker: str, stock_obj: yf.Ticker = None) -> Optional[Dict[str, Any]]:
+        """yfinance에서 종목 펀더멘탈 정보를 가져옵니다 (퀀트 분석용 필드만 저장).
 
         Args:
             ticker: 종목 티커
@@ -354,9 +388,11 @@ class EconomicDataService:
             if not raw_info:
                 return None
 
-            # NaN/None/inf 값 필터링
+            # 허용 필드만 추출 + NaN/None/inf 필터링
             cleaned = {}
             for k, v in raw_info.items():
+                if k not in self._INFO_FIELDS:
+                    continue
                 if v is None:
                     continue
                 if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
