@@ -2,6 +2,7 @@ package com.quantjumpstock.core.scheduler
 
 import com.quantjumpstock.core.adapter.input.scheduler.*
 import org.quartz.*
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.DependsOn
@@ -46,6 +47,19 @@ import java.util.*
  * |------|---------------|--------------|--------------|
  * | CPI/NFP | 8:30 AM | 21:30 KST | 22:30 KST |
  * | ISM PMI | 10:00 AM | 23:00 KST | 00:00 KST |
+ *
+ * ## ⚠️ 알려진 제한사항: 시간 기반 의존성 체인
+ *
+ * 현재 파이프라인은 고정 시간 간격에 의존합니다 (완료 이벤트 기반 트리거 아님).
+ * 예: 23:00 경제 데이터 → 23:30 기술적 분석 → 23:45 Vertex AI → 00:20 종목 추천
+ *
+ * **잠재적 문제**:
+ * - 경제 데이터 수집이 23:30을 넘으면 기술적 분석이 불완전한 데이터로 실행
+ * - Vertex AI 예측이 35분을 초과하면 종목 추천이 예측 완료 전에 실행
+ *
+ * **향후 개선**:
+ * - Quartz JobListener 또는 Kafka 완료 이벤트 기반 트리거로 전환
+ * - 각 Job이 이전 Job의 완료를 명시적으로 확인하도록 개선
  */
 @Configuration
 @DependsOn("flywayInitializer")
@@ -126,11 +140,17 @@ class QuartzConfig {
     }
 
     // ========================
-    // 3. Vertex AI 예측 (23:45)
+    // 3. Vertex AI 예측 (23:45) - GCP 활성화 시에만
     // ========================
     // 경제 데이터 + 기술적 분석 완료 후 AI 예측 실행
     // 예측 소요 시간: 약 30-35분
     @Bean
+    @ConditionalOnProperty(
+        prefix = "gcp",
+        name = ["enabled"],
+        havingValue = "true",
+        matchIfMissing = false
+    )
     fun vertexAIPredictionJobDetail(): JobDetail {
         return JobBuilder.newJob(VertexAIPredictionJobAdapter::class.java)
             .withIdentity("vertexAIPredictionJob")
@@ -139,6 +159,12 @@ class QuartzConfig {
     }
 
     @Bean
+    @ConditionalOnProperty(
+        prefix = "gcp",
+        name = ["enabled"],
+        havingValue = "true",
+        matchIfMissing = false
+    )
     fun vertexAIPredictionTrigger(): Trigger {
         return TriggerBuilder.newTrigger()
             .forJob(vertexAIPredictionJobDetail())
@@ -176,24 +202,24 @@ class QuartzConfig {
     }
 
     // ========================
-    // 5. 자동 매수 (00:30) - TODO: 미구현
+    // 5. 자동 매수 (00:30)
     // ========================
     // 미국 정규장 개장 1시간 후 자동 매수
     // 초기 변동성 진정, 트렌드 확정 후 안전한 진입
-    // 현재: 미구현 상태, 향후 구현 예정
+    // 참고: AutoBuyJobAdapter는 실제 트레이딩 로직 포함
     @Bean
-    fun autoBuyPlaceholderJobDetail(): JobDetail {
+    fun autoBuyJobDetail(): JobDetail {
         return JobBuilder.newJob(AutoBuyJobAdapter::class.java)
-            .withIdentity("autoBuyPlaceholderJob")
+            .withIdentity("autoBuyJob")
             .storeDurably()
             .build()
     }
 
     @Bean
-    fun autoBuyPlaceholderTrigger(): Trigger {
+    fun autoBuyTrigger(): Trigger {
         return TriggerBuilder.newTrigger()
-            .forJob(autoBuyPlaceholderJobDetail())
-            .withIdentity("autoBuyPlaceholderTrigger")
+            .forJob(autoBuyJobDetail())
+            .withIdentity("autoBuyTrigger")
             .withSchedule(
                 CronScheduleBuilder.cronSchedule("0 30 0 * * ?")
                     .inTimeZone(TimeZone.getTimeZone("Asia/Seoul"))

@@ -6,6 +6,8 @@ import org.quartz.JobExecutionContext
 import org.quartz.JobExecutionException
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 
 /**
  * 경제 데이터 재수집 Job (Input Adapter)
@@ -37,18 +39,25 @@ class EconomicDataUpdate2JobAdapter(
             logger.info("경제 데이터 재수집 시작 (23:00) [Trigger: $triggerName]")
             logger.info("=".repeat(80))
 
-            // 경제 데이터 업데이트
+            // 경제 데이터 업데이트 (타임아웃: 5분)
             logger.info("경제 데이터 재수집 중 (FRED + Yahoo Finance)...")
             economicDataUseCase.triggerEconomicDataUpdate()
                 .thenAccept { result ->
                     logger.info("✅ 경제 데이터 재수집 완료: $result")
                 }
-                .get()
+                .get(5, TimeUnit.MINUTES)
 
             logger.info("=".repeat(80))
             logger.info("경제 데이터 재수집 완료")
             logger.info("=".repeat(80))
 
+        } catch (e: TimeoutException) {
+            logger.error("❌ 경제 데이터 재수집 타임아웃 (5분 초과)", e)
+            throw JobExecutionException("경제 데이터 재수집이 타임아웃되었습니다", e)
+        } catch (e: InterruptedException) {
+            logger.error("❌ 경제 데이터 재수집 중단됨", e)
+            Thread.currentThread().interrupt()
+            throw JobExecutionException("경제 데이터 재수집이 중단되었습니다", e)
         } catch (e: Exception) {
             logger.error("❌ 경제 데이터 재수집 Job 실행 중 오류", e)
             throw JobExecutionException(e)
