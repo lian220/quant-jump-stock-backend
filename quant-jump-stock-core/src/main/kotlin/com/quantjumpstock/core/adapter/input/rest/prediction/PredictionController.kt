@@ -60,10 +60,9 @@ class PredictionController(
         }
     }
 
-    override fun getBuySignals(minConfidence: Double?): ResponseEntity<Map<String, Any>> {
+    override fun getBuySignals(date: LocalDate?, minConfidence: Double?): ResponseEntity<Map<String, Any>> {
         return try {
-            val threshold = minConfidence ?: 0.7
-            val result = predictionService.getBuySignals(threshold)
+            val result = predictionService.getBuySignals(date, minConfidence ?: 0.0)
 
             ResponseEntity.ok(mapOf(
                 "success" to result.success,

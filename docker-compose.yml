@@ -148,7 +148,7 @@ services:
       dockerfile: Dockerfile
     container_name: qjs-data-engine
     ports:
-      - "10020:10020"
+      - "${DATA_ENGINE_PORT:-10020}:${DATA_ENGINE_PORT:-10020}"
     depends_on:
       kafka:
         condition: service_started
@@ -162,8 +162,8 @@ services:
       # PostgreSQL - env var 우선, 미설정시 로컬 Docker
       DB_HOST: ${DB_HOST:-postgresql}
       DB_PORT: ${DB_PORT:-5432}
-      # Server Port
-      SERVER_PORT: ${SERVER_PORT:-10020}
+      # Server Port (Data Engine)
+      SERVER_PORT: ${DATA_ENGINE_PORT:-10020}
       # Kafka
       KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
       # APIs
@@ -195,7 +195,7 @@ services:
       dockerfile: Dockerfile
     container_name: qjs-core
     ports:
-      - "10010:10010"
+      - "${CORE_API_PORT:-10010}:${CORE_API_PORT:-10010}"
     depends_on:
       kafka:
         condition: service_started
@@ -209,6 +209,8 @@ services:
       - ./scripts:/scripts
     environment:
       TZ: "Asia/Seoul"
+      # Server Port (Core API)
+      SERVER_PORT: ${CORE_API_PORT:-10010}
       # PostgreSQL - env var 우선, 미설정시 로컬 Docker
       SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://${DB_HOST:-postgresql}:${DB_PORT:-5432}/${DB_NAME:-quantiq}}
       SPRING_DATASOURCE_USERNAME: ${DB_USER:-quantiq_user}
@@ -232,7 +234,8 @@ services:
       DB_DUAL_WRITE: "true"
       DB_READ_SOURCE: "rdb"
       RUN_MIGRATION: "true"
-      # Google Cloud (container path override)
+      # Google Cloud
+      GCP_ENABLED: ${GCP_ENABLED:-false}
       GOOGLE_APPLICATION_CREDENTIALS: "/app/credentials/vertex-ai-key.json"
       # JVM Heap Settings
       JAVA_OPTS: "-Xmx768m -Xms512m -XX:MaxMetaspaceSize=256m"

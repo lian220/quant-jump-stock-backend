@@ -487,6 +487,9 @@ def get_all_data(collection_name):
     MongoDB에서 daily_stock_data 컬렉션의 데이터를 가져와서
     economic_and_stock_data 형태로 변환합니다.
     stocks 컬렉션에서 is_active가 true인 종목만 필터링합니다.
+
+    Args:
+        collection_name: 컬렉션 이름
     """
     # MongoDB에서 데이터 가져오기
     if db is None:
@@ -520,16 +523,18 @@ def get_all_data(collection_name):
             print(f"활성화된 종목 샘플 (처음 10개): {list(active_stock_names)[:10]}")
             print(f"활성화된 티커 샘플 (처음 10개): {list(active_tickers)[:10]}")
         
-        # 2. daily_stock_data 컬렉션에서 모든 데이터 가져오기 (날짜순 정렬)
+        # 2. daily_stock_data 컬렉션에서 데이터 가져오기 (날짜순 정렬)
         print("\n=== daily_stock_data 컬렉션 조회 ===")
+        print("📅 전체 날짜 데이터 조회")
+
         total_docs = db.daily_stock_data.count_documents({})
-        print(f"daily_stock_data 컬렉션의 총 문서 수: {total_docs}")
-        
+        print(f"daily_stock_data 컬렉션의 매칭 문서 수: {total_docs}")
+
         if total_docs == 0:
             print("❌ 경고: daily_stock_data 컬렉션이 비어있습니다!")
             return []
-        
-        cursor = db.daily_stock_data.find().sort("date", 1)
+
+        cursor = db.daily_stock_data.find({}).sort("date", 1)
         
         all_data = []
         processed_count = 0
@@ -1794,7 +1799,7 @@ def save_analysis_to_db(result_df):
                             total_processed += result.upserted_count + result.modified_count
                             print(f"  배치 {i//batch_size + 1}: {len(batch)}개 처리 완료 (총 {total_processed}개)")
                         except Exception as e:
-                            print(f"⚠️ stock_analysis batch {i//batch_size + 1} bulk_write 실패: {str(e)}")
+                            print(f"⚠️ stock_analysis_results batch {i//batch_size + 1} bulk_write 실패: {str(e)}")
                             # 실패 시 개별 업데이트로 fallback
                             for update_op in batch:
                                 try:

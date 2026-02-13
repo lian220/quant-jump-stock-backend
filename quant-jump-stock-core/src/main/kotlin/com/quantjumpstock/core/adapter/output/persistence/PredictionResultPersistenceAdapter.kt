@@ -1,46 +1,46 @@
 package com.quantjumpstock.core.adapter.output.persistence
 
-import com.quantjumpstock.core.adapter.output.persistence.mongodb.PredictionResultMongoRepository
-import com.quantjumpstock.core.domain.model.prediction.PredictionResult
-import com.quantjumpstock.core.domain.port.output.PredictionResultRepository
+import com.quantjumpstock.core.adapter.output.persistence.mongodb.VertexAIPredictionResultMongoRepository
+import com.quantjumpstock.core.domain.model.prediction.VertexAIPredictionResult
+import com.quantjumpstock.core.domain.port.output.VertexAIPredictionResultRepository
 import org.springframework.stereotype.Component
 import java.time.LocalDate
 
 /**
- * PredictionResult Persistence Adapter (Output Adapter)
- * PredictionResultRepository 인터페이스를 구현하여 MongoDB와 연동합니다.
+ * VertexAIPredictionResult Persistence Adapter (Output Adapter)
+ * VertexAIPredictionResultRepository 인터페이스를 구현하여 MongoDB와 연동합니다.
  */
 @Component
-class PredictionResultPersistenceAdapter(
-    private val predictionResultMongoRepository: PredictionResultMongoRepository
-) : PredictionResultRepository {
+class VertexAIPredictionResultPersistenceAdapter(
+    private val predictionResultMongoRepository: VertexAIPredictionResultMongoRepository
+) : VertexAIPredictionResultRepository {
 
-    override fun save(result: PredictionResult): PredictionResult {
+    override fun save(result: VertexAIPredictionResult): VertexAIPredictionResult {
         return predictionResultMongoRepository.save(result)
     }
 
-    override fun findById(id: String): PredictionResult? {
+    override fun findById(id: String): VertexAIPredictionResult? {
         return predictionResultMongoRepository.findById(id).orElse(null)
     }
 
-    override fun findBySymbol(symbol: String): List<PredictionResult> {
+    override fun findBySymbol(symbol: String): List<VertexAIPredictionResult> {
         return predictionResultMongoRepository.findBySymbolOrderByDateDesc(symbol)
     }
 
-    override fun findByDate(date: LocalDate): List<PredictionResult> {
+    override fun findByDate(date: LocalDate): List<VertexAIPredictionResult> {
         return predictionResultMongoRepository.findByDate(date)
     }
 
-    override fun findBySymbolAndDate(symbol: String, date: LocalDate): PredictionResult? {
+    override fun findBySymbolAndDate(symbol: String, date: LocalDate): VertexAIPredictionResult? {
         return predictionResultMongoRepository.findBySymbolOrderByDateDesc(symbol)
             .firstOrNull { it.date == date }
     }
 
-    override fun findHighConfidenceBuySignals(date: LocalDate, minConfidence: Double): List<PredictionResult> {
+    override fun findHighConfidenceBuySignals(date: LocalDate, minConfidence: Double): List<VertexAIPredictionResult> {
         return predictionResultMongoRepository.findHighConfidenceBuySignals(date, minConfidence)
     }
 
-    override fun findLatestBySymbol(symbol: String): PredictionResult? {
+    override fun findLatestBySymbol(symbol: String): VertexAIPredictionResult? {
         return predictionResultMongoRepository.findBySymbolOrderByDateDesc(symbol).firstOrNull()
     }
 

@@ -7,6 +7,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestParam
 
 /**
  * Vertex AI 제어 API 스펙
@@ -15,7 +16,10 @@ import org.springframework.web.bind.annotation.RequestBody
 interface VertexAIApi {
 
     @PostMapping("/predict")
-    @Operation(summary = "Vertex AI 예측 수동 실행", description = "스케줄러 대기 없이 즉시 Vertex AI CustomJob 실행")
+    @Operation(
+        summary = "Vertex AI 예측 수동 실행",
+        description = "스케줄러 대기 없이 즉시 Vertex AI CustomJob 실행"
+    )
     @VertexAIJobResponses
     fun runPrediction(): ResponseEntity<Map<String, Any>>
 

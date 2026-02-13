@@ -1,5 +1,21 @@
 # Backend 기술 개선사항
 
+## 🔥 긴급 작업 (이번 주)
+
+### 추천 로직 개선 (부분 점수 시스템)
+- [ ] **Backend**: `RecommendationService.kt` — `.filter { it.isRecommended }` 제거
+  - Composite Score 기준으로만 필터링 (`compositeScore >= minCompositeScore`)
+- [ ] **Data Engine**: `sync_service.py` — `is_recommended` 재계산
+  - 새 메서드: `_determine_recommended(composite_score, grade)`
+  - BETA 임계값: 0.8점, 통합 후: 2.0점
+- [ ] **Frontend**: `recommendations/page.tsx` — Beta 배너 문구 업데이트
+  - "최소 0.8점 이상" 안내
+- [ ] **테스트**: 운영 데이터 마이그레이션 후 E2E 테스트
+  - 예상: 추천 종목 2~3개 → 10~15개
+  - 상세: [추천시스템.md](./docs/features/추천시스템.md)
+
+---
+
 ## 아키텍처 개선
 - [ ] 헥사고날 아키텍처 마이그레이션 (현재 65/100 → 목표 100/100)
   - 상세: [BACKEND_ARCHITECTURE.md](./docs/architecture/refactor/BACKEND_ARCHITECTURE.md)
@@ -13,6 +29,18 @@
 ## 기능
 - [ ] Vertex AI CustomJob 파라미터 기능 추가
 - [ ] 이메일/전화번호 인증 구현
+- [ ] 뉴스 감정 분석 통합 (종목 추천 근거)
+  - [x] MongoDB `news_sentiment` 컬렉션 설계 (title, summary, url, sentiment, relevance_score)
+  - [ ] 인덱스 생성 (ticker+date, ticker+published_at, TTL 90일) → [docs/setup/mongodb-indexes.md](./docs/setup/mongodb-indexes.md)
+  - [x] Data Engine: SentimentAnalysisService 수정 (원본 기사 저장 추가)
+  - [x] 뉴스 API 통합 (Alpha Vantage NEWS_SENTIMENT)
+  - [x] 감정 분석: Alpha Vantage 내장 감정 점수 사용
+  - [x] 기존 스케줄러 통합 (SentimentAnalysisHandler 활용)
+  - [ ] daily_stock_data에 sentiment_summary 필드 추가 (선택)
+  - [ ] Core API: NewsSentimentMongoRepository 구현
+  - [ ] RecommendationController: GET /recommendations/{ticker}/news-analysis 추가
+  - [ ] Frontend: 뉴스 분석 컴포넌트 (감정 뱃지, 상위 뉴스 5개 표시)
+  - [ ] **테스트**: 스케줄러 실행 후 news_sentiment 컬렉션 확인
 
 ## 성능
 - [ ] JPA N+1 쿼리 최적화

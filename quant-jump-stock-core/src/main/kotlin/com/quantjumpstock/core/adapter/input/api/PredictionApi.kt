@@ -31,11 +31,16 @@ interface PredictionApi {
     fun getLatestPredictions(): ResponseEntity<Map<String, Any>>
 
     @GetMapping("/buy-signals")
-    @Operation(summary = "매수 신호 조회", description = "오늘 날짜의 매수 신호만 조회 (신뢰도 높은 순)")
+    @Operation(summary = "매수 신호 조회", description = "지정된 날짜(또는 최신 데이터)의 매수 신호 조회 (점수 높은 순)")
     @PredictionQueryResponses
     fun getBuySignals(
         @RequestParam(required = false)
-        @Parameter(description = "최소 신뢰도 (0.0 ~ 1.0, 기본값 0.7)")
+        @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+        @Parameter(description = "분석 날짜 (YYYY-MM-DD, 미지정 시 최신 데이터 날짜 사용)")
+        date: LocalDate?,
+
+        @RequestParam(required = false)
+        @Parameter(description = "최소 Composite Score 비율 (0.0 ~ 1.0, 기본값 0.0). Score × 7.5로 변환됨")
         minConfidence: Double?
     ): ResponseEntity<Map<String, Any>>
 
