@@ -1,6 +1,6 @@
 # Database Schema Documentation
 
-> **최종 업데이트**: 2026-02-06
+> **최종 업데이트**: 2026-02-13
 > **Flyway 버전**: V20
 
 ## 개요

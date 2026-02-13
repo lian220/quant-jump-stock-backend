@@ -287,11 +287,14 @@ class MongoDataLoader(DataLoader):
             benchmark_ticker: 벤치마크 ticker (예: "SPY", "^GSPC")
             start_date: 시작일
             end_date: 종료일
-            ticker_to_name_map: (deprecated, 미사용) 하위 호환용 파라미터
+            ticker_to_name_map: (deprecated, 미사용) 하위 호환용 파라미터. 향후 제거 예정.
 
         Returns:
             DataFrame with close column, or None if not found
         """
+        if ticker_to_name_map is not None:
+            logger.warning("ticker_to_name_map is deprecated and will be removed in a future version")
+
         client = self._get_client()
         db = client[self.database]
         coll = db[self.collection]

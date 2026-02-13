@@ -299,6 +299,9 @@ class EconomicDataService:
                     # 펀더멘탈 데이터 수집 (종목당 1회)
                     info_data = self._fetch_ticker_info(ticker)
 
+                    # 가장 최신 날짜 계산 (info는 최신 날짜에만 저장)
+                    latest_date_str = df.index.max().strftime("%Y-%m-%d")
+
                     # 각 날짜별로 데이터를 그룹화
                     for date, row in df.iterrows():
                         date_str = date.strftime("%Y-%m-%d")
@@ -314,7 +317,8 @@ class EconomicDataService:
                                 # 하위 호환성을 위해 close_price도 유지
                                 "close_price": float(row["Close"])
                             }
-                            if info_data:
+                            # info는 최신 날짜에만 저장 (동일 스냅샷 중복 방지)
+                            if info_data and date_str == latest_date_str:
                                 stock_data["info"] = info_data
                             daily_data[date_str]["stocks"][ticker] = stock_data
 
@@ -351,5 +355,6 @@ class EconomicDataService:
             return cleaned if cleaned else None
 
         except Exception as e:
+            time.sleep(0.2)  # rate limit even on failure
             logger.warning(f"펀더멘탈 정보 수집 실패: {ticker} - {e}")
             return None
