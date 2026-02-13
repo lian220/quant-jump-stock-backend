@@ -342,7 +342,7 @@ class SlackNotifier:
 
             response = requests.post(url, json=payload, timeout=10)
             response.raise_for_status()
-            logger.info(f"✅ Slack Webhook 알림 발송 완료")
+            logger.info("✅ Slack Webhook 알림 발송 완료")
         except Exception as e:
             logger.error(f"❌ Slack Webhook 알림 발송 실패: {e}")
 
@@ -507,3 +507,22 @@ class SlackNotifier:
             f"{candidate_count}개 추천, 평균 종합 {avg_composite:.2f}"
         )
         SlackNotifier._post_to_webhook(webhook_url, fallback_text, blocks)
+
+    @staticmethod
+    def notify_buy_candidates(total_analyzed: int, buy_candidates: List, buy_criteria):
+        """
+        매수 후보 알림 (Tech-only 분석용)
+
+        Note: 이 메소드는 notify_comprehensive_report와 중복됩니다.
+        향후 이중 추천 경로 문제 해결 시 제거 예정.
+
+        Args:
+            total_analyzed: 분석된 총 종목 수
+            buy_candidates: 매수 후보 목록
+            buy_criteria: BuyCriteria 객체
+        """
+        # 현재는 종합 리포트로 통합되므로 로그만 남김
+        logger.info(
+            f"매수 후보 분석 완료: {total_analyzed}개 분석, "
+            f"{len(buy_candidates)}개 후보 (notify_comprehensive_report에서 전송됨)"
+        )

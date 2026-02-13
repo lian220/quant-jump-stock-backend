@@ -73,5 +73,5 @@ def run_technical_analysis(
         }
 
     except Exception as e:
-        logger.exception(f"[{request_id}] 기술적 분석 실패: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.exception(f"[{request_id}] 기술적 분석 실패")
+        raise HTTPException(status_code=500, detail="기술적 분석 처리 중 오류가 발생했습니다.") from e

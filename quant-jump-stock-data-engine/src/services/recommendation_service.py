@@ -54,30 +54,23 @@ class RecommendationService:
             total_analyzed = analysis_result.get("total_analyzed", 0)
             all_results = analysis_result.get("all_results", [])
 
-            # Composite Score 기반 매수 후보 필터링
-            # TODO: AI예측/감정분석 통합 시 ai_scores, sentiment_scores 전달
-            buy_candidates = self.buy_criteria.filter_candidates(all_results)
-
             # 완료 알림 (스레드)
+            # Note: Composite Score 필터링과 최종 추천은 main.py의 ComprehensiveReportService에서 처리
             if thread_ts:
                 SlackNotifier.send_thread_message(
-                    f"✅ 종합 분석 완료\n"
+                    f"✅ 기술적 분석 완료\n"
                     f"• 분석 종목: {total_analyzed}개\n"
-                    f"• 매수 후보: {len(buy_candidates)}개\n"
                     f"• 시각: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
                     thread_ts
                 )
 
-            # Composite Score 기반 Slack 웹훅 알림 (analysis 채널)
-            SlackNotifier.notify_buy_candidates(total_analyzed, buy_candidates, self.buy_criteria)
-
-            logger.info(f"[{request_id}] 종합 분석 완료: {total_analyzed}개 분석, 매수 후보 {len(buy_candidates)}개")
+            logger.info(f"[{request_id}] 기술적 분석 완료: {total_analyzed}개 분석")
 
             return {
                 "status": "success",
                 "total_analyzed": total_analyzed,
-                "recommended_count": len(buy_candidates),
-                "results": buy_candidates
+                "recommended_count": 0,  # ComprehensiveReportService에서 업데이트됨
+                "results": all_results  # 전체 분석 결과 반환 (필터링 전)
             }
 
         except Exception as e:

@@ -70,6 +70,25 @@ class ComprehensiveReportService:
             return {}
 
         pred_date = latest_pred["date"]
+
+        # Staleness check: 예측 데이터가 너무 오래된 경우 경고
+        MAX_STALENESS_DAYS = 7
+        try:
+            pred_date_obj = datetime.strptime(pred_date, "%Y-%m-%d")
+            analysis_date_obj = datetime.strptime(analysis_date, "%Y-%m-%d")
+            delta_days = (analysis_date_obj - pred_date_obj).days
+
+            if delta_days > MAX_STALENESS_DAYS:
+                logger.warning(
+                    f"AI 예측 데이터가 오래됨 (pred_date={pred_date}, "
+                    f"analysis_date={analysis_date}, delta={delta_days}일)"
+                )
+                # 너무 오래된 경우 사용하지 않음
+                return {}
+        except ValueError as e:
+            logger.error(f"날짜 파싱 실패: {e}")
+            return {}
+
         preds = db.stock_predictions.find(
             {"date": pred_date},
             {"_id": 0, "ticker": 1, "predicted_price": 1, "actual_price": 1},
@@ -124,8 +143,10 @@ class ComprehensiveReportService:
         ai_predictions = self.load_ai_predictions(analysis_date)
 
         # 2. Composite Score 계산 + 필터링
+        # AI rise_probability를 0-3.5 스케일로 정규화 (tech_score와 동일 범위)
+        # 10% 상승 → 1.0, 20% 상승 → 2.0, 35% 이상 → 3.5
         ai_scores = {
-            ticker: data["rise_probability"]
+            ticker: min(data["rise_probability"] / 10.0, 3.5)
             for ticker, data in ai_predictions.items()
         }
 

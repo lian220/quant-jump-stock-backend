@@ -138,6 +138,18 @@ class BuyCriteria:
         if sentiment_scores is None:
             sentiment_scores = {}
 
+        # AI/감정 데이터 사용 여부 확인
+        has_ai_data = bool(ai_scores and any(ai_scores.values()))
+        has_sentiment_data = bool(sentiment_scores and any(sentiment_scores.values()))
+
+        # Tech-only 모드일 때 composite threshold 조정
+        composite_threshold = self.min_composite_score
+        if not has_ai_data and not has_sentiment_data:
+            # Tech-only: 최대 composite = 0.4 × 3.5 = 1.4
+            # Threshold를 1.0으로 낮춤 (전체 기술 신호의 71%)
+            composite_threshold = 1.0
+            logger.info(f"Tech-only 모드: composite_threshold를 {composite_threshold}로 조정")
+
         candidates = []
         for stock in all_results:
             ticker = stock.get("ticker", "")
@@ -150,7 +162,7 @@ class BuyCriteria:
 
             if not self.passes_filter(scores["tech_signals"], sentiment):
                 continue
-            if scores["composite_score"] < self.min_composite_score:
+            if scores["composite_score"] < composite_threshold:
                 continue
 
             candidates.append({**stock, "scores": scores})

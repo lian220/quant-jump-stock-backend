@@ -167,14 +167,18 @@ class NewTechnicalAnalysisAdapter:
 
         # 종합 분석 리포트: 기술적 + AI 예측 + 감정 분석
         if result.get("status") == "success":
-            all_results = result.get("results", [])
-            analysis_date = target_date or datetime.now().strftime("%Y-%m-%d")
+            try:
+                all_results = result.get("results", [])
+                analysis_date = target_date or datetime.now().strftime("%Y-%m-%d")
 
-            report = self._report_service.generate_report(all_results, analysis_date)
-            SlackNotifier.notify_comprehensive_report(report)
+                report = self._report_service.generate_report(all_results, analysis_date)
+                SlackNotifier.notify_comprehensive_report(report)
 
-            # 리포트 결과로 반환값 업데이트
-            result["recommended_count"] = report.get("candidate_count", 0)
+                # 리포트 결과로 반환값 업데이트
+                result["recommended_count"] = report.get("candidate_count", 0)
+            except Exception as e:
+                logger.error(f"종합 리포트 생성/전송 실패: {e}")
+                # 분석 결과는 보존하고 계속 진행
 
         return result
 
