@@ -18,14 +18,26 @@ Quartz 스케줄러가 정해진 시간에 Job을 실행하면, Kafka를 통해 
 
 ---
 
+## 분석 카테고리
+
+QuantIQ는 4가지 분석 방식을 독립적으로 운영하며, 향후 **Composite Score**로 통합 예정:
+
+- **[기술적 분석](./technical/)**: SMA, RSI, MACD 등 차트 기반 지표
+- **[감성 분석](./sentiment/)**: 뉴스/소셜미디어 감정 점수
+- **[AI 예측](./ai/)**: Vertex AI Transformer 모델 기반 주가 예측
+- **[지표 분석](./indicator/)**: FRED 경제 지표 (CPI, 금리 등)
+- **[통합 분석](./composite/)**: 위 4가지를 결합한 종합 점수 (개발 중)
+
+---
+
 ## 기능별 상세 문서
 
 | # | 기능 | 실행 시간 | Kafka 토픽 | MongoDB 컬렉션 | 문서 |
 |---|------|-----------|------------|----------------|------|
-| 1 | 경제 데이터 수집 | 22:00 | `economic.data.update.request` | `daily_stock_data` | **[데이터수집.md](./데이터수집.md)** |
-| 2 | 기술적 분석 | 23:05 | `analysis.technical.request` | `stock_recommendations` | **[기술적분석.md](./기술적분석.md)** |
-| 3 | 뉴스 감정 분석 | 23:05 | `analysis.sentiment.request` | `sentiment_analysis` | **[뉴스감정분석.md](./뉴스감정분석.md)** |
-| 4 | AI 예측 (Vertex AI) | 22:00 (2단계) | `vertex.ai.run.request` | `stock_predictions` | **[AI분석.md](./AI분석.md)** |
+| 1 | 경제 데이터 수집 | 22:00 | `economic.data.update.request` | `daily_stock_data` | **[데이터수집.md](../features/데이터수집.md)** |
+| 2 | 기술적 분석 | 23:05 | `analysis.technical.request` | `stock_recommendations` | **[기술적분석.md](./technical/기술적분석.md)** |
+| 3 | 뉴스 감정 분석 | 23:05 | `analysis.sentiment.request` | `sentiment_analysis` | **[뉴스감정분석.md](./sentiment/뉴스감정분석.md)** |
+| 4 | AI 예측 (Vertex AI) | 22:00 (2단계) | `vertex.ai.run.request` | `stock_predictions` | **[AI분석.md](./ai/AI분석.md)** |
 
 ---
 
