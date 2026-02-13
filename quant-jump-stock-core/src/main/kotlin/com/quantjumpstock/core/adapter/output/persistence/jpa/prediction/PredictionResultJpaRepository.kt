@@ -1,6 +1,7 @@
 package com.quantjumpstock.core.adapter.output.persistence.jpa.prediction
 
 import org.springframework.data.jpa.repository.JpaRepository
+import org.springframework.data.jpa.repository.Query
 import org.springframework.stereotype.Repository
 import java.math.BigDecimal
 import java.time.LocalDate
@@ -48,4 +49,10 @@ interface PredictionResultJpaRepository : JpaRepository<PredictionResultEntity, 
         startDate: LocalDate,
         endDate: LocalDate
     ): List<PredictionResultEntity>
+
+    /**
+     * 가장 최근 분석 날짜 조회
+     */
+    @Query("SELECT MAX(p.analysisDate) FROM PredictionResultEntity p")
+    fun findLatestAnalysisDate(): LocalDate?
 }

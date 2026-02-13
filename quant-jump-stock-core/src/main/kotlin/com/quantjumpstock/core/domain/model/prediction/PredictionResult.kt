@@ -48,7 +48,7 @@ data class PredictionResult(
     val currentPrice: BigDecimal? = null,       // 현재가 (최신 종가)
     val targetPrice: BigDecimal? = null,        // 목표가 (AI 예측 가격, aiPredictedPrice와 동일)
     val upsidePercent: BigDecimal? = null,      // 상승여력 (%)
-    val priceRecommendation: String? = null     // 가격 추천 (강력매수/매수/보유/매도)
+    val priceRecommendation: String? = null  // 가격 추천 등급 (강력매수/매수/보유/매도)
 ) {
     companion object {
         /**

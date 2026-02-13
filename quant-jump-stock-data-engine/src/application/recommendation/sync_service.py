@@ -42,12 +42,17 @@ class RecommendationSyncService:
 
             # 1. MongoDB에서 데이터 조회
             ai_predictions = self._fetch_ai_predictions(analysis_date)
+            ai_analysis_results = self._fetch_stock_analysis_results(analysis_date)
             sentiment_analysis = self._fetch_sentiment_analysis(analysis_date)
             technical_analysis = self._fetch_technical_analysis(analysis_date)
-            current_prices = self._fetch_current_prices(analysis_date)  # 🆕 Phase 6.5
+            current_prices = self._fetch_current_prices(analysis_date)
+
+            # stock_analysis_results 데이터를 ai_predictions에 병합 (analysis_results 우선)
+            ai_predictions = self._merge_ai_sources(ai_predictions, ai_analysis_results)
 
             logger.info(
                 f"📊 [Sync] 조회 완료: AI={len(ai_predictions)}, "
+                f"AnalysisResults={len(ai_analysis_results)}, "
                 f"Sentiment={len(sentiment_analysis)}, Tech={len(technical_analysis)}, "
                 f"Prices={len(current_prices)}"
             )
@@ -81,6 +86,82 @@ class RecommendationSyncService:
         except Exception as e:
             logger.exception(f"❌ [Sync] 동기화 실패: {e}")
             return {"status": "failed", "error": str(e)}
+
+    def _fetch_stock_analysis_results(self, analysis_date: str) -> Dict[str, Dict]:
+        """
+        AI 분석 결과 조회 (MongoDB stock_analysis_results)
+
+        stock_predictions보다 풍부한 정보를 담고 있음:
+        - predictions.rise_probability: 상승 예상 퍼센트 (%)
+        - predictions.predicted_future_price: 예측 미래 가격
+        - recommendation: STRONG BUY / BUY / HOLD / SELL
+        - metrics.accuracy: 모델 정확도
+        """
+        try:
+            from datetime import datetime as dt
+            target_date = dt.strptime(analysis_date, "%Y-%m-%d")
+            # date 필드가 ISODate 또는 String일 수 있으므로 둘 다 검색
+            target_date_str = target_date.strftime("%Y-%m-%dT00:00:00.000Z")
+            results = list(self.mongo_db.stock_analysis_results.find({
+                "$or": [
+                    {"date": target_date},
+                    {"date": target_date_str},
+                ]
+            }))
+
+            output = {}
+            for r in results:
+                if "ticker" not in r:
+                    continue
+
+                predictions = r.get("predictions", {})
+                rise_pct = predictions.get("rise_probability")  # 상승 예상 % (e.g. 16.25)
+
+                # rise_probability (%) → 0~1 정규화
+                # 0% = 0.5 (중립), +20% = 1.0 (최대 강세), -20% = 0.0 (최대 약세)
+                rise_prob_normalized = None
+                if rise_pct is not None:
+                    rise_prob_normalized = max(0.0, min(1.0, 0.5 + rise_pct / 40.0))
+
+                output[r["ticker"]] = {
+                    "predicted_price": predictions.get("predicted_future_price"),
+                    "rise_probability": rise_prob_normalized,
+                    "recommendation": r.get("recommendation"),
+                    "accuracy": r.get("metrics", {}).get("accuracy"),
+                }
+
+            return output
+
+        except Exception as e:
+            logger.warning(f"AI 분석 결과 조회 실패: {e}")
+            return {}
+
+    def _merge_ai_sources(
+        self,
+        predictions: Dict[str, Dict],
+        analysis_results: Dict[str, Dict]
+    ) -> Dict[str, Dict]:
+        """
+        stock_predictions와 stock_analysis_results를 병합
+
+        stock_analysis_results의 rise_probability와 predicted_price를 우선 사용.
+        stock_predictions에만 있는 종목은 그대로 유지.
+        """
+        merged = dict(predictions)  # stock_predictions 기본
+
+        for ticker, ar_data in analysis_results.items():
+            if ticker not in merged:
+                merged[ticker] = {}
+
+            # analysis_results의 rise_probability 우선 (stock_predictions에는 없는 필드)
+            if ar_data.get("rise_probability") is not None:
+                merged[ticker]["rise_probability"] = ar_data["rise_probability"]
+
+            # analysis_results의 predicted_price 우선 (stock_predictions에도 있지만 analysis가 더 최신)
+            if ar_data.get("predicted_price") is not None:
+                merged[ticker]["predicted_price"] = ar_data["predicted_price"]
+
+        return merged
 
     def _fetch_ai_predictions(self, analysis_date: str) -> Dict[str, Dict]:
         """AI 예측 데이터 조회 (MongoDB stock_predictions)"""
@@ -258,7 +339,7 @@ class RecommendationSyncService:
                 "tech_signals_count": tech_signals_count,
                 "composite_score": float(composite_score),
                 "composite_grade": grade,
-                "is_recommended": tech.get("is_recommended", False),
+                "is_recommended": self._determine_recommended(composite_score, grade),
                 "recommendation_reason": reason,
                 # 🆕 Phase 6.5: 가격 메트릭
                 "current_price": current_price,
@@ -339,6 +420,25 @@ class RecommendationSyncService:
             reasons.append(f"기술적 신호 {tech_signals}/3개 충족")
 
         return ", ".join(reasons) if reasons else None
+
+    def _determine_recommended(self, composite_score: Decimal, grade: str) -> bool:
+        """
+        추천 여부 판정 (Composite Score 기준)
+
+        Args:
+            composite_score: 종합 점수 (0~7.5)
+            grade: 등급 (S, A, B, C, D)
+
+        Returns:
+            추천 여부 (True/False)
+        """
+        # BETA 상태 (AI/감정 미통합): 0.8점 이상
+        # 통합 후: 2.0점 이상 (C등급)
+        MIN_SCORE_BETA = Decimal("0.8")
+        # MIN_SCORE_INTEGRATED = Decimal("2.0")  # 통합 후 활성화
+
+        # 현재는 BETA 기준 사용
+        return composite_score >= MIN_SCORE_BETA
 
     def _determine_price_recommendation(self, upside_percent: float) -> str:
         """

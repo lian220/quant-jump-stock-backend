@@ -105,6 +105,16 @@ def health_check():
     return {"status": "alive", "timestamp": datetime.now(KST).isoformat()}
 
 
+@app.post("/api/v1/recommendations/sync")
+def sync_recommendations(date: str):
+    """MongoDB → PostgreSQL 동기화"""
+    from application.recommendation.sync_service import RecommendationSyncService
+
+    sync_service = RecommendationSyncService()
+    result = sync_service.sync_latest_recommendations(date)
+    return result
+
+
 def run_api():
     """REST API 서버 실행 (별도 스레드)"""
     port = settings.server_port

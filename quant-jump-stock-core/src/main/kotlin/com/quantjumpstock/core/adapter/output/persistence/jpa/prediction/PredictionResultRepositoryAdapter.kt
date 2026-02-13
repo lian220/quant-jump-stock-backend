@@ -60,4 +60,11 @@ class PredictionResultRepositoryAdapter(
             minScore
         ).map { it.toDomain() }
     }
+
+    /**
+     * 가장 최근 분석 날짜 조회
+     */
+    override fun findLatestAnalysisDate(): LocalDate? {
+        return jpaRepository.findLatestAnalysisDate()
+    }
 }

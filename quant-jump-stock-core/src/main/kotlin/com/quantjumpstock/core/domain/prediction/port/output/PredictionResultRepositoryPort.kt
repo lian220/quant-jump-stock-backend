@@ -35,4 +35,11 @@ interface PredictionResultRepositoryPort {
      * @param minCompositeScore 최소 Composite Score (0~7.5)
      */
     fun findHighConfidenceBuySignals(date: LocalDate, minCompositeScore: Double): List<PredictionResult>
+
+    /**
+     * 가장 최근 분석 날짜 조회
+     *
+     * @return 데이터가 있는 가장 최근 날짜, 없으면 null
+     */
+    fun findLatestAnalysisDate(): LocalDate?
 }

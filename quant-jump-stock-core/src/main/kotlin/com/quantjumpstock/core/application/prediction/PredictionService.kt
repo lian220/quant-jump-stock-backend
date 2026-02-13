@@ -1,7 +1,7 @@
 package com.quantjumpstock.core.application.prediction
 
-import com.quantjumpstock.core.domain.model.prediction.VertexAIPredictionResult
-import com.quantjumpstock.core.domain.prediction.port.output.PredictionRepositoryPort
+import com.quantjumpstock.core.domain.model.prediction.PredictionResult
+import com.quantjumpstock.core.domain.prediction.port.output.PredictionResultRepositoryPort
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import java.time.LocalDate
@@ -9,130 +9,116 @@ import java.time.LocalDate
 /**
  * Prediction Application Service
  *
- * 예측 결과 조회 비즈니스 로직을 담당.
- * Port를 통해 Repository에 접근하여 Hexagonal Architecture 준수.
+ * Composite Score 기반 통합 예측 결과 조회 비즈니스 로직.
+ * PredictionResultRepositoryPort를 통해 PostgreSQL에 접근 (Hexagonal Architecture).
  */
 @Service
 class PredictionService(
-    private val predictionRepository: PredictionRepositoryPort
+    private val predictionResultRepository: PredictionResultRepositoryPort
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
     /**
      * 최근 예측 결과 조회
-     *
-     * @param days 조회할 기간 (일 수)
-     * @return 예측 결과 응답
      */
     fun getAllPredictions(days: Int): PredictionListResponse {
         val fromDate = LocalDate.now().minusDays(days.toLong())
-        val predictions = predictionRepository.findRecentPredictions(fromDate)
+        val predictions = predictionResultRepository.findRecentPredictions(fromDate)
 
         return PredictionListResponse(
             success = true,
             count = predictions.size,
             fromDate = fromDate,
-            predictions = predictions
+            predictions = predictions.map { it.toBuySignalDto() }
         )
     }
 
     /**
-     * 오늘의 최신 예측 결과 조회
+     * 최신 예측 결과 조회
      *
-     * @return 예측 결과 응답 (신뢰도 순 정렬)
+     * 가장 최근 데이터가 있는 날짜의 결과를 반환.
      */
     fun getLatestPredictions(): PredictionListResponse {
-        val today = LocalDate.now()
-        val predictions = predictionRepository.findByDate(today)
-            .sortedByDescending { it.confidence }
+        val latestDate = predictionResultRepository.findLatestAnalysisDate()
+            ?: LocalDate.now()
+
+        val predictions = predictionResultRepository.findByDate(latestDate)
 
         return PredictionListResponse(
             success = true,
             count = predictions.size,
-            fromDate = today,
-            predictions = predictions
+            fromDate = latestDate,
+            predictions = predictions.map { it.toBuySignalDto() }
         )
     }
 
     /**
      * 매수 신호 조회
      *
-     * ⚠️ 중요: 스케줄러가 23:05(KST)에 실행되어 전날 날짜로 데이터를 저장하므로,
-     *         전날 날짜로 조회해야 함. (당일 조회 시 데이터 없음)
-     *
-     * @param minConfidence 최소 신뢰도 (기본값 0.7)
-     *                     Composite Score 기준으로 변환: minConfidence × 7.5
-     *                     예: 0.7 → 5.25점
+     * @param date 분석 날짜 (null이면 최신 데이터가 있는 날짜 사용)
+     * @param minConfidence Composite Score 비율 (0.0~1.0), Score × 7.5로 변환
      * @return 매수 신호 응답
      */
-    fun getBuySignals(minConfidence: Double = 0.7): BuySignalsResponse {
-        // ✅ 수정: 전날 날짜로 조회 (스케줄러가 23:05에 전날 날짜로 저장)
-        val yesterday = LocalDate.now().minusDays(1)
+    fun getBuySignals(date: LocalDate? = null, minConfidence: Double = 0.0): BuySignalsResponse {
+        // 날짜 결정: 지정된 날짜 > 최신 데이터 날짜 > 어제
+        val targetDate = date
+            ?: predictionResultRepository.findLatestAnalysisDate()
+            ?: LocalDate.now().minusDays(1)
 
-        // Composite Score 기준으로 조회 (0.7 → 5.25점)
-        // 기존 confidence(0~1)를 Composite Score(0~7.5) 기준으로 변환
+        // Composite Score 기준으로 변환 (0~1 → 0~7.5)
         val minCompositeScore = minConfidence * 7.5
 
-        val buySignals = predictionRepository.findHighConfidenceBuySignals(
-            yesterday,
+        logger.info("📊 매수 신호 조회: date=$targetDate, minCompositeScore=$minCompositeScore")
+
+        val buySignals = predictionResultRepository.findHighConfidenceBuySignals(
+            targetDate,
             minCompositeScore
-        ).sortedByDescending { it.confidence }
+        )
 
         return BuySignalsResponse(
             success = true,
-            date = yesterday,  // ✅ 응답에도 전날 날짜 표시
+            date = targetDate,
             minConfidence = minConfidence,
             count = buySignals.size,
-            buySignals = buySignals
+            buySignals = buySignals.map { it.toBuySignalDto() }
         )
     }
 
     /**
      * 특정 종목의 예측 결과 조회
-     *
-     * @param symbol 종목 심볼
-     * @param limit 최대 조회 개수
-     * @return 종목 예측 응답
      */
     fun getPredictionsBySymbol(symbol: String, limit: Int): SymbolPredictionsResponse {
-        val predictions = predictionRepository.findBySymbolOrderByDateDesc(symbol)
+        val predictions = predictionResultRepository.findByTickerOrderByDateDesc(symbol)
             .take(limit)
 
         return SymbolPredictionsResponse(
             success = true,
             symbol = symbol,
             count = predictions.size,
-            predictions = predictions
+            predictions = predictions.map { it.toBuySignalDto() }
         )
     }
 
     /**
      * 특정 날짜의 예측 결과 조회
-     *
-     * @param date 조회 날짜
-     * @return 예측 결과 응답
      */
     fun getPredictionsByDate(date: LocalDate): PredictionListResponse {
-        val predictions = predictionRepository.findByDate(date)
-            .sortedByDescending { it.confidence }
+        val predictions = predictionResultRepository.findByDate(date)
 
         return PredictionListResponse(
             success = true,
             count = predictions.size,
             fromDate = date,
-            predictions = predictions
+            predictions = predictions.map { it.toBuySignalDto() }
         )
     }
 
     /**
      * 예측 통계 조회
-     *
-     * @param days 통계 기간 (일 수)
-     * @return 통계 응답
      */
     fun getPredictionStats(days: Int): PredictionStatsResponse {
         val fromDate = LocalDate.now().minusDays(days.toLong())
-        val predictions = predictionRepository.findRecentPredictions(fromDate)
+        val predictions = predictionResultRepository.findRecentPredictions(fromDate)
 
         val stats = calculateStats(predictions)
 
@@ -146,7 +132,7 @@ class PredictionService(
     /**
      * 통계 계산
      */
-    private fun calculateStats(predictions: List<VertexAIPredictionResult>): Map<String, Any> {
+    private fun calculateStats(predictions: List<PredictionResult>): Map<String, Any> {
         if (predictions.isEmpty()) {
             return mapOf(
                 "total" to 0,
@@ -154,34 +140,41 @@ class PredictionService(
             )
         }
 
-        val buyCount = predictions.count { it.signal == "BUY" }
-        val sellCount = predictions.count { it.signal == "SELL" }
-        val holdCount = predictions.count { it.signal == "HOLD" }
+        val recommendedCount = predictions.count { it.isRecommended }
+        val avgScore = predictions.map { it.compositeScore.toDouble() }.average()
 
-        val avgConfidence = predictions.map { it.confidence }.average()
-        val highConfidenceCount = predictions.count { it.confidence >= 0.7 }
+        val gradeDistribution = predictions.groupBy { it.compositeGrade.name }
+            .mapValues { it.value.size }
 
         return mapOf(
             "total" to predictions.size,
-            "signals" to mapOf(
-                "BUY" to buyCount,
-                "SELL" to sellCount,
-                "HOLD" to holdCount
-            ),
-            "signalRatio" to mapOf(
-                "BUY" to String.format("%.1f%%", buyCount.toDouble() / predictions.size * 100),
-                "SELL" to String.format("%.1f%%", sellCount.toDouble() / predictions.size * 100),
-                "HOLD" to String.format("%.1f%%", holdCount.toDouble() / predictions.size * 100)
-            ),
-            "confidence" to mapOf(
-                "average" to String.format("%.2f", avgConfidence),
-                "high" to highConfidenceCount,
-                "highRatio" to String.format("%.1f%%", highConfidenceCount.toDouble() / predictions.size * 100)
-            ),
-            "uniqueSymbols" to predictions.map { it.symbol }.distinct().size
+            "recommended" to recommendedCount,
+            "averageCompositeScore" to String.format("%.2f", avgScore),
+            "gradeDistribution" to gradeDistribution,
+            "uniqueTickers" to predictions.map { it.ticker }.distinct().size
         )
     }
 }
+
+/**
+ * PredictionResult → API 응답용 DTO 변환
+ */
+fun PredictionResult.toBuySignalDto(): Map<String, Any?> = mapOf(
+    "ticker" to ticker,
+    "stockName" to stockName,
+    "analysisDate" to analysisDate.toString(),
+    "compositeScore" to compositeScore.toDouble(),
+    "compositeGrade" to compositeGrade.name,
+    "aiScore" to aiScore.toDouble(),
+    "techScore" to techScore.toDouble(),
+    "sentimentScore" to sentimentNormalizedScore.toDouble(),
+    "isRecommended" to isRecommended,
+    "recommendationReason" to recommendationReason,
+    "currentPrice" to currentPrice?.toDouble(),
+    "targetPrice" to targetPrice?.toDouble(),
+    "upsidePercent" to upsidePercent?.toDouble(),
+    "priceRecommendation" to priceRecommendation
+)
 
 /**
  * 예측 결과 목록 응답
@@ -190,7 +183,7 @@ data class PredictionListResponse(
     val success: Boolean,
     val count: Int,
     val fromDate: LocalDate,
-    val predictions: List<VertexAIPredictionResult>
+    val predictions: List<Map<String, Any?>>
 )
 
 /**
@@ -201,7 +194,7 @@ data class BuySignalsResponse(
     val date: LocalDate,
     val minConfidence: Double,
     val count: Int,
-    val buySignals: List<VertexAIPredictionResult>
+    val buySignals: List<Map<String, Any?>>
 )
 
 /**
@@ -211,7 +204,7 @@ data class SymbolPredictionsResponse(
     val success: Boolean,
     val symbol: String,
     val count: Int,
-    val predictions: List<VertexAIPredictionResult>
+    val predictions: List<Map<String, Any?>>
 )
 
 /**

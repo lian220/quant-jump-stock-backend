@@ -464,6 +464,7 @@ class VertexAIPredictionServiceProtocol(Protocol):
     """Vertex AI 예측 서비스 프로토콜"""
     def run_prediction(
         self,
+        target_date: Optional[str] = None,
         env_vars: Optional[dict] = None,
         thread_ts: Optional[str] = None
     ) -> object:
@@ -493,12 +494,14 @@ class VertexAIHandler(MessageHandler):
         start_time = self._log_start(message, "Vertex AI 예측 실행 요청")
 
         try:
-            # 메시지에서 환경 변수 추출
+            # 메시지에서 파라미터 추출
             env_vars = message.payload.get("envVars", {})
             thread_ts = message.thread_ts
+            target_date = message.target_date  # targetDate 추출
 
             # 예측 실행
             result = self.service.run_prediction(
+                target_date=target_date,
                 env_vars=env_vars,
                 thread_ts=thread_ts
             )

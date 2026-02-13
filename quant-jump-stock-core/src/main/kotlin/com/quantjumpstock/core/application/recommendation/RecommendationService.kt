@@ -40,12 +40,13 @@ class RecommendationService(
 
         logger.info("Fetching buy signals for date={}, minCompositeScore={}", targetDate, minCompositeScore)
 
+        // ✅ 부분 점수 시스템: Composite Score 기준으로만 필터링
         val buySignals = predictionResultRepository.findHighConfidenceBuySignals(
             targetDate,
             minCompositeScore
-        ).filter { it.isRecommended }  // 추천 종목만 필터링
+        )  // is_recommended 필터 제거 (부분 점수 허용)
 
-        logger.info("Found {} recommended stocks", buySignals.size)
+        logger.info("Found {} stocks with compositeScore >= {}", buySignals.size, minCompositeScore)
 
         return BuySignalsResponse(
             success = true,
@@ -105,7 +106,7 @@ private fun PredictionResult.toBuySignalDto(): BuySignalDto {
         currentPrice = currentPrice,
         targetPrice = targetPrice,
         upsidePercent = upsidePercent,
-        priceRecommendation = priceRecommendation
+        priceRecommendation = priceRecommendation  // String 그대로
     )
 }
 

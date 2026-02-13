@@ -95,6 +95,7 @@ class PredictionService:
 
     def run_prediction(
         self,
+        target_date: Optional[str] = None,
         env_vars: Optional[Dict[str, str]] = None,
         thread_ts: Optional[str] = None
     ) -> JobResult:
@@ -102,13 +103,14 @@ class PredictionService:
         Vertex AI 예측 Job 실행
 
         Args:
+            target_date: 분석 기준 날짜 (YYYY-MM-DD, None이면 현재 날짜)
             env_vars: 추가 환경 변수
             thread_ts: Slack 스레드 타임스탬프
 
         Returns:
             JobResult
         """
-        logger.info("🚀 Vertex AI 예측 Job 실행 시작")
+        logger.info(f"🚀 Vertex AI 예측 Job 실행 시작 (target_date={target_date or '현재'})")
 
         try:
             # 최신 패키지 URI 조회
@@ -116,9 +118,15 @@ class PredictionService:
 
             # 기본 환경 변수 (VERTEX_AI_ prefix 통일)
             import os
+            from datetime import datetime
+
+            # target_date가 None이면 현재 날짜 사용
+            analysis_date = target_date or datetime.now().strftime("%Y-%m-%d")
+
             job_env_vars = {
                 "GCS_BUCKET": self.config.bucket_name,
                 "GCP_PROJECT_ID": self.config.project_id,
+                "TARGET_DATE": analysis_date,  # 🆕 분석 기준 날짜
                 "FINE_TUNE_MODE": "true",
                 "FINE_TUNE_EPOCHS": "5",
                 "FULL_TRAIN_EPOCHS": "50",

@@ -62,33 +62,81 @@ class SentimentAnalysisService:
                     logger.warning(f"No feed data for {ticker}")
                     continue
                     
-                # Calculate simple average sentiment
+                # Calculate simple average sentiment AND store original articles
                 sentiment_scores = []
+                news_articles = []  # 원본 기사 저장용
+
                 for article in data["feed"]:
                     for ticker_sentiment in article.get("ticker_sentiment", []):
                         if ticker_sentiment.get("ticker") == ticker:
                             score = float(ticker_sentiment.get("ticker_sentiment_score", 0))
                             sentiment_scores.append(score)
-                
+
+                            # 🆕 원본 기사 정보 추출
+                            published_time = article.get("time_published", "")
+                            # Alpha Vantage 포맷: "20260213T093000" → "2026-02-13T09:30:00Z"
+                            published_at = None
+                            if published_time:
+                                try:
+                                    published_at = datetime.strptime(published_time, "%Y%m%dT%H%M%S")
+                                except:
+                                    published_at = datetime.utcnow()
+                            else:
+                                published_at = datetime.utcnow()
+
+                            news_doc = {
+                                "ticker": ticker,
+                                "date": start_date,
+                                "published_at": published_at,
+                                "title": article.get("title", "")[:200],  # 제목 200자 제한
+                                "summary": article.get("summary", "")[:500],  # 요약 500자 제한
+                                "url": article.get("url", ""),
+                                "source": article.get("source", "unknown"),
+                                "image_url": article.get("banner_image"),
+                                "sentiment": {
+                                    "score": score,
+                                    "label": ticker_sentiment.get("ticker_sentiment_label", "neutral"),
+                                    "relevance_score": float(ticker_sentiment.get("relevance_score", 0))
+                                },
+                                "language": "en",
+                                "created_at": datetime.utcnow(),
+                                "updated_at": datetime.utcnow()
+                            }
+                            news_articles.append(news_doc)
+
                 if sentiment_scores:
                     avg_score = sum(sentiment_scores) / len(sentiment_scores)
                     article_count = len(sentiment_scores)
-                    
-                    doc = {
+
+                    # 1️⃣ 기존: 요약 저장 (sentiment_analysis 컬렉션)
+                    summary_doc = {
                         "ticker": ticker,
                         "date": start_date,
                         "average_sentiment_score": avg_score,
                         "article_count": article_count,
                         "updated_at": datetime.utcnow()
                     }
-                    
+
                     db.sentiment_analysis.update_one(
                         {"ticker": ticker, "date": start_date},
-                        {"$set": doc},
+                        {"$set": summary_doc},
                         upsert=True
                     )
-                    
-                    results.append(doc)
+
+                    # 2️⃣ 신규: 원본 기사 저장 (news_sentiment 컬렉션)
+                    if news_articles:
+                        for news_doc in news_articles:
+                            db.news_sentiment.update_one(
+                                {
+                                    "ticker": news_doc["ticker"],
+                                    "url": news_doc["url"]  # URL로 중복 체크
+                                },
+                                {"$set": news_doc},
+                                upsert=True
+                            )
+                        logger.info(f"Saved {len(news_articles)} news articles for {ticker}")
+
+                    results.append(summary_doc)
                     logger.info(f"Saved sentiment for {ticker}: Score={avg_score:.2f}, Count={article_count}")
                 
                 # Respect rate limits (Alpha Vantage free tier: 5 calls/min)

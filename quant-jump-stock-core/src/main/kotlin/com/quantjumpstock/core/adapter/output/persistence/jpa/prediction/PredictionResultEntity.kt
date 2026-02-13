@@ -151,7 +151,7 @@ class PredictionResultEntity(
             currentPrice = currentPrice,
             targetPrice = targetPrice,
             upsidePercent = upsidePercent,
-            priceRecommendation = priceRecommendation
+            priceRecommendation = priceRecommendation  // String 그대로 전달
         )
     }
 
@@ -186,7 +186,7 @@ class PredictionResultEntity(
                 currentPrice = domain.currentPrice,
                 targetPrice = domain.targetPrice,
                 upsidePercent = domain.upsidePercent,
-                priceRecommendation = domain.priceRecommendation
+                priceRecommendation = domain.priceRecommendation  // String 그대로
             )
         }
     }
