@@ -21,33 +21,68 @@ class EconomicDataService:
     def __init__(self):
         self.repository = EconomicDataRepository()
 
-    def collect_economic_data(self, target_date: str = None) -> Dict[str, Any]:
+    def _resolve_date_range(self, start_date: str = None, end_date: str = None) -> tuple:
+        """
+        수집 날짜 범위를 결정합니다.
+
+        - 둘 다 없음: MongoDB 마지막 수집일+1 ~ 오늘
+        - start만 있음: start ~ 오늘
+        - 둘 다 있음: start ~ end
+
+        Returns:
+            (start_date_str, end_date_str) 튜플
+        """
+        today_str = datetime.now().strftime("%Y-%m-%d")
+
+        # end_date 결정
+        if end_date:
+            try:
+                datetime.strptime(end_date, "%Y-%m-%d")
+                resolved_end = end_date
+            except ValueError:
+                raise ValueError(f"Invalid end_date format: {end_date}. Expected YYYY-MM-DD")
+        else:
+            resolved_end = today_str
+
+        # start_date 결정
+        if start_date:
+            try:
+                datetime.strptime(start_date, "%Y-%m-%d")
+                resolved_start = start_date
+            except ValueError:
+                raise ValueError(f"Invalid start_date format: {start_date}. Expected YYYY-MM-DD")
+        else:
+            # MongoDB에서 마지막 수집일 조회 → +1일
+            latest_date = self.repository.find_latest_date()
+            if latest_date:
+                next_date = datetime.strptime(latest_date, "%Y-%m-%d") + timedelta(days=1)
+                resolved_start = next_date.strftime("%Y-%m-%d")
+                logger.info(f"마지막 수집일: {latest_date} → 시작일: {resolved_start}")
+            else:
+                # 데이터가 없으면 오늘만 수집
+                resolved_start = today_str
+                logger.info("MongoDB에 기존 데이터 없음 → 오늘만 수집")
+
+        # 시작일이 종료일보다 뒤면 이미 최신 상태
+        if resolved_start > resolved_end:
+            logger.info(f"이미 최신 상태: 시작일({resolved_start}) > 종료일({resolved_end})")
+            resolved_start = resolved_end
+
+        return resolved_start, resolved_end
+
+    def collect_economic_data(self, start_date: str = None, end_date: str = None) -> Dict[str, Any]:
         """
         경제 데이터를 수집하여 daily_stock_data에 저장합니다.
         날짜별로 fred_indicators와 yfinance_indicators를 통합하여 저장합니다.
 
         Args:
-            target_date: 수집할 기준 날짜 (YYYY-MM-DD). 미입력 시 당일 기준으로 조회
+            start_date: 수집 시작 날짜 (YYYY-MM-DD). null이면 마지막 수집일+1
+            end_date: 수집 종료 날짜 (YYYY-MM-DD). null이면 오늘
         """
         try:
-            # 기준 날짜 설정
-            if target_date:
-                try:
-                    end_date = datetime.strptime(target_date, "%Y-%m-%d")
-                    logger.info(f"경제 데이터 수집 시작 (기준일: {target_date})")
-                except ValueError:
-                    logger.error(f"잘못된 날짜 형식: {target_date}. YYYY-MM-DD 형식이어야 합니다.")
-                    raise ValueError(f"Invalid date format: {target_date}. Expected YYYY-MM-DD")
-            else:
-                end_date = datetime.now()
-                logger.info(f"경제 데이터 수집 시작 (기준일: {end_date.strftime('%Y-%m-%d')} - 당일)")
-
-            # 날짜 범위 설정
-            # GDP는 분기별 데이터로 발표 지연이 있어 365일 조회
-            # CPI/실업률은 월별, 금리/환율은 일별
-            start_date = end_date - timedelta(days=365)
-            start_date_str = start_date.strftime("%Y-%m-%d")
-            end_date_str = end_date.strftime("%Y-%m-%d")
+            # 날짜 범위 결정
+            start_date_str, end_date_str = self._resolve_date_range(start_date, end_date)
+            logger.info(f"경제 데이터 수집 시작 (기간: {start_date_str} ~ {end_date_str})")
 
             # FRED 및 Yahoo Finance 지표 조회
             fred_indicators = self._load_fred_indicators()
@@ -86,7 +121,8 @@ class EconomicDataService:
 
             return {
                 "success": True,
-                "target_date": end_date_str,
+                "start_date": start_date_str,
+                "end_date": end_date_str,
                 "fred_collected": fred_count,
                 "yahoo_collected": yahoo_count,
                 "stocks_collected": stocks_count,

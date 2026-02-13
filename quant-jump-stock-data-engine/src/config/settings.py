@@ -70,8 +70,10 @@ class SlackSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 
     webhook_url: str = Field(default="", alias="SLACK_WEBHOOK_URL")
+    webhook_url_analysis: str = Field(default="", alias="SLACK_WEBHOOK_URL_ANALYSIS")
     bot_token: str = Field(default="", alias="SLACK_BOT_TOKEN")
     channel: str = Field(default="#trading-alerts", alias="SLACK_CHANNEL")
+    enabled: bool = Field(default=True, alias="SLACK_ENABLED")
 
 
 class GcpSettings(BaseSettings):
@@ -152,6 +154,14 @@ class Settings(BaseSettings):
     @property
     def SLACK_CHANNEL(self) -> str:
         return self.slack.channel
+
+    @property
+    def SLACK_WEBHOOK_URL_ANALYSIS(self) -> str:
+        return self.slack.webhook_url_analysis
+
+    @property
+    def SLACK_ENABLED(self) -> bool:
+        return self.slack.enabled
 
     @property
     def KAFKA_TOPIC_ANALYSIS_COMPLETED(self) -> str:

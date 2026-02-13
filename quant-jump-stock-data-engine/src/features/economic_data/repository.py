@@ -1,6 +1,6 @@
 """Economic Data Repository - MongoDB 및 PostgreSQL 데이터 접근"""
 import logging
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from datetime import datetime
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -114,6 +114,34 @@ class EconomicDataRepository:
         except Exception as e:
             logger.error(f"Daily data upsert 실패 (date={date}): {e}")
             return False
+
+    def find_latest_date(self) -> Optional[str]:
+        """
+        daily_stock_data에서 가장 최신 날짜를 조회합니다.
+
+        Returns:
+            가장 최근 날짜 문자열 (YYYY-MM-DD) 또는 None
+        """
+        try:
+            if self.db is None:
+                logger.error("MongoDB 연결 없음")
+                return None
+
+            collection = self.db["daily_stock_data"]
+            doc = collection.find_one(
+                sort=[("date", -1)],
+                projection={"date": 1, "_id": 0}
+            )
+
+            if doc and "date" in doc:
+                logger.info(f"MongoDB 최신 수집일: {doc['date']}")
+                return doc["date"]
+
+            return None
+
+        except Exception as e:
+            logger.error(f"최신 날짜 조회 실패: {e}")
+            return None
 
     def _get_postgres_connection(self):
         """PostgreSQL 연결을 생성합니다."""

@@ -37,18 +37,20 @@ class SlackApiClient(
      * 경제 데이터 업데이트 요청 알림 (스레드 루트 메시지)
      *
      * @param requestId 요청 ID
-     * @param targetDate 수집 대상 날짜 (yyyy-MM-dd), null이면 당일
+     * @param startDate 수집 시작 날짜, null이면 자동 결정
+     * @param endDate 수집 종료 날짜, null이면 오늘
      * @return Slack 스레드 타임스탬프 (답글용)
      */
-    fun notifyEconomicDataUpdateRequest(requestId: String, targetDate: String? = null): String? {
+    fun notifyEconomicDataUpdateRequest(requestId: String, startDate: String? = null, endDate: String? = null): String? {
+        val dateInfo = formatDateRange(startDate, endDate)
+
         if (slackBotToken.isBlank()) {
             logger.warn("⚠️ Slack Bot Token 없음 - Webhook으로 fallback")
-            notifyViaWebhook(requestId, targetDate)
+            notifyViaWebhook(requestId, dateInfo)
             return null
         }
 
         try {
-            val dateInfo = targetDate ?: "당일"
             val message = SlackApiMessage(
                 channel = slackChannel,
                 text = "📊 경제 데이터 업데이트 요청",
@@ -59,7 +61,7 @@ class SlackApiClient(
                         text = "경제 데이터 업데이트 요청이 발행되었습니다.",
                         fields = listOf(
                             SlackField("Request ID", requestId, true),
-                            SlackField("Target Date", "📅 $dateInfo", true),
+                            SlackField("Date Range", "📅 $dateInfo", true),
                             SlackField("Timestamp", getCurrentTimeKST(), true),
                             SlackField("Source", "Quartz Scheduler", true),
                             SlackField("Status", "🔄 Processing", true)
@@ -87,14 +89,13 @@ class SlackApiClient(
     /**
      * Webhook으로 알림 전송 (Thread 미지원 - Fallback)
      */
-    private fun notifyViaWebhook(requestId: String, targetDate: String? = null) {
+    private fun notifyViaWebhook(requestId: String, dateInfo: String) {
         if (slackWebhookUrl.isBlank()) {
             logger.debug("Slack webhook URL not configured, skipping notification")
             return
         }
 
         try {
-            val dateInfo = targetDate ?: "당일"
             val message = SlackMessage(
                 text = "📊 경제 데이터 업데이트 요청",
                 attachments = listOf(
@@ -104,7 +105,7 @@ class SlackApiClient(
                         text = "경제 데이터 업데이트 요청이 발행되었습니다.",
                         fields = listOf(
                             SlackField("Request ID", requestId, true),
-                            SlackField("Target Date", "📅 $dateInfo", true),
+                            SlackField("Date Range", "📅 $dateInfo", true),
                             SlackField("Timestamp", getCurrentTimeKST(), true),
                             SlackField("Source", "Quartz Scheduler", true),
                             SlackField("Status", "🔄 Processing", true)
@@ -210,18 +211,20 @@ class SlackApiClient(
      * 기술적 분석 요청 알림 (스레드 루트 메시지)
      *
      * @param requestId 요청 ID
-     * @param targetDate 분석 대상 날짜 (yyyy-MM-dd), null이면 당일
+     * @param startDate 분석 시작 날짜, null이면 자동 결정
+     * @param endDate 분석 종료 날짜, null이면 오늘
      * @return Slack 스레드 타임스탬프 (답글용)
      */
-    fun notifyTechnicalAnalysisRequest(requestId: String, targetDate: String? = null): String? {
+    fun notifyTechnicalAnalysisRequest(requestId: String, startDate: String? = null, endDate: String? = null): String? {
+        val dateInfo = formatDateRange(startDate, endDate)
+
         if (slackBotToken.isBlank()) {
             logger.warn("⚠️ Slack Bot Token 없음 - Webhook으로 fallback")
-            notifyViaWebhook("📊 기술적 분석 요청", requestId, "기술적 지표 분석", targetDate)
+            notifyViaWebhook("📊 기술적 분석 요청", requestId, "기술적 지표 분석", dateInfo)
             return null
         }
 
         try {
-            val dateInfo = targetDate ?: "당일"
             val message = SlackApiMessage(
                 channel = slackChannel,
                 text = "📊 기술적 분석 요청",
@@ -232,7 +235,7 @@ class SlackApiClient(
                         text = "SMA, RSI, MACD 기술적 지표 분석이 요청되었습니다.",
                         fields = listOf(
                             SlackField("Request ID", requestId, true),
-                            SlackField("Target Date", "📅 $dateInfo", true),
+                            SlackField("Date Range", "📅 $dateInfo", true),
                             SlackField("Timestamp", getCurrentTimeKST(), true),
                             SlackField("Source", "Quartz Scheduler", true),
                             SlackField("Status", "🔄 Processing", true)
@@ -261,18 +264,20 @@ class SlackApiClient(
      * 뉴스 감정 분석 요청 알림 (스레드 루트 메시지)
      *
      * @param requestId 요청 ID
-     * @param targetDate 분석 대상 날짜 (yyyy-MM-dd), null이면 당일
+     * @param startDate 분석 시작 날짜, null이면 자동 결정
+     * @param endDate 분석 종료 날짜, null이면 오늘
      * @return Slack 스레드 타임스탬프 (답글용)
      */
-    fun notifySentimentAnalysisRequest(requestId: String, targetDate: String? = null): String? {
+    fun notifySentimentAnalysisRequest(requestId: String, startDate: String? = null, endDate: String? = null): String? {
+        val dateInfo = formatDateRange(startDate, endDate)
+
         if (slackBotToken.isBlank()) {
             logger.warn("⚠️ Slack Bot Token 없음 - Webhook으로 fallback")
-            notifyViaWebhook("📰 뉴스 감정 분석 요청", requestId, "뉴스 감정 분석", targetDate)
+            notifyViaWebhook("📰 뉴스 감정 분석 요청", requestId, "뉴스 감정 분석", dateInfo)
             return null
         }
 
         try {
-            val dateInfo = targetDate ?: "당일"
             val message = SlackApiMessage(
                 channel = slackChannel,
                 text = "📰 뉴스 감정 분석 요청",
@@ -283,7 +288,7 @@ class SlackApiClient(
                         text = "Alpha Vantage NEWS_SENTIMENT API를 통한 감정 분석이 요청되었습니다.",
                         fields = listOf(
                             SlackField("Request ID", requestId, true),
-                            SlackField("Target Date", "📅 $dateInfo", true),
+                            SlackField("Date Range", "📅 $dateInfo", true),
                             SlackField("Timestamp", getCurrentTimeKST(), true),
                             SlackField("Source", "Quartz Scheduler", true),
                             SlackField("Status", "🔄 Processing", true)
@@ -342,14 +347,13 @@ class SlackApiClient(
     /**
      * Webhook 일반 알림 (fallback)
      */
-    private fun notifyViaWebhook(title: String, requestId: String, description: String, targetDate: String? = null) {
+    private fun notifyViaWebhook(title: String, requestId: String, description: String, dateInfo: String) {
         if (slackWebhookUrl.isBlank()) {
             logger.debug("Slack webhook URL not configured, skipping notification")
             return
         }
 
         try {
-            val dateInfo = targetDate ?: "당일"
             val message = SlackMessage(
                 text = title,
                 attachments = listOf(
@@ -359,7 +363,7 @@ class SlackApiClient(
                         text = "분석 요청이 발행되었습니다.",
                         fields = listOf(
                             SlackField("Request ID", requestId, true),
-                            SlackField("Target Date", "📅 $dateInfo", true),
+                            SlackField("Date Range", "📅 $dateInfo", true),
                             SlackField("Timestamp", getCurrentTimeKST(), true),
                             SlackField("Source", "Quartz Scheduler", true),
                             SlackField("Status", "🔄 Processing", true)
@@ -372,6 +376,14 @@ class SlackApiClient(
             logger.info("✅ Slack 알림 발송 완료 (Webhook): $requestId")
         } catch (e: Exception) {
             logger.error("❌ Slack Webhook 알림 발송 실패", e)
+        }
+    }
+
+    private fun formatDateRange(startDate: String?, endDate: String?): String {
+        return when {
+            startDate != null && endDate != null -> "$startDate ~ $endDate"
+            startDate != null -> "$startDate ~ 오늘"
+            else -> "자동 (마지막 수집일+1 ~ 오늘)"
         }
     }
 

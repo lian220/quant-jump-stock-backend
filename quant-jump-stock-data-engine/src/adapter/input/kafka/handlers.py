@@ -37,13 +37,23 @@ class MessageHandler(ABC):
 
     def _log_start(self, message: KafkaMessage, description: str) -> float:
         """처리 시작 로깅"""
+        date_info = self._format_date_range(message.start_date, message.end_date)
         logger.info("=" * 80)
         logger.info(f"{description} Kafka 메시지 수신")
         logger.info(f"Request ID: {message.request_id}")
-        logger.info(f"Target Date: {message.target_date or '당일'}")
+        logger.info(f"Date Range: {date_info}")
         logger.info(f"Thread TS: {message.thread_ts}")
         logger.info("=" * 80)
         return time.time()
+
+    @staticmethod
+    def _format_date_range(start_date: Optional[str], end_date: Optional[str]) -> str:
+        if start_date and end_date:
+            return f"{start_date} ~ {end_date}"
+        elif start_date:
+            return f"{start_date} ~ 오늘"
+        else:
+            return "자동 (마지막 수집일+1 ~ 오늘)"
 
     def _log_success(self, description: str, start_time: float) -> None:
         """성공 로깅"""
@@ -61,7 +71,7 @@ class MessageHandler(ABC):
 
 class EconomicDataServiceProtocol(Protocol):
     """경제 데이터 서비스 프로토콜"""
-    def collect_economic_data(self, target_date: Optional[str] = None) -> dict:
+    def collect_economic_data(self, start_date: Optional[str] = None, end_date: Optional[str] = None) -> dict:
         ...
 
 
@@ -71,7 +81,8 @@ class TechnicalAnalysisServiceProtocol(Protocol):
         self,
         request_id: str,
         thread_ts: Optional[str],
-        target_date: Optional[str] = None
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
     ) -> dict:
         ...
 
@@ -81,7 +92,9 @@ class SentimentAnalysisServiceProtocol(Protocol):
     def run_sentiment_analysis(
         self,
         request_id: str,
-        thread_ts: Optional[str]
+        thread_ts: Optional[str],
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
     ) -> dict:
         ...
 
@@ -134,14 +147,18 @@ class EconomicDataHandler(MessageHandler):
             self.notifier.notify_start(message.request_id, source, message.thread_ts)
 
         try:
-            result = self.service.collect_economic_data(target_date=message.target_date)
+            result = self.service.collect_economic_data(
+                start_date=message.start_date,
+                end_date=message.end_date
+            )
             elapsed = time.time() - start_time
 
             self._log_success("경제 데이터 수집", start_time)
 
             # 성공 알림
             summary = {
-                "target_date": result.get("target_date"),
+                "start_date": result.get("start_date"),
+                "end_date": result.get("end_date"),
                 "duration": f"{elapsed:.2f}초",
                 "fred_collected": result.get("fred_collected", 0),
                 "yahoo_collected": result.get("yahoo_collected", 0),
@@ -197,7 +214,8 @@ class TechnicalAnalysisHandler(MessageHandler):
             result = self.service.run_technical_analysis(
                 message.request_id,
                 message.thread_ts,
-                message.target_date
+                start_date=message.start_date,
+                end_date=message.end_date
             )
 
             self._log_success("기술적 분석", start_time)
@@ -245,7 +263,9 @@ class SentimentAnalysisHandler(MessageHandler):
         try:
             result = self.service.run_sentiment_analysis(
                 message.request_id,
-                message.thread_ts
+                message.thread_ts,
+                start_date=message.start_date,
+                end_date=message.end_date
             )
 
             self._log_success("뉴스 감정 분석", start_time)

@@ -18,6 +18,29 @@ import java.util.*
 class QuartzConfig {
 
     // ========================
+    // 0. 경제 데이터 업데이트 (06:05) - 미국 장 마감 후 데이터 갱신
+    // ========================
+    @Bean
+    fun economicDataUpdateJobDetail(): JobDetail {
+        return JobBuilder.newJob(EconomicDataUpdateJobAdapter::class.java)
+            .withIdentity("economicDataUpdateJob")
+            .storeDurably()
+            .build()
+    }
+
+    @Bean
+    fun economicDataUpdateTrigger(): Trigger {
+        return TriggerBuilder.newTrigger()
+            .forJob(economicDataUpdateJobDetail())
+            .withIdentity("economicDataUpdateTrigger")
+            .withSchedule(
+                CronScheduleBuilder.cronSchedule("0 5 6 * * ?")
+                    .inTimeZone(TimeZone.getTimeZone("Asia/Seoul"))
+            )
+            .build()
+    }
+
+    // ========================
     // 1. 경제 데이터 수집 + Vertex AI 예측 (22:00)
     // ========================
     // CPI/NFP 발표(21:30) 직후, ISM PMI(23:00) 직전

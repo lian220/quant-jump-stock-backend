@@ -3,9 +3,10 @@ import logging
 from datetime import datetime
 from pytz import timezone
 from core.config import settings
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 KST = timezone('Asia/Seoul')
+EST = timezone('America/New_York')
 
 logger = logging.getLogger(__name__)
 
@@ -315,3 +316,194 @@ class SlackNotifier:
         ]
 
         SlackNotifier._post_message("", attachments, thread_ts=thread_ts)
+
+    @staticmethod
+    def _post_to_webhook(url: str, text: str, blocks: list = None):
+        """
+        지정 Webhook URL로 Block Kit 메시지 POST
+
+        Args:
+            url: Slack Webhook URL
+            text: fallback 텍스트
+            blocks: Block Kit blocks
+        """
+        if not url:
+            logger.warning("⚠️ Webhook URL이 비어있어 메시지를 보낼 수 없습니다")
+            return
+
+        if not getattr(settings, 'SLACK_ENABLED', True):
+            logger.info("ℹ️ Slack 비활성화 상태 (SLACK_ENABLED=false)")
+            return
+
+        try:
+            payload = {"text": text}
+            if blocks:
+                payload["blocks"] = blocks
+
+            response = requests.post(url, json=payload, timeout=10)
+            response.raise_for_status()
+            logger.info(f"✅ Slack Webhook 알림 발송 완료")
+        except Exception as e:
+            logger.error(f"❌ Slack Webhook 알림 발송 실패: {e}")
+
+    @staticmethod
+    def _get_current_time() -> str:
+        """한국/뉴욕 이중 시간 표시"""
+        now_kst = datetime.now(KST)
+        now_est = datetime.now(EST)
+        return f"{now_kst.strftime('%Y-%m-%d %H:%M KST')} / {now_est.strftime('%H:%M EST')}"
+
+    @staticmethod
+    def notify_comprehensive_report(report: Dict):
+        """
+        Quantiq 종합 분석 리포트를 analysis webhook으로 전송
+
+        Args:
+            report: ComprehensiveReportService.generate_report() 결과
+        """
+        webhook_url = getattr(settings, 'SLACK_WEBHOOK_URL_ANALYSIS', '')
+        if not webhook_url:
+            logger.warning("⚠️ SLACK_WEBHOOK_URL_ANALYSIS 미설정, 추천 알림 생략")
+            return
+
+        current_time = SlackNotifier._get_current_time()
+        total = report.get("total_analyzed", 0)
+        candidates = report.get("buy_candidates", [])
+        candidate_count = len(candidates)
+        summary = report.get("summary", {})
+        breakdown = report.get("breakdown", {})
+        analysis_date = report.get("analysis_date", "N/A")
+
+        avg_composite = summary.get("avg_composite_score", 0)
+        avg_rise = summary.get("avg_rise_probability", 0)
+
+        # --- Header + 분석 개요 ---
+        blocks = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "🎯 Quantiq 종합 분석 완료", "emoji": True}
+            },
+            {
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": f"기술적 분석, AI 예측, 감정 분석을 종합한 투자 추천이 완료되었습니다. ({analysis_date})"
+                }
+            },
+            {
+                "type": "section",
+                "fields": [
+                    {"type": "mrkdwn", "text": f"*총 분석 종목*\n{total}개"},
+                    {"type": "mrkdwn", "text": f"*최종 추천 종목*\n{candidate_count}개"},
+                    {"type": "mrkdwn", "text": f"*평균 종합 점수*\n{avg_composite:.2f}"},
+                    {"type": "mrkdwn", "text": f"*평균 상승 확률*\n{avg_rise:.1f}%"},
+                ]
+            },
+            {"type": "divider"},
+        ]
+
+        # --- 세부 분석 결과 (breakdown) ---
+        tech_info = breakdown.get("technical", {})
+        ai_info = breakdown.get("ai_prediction", {})
+        sent_info = breakdown.get("sentiment", {})
+
+        def _ticker_summary(tickers: list, count: int) -> str:
+            if not tickers:
+                return "해당 없음"
+            shown = tickers[:3]
+            names = ", ".join(shown)
+            extra = count - len(shown)
+            return f"{names}" + (f" 외 {extra}개" if extra > 0 else "")
+
+        blocks.append({
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": (
+                    "*세부 분석 결과*\n\n"
+                    f"📊 *기술적 지표 분석* ({tech_info.get('count', 0)}개)\n"
+                    f"└ {_ticker_summary(tech_info.get('tickers', []), tech_info.get('count', 0))}\n"
+                    f"└ 골든크로스, RSI<50, MACD매수신호\n\n"
+                    f"🤖 *AI 주가 예측* ({ai_info.get('count', 0)}개)\n"
+                    f"└ {_ticker_summary(ai_info.get('tickers', []), ai_info.get('count', 0))}\n"
+                    f"└ 평균 상승률: {ai_info.get('avg_rise', 0):.1f}%\n\n"
+                    f"💬 *뉴스 감정 분석* ({sent_info.get('count', 0)}개)\n"
+                    f"└ {_ticker_summary(sent_info.get('tickers', []), sent_info.get('count', 0))}\n"
+                    f"└ 감정 점수 ≥ 0.15 (긍정)"
+                )
+            }
+        })
+        blocks.append({"type": "divider"})
+
+        # --- TOP 5 추천 종목 ---
+        if candidate_count > 0:
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*🏆 TOP {min(candidate_count, 5)} 추천 종목*"}
+            })
+
+            for i, rec in enumerate(candidates[:5], 1):
+                indicators = rec.get("technical_indicators") or rec
+                scores = rec.get("scores", {})
+                ticker = rec.get("ticker", "N/A")
+                stock_name = rec.get("stock_name", ticker)
+                composite = scores.get("composite_score", 0)
+
+                ai_pred = rec.get("ai_prediction", {})
+                rise_prob = ai_pred.get("rise_probability", 0)
+                sentiment = rec.get("sentiment_score", 0)
+
+                # 기술 신호 목록
+                signals = []
+                if indicators.get("golden_cross"):
+                    signals.append("골든크로스")
+                if indicators.get("macd_buy_signal"):
+                    signals.append("MACD매수")
+                rsi_val = indicators.get("rsi", 100)
+                if rsi_val < 50:
+                    signals.append(f"RSI({rsi_val:.0f})")
+                signal_text = ", ".join(signals) if signals else "없음"
+
+                rise_str = f"{rise_prob:+.1f}%" if rise_prob != 0 else "N/A"
+                sent_str = f"{sentiment:.2f}" if sentiment > 0 else "N/A"
+
+                blocks.append({
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"*{i}. {stock_name}* (`{ticker}`)\n"
+                            f"• 종합점수: `{composite:.2f}` | 상승확률: `{rise_str}` | 감정: `{sent_str}`\n"
+                            f"• 기술신호: {signal_text}"
+                        )
+                    }
+                })
+        else:
+            blocks.append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "ℹ️ *추천 종목 없음* - 현재 매수 조건을 충족하는 종목이 없습니다."
+                }
+            })
+
+        # --- Footer ---
+        blocks.extend([
+            {"type": "divider"},
+            {
+                "type": "context",
+                "elements": [
+                    {"type": "mrkdwn", "text": (
+                        f"⏰ {current_time} | "
+                        f"기준: composite = 0.3×AI + 0.4×기술 + 0.3×감정 | "
+                        f"Quantiq Data Engine"
+                    )}
+                ]
+            }
+        ])
+
+        fallback_text = (
+            f"🎯 Quantiq 종합 분석 완료: {total}개 분석, "
+            f"{candidate_count}개 추천, 평균 종합 {avg_composite:.2f}"
+        )
+        SlackNotifier._post_to_webhook(webhook_url, fallback_text, blocks)

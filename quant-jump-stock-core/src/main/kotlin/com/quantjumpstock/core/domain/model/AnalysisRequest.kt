@@ -9,5 +9,6 @@ data class AnalysisRequest(
     val requestId: String,
     val threadTs: String? = null,
     val analysisType: String, // "TECHNICAL", "SENTIMENT"
-    val targetDate: String? = null // 분석 대상 날짜 (yyyy-MM-dd)
+    val startDate: String? = null, // 분석 시작 날짜 (yyyy-MM-dd)
+    val endDate: String? = null    // 분석 종료 날짜 (yyyy-MM-dd)
 )

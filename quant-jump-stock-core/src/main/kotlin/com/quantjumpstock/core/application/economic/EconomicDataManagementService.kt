@@ -29,37 +29,38 @@ class EconomicDataManagementService(
     private val logger = LoggerFactory.getLogger(this::class.java)
     private val kst = ZoneId.of("Asia/Seoul")
 
-    override fun triggerEconomicDataUpdate(targetDate: String?): CompletableFuture<String> {
+    override fun triggerEconomicDataUpdate(startDate: String?, endDate: String?): CompletableFuture<String> {
         return try {
-            val dateInfo = targetDate ?: "당일"
-            logger.info("경제 데이터 업데이트 요청 시작 (기준일: $dateInfo)")
+            val dateInfo = formatDateRange(startDate, endDate)
+            logger.info("경제 데이터 업데이트 요청 시작 ($dateInfo)")
 
             val requestId = UUID.randomUUID().toString()
 
             // Slack 알림 전송 먼저 (스레드 루트 메시지 생성 → threadTs 반환)
             val threadTs = try {
-                notificationSender.notifyEconomicDataUpdateRequest(requestId, targetDate)
+                notificationSender.notifyEconomicDataUpdateRequest(requestId, startDate, endDate)
             } catch (e: Exception) {
                 logger.warn("Slack 알림 전송 실패: ${e.message}")
                 null
             }
 
-            // threadTs와 targetDate를 포함한 요청 생성
+            // threadTs와 날짜 범위를 포함한 요청 생성
             val request = EconomicDataUpdateRequest(
                 timestamp = ZonedDateTime.now(kst).toString(),
                 source = "quartz_scheduler",
                 requestId = requestId,
                 threadTs = threadTs,
-                targetDate = targetDate
+                startDate = startDate,
+                endDate = endDate
             )
 
-            // Kafka 이벤트 발행 (threadTs, targetDate 포함)
+            // Kafka 이벤트 1개 발행 (날짜 범위 포함)
             messagePublisher.publishEconomicDataUpdateRequest(
                 TOPIC_ECONOMIC_DATA_UPDATE_REQUEST,
                 request
             )
 
-            logger.info("✅ Kafka 이벤트 발행 완료: requestId=$requestId, threadTs=$threadTs, targetDate=$dateInfo")
+            logger.info("✅ Kafka 이벤트 발행 완료: requestId=$requestId, threadTs=$threadTs, $dateInfo")
 
             CompletableFuture.completedFuture("경제 데이터 업데이트 요청이 Kafka에 발행되었습니다.")
         } catch (e: Exception) {
@@ -79,19 +80,27 @@ class EconomicDataManagementService(
         }
     }
 
-    override fun triggerEconomicDataUpdateViaRestApi(targetDate: String?): CompletableFuture<String> {
+    override fun triggerEconomicDataUpdateViaRestApi(startDate: String?, endDate: String?): CompletableFuture<String> {
         return try {
-            val dateInfo = targetDate ?: "당일"
-            logger.info("REST API를 통해 경제 데이터 업데이트 요청 시작 (기준일: $dateInfo)")
+            val dateInfo = formatDateRange(startDate, endDate)
+            logger.info("REST API를 통해 경제 데이터 업데이트 요청 시작 ($dateInfo)")
 
-            // REST API 호출 (Output Port 사용, targetDate 전달)
+            // REST API 호출 (Output Port 사용, startDate 전달)
             restApiClient.callEconomicDataCollectionApi(
                 "$dataEngineBaseUrl/api/economic/collect",
-                targetDate
+                startDate
             )
         } catch (e: Exception) {
             logger.error("REST API 호출 실패", e)
             CompletableFuture.failedFuture(e)
+        }
+    }
+
+    private fun formatDateRange(startDate: String?, endDate: String?): String {
+        return when {
+            startDate != null && endDate != null -> "기간: $startDate ~ $endDate"
+            startDate != null -> "시작일: $startDate ~ 오늘"
+            else -> "자동 (마지막 수집일+1 ~ 오늘)"
         }
     }
 
