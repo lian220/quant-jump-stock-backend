@@ -57,17 +57,30 @@ class PredictionService(
     /**
      * 매수 신호 조회
      *
+     * ⚠️ 중요: 스케줄러가 23:05(KST)에 실행되어 전날 날짜로 데이터를 저장하므로,
+     *         전날 날짜로 조회해야 함. (당일 조회 시 데이터 없음)
+     *
      * @param minConfidence 최소 신뢰도 (기본값 0.7)
+     *                     Composite Score 기준으로 변환: minConfidence × 7.5
+     *                     예: 0.7 → 5.25점
      * @return 매수 신호 응답
      */
     fun getBuySignals(minConfidence: Double = 0.7): BuySignalsResponse {
-        val today = LocalDate.now()
-        val buySignals = predictionRepository.findHighConfidenceBuySignals(today, minConfidence)
-            .sortedByDescending { it.confidence }
+        // ✅ 수정: 전날 날짜로 조회 (스케줄러가 23:05에 전날 날짜로 저장)
+        val yesterday = LocalDate.now().minusDays(1)
+
+        // Composite Score 기준으로 조회 (0.7 → 5.25점)
+        // 기존 confidence(0~1)를 Composite Score(0~7.5) 기준으로 변환
+        val minCompositeScore = minConfidence * 7.5
+
+        val buySignals = predictionRepository.findHighConfidenceBuySignals(
+            yesterday,
+            minCompositeScore
+        ).sortedByDescending { it.confidence }
 
         return BuySignalsResponse(
             success = true,
-            date = today,
+            date = yesterday,  // ✅ 응답에도 전날 날짜 표시
             minConfidence = minConfidence,
             count = buySignals.size,
             buySignals = buySignals
