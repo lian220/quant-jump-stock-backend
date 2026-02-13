@@ -1,0 +1,140 @@
+# [Plan] Strategy-Universe Decoupling
+**Plan Status**: 💡 Proposed (Just Created)
+**Reason**: To allow applying the same strategy logic to different stock universes (Market, Portfolio, etc.).
+
+---
+
+# 전략-유니버스 분리 아키텍처 (Strategy-Universe Decoupling)
+
+## 1. 개요 (Overview)
+
+이 문서는 기존의 `Strategy` 모델 내에 강하게 결합되어 있던 **매매 로직(Logic)**과 **대상 종목(Universe)**을 분리하여, 사용자가 실행 시점에 자유롭게 대상을 선택할 수 있도록 개선하는 아키텍처 변경안을 정의합니다.
+
+### 1.1 변경 배경
+- **기존 문제점**: 전략 생성 시 `SCREENING`(전체 시장) 또는 `PORTFOLIO`(특정 종목) 중 하나를 고정해야 했음. 이로 인해 동일한 로직(예: 저PER)을 다른 대상(예: 내 관심종목)에 적용하려면 별도의 전략을 만들어야 하는 비효율 발생.
+- **개선 목표**: 전략은 "어떻게 매매할 것인가(How)"에 집중하고, "무엇을 매매할 것인가(What)"는 실행 시점(백테스트/실전)에 결정하도록 구조 변경.
+
+---
+
+## 2. 핵심 변경 사항 (Key Changes)
+
+### 2.1 개념적 모델 변화
+
+| 구분 | 기존 (AS-IS) | 변경 (TO-BE) |
+| :--- | :--- | :--- |
+| **전략 정의** | Logic + Universe (고정) | Pure Logic (순수 로직) |
+| **유니버스** | 전략 속성 (`stockSelectionType`) | 실행 파라미터 (`universeType`, `targetTickers`) |
+| **사용자 경험** | 전략 선택 시 대상이 이미 정해짐 | 전략 선택 후 **"어디에 적용할지"** 선택 가능 |
+
+### 2.2 사용자 시나리오 (UX Flow)
+
+1.  **전략 선택**: 마켓플레이스에서 `[저평가 우량주 전략]` 선택
+2.  **적용 대상(Universe) 선택** (실행/구독 시):
+    *   🔘 **전체 시장 (Market)**: KOSPI/KOSDAQ 전 종목 대상 (기본값)
+    *   🔘 **내 포트폴리오 (My Portfolio)**: 내가 등록한 관심종목 그룹 대상
+    *   🔘 **특정 섹터/테마**: '반도체', '2차전지' 등 특정 테마 대상
+3.  **실행**: 선택한 대상 집합(Universe)에 전략 로직(PER < 10 등)을 적용하여 종목 추출 및 매매 신호 발생
+
+---
+
+## 3. 데이터 모델 변경안 (Schema Changes)
+
+### 3.1 Backend Model (`Strategy.kt`)
+
+기존의 `stockSelectionType` 필드를 제거하거나, **'권장 유니버스'** 정보로 그 성격을 변경합니다.
+
+```kotlin
+data class Strategy(
+    // ... 기존 필드 ...
+    
+    // [변경 전] 필수/강제 사항
+    // val stockSelectionType: StockSelectionType = StockSelectionType.SCREENING 
+
+    // [변경 후] 권장 사항 (Default Recommendation)
+    val recommendedUniverseType: UniverseType = UniverseType.MARKET, 
+    
+    // 이 전략이 지원하는 유니버스 타입 목록 (예: 기술적 분석은 포트폴리오에도 적용 가능)
+    val supportedUniverseTypes: Set<UniverseType> = setOf(UniverseType.MARKET, UniverseType.PORTFOLIO)
+)
+
+enum class UniverseType {
+    MARKET,      // 전체 시장 대상 (Screening)
+    PORTFOLIO,   // 사용자 정의 포트폴리오 대상
+    SECTOR,      // 특정 섹터/테마 대상
+    FIXED        // 전략 자체에 포함된 고정 리스트 (예: 워런버핏 13F)
+}
+```
+
+### 3.2 Execution Request (`BacktestRequest.kt`)
+
+백테스트 요청 시 사용자가 선택한 유니버스 정보를 전달받습니다.
+
+```kotlin
+data class BacktestRequest(
+    val strategyId: Long,
+    // ...
+    val universeType: UniverseType,  // 실행 시 선택한 유니버스 타입
+    val targetTickers: List<String> = emptyList() // PORTFOLIO 선택 시 대상 종목 리스트
+)
+```
+
+### 3.3 Subscription Model (`StrategySubscription.kt`)
+
+사용자가 전략을 구독할 때, 어떤 유니버스에 해당 로직을 적용할지 함께 저장합니다.
+
+```kotlin
+data class StrategySubscription(
+    val id: Long?,
+    val userId: String,
+    val strategyId: Long,
+    val universeType: UniverseType,        // 구독 시 선택한 유니버스
+    val targetTickers: List<String> = emptyList(), // PORTFOLIO 선택 시 대상
+    val notifySignals: Boolean = true
+)
+```
+
+---
+
+## 4. 자동화 및 스케줄링 (Automation & Scheduling)
+
+전략과 유니버스가 분리됨에 따라, 시스템이 자동으로 실행하는 작업(Daily Job)들도 각 유니버스 설정에 맞춰 동작해야 합니다.
+
+### 4.1 마켓플레이스 랭킹 (Marketplace Ranking)
+- **대상**: 마켓플레이스에 공개된 모든 활성 전략.
+- **실행**: 매일 장 마감 후(예: 18:00) 실행.
+- **동작**: 각 전략의 `recommendedUniverseType`을 대상으로 백테스트를 수행하여 CAGR, MDD 등 수익률 지표를 갱신합니다.
+
+### 4.2 사용자 구독 신호 생성 (Subscription Signal Generation)
+- **대상**: 사용자가 활성화한 모든 전략 구독 건.
+- **실행**: 매일 장 시작 전(예: 08:00) 실행.
+- **동작**:
+    1. 구독 정보에 저장된 `universeType`과 `targetTickers`를 로드합니다.
+    2. 해당 유니버스를 대상으로 전략 로직을 실행합니다.
+    3. 발생한 매매 신호(Buy/Sell)를 사용자에게 알림으로 전송합니다.
+
+### 4.3 배치 작업 구조 (Quartz Jobs)
+- **DailyMarketplaceRankingJob**: `StrategyRepository`에서 공개 전략을 조회하여 순차적으로 백테스트 요청 발행.
+- **DailyStrategySignalJob**: `SubscriptionRepository`에서 활성 구독을 조회하여 각 구독자의 유니버스 설정대로 실행 요청 발행.
+
+---
+
+## 5. 구현 영향도 (Implementation Impact)
+
+### 4.1 Backend (Service/Engine)
+- **StrategyService**: 전략 생성/수정 시 `supportedUniverseTypes` 설정 로직 추가.
+- **BacktestService**: 요청받은 `universeType`에 따라 `targetTickers`를 동적으로 구성하여 Data Engine에 전달.
+    - `MARKET`: 전체 종목 리스트 로딩
+    - `PORTFOLIO`: 요청된 `targetTickers` 사용
+    - `SECTOR`: 해당 섹터 종목 조회 후 전달
+- **Scheduling**: `StrategySubscription` 테이블에 유니버스 정보 저장을 위한 마이그레이션 및 일일 배치 Job 구현.
+
+### 4.2 Frontend (UI/UX)
+- **전략 상세 페이지**: "전략 실행/백테스트" 버튼 클릭 시 **[대상 선택]** 팝업/모달 노출.
+- **마켓플레이스**: 전략 카드에 "오직 전체 시장용"인지 "포트폴리오 적용 가능"인지 뱃지 표시.
+
+---
+
+## 6. 기대 효과
+1.  **재사용성 증가**: 하나의 전략 로직으로 다양한 투자 대상에 적용 가능 (N:M 매핑).
+2.  **개인화 강화**: 사용자가 자신의 포트폴리오를 진단하거나, 특정 관심 섹터 내에서만 종목을 발굴하는 도구로 활용 가능.
+3.  **확장성 확보**: 향후 미국 주식, 암호화폐 등으로 자산군이 확장되어도 전략 로직은 그대로 유지 가능.

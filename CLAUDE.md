@@ -243,25 +243,25 @@ Backend 아키텍처 개선을 위한 상세 문서가 준비되어 있습니다
 
 ### 📚 핵심 문서
 
-1. **[BACKEND_ARCHITECTURE.md](./quant-jump-stock-core/refactorplan/claude/architecture/BACKEND_ARCHITECTURE.md)**
+1. **[BACKEND_ARCHITECTURE.md](./docs/architecture/refactor/BACKEND_ARCHITECTURE.md)**
    - 현재 아키텍처 분석 (점수: 65/100)
    - 주요 위반 사항 및 개선 방향
    - 14주 로드맵 (Phase 1-3)
    - 목표: Hexagonal Architecture 완성도 100/100
 
-2. **[ADAPTER_PATTERNS.md](./quant-jump-stock-core/refactorplan/claude/patterns/ADAPTER_PATTERNS.md)**
+2. **[ADAPTER_PATTERNS.md](./docs/architecture/refactor/ADAPTER_PATTERNS.md)**
    - Persistence Adapter 패턴 가이드
    - JPA/MongoDB Adapter 구현 예시
    - 매핑 전략 (toEntity/toDomain)
    - 실전 코드 예제
 
-3. **[TESTING_GUIDE.md](./quant-jump-stock-core/refactorplan/claude/testing/TESTING_GUIDE.md)**
+3. **[TESTING_GUIDE.md](./docs/architecture/refactor/TESTING_GUIDE.md)**
    - Kotest + MockK 단위 테스트
    - Testcontainers 통합 테스트
    - Property-Based Testing
    - 테스트 픽스처 패턴
 
-4. **[MIGRATION_LOG.md](./quant-jump-stock-core/refactorplan/MIGRATION_LOG.md)**
+4. **[MIGRATION_LOG.md](./docs/architecture/refactor/MIGRATION_LOG.md)**
    - 주차별 진행 상황 기록 템플릿
    - 작업 항목 체크리스트
    - 성공 지표 추적
@@ -277,7 +277,7 @@ Backend 아키텍처 개선을 위한 상세 문서가 준비되어 있습니다
 
 ### 🚀 시작하기
 
-1. **[BACKEND_ARCHITECTURE.md](./quant-jump-stock-core/refactorplan/claude/architecture/BACKEND_ARCHITECTURE.md)** 읽기 - 전체 계획 이해
-2. **[ADAPTER_PATTERNS.md](./quant-jump-stock-core/refactorplan/claude/patterns/ADAPTER_PATTERNS.md)** 읽기 - 구현 패턴 학습
-3. **[TESTING_GUIDE.md](./quant-jump-stock-core/refactorplan/claude/testing/TESTING_GUIDE.md)** 읽기 - 테스트 작성 방법
+1. **[BACKEND_ARCHITECTURE.md](./docs/architecture/refactor/BACKEND_ARCHITECTURE.md)** 읽기 - 전체 계획 이해
+2. **[ADAPTER_PATTERNS.md](./docs/architecture/refactor/ADAPTER_PATTERNS.md)** 읽기 - 구현 패턴 학습
+3. **[TESTING_GUIDE.md](./docs/architecture/refactor/TESTING_GUIDE.md)** 읽기 - 테스트 작성 방법
 4. Week 1부터 단계적 진행
