@@ -138,22 +138,24 @@ quant-jump-stock-data-engine/src/
 
 ### MongoDB (시계열 데이터)
 - **DB명**: `stock_trading`
-- **daily_stock_data**: 일별 주식 가격
+- **daily_stock_data**: 일별 주식 가격 + 경제 지표
   ```json
   {
-    "date": "2025-02-05",
+    "date": "2026-02-12",
     "stocks": {
-      "AAPL": { "close_price": 231.42 },
-      "NVDA": { "close_price": 124.79 },
-      ...
+      "AAPL": { "open": 228.5, "high": 233.1, "low": 227.8, "close": 231.42, "volume": 48523100, "close_price": 231.42, "info": { "trailingPE": 28.5, "marketCap": 3560000000000, ... } }
     },
-    "yfinance_indicators": { "S&P 500 ETF": 597.20, ... },
-    "fred_indicators": { ... }
+    "yfinance_indicators": {
+      "^GSPC": { "open": 5950.2, "high": 5980.5, "low": 5940.1, "close": 5970.8, "volume": 3800000000, "close_price": 5970.8, "name": "S&P 500 지수" }
+    },
+    "fred_indicators": {
+      "FEDFUNDS": { "value": 4.33, "name": "기준금리" }
+    }
   }
   ```
   - 기간: 2025-02-05 ~ 현재 (약 260일)
   - 종목: 35개 (미국 주식)
-  - **주의**: close_price만 있음 (OHLCV 중 O/H/L/V 없음)
+  - stocks: OHLCV + 펀더멘탈(info), yfinance_indicators: ticker 키 + OHLCV, fred_indicators: code 키 + {value, name}
 - Repository: `adapter/output/persistence/mongodb/`
 
 ### Flyway 마이그레이션 규칙

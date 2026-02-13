@@ -525,23 +525,62 @@ QuantiQ 시스템은 **PostgreSQL**과 **MongoDB** 두 가지 데이터베이스
 ```javascript
 {
   "_id": ObjectId,
-  "date": "YYYY-MM-DD",
+  "date": "YYYY-MM-DD",                    // 거래일 (문자열, UNIQUE 인덱스)
   "stocks": {
-    "AAPL": { "close_price": 231.42 },
-    "NVDA": { "close_price": 124.79 },
+    "AAPL": {
+      "open": 228.50,                       // 시가
+      "high": 233.10,                       // 고가
+      "low": 227.80,                        // 저가
+      "close": 231.42,                      // 종가
+      "volume": 48523100,                   // 거래량
+      "close_price": 231.42,                // 종가 (하위 호환)
+      "info": {                             // yfinance 펀더멘탈 (종목별 스냅샷)
+        "trailingPE": 28.5,                 // PER (후행)
+        "forwardPE": 25.2,                  // PER (선행)
+        "priceToBook": 45.3,               // PBR
+        "returnOnEquity": 1.47,             // ROE
+        "dividendYield": 0.0054,            // 배당수익률
+        "marketCap": 3560000000000,         // 시가총액
+        "enterpriseValue": 3620000000000,   // 기업가치
+        "sector": "Technology",             // 섹터
+        "industry": "Consumer Electronics", // 산업
+        // ... yf.Ticker().info 전체 필드
+      }
+    },
+    "NVDA": { /* 동일 구조 */ },
     // ... 35개 종목
   },
   "yfinance_indicators": {
-    "S&P 500 ETF": 597.20,
-    // ...
+    "^GSPC": {                              // 키: ticker (PostgreSQL yfinance_indicators.ticker)
+      "open": 5950.20,                      // 시가
+      "high": 5980.50,                      // 고가
+      "low": 5940.10,                       // 저가
+      "close": 5970.80,                     // 종가
+      "volume": 3800000000,                 // 거래량
+      "close_price": 5970.80,              // 종가 (하위 호환)
+      "name": "S&P 500 지수"               // 표시명
+    },
+    "^IXIC": { /* 나스닥 종합지수 */ },
+    "GC=F": { /* 금 선물 */ },
+    // ... 24개 지표 (지수, 원자재, 환율, ETF 등)
   },
   "fred_indicators": {
-    // ...
+    "FEDFUNDS": {                           // 키: code (PostgreSQL fred_indicators.code)
+      "value": 4.33,                        // 지표값
+      "name": "기준금리"                     // 표시명
+    },
+    "GDPC1": { "value": 28269.5, "name": "GDP (국내총생산)" },
+    "CPIAUCSL": { "value": 314.69, "name": "CPI (소비자물가지수)" },
+    // ... 13개 FRED 지표
   }
 }
 ```
 
 **인덱스**: `date` (UNIQUE)
+
+**참고**:
+- `yfinance_indicators` 키는 ticker (e.g., `^GSPC`), `fred_indicators` 키는 code (e.g., `FEDFUNDS`). 표시명은 각 값의 `name` 필드에 포함.
+- 소비자 코드는 dict/float 양쪽 모두 처리 가능 (레거시 호환).
 
 ---
 

@@ -553,15 +553,23 @@ def get_all_data(collection_name):
                 # 결과 딕셔너리 생성
                 result_dict = {"날짜": date_str}
                 
-                # FRED 지표 추가
+                # FRED 지표 추가 (키: code, 값: {value, name} 또는 레거시 float)
                 fred_indicators = doc.get("fred_indicators", {})
                 if isinstance(fred_indicators, dict):
-                    result_dict.update(fred_indicators)
-                
-                # Yahoo Finance 지표 추가
+                    for key, val in fred_indicators.items():
+                        if isinstance(val, dict):
+                            result_dict[key] = val.get("value")
+                        else:
+                            result_dict[key] = val
+
+                # Yahoo Finance 지표 추가 (키: ticker, 값: {close, name, ...} 또는 레거시 float)
                 yfinance_indicators = doc.get("yfinance_indicators", {})
                 if isinstance(yfinance_indicators, dict):
-                    result_dict.update(yfinance_indicators)
+                    for key, val in yfinance_indicators.items():
+                        if isinstance(val, dict):
+                            result_dict[key] = val.get("close") or val.get("close_price")
+                        else:
+                            result_dict[key] = val
                 
                 # 활성화된 종목의 주가 데이터만 추가
                 # stocks 필드는 티커를 키로 사용하므로 티커로 접근
@@ -759,19 +767,19 @@ def get_economic_features_from_postgres():
         all_indicators = []
 
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            # FRED 지표
+            # FRED 지표 (code를 MongoDB 키로 사용)
             try:
-                cur.execute("SELECT name FROM fred_indicators WHERE is_active = true")
-                fred_list = [row["name"] for row in cur.fetchall() if row.get("name")]
+                cur.execute("SELECT code FROM fred_indicators WHERE is_active = true")
+                fred_list = [row["code"] for row in cur.fetchall() if row.get("code")]
                 all_indicators.extend(fred_list)
                 print(f"FRED 지표 {len(fred_list)}개 로드")
             except Exception as e:
                 print(f"⚠️ 경고: fred_indicators 조회 실패: {e}")
 
-            # Yahoo Finance 지표
+            # Yahoo Finance 지표 (ticker를 MongoDB 키로 사용)
             try:
-                cur.execute("SELECT name FROM yfinance_indicators WHERE is_active = true")
-                yfinance_list = [row["name"] for row in cur.fetchall() if row.get("name")]
+                cur.execute("SELECT ticker FROM yfinance_indicators WHERE is_active = true")
+                yfinance_list = [row["ticker"] for row in cur.fetchall() if row.get("ticker")]
                 all_indicators.extend(yfinance_list)
                 print(f"Yahoo Finance 지표 {len(yfinance_list)}개 로드")
             except Exception as e:

@@ -1,7 +1,6 @@
 package com.quantjumpstock.core.adapter.output.persistence.mongodb
 
 import com.quantjumpstock.core.domain.model.benchmark.BenchmarkSeriesPoint
-import com.quantjumpstock.core.domain.port.output.Benchmark
 import com.quantjumpstock.core.domain.port.output.BenchmarkDataPort
 import com.quantjumpstock.core.domain.port.output.BenchmarkType
 import org.slf4j.LoggerFactory
@@ -78,12 +77,22 @@ class BenchmarkMongoAdapter(
             }
             BenchmarkType.INDEX, BenchmarkType.COMMODITY, BenchmarkType.CURRENCY -> {
                 val yf = doc["yfinance_indicators"] as? Map<String, Any> ?: return null
-                // yfinance_indicators 키는 displayName (e.g., "S&P 500 지수")
-                val benchmark = Benchmark.findByTicker(ticker)
-                val displayName = benchmark?.displayName ?: ticker
-                val value = yf[displayName] ?: yf[ticker]
-                value?.let { toBigDecimal(it) }
+                // yfinance_indicators 키는 ticker (e.g., "^GSPC")
+                val value = yf[ticker] ?: return null
+                extractNumericValue(value)
             }
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun extractNumericValue(value: Any): BigDecimal? {
+        return when (value) {
+            is Map<*, *> -> {
+                val mapValue = value as Map<String, Any>
+                val close = mapValue["close"] ?: mapValue["close_price"]
+                close?.let { toBigDecimal(it) }
+            }
+            else -> toBigDecimal(value)
         }
     }
 

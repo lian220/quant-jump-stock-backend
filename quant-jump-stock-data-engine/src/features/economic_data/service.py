@@ -1,5 +1,7 @@
 """Economic Data Service - 비즈니스 로직"""
 import logging
+import math
+import time
 import requests
 import yfinance as yf
 import pandas as pd
@@ -111,13 +113,13 @@ class EconomicDataService:
         return indicators
 
     def _load_yfinance_indicators(self) -> Dict[str, str]:
-        """PostgreSQL에서 Yahoo Finance 지표를 조회합니다."""
+        """PostgreSQL에서 Yahoo Finance 지표를 조회합니다. {ticker: name} 형식 반환."""
         indicators = {}
         try:
             docs = self.repository.find_active_yfinance_indicators()
             for doc in docs:
                 if "ticker" in doc and "name" in doc:
-                    indicators[doc["name"]] = doc["ticker"]
+                    indicators[doc["ticker"]] = doc["name"]
         except Exception as e:
             logger.error(f"Yahoo Finance 지표 조회 실패: {e}")
         return indicators
@@ -148,13 +150,16 @@ class EconomicDataService:
                 df = self._fetch_fred_data(code, start_date, end_date)
 
                 if df is not None and not df.empty:
-                    # 각 날짜별로 데이터를 그룹화
+                    # 각 날짜별로 데이터를 그룹화 (code를 키로 사용)
                     for date, row in df.iterrows():
                         date_str = date.strftime("%Y-%m-%d")
                         value = float(row.iloc[0]) if not pd.isna(row.iloc[0]) else None
 
                         if value is not None:
-                            daily_data[date_str]["fred_indicators"][name] = value
+                            daily_data[date_str]["fred_indicators"][code] = {
+                                "value": value,
+                                "name": name
+                            }
 
                     success_count += 1
                     logger.info(f"✅ FRED 데이터 수집 완료: {code} ({name})")
@@ -175,7 +180,7 @@ class EconomicDataService:
         Yahoo Finance 데이터를 수집하여 daily_data에 날짜별로 그룹화합니다.
 
         Args:
-            indicators: {name: ticker} 형식의 Yahoo Finance 지표 딕셔너리
+            indicators: {ticker: name} 형식의 Yahoo Finance 지표 딕셔너리
             start_date: 시작 날짜
             end_date: 종료 날짜
             daily_data: 날짜별 데이터를 저장할 딕셔너리 (참조로 전달)
@@ -185,18 +190,26 @@ class EconomicDataService:
         """
         success_count = 0
 
-        for name, ticker in indicators.items():
+        for ticker, name in indicators.items():
             try:
                 df = self._fetch_yahoo_data(ticker, start_date, end_date)
 
                 if df is not None and not df.empty:
-                    # 각 날짜별로 데이터를 그룹화
+                    # 각 날짜별로 데이터를 그룹화 (ticker를 키로, OHLCV 전체 저장)
                     for date, row in df.iterrows():
                         date_str = date.strftime("%Y-%m-%d")
                         close_price = float(row["Close"]) if "Close" in row and not pd.isna(row["Close"]) else None
 
                         if close_price is not None:
-                            daily_data[date_str]["yfinance_indicators"][name] = close_price
+                            daily_data[date_str]["yfinance_indicators"][ticker] = {
+                                "open": float(row["Open"]) if "Open" in row and not pd.isna(row["Open"]) else None,
+                                "high": float(row["High"]) if "High" in row and not pd.isna(row["High"]) else None,
+                                "low": float(row["Low"]) if "Low" in row and not pd.isna(row["Low"]) else None,
+                                "close": close_price,
+                                "volume": int(row["Volume"]) if "Volume" in row and not pd.isna(row["Volume"]) else 0,
+                                "close_price": close_price,
+                                "name": name
+                            }
 
                     success_count += 1
                     logger.info(f"✅ Yahoo Finance 데이터 수집 완료: {ticker} ({name})")
@@ -283,6 +296,9 @@ class EconomicDataService:
                 df = self._fetch_yahoo_data(ticker, start_date, end_date)
 
                 if df is not None and not df.empty:
+                    # 펀더멘탈 데이터 수집 (종목당 1회)
+                    info_data = self._fetch_ticker_info(ticker)
+
                     # 각 날짜별로 데이터를 그룹화
                     for date, row in df.iterrows():
                         date_str = date.strftime("%Y-%m-%d")
@@ -298,13 +314,42 @@ class EconomicDataService:
                                 # 하위 호환성을 위해 close_price도 유지
                                 "close_price": float(row["Close"])
                             }
+                            if info_data:
+                                stock_data["info"] = info_data
                             daily_data[date_str]["stocks"][ticker] = stock_data
 
                     success_count += 1
-                    logger.info(f"✅ 종목 데이터 수집 완료: {ticker} ({len(df)}일)")
+                    logger.info(f"✅ 종목 데이터 수집 완료: {ticker} ({len(df)}일, info={'있음' if info_data else '없음'})")
 
             except Exception as e:
                 logger.error(f"❌ 종목 데이터 수집 실패: {ticker} - {e}")
 
         logger.info(f"📊 개별 종목 데이터 수집 완료: {success_count}/{len(tickers)}개")
         return success_count
+
+    def _fetch_ticker_info(self, ticker: str) -> Dict[str, Any] | None:
+        """yfinance에서 종목 펀더멘탈 정보를 가져옵니다."""
+        try:
+            stock = yf.Ticker(ticker)
+            raw_info = stock.info
+
+            if not raw_info:
+                return None
+
+            # NaN/None/inf 값 필터링
+            cleaned = {}
+            for k, v in raw_info.items():
+                if v is None:
+                    continue
+                if isinstance(v, float) and (math.isnan(v) or math.isinf(v)):
+                    continue
+                cleaned[k] = v
+
+            # rate limiting (기존 yfinance 호출 간격 활용)
+            time.sleep(0.2)
+
+            return cleaned if cleaned else None
+
+        except Exception as e:
+            logger.warning(f"펀더멘탈 정보 수집 실패: {ticker} - {e}")
+            return None
