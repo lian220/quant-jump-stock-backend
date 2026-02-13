@@ -31,6 +31,8 @@ enum class Benchmark(
     GDAXI("^GDAXI", "독일 DAX", BenchmarkType.INDEX),
     FCHI("^FCHI", "프랑스 CAC 40", BenchmarkType.INDEX),
     SSE("000001.SS", "상해종합 지수", BenchmarkType.INDEX),
+    KS11("^KS11", "KOSPI 지수", BenchmarkType.INDEX),
+    KQ11("^KQ11", "KOSDAQ 지수", BenchmarkType.INDEX),
 
     // === 원자재/통화 ===
     GOLD("GC=F", "금 가격", BenchmarkType.COMMODITY),
