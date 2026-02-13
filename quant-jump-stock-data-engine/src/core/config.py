@@ -61,7 +61,9 @@ class Settings:
 
     # Slack Settings
     SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL", "")
+    SLACK_WEBHOOK_URL_ANALYSIS = os.getenv("SLACK_WEBHOOK_URL_ANALYSIS", "")
     SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "")
     SLACK_CHANNEL = os.getenv("SLACK_CHANNEL", "#trading-alerts")
+    SLACK_ENABLED = os.getenv("SLACK_ENABLED", "true").lower() == "true"
 
 settings = Settings()

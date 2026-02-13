@@ -8,7 +8,8 @@ data class EconomicDataUpdateRequest(
     val source: String,
     val requestId: String,
     val threadTs: String? = null,  // Slack 스레드 타임스탬프 (답글용)
-    val targetDate: String? = null  // 수집할 기준 날짜 (YYYY-MM-DD). null이면 당일 기준
+    val startDate: String? = null, // 수집 시작 날짜 (YYYY-MM-DD). null이면 Data Engine이 결정
+    val endDate: String? = null    // 수집 종료 날짜 (YYYY-MM-DD). null이면 오늘
 ) {
     override fun toString(): String {
         return """
@@ -17,7 +18,8 @@ data class EconomicDataUpdateRequest(
                 "source": "$source",
                 "requestId": "$requestId",
                 "threadTs": "$threadTs",
-                "targetDate": "$targetDate"
+                "startDate": "$startDate",
+                "endDate": "$endDate"
             }
         """.trimIndent()
     }

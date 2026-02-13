@@ -15,8 +15,6 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.time.Instant
-import java.time.LocalDate
-import java.util.concurrent.CompletableFuture
 
 /**
  * 분석 Controller (Input Adapter)
@@ -91,25 +89,22 @@ class AnalysisController(
         @RequestParam(required = false) endDate: String?
     ): ResponseEntity<Map<String, Any>> {
         return try {
-            val dates = generateDateRange(startDate, endDate)
-            logger.info("기술적 분석 요청: ${dates.size}개 날짜 (${dates.first()} ~ ${dates.last()})")
+            val dateInfo = formatDateRange(startDate, endDate)
+            logger.info("기술적 분석 요청: $dateInfo")
 
-            val futures = dates.map { date ->
-                analysisUseCase.triggerTechnicalAnalysis(date.toString())
-            }
+            // Kafka 이벤트 1개 발행 (날짜 범위 전달)
+            analysisUseCase.triggerTechnicalAnalysis(startDate, endDate).get()
 
-            CompletableFuture.allOf(*futures.toTypedArray()).get()
-
-            ResponseEntity.ok(
-                mapOf<String, Any>(
-                    "success" to true,
-                    "message" to "기술적 분석 요청이 Kafka에 발행되었습니다.",
-                    "analysisType" to "TECHNICAL",
-                    "dates" to dates.map { it.toString() },
-                    "count" to dates.size,
-                    "timestamp" to Instant.now().toString()
-                )
+            val response = mutableMapOf<String, Any>(
+                "success" to true,
+                "message" to "기술적 분석 요청이 Kafka에 발행되었습니다.",
+                "analysisType" to "TECHNICAL",
+                "timestamp" to Instant.now().toString()
             )
+            startDate?.let { response["startDate"] = it }
+            endDate?.let { response["endDate"] = it }
+
+            ResponseEntity.ok(response.toMap())
         } catch (e: Exception) {
             logger.error("기술적 분석 트리거 실패", e)
             ResponseEntity.status(500).body(
@@ -152,25 +147,22 @@ class AnalysisController(
         @RequestParam(required = false) endDate: String?
     ): ResponseEntity<Map<String, Any>> {
         return try {
-            val dates = generateDateRange(startDate, endDate)
-            logger.info("감정 분석 요청: ${dates.size}개 날짜 (${dates.first()} ~ ${dates.last()})")
+            val dateInfo = formatDateRange(startDate, endDate)
+            logger.info("감정 분석 요청: $dateInfo")
 
-            val futures = dates.map { date ->
-                analysisUseCase.triggerSentimentAnalysis(date.toString())
-            }
+            // Kafka 이벤트 1개 발행 (날짜 범위 전달)
+            analysisUseCase.triggerSentimentAnalysis(startDate, endDate).get()
 
-            CompletableFuture.allOf(*futures.toTypedArray()).get()
-
-            ResponseEntity.ok(
-                mapOf<String, Any>(
-                    "success" to true,
-                    "message" to "뉴스 감정 분석 요청이 Kafka에 발행되었습니다.",
-                    "analysisType" to "SENTIMENT",
-                    "dates" to dates.map { it.toString() },
-                    "count" to dates.size,
-                    "timestamp" to Instant.now().toString()
-                )
+            val response = mutableMapOf<String, Any>(
+                "success" to true,
+                "message" to "뉴스 감정 분석 요청이 Kafka에 발행되었습니다.",
+                "analysisType" to "SENTIMENT",
+                "timestamp" to Instant.now().toString()
             )
+            startDate?.let { response["startDate"] = it }
+            endDate?.let { response["endDate"] = it }
+
+            ResponseEntity.ok(response.toMap())
         } catch (e: Exception) {
             logger.error("감정 분석 트리거 실패", e)
             ResponseEntity.status(500).body(
@@ -288,28 +280,11 @@ class AnalysisController(
         }
     }
 
-    /**
-     * 날짜 범위 생성 헬퍼 함수
-     */
-    private fun generateDateRange(startDate: String?, endDate: String?): List<LocalDate> {
+    private fun formatDateRange(startDate: String?, endDate: String?): String {
         return when {
-            startDate != null && endDate != null -> {
-                val start = LocalDate.parse(startDate)
-                val end = LocalDate.parse(endDate)
-                val dates = mutableListOf<LocalDate>()
-                var current = start
-                while (!current.isAfter(end)) {
-                    dates.add(current)
-                    current = current.plusDays(1)
-                }
-                dates
-            }
-            startDate != null -> {
-                listOf(LocalDate.parse(startDate))
-            }
-            else -> {
-                listOf(LocalDate.now())
-            }
+            startDate != null && endDate != null -> "$startDate ~ $endDate"
+            startDate != null -> "$startDate ~ 오늘"
+            else -> "자동 (마지막 수집일+1 ~ 오늘)"
         }
     }
 }

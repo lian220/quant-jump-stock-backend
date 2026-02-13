@@ -96,19 +96,21 @@ class TechnicalAnalysisService:
                         data_dict[ticker][date] = float(price)
 
             # ticker_to_name already created from PostgreSQL query above
+            all_results = []
             recommendations = []
-            
+            total_analyzed = 0
+
             for ticker, dates_prices in data_dict.items():
                 if len(dates_prices) < 50:
                     continue
-                    
+
                 df = pd.DataFrame.from_dict(dates_prices, orient='index', columns=['close'])
                 df.index = pd.to_datetime(df.index)
                 df.sort_index(inplace=True)
-                
+
                 # Fill missing
                 df = df.ffill().bfill()
-                
+
                 # Setup indicators
                 df['sma20'] = self.calculate_sma(df['close'], 20)
                 df['sma50'] = self.calculate_sma(df['close'], 50)
@@ -126,11 +128,12 @@ class TechnicalAnalysisService:
                 except Exception as e:
                     logger.error(f"Error accessing target date {analysis_date} for {ticker}: {e}")
                     continue
-                
+
+                total_analyzed += 1
                 golden_cross = latest_row['sma20'] > latest_row['sma50']
                 macd_buy = latest_row['macd'] > latest_row['signal']
                 is_recommended = golden_cross and (latest_row['rsi'] < 50) and macd_buy
-                
+
                 rec_data = {
                     "date": latest_date.strftime("%Y-%m-%d"),
                     "ticker": ticker,
@@ -147,22 +150,23 @@ class TechnicalAnalysisService:
                     "is_recommended": bool(is_recommended),
                     "updated_at": datetime.utcnow()
                 }
-                
+
                 # Save to MongoDB (stock_recommendations)
                 db.stock_recommendations.update_one(
                     {"ticker": ticker, "date": rec_data["date"]},
                     {"$set": rec_data},
                     upsert=True
                 )
-                
+
+                all_results.append(rec_data)
                 if is_recommended:
                     recommendations.append(rec_data)
-                    
-            logger.info(f"Analysis complete. {len(recommendations)} stocks recommended.")
-            return recommendations
+
+            logger.info(f"Analysis complete. {total_analyzed} analyzed, {len(recommendations)} stocks recommended.")
+            return {"total_analyzed": total_analyzed, "all_results": all_results, "recommendations": recommendations}
 
         except Exception as e:
             logger.error(f"Analysis failed: {e}")
             import traceback
             logger.error(traceback.format_exc())
-            return []
+            return {"total_analyzed": 0, "all_results": [], "recommendations": []}

@@ -39,7 +39,9 @@ class KafkaMessagePublisherAdapter(
                     "requestId" to request.requestId,
                     "source" to request.source,
                     "timestamp" to request.timestamp,
-                    "threadTs" to request.threadTs  // Slack 스레드 타임스탬프 추가
+                    "threadTs" to request.threadTs,  // Slack 스레드 타임스탬프 추가
+                    "startDate" to request.startDate,
+                    "endDate" to request.endDate
                 )
             )
 
@@ -77,7 +79,8 @@ class KafkaMessagePublisherAdapter(
                     "timestamp" to request.timestamp,
                     "threadTs" to request.threadTs,  // Slack 스레드 타임스탬프 추가
                     "analysisType" to request.analysisType,
-                    "targetDate" to request.targetDate  // 분석 대상 날짜 추가
+                    "startDate" to request.startDate,
+                    "endDate" to request.endDate
                 )
             )
 

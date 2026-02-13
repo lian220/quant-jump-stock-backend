@@ -39,6 +39,7 @@ from adapter.input.kafka.handlers import (
     BacktestRequestHandler,
 )
 from adapter.input.rest import ml_router
+from adapter.input.rest import analysis_router
 from adapter.output.kafka.producer import KafkaProducerAdapter
 from adapter.output.postgresql.stock_repository import PostgresStockRepository
 from adapter.output.postgresql.strategy_repository import PostgresStrategyRepository
@@ -78,6 +79,7 @@ app = FastAPI(
 app.include_router(economic_router)
 app.include_router(ml_package_router)
 app.include_router(ml_router.router)
+app.include_router(analysis_router.router)
 
 
 @app.get("/")
@@ -121,8 +123,8 @@ class LegacyEconomicServiceAdapter:
     def __init__(self, service: EconomicDataService):
         self._service = service
 
-    def collect_economic_data(self, target_date=None):
-        return self._service.collect_economic_data(target_date=target_date)
+    def collect_economic_data(self, start_date=None, end_date=None):
+        return self._service.collect_economic_data(start_date=start_date, end_date=end_date)
 
 
 class LegacyTechnicalAnalysisAdapter:
@@ -131,18 +133,22 @@ class LegacyTechnicalAnalysisAdapter:
     def __init__(self, service: RecommendationService):
         self._service = service
 
-    def run_technical_analysis(self, request_id, thread_ts, target_date=None):
-        return self._service.run_technical_analysis(request_id, thread_ts, target_date)
+    def run_technical_analysis(self, request_id, thread_ts, start_date=None, end_date=None):
+        return self._service.run_technical_analysis(request_id, thread_ts, start_date=start_date, end_date=end_date)
 
 
 class NewTechnicalAnalysisAdapter:
     """새 TechnicalAnalysisApplicationService를 핸들러 프로토콜에 맞게 래핑 (async→sync)"""
 
     def __init__(self, service: 'TechnicalAnalysisApplicationService'):
+        from services.comprehensive_report import ComprehensiveReportService
         self._service = service
+        self._report_service = ComprehensiveReportService()
 
-    def run_technical_analysis(self, request_id, thread_ts, target_date=None):
+    def run_technical_analysis(self, request_id, thread_ts, start_date=None, end_date=None):
         import asyncio
+
+        target_date = end_date or start_date
 
         async def _run():
             return await self._service.analyze_stocks(
@@ -157,7 +163,24 @@ class NewTechnicalAnalysisAdapter:
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
 
-        return loop.run_until_complete(_run())
+        result = loop.run_until_complete(_run())
+
+        # 종합 분석 리포트: 기술적 + AI 예측 + 감정 분석
+        if result.get("status") == "success":
+            try:
+                all_results = result.get("results", [])
+                analysis_date = target_date or datetime.now().strftime("%Y-%m-%d")
+
+                report = self._report_service.generate_report(all_results, analysis_date)
+                SlackNotifier.notify_comprehensive_report(report)
+
+                # 리포트 결과로 반환값 업데이트
+                result["recommended_count"] = report.get("candidate_count", 0)
+            except Exception as e:
+                logger.error(f"종합 리포트 생성/전송 실패: {e}")
+                # 분석 결과는 보존하고 계속 진행
+
+        return result
 
 
 class LegacySentimentAnalysisAdapter:
@@ -166,8 +189,8 @@ class LegacySentimentAnalysisAdapter:
     def __init__(self, service: RecommendationService):
         self._service = service
 
-    def run_sentiment_analysis(self, request_id, thread_ts):
-        return self._service.run_sentiment_analysis(request_id, thread_ts)
+    def run_sentiment_analysis(self, request_id, thread_ts, start_date=None, end_date=None):
+        return self._service.run_sentiment_analysis(request_id, thread_ts, start_date=start_date, end_date=end_date)
 
 
 class LegacySlackNotifierAdapter:
@@ -232,6 +255,9 @@ def main():
 
     # 4.3. 새 서비스 어댑터 (핸들러 프로토콜 호환)
     technical_service = NewTechnicalAnalysisAdapter(technical_app_service)
+
+    # 4.3.1. REST API에 분석 서비스 등록
+    analysis_router.set_technical_service(technical_service)
 
     # 4.4. 레거시 서비스 (점진적 교체 예정)
     recommendation_service = RecommendationService()

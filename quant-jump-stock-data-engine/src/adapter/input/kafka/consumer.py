@@ -22,7 +22,9 @@ class KafkaMessage:
     payload: Dict[str, Any]
     request_id: str
     thread_ts: Optional[str] = None
-    target_date: Optional[str] = None
+    target_date: Optional[str] = None  # deprecated, kept for backward compat
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
     raw_message: Optional[Message] = None
 
 
@@ -86,7 +88,9 @@ class KafkaConsumerAdapter:
                 payload=payload,
                 request_id=payload.get("requestId", "unknown"),
                 thread_ts=payload.get("threadTs"),
-                target_date=payload.get("targetDate"),
+                target_date=payload.get("targetDate"),  # backward compat
+                start_date=payload.get("startDate"),
+                end_date=payload.get("endDate"),
                 raw_message=msg
             )
         except json.JSONDecodeError as e:

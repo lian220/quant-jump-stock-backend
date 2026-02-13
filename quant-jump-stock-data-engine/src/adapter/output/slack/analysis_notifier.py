@@ -173,13 +173,14 @@ class SlackAnalysisNotifierAdapter(AnalysisNotifierPort):
             analysis_type: 분석 유형 ("technical" 또는 "sentiment")
             thread_ts: 스레드 타임스탬프
         """
-        emoji_map = {
-            "technical": "📊",
-            "sentiment": "💬"
-        }
-        emoji = emoji_map.get(analysis_type, "🔄")
-
-        type_name = "기술적 지표 분석" if analysis_type == "technical" else "뉴스 감정 분석"
+        if analysis_type == "technical":
+            emoji = "🎯"
+            type_name = "Quantiq 종합 분석"
+            desc = "기술적 지표 + AI 예측 + 감정 분석 종합 처리 중"
+        else:
+            emoji = "💬"
+            type_name = "뉴스 감정 분석"
+            desc = "Alpha Vantage NEWS_SENTIMENT API 호출 중"
 
         text = f"{emoji} {type_name} 시작..."
 
@@ -187,7 +188,7 @@ class SlackAnalysisNotifierAdapter(AnalysisNotifierPort):
             {
                 "color": "36a64f",
                 "title": f"{type_name} 진행 중",
-                "text": "SMA, RSI, MACD 계산 중" if analysis_type == "technical" else "Alpha Vantage NEWS_SENTIMENT API 호출 중",
+                "text": desc,
                 "footer": "Quantiq Data Engine",
                 "ts": int(datetime.now(KST).timestamp())
             }
@@ -212,20 +213,22 @@ class SlackAnalysisNotifierAdapter(AnalysisNotifierPort):
             recommended_count: 추천 종목 수
             thread_ts: 스레드 타임스탬프
         """
-        type_name = "기술적 분석" if analysis_type == "technical" else "뉴스 감정 분석"
+        if analysis_type == "technical":
+            type_name = "Quantiq 종합 분석"
+        else:
+            type_name = "뉴스 감정 분석"
 
         text = f"✅ {type_name} 완료"
 
         attachments = [
             {
                 "color": "28a745",
-                "title": f"{type_name} 성공",
+                "title": f"{type_name} 완료",
                 "fields": [
                     {"title": "분석 종목", "value": f"{total_analyzed}개", "short": True},
-                    {"title": "추천 종목", "value": f"{recommended_count}개", "short": True},
-                    {"title": "완료 시각", "value": datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S"), "short": False},
+                    {"title": "완료 시각", "value": datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S"), "short": True},
                 ],
-                "footer": "Quantiq Data Engine",
+                "footer": "종합 추천 결과는 analysis 채널 확인 | Quantiq Data Engine",
                 "ts": int(datetime.now(KST).timestamp())
             }
         ]
@@ -247,7 +250,7 @@ class SlackAnalysisNotifierAdapter(AnalysisNotifierPort):
             error: 오류 메시지
             thread_ts: 스레드 타임스탬프
         """
-        type_name = "기술적 분석" if analysis_type == "technical" else "뉴스 감정 분석"
+        type_name = "Quantiq 종합 분석" if analysis_type == "technical" else "뉴스 감정 분석"
 
         text = f"❌ {type_name} 실패"
 

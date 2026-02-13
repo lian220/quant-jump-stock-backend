@@ -9,10 +9,11 @@ interface NotificationSender {
      * 경제 데이터 업데이트 요청 알림
      *
      * @param requestId 요청 ID
-     * @param targetDate 수집 대상 날짜 (yyyy-MM-dd), null이면 당일
+     * @param startDate 수집 시작 날짜 (yyyy-MM-dd), null이면 자동 결정
+     * @param endDate 수집 종료 날짜 (yyyy-MM-dd), null이면 오늘
      * @return Slack 스레드 타임스탬프 (답글용)
      */
-    fun notifyEconomicDataUpdateRequest(requestId: String, targetDate: String? = null): String?
+    fun notifyEconomicDataUpdateRequest(requestId: String, startDate: String? = null, endDate: String? = null): String?
 
     /**
      * 경제 데이터 수집 오류 알림
@@ -22,18 +23,20 @@ interface NotificationSender {
     /**
      * 기술적 분석 요청 알림 (스레드 루트 메시지)
      * @param requestId 요청 ID
-     * @param targetDate 분석 대상 날짜 (yyyy-MM-dd), null이면 당일
+     * @param startDate 분석 시작 날짜 (yyyy-MM-dd), null이면 자동 결정
+     * @param endDate 분석 종료 날짜 (yyyy-MM-dd), null이면 오늘
      * @return Slack 스레드 타임스탬프 (threadTs)
      */
-    fun notifyTechnicalAnalysisRequest(requestId: String, targetDate: String? = null): String?
+    fun notifyTechnicalAnalysisRequest(requestId: String, startDate: String? = null, endDate: String? = null): String?
 
     /**
      * 감정 분석 요청 알림 (스레드 루트 메시지)
      * @param requestId 요청 ID
-     * @param targetDate 분석 대상 날짜 (yyyy-MM-dd), null이면 당일
+     * @param startDate 분석 시작 날짜 (yyyy-MM-dd), null이면 자동 결정
+     * @param endDate 분석 종료 날짜 (yyyy-MM-dd), null이면 오늘
      * @return Slack 스레드 타임스탬프 (threadTs)
      */
-    fun notifySentimentAnalysisRequest(requestId: String, targetDate: String? = null): String?
+    fun notifySentimentAnalysisRequest(requestId: String, startDate: String? = null, endDate: String? = null): String?
 
     /**
      * 분석 오류 알림
