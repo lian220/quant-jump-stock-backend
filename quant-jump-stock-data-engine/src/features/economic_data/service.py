@@ -251,10 +251,17 @@ class EconomicDataService:
             logger.error(f"FRED 데이터 가져오기 실패: {series_id} - {e}")
             return None
 
-    def _fetch_yahoo_data(self, ticker: str, start_date: str, end_date: str) -> pd.DataFrame:
-        """Yahoo Finance에서 데이터를 가져옵니다."""
+    def _fetch_yahoo_data(self, ticker: str, start_date: str, end_date: str, stock_obj: yf.Ticker = None) -> pd.DataFrame:
+        """Yahoo Finance에서 데이터를 가져옵니다.
+
+        Args:
+            ticker: 종목 티커
+            start_date: 시작 날짜
+            end_date: 종료 날짜
+            stock_obj: 재사용할 yf.Ticker 인스턴스 (없으면 새로 생성)
+        """
         try:
-            stock = yf.Ticker(ticker)
+            stock = stock_obj or yf.Ticker(ticker)
             df = stock.history(start=start_date, end=end_date, interval="1d")
 
             if df is None or df.empty:
@@ -293,11 +300,13 @@ class EconomicDataService:
 
         for ticker in tickers:
             try:
-                df = self._fetch_yahoo_data(ticker, start_date, end_date)
+                # yf.Ticker 인스턴스를 1회 생성하여 OHLCV + info에 재사용
+                stock_obj = yf.Ticker(ticker)
+                df = self._fetch_yahoo_data(ticker, start_date, end_date, stock_obj=stock_obj)
 
                 if df is not None and not df.empty:
                     # 펀더멘탈 데이터 수집 (종목당 1회)
-                    info_data = self._fetch_ticker_info(ticker)
+                    info_data = self._fetch_ticker_info(ticker, stock_obj=stock_obj)
 
                     # 가장 최신 날짜 계산 (info는 최신 날짜에만 저장)
                     latest_date_str = df.index.max().strftime("%Y-%m-%d")
@@ -331,10 +340,15 @@ class EconomicDataService:
         logger.info(f"📊 개별 종목 데이터 수집 완료: {success_count}/{len(tickers)}개")
         return success_count
 
-    def _fetch_ticker_info(self, ticker: str) -> Dict[str, Any] | None:
-        """yfinance에서 종목 펀더멘탈 정보를 가져옵니다."""
+    def _fetch_ticker_info(self, ticker: str, stock_obj: yf.Ticker = None) -> Dict[str, Any] | None:
+        """yfinance에서 종목 펀더멘탈 정보를 가져옵니다.
+
+        Args:
+            ticker: 종목 티커
+            stock_obj: 재사용할 yf.Ticker 인스턴스 (없으면 새로 생성)
+        """
         try:
-            stock = yf.Ticker(ticker)
+            stock = stock_obj or yf.Ticker(ticker)
             raw_info = stock.info
 
             if not raw_info:
