@@ -1,8 +1,14 @@
 package com.quantjumpstock.core.application.trading
 
+import com.quantjumpstock.core.domain.model.prediction.VertexAIPredictionResult
 import com.quantjumpstock.core.domain.model.trading.*
 import com.quantjumpstock.core.domain.model.user.User
-import com.quantjumpstock.core.domain.port.output.*
+import com.quantjumpstock.core.domain.port.output.AccountRepository
+import com.quantjumpstock.core.domain.port.output.VertexAIPredictionResultRepository
+import com.quantjumpstock.core.domain.port.output.TradeRepository
+import com.quantjumpstock.core.domain.port.output.TradeSignalExecutedRepository
+import com.quantjumpstock.core.domain.port.output.TradingConfigRepository
+import com.quantjumpstock.core.domain.port.output.UserRepository
 import com.quantjumpstock.core.domain.trading.port.output.TradingApiPort
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -16,7 +22,7 @@ import org.springframework.transaction.annotation.Transactional
 class AutoTradingService(
     private val userRepository: UserRepository,
     private val tradingConfigRepository: TradingConfigRepository,
-    private val predictionResultRepository: PredictionResultRepository,
+    private val predictionResultRepository: VertexAIPredictionResultRepository,
     private val tradeRepository: TradeRepository,
     private val tradeSignalExecutedRepository: TradeSignalExecutedRepository,
     private val accountRepository: AccountRepository,

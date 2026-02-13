@@ -1,23 +1,20 @@
 package com.quantjumpstock.core.adapter.output.persistence.jpa.prediction
 
 import com.quantjumpstock.core.domain.model.prediction.PredictionResult
-import com.quantjumpstock.core.domain.prediction.port.output.PredictionRepositoryPort
-import org.springframework.context.annotation.Primary
+import com.quantjumpstock.core.domain.prediction.port.output.PredictionResultRepositoryPort
 import org.springframework.stereotype.Component
 import java.math.BigDecimal
 import java.time.LocalDate
 
 /**
- * PredictionRepositoryPort 구현체
+ * PredictionResultRepositoryPort 구현체
  *
- * PostgreSQL prediction_results 테이블에서 통합 예측 결과 조회.
- * MongoDB가 아닌 PostgreSQL 기반으로 동작.
+ * PostgreSQL prediction_results 테이블에서 Composite Score 기반 통합 예측 결과 조회.
  */
 @Component
-@Primary  // ✅ PostgreSQL 기반 Adapter를 우선 사용
 class PredictionResultRepositoryAdapter(
     private val jpaRepository: PredictionResultJpaRepository
-) : PredictionRepositoryPort {
+) : PredictionResultRepositoryPort {
 
     /**
      * 특정 날짜의 모든 예측 결과 조회
@@ -30,8 +27,8 @@ class PredictionResultRepositoryAdapter(
     /**
      * 특정 종목의 예측 결과 조회 (최신순)
      */
-    override fun findBySymbolOrderByDateDesc(symbol: String): List<PredictionResult> {
-        return jpaRepository.findByTickerOrderByAnalysisDateDesc(symbol)
+    override fun findByTickerOrderByDateDesc(ticker: String): List<PredictionResult> {
+        return jpaRepository.findByTickerOrderByAnalysisDateDesc(ticker)
             .map { it.toDomain() }
     }
 

@@ -1,6 +1,6 @@
 package com.quantjumpstock.core.application.prediction
 
-import com.quantjumpstock.core.domain.model.prediction.PredictionResult
+import com.quantjumpstock.core.domain.model.prediction.VertexAIPredictionResult
 import com.quantjumpstock.core.domain.prediction.port.output.PredictionRepositoryPort
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -146,7 +146,7 @@ class PredictionService(
     /**
      * 통계 계산
      */
-    private fun calculateStats(predictions: List<PredictionResult>): Map<String, Any> {
+    private fun calculateStats(predictions: List<VertexAIPredictionResult>): Map<String, Any> {
         if (predictions.isEmpty()) {
             return mapOf(
                 "total" to 0,
@@ -190,7 +190,7 @@ data class PredictionListResponse(
     val success: Boolean,
     val count: Int,
     val fromDate: LocalDate,
-    val predictions: List<PredictionResult>
+    val predictions: List<VertexAIPredictionResult>
 )
 
 /**
@@ -201,7 +201,7 @@ data class BuySignalsResponse(
     val date: LocalDate,
     val minConfidence: Double,
     val count: Int,
-    val buySignals: List<PredictionResult>
+    val buySignals: List<VertexAIPredictionResult>
 )
 
 /**
@@ -211,7 +211,7 @@ data class SymbolPredictionsResponse(
     val success: Boolean,
     val symbol: String,
     val count: Int,
-    val predictions: List<PredictionResult>
+    val predictions: List<VertexAIPredictionResult>
 )
 
 /**

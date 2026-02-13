@@ -1,6 +1,6 @@
 package com.quantjumpstock.core.adapter.output.persistence.mongodb
 
-import com.quantjumpstock.core.domain.model.prediction.PredictionResult
+import com.quantjumpstock.core.domain.model.prediction.VertexAIPredictionResult
 import com.quantjumpstock.core.domain.prediction.port.output.PredictionRepositoryPort
 import org.springframework.stereotype.Component
 import java.time.LocalDate
@@ -13,22 +13,22 @@ import java.time.LocalDate
  */
 @Component
 class PredictionRepositoryAdapter(
-    private val predictionResultMongoRepository: PredictionResultMongoRepository
+    private val predictionResultMongoRepository: VertexAIPredictionResultMongoRepository
 ) : PredictionRepositoryPort {
 
-    override fun findByDate(date: LocalDate): List<PredictionResult> {
+    override fun findByDate(date: LocalDate): List<VertexAIPredictionResult> {
         return predictionResultMongoRepository.findByDate(date)
     }
 
-    override fun findBySymbolOrderByDateDesc(symbol: String): List<PredictionResult> {
+    override fun findBySymbolOrderByDateDesc(symbol: String): List<VertexAIPredictionResult> {
         return predictionResultMongoRepository.findBySymbolOrderByDateDesc(symbol)
     }
 
-    override fun findRecentPredictions(fromDate: LocalDate): List<PredictionResult> {
+    override fun findRecentPredictions(fromDate: LocalDate): List<VertexAIPredictionResult> {
         return predictionResultMongoRepository.findRecentPredictions(fromDate)
     }
 
-    override fun findHighConfidenceBuySignals(date: LocalDate, minConfidence: Double): List<PredictionResult> {
+    override fun findHighConfidenceBuySignals(date: LocalDate, minConfidence: Double): List<VertexAIPredictionResult> {
         return predictionResultMongoRepository.findHighConfidenceBuySignals(date, minConfidence)
     }
 }
