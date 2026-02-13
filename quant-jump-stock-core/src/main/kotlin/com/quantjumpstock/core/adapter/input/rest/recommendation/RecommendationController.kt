@@ -20,10 +20,14 @@ class RecommendationController(
     /**
      * 매수 신호 조회
      *
-     * GET /api/predictions/buy-signals?minConfidence=0.7
+     * GET /api/predictions/buy-signals?date=2026-02-11&minConfidence=0.7
      */
     @GetMapping("/buy-signals")
     fun getBuySignals(
+        @RequestParam(required = false) date: String?,
         @RequestParam(defaultValue = "0.7") minConfidence: Double
-    ) = recommendationService.getBuySignals(minConfidence)
+    ) = recommendationService.getBuySignals(
+        date = date?.let { java.time.LocalDate.parse(it) },
+        minConfidence = minConfidence
+    )
 }

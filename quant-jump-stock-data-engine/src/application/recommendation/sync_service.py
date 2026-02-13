@@ -85,8 +85,11 @@ class RecommendationSyncService:
     def _fetch_ai_predictions(self, analysis_date: str) -> Dict[str, Dict]:
         """AI 예측 데이터 조회 (MongoDB stock_predictions)"""
         try:
+            # ISODate 형식으로 검색 (date 필드가 ISODate 타입)
+            from datetime import datetime as dt
+            target_date = dt.strptime(analysis_date, "%Y-%m-%d")
             predictions = list(self.mongo_db.stock_predictions.find(
-                {"date": {"$regex": f"^{analysis_date}"}}
+                {"date": target_date}
             ))
 
             return {
@@ -108,8 +111,9 @@ class RecommendationSyncService:
 
             return {
                 sent["ticker"]: {
-                    "sentiment_score": sent.get("sentiment_score"),  # -1~1
-                    "news_count": sent.get("news_count", 0),
+                    # 실제 필드명: average_sentiment_score, article_count
+                    "sentiment_score": sent.get("average_sentiment_score", sent.get("sentiment_score")),  # -1~1
+                    "news_count": sent.get("article_count", sent.get("news_count", 0)),
                 } for sent in sentiments if "ticker" in sent
             }
         except Exception as e:
@@ -424,7 +428,7 @@ class RecommendationSyncService:
                     data["composite_score"], data["composite_grade"],
                     data["is_recommended"], data["recommendation_reason"],
                     data["current_price"], data["target_price"], data["upside_percent"], data["price_recommendation"]
-                ))
+                ), fetch_all=False)
 
                 synced_count += 1
 

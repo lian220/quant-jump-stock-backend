@@ -24,23 +24,24 @@ class RecommendationService(
      * ⚠️ 중요: 스케줄러가 23:05(KST)에 실행되어 전날 날짜로 데이터를 저장하므로,
      *         전날 날짜로 조회해야 함. (당일 조회 시 데이터 없음)
      *
+     * @param date 조회 날짜 (null이면 전날 날짜)
      * @param minConfidence 최소 신뢰도 (기본값 0.7)
      *                     Composite Score 기준으로 변환: minConfidence × 7.5
      *                     예: 0.7 → 5.25점
      * @return 매수 신호 응답
      */
-    fun getBuySignals(minConfidence: Double = 0.7): BuySignalsResponse {
-        // ✅ 수정: 전날 날짜로 조회 (스케줄러가 23:05에 전날 날짜로 저장)
-        val yesterday = LocalDate.now().minusDays(1)
+    fun getBuySignals(date: LocalDate? = null, minConfidence: Double = 0.7): BuySignalsResponse {
+        // 날짜가 지정되지 않으면 전날 날짜 사용
+        val targetDate = date ?: LocalDate.now().minusDays(1)
 
         // Composite Score 기준으로 조회 (0.7 → 5.25점)
         // 기존 confidence(0~1)를 Composite Score(0~7.5) 기준으로 변환
         val minCompositeScore = minConfidence * 7.5
 
-        logger.info("Fetching buy signals for date={}, minCompositeScore={}", yesterday, minCompositeScore)
+        logger.info("Fetching buy signals for date={}, minCompositeScore={}", targetDate, minCompositeScore)
 
         val buySignals = predictionResultRepository.findHighConfidenceBuySignals(
-            yesterday,
+            targetDate,
             minCompositeScore
         ).filter { it.isRecommended }  // 추천 종목만 필터링
 
@@ -48,7 +49,7 @@ class RecommendationService(
 
         return BuySignalsResponse(
             success = true,
-            date = yesterday,  // ✅ 응답에도 전날 날짜 표시
+            date = targetDate,
             minConfidence = minConfidence,
             count = buySignals.size,
             buySignals = buySignals.map { it.toBuySignalDto() }
