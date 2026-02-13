@@ -1,0 +1,1962 @@
+# 실전 트레이딩 시스템 보완 가이드
+
+## 📋 개선 개요
+
+Priority 1 핵심 기능 구현:
+1. ✅ 거래 비용 모델링 (수수료, 세금, 슬리피지)
+2. ✅ 포지션 사이징 (자산 배분, 최대 포지션)
+3. ✅ 손절매 시스템 (Stop Loss, Take Profit)
+4. ✅ 리스크 관리 대시보드
+
+---
+
+## 🗄️ Step 1: DB 스키마 확장
+
+### Migration 파일 생성
+**파일**: `quant-jump-stock-core/src/main/resources/db/migration/V18__Add_Risk_Management_Columns.sql`
+
+```sql
+-- ============================================================
+-- V18: 리스크 관리 및 실전 트레이딩 컬럼 추가
+-- ============================================================
+
+-- 1. strategies 테이블에 리스크 관리 설정 추가
+ALTER TABLE strategies ADD COLUMN IF NOT EXISTS
+  risk_settings JSONB DEFAULT '{}',
+  position_sizing JSONB DEFAULT '{}',
+  trading_costs JSONB DEFAULT '{}';
+
+-- 2. backtest_results 테이블에 실전 지표 추가
+ALTER TABLE backtest_results ADD COLUMN IF NOT EXISTS
+  -- 거래 비용 분석
+  total_commission NUMERIC(15,2) DEFAULT 0,
+  total_slippage NUMERIC(15,2) DEFAULT 0,
+  total_tax NUMERIC(15,2) DEFAULT 0,
+  net_profit_after_costs NUMERIC(15,2) DEFAULT 0,
+
+  -- 리스크 지표
+  max_position_size NUMERIC(10,2) DEFAULT 0,
+  avg_position_size NUMERIC(10,2) DEFAULT 0,
+  total_trades_stopped_out INTEGER DEFAULT 0,
+  total_trades_taken_profit INTEGER DEFAULT 0,
+
+  -- 실전 성과 지표
+  profit_factor NUMERIC(10,2) DEFAULT 0,  -- 총수익/총손실
+  expectancy NUMERIC(15,2) DEFAULT 0,     -- 평균 수익 기댓값
+  kelly_percentage NUMERIC(10,2) DEFAULT 0, -- 켈리 기준 추천 비중
+
+  -- 거래 분석
+  avg_holding_period INTEGER DEFAULT 0,   -- 평균 보유 일수
+  best_trade NUMERIC(15,2) DEFAULT 0,     -- 최대 수익 거래
+  worst_trade NUMERIC(15,2) DEFAULT 0;    -- 최대 손실 거래
+
+-- 3. backtest_trades 테이블에 상세 비용 추가
+ALTER TABLE backtest_trades ADD COLUMN IF NOT EXISTS
+  execution_price NUMERIC(15,4),          -- 실제 체결가
+  slippage_amount NUMERIC(15,4) DEFAULT 0,
+  commission_amount NUMERIC(15,4) DEFAULT 0,
+  tax_amount NUMERIC(15,4) DEFAULT 0,
+  exit_reason VARCHAR(50),                -- 'SIGNAL', 'STOP_LOSS', 'TAKE_PROFIT'
+  pnl NUMERIC(15,2) DEFAULT 0,           -- 개별 거래 손익
+  pnl_percentage NUMERIC(10,4) DEFAULT 0; -- 개별 거래 수익률
+
+-- 4. 인덱스 추가
+CREATE INDEX IF NOT EXISTS idx_backtest_trades_exit_reason
+ON backtest_trades(exit_reason);
+
+CREATE INDEX IF NOT EXISTS idx_strategies_risk_settings
+ON strategies USING GIN (risk_settings);
+
+-- 5. 코멘트 추가
+COMMENT ON COLUMN strategies.risk_settings IS 'Stop loss, take profit 설정';
+COMMENT ON COLUMN strategies.position_sizing IS '포지션 사이징 규칙';
+COMMENT ON COLUMN strategies.trading_costs IS '거래 비용 설정';
+COMMENT ON COLUMN backtest_results.profit_factor IS '총수익/총손실 비율 (>1이 좋음)';
+COMMENT ON COLUMN backtest_results.expectancy IS '거래당 평균 기댓값';
+```
+
+---
+
+## 🔧 Step 2: 전략 조건 JSONB 구조 확장
+
+### 확장된 전략 조건 스키마
+
+```json
+{
+  "indicators": {
+    "sma_short": { "type": "SMA", "period": 20 },
+    "sma_long": { "type": "SMA", "period": 50 },
+    "rsi": { "type": "RSI", "period": 14 }
+  },
+
+  "buy_conditions": [
+    {
+      "indicator": "sma_short",
+      "operator": ">",
+      "compare_to": "sma_long"
+    },
+    {
+      "indicator": "rsi",
+      "operator": "<",
+      "value": 50
+    }
+  ],
+
+  "sell_conditions": [
+    {
+      "indicator": "sma_short",
+      "operator": "<",
+      "compare_to": "sma_long"
+    }
+  ],
+
+  "filters": [
+    {
+      "type": "VOLUME",
+      "operator": ">",
+      "threshold": "avg_volume_20d * 1.2",
+      "description": "평균 거래량 120% 이상"
+    },
+    {
+      "type": "VOLATILITY",
+      "operator": "<",
+      "threshold": 0.05,
+      "description": "변동성 5% 이하"
+    }
+  ],
+
+  "risk_settings": {
+    "stop_loss": {
+      "enabled": true,
+      "type": "percentage",      // "percentage", "trailing", "atr"
+      "value": -5.0,             // -5%
+      "description": "고정 -5% 손절"
+    },
+    "take_profit": {
+      "enabled": true,
+      "type": "percentage",
+      "value": 10.0,             // +10%
+      "description": "고정 +10% 익절"
+    },
+    "trailing_stop": {
+      "enabled": false,
+      "trigger_profit": 5.0,     // 5% 수익 달성 시 활성화
+      "trail_percentage": 3.0    // 최고점 대비 -3%
+    },
+    "time_stop": {
+      "enabled": false,
+      "max_holding_days": 30,    // 최대 30일 보유
+      "description": "30일 경과 시 강제 청산"
+    }
+  },
+
+  "position_sizing": {
+    "method": "fixed_percentage",  // "fixed_percentage", "kelly", "risk_parity", "volatility_adjusted"
+    "max_position_pct": 20.0,      // 자산의 최대 20%
+    "min_position_pct": 5.0,       // 자산의 최소 5%
+    "max_total_exposure": 80.0,    // 총 투자 비중 최대 80% (20% 현금)
+    "max_positions": 10,            // 동시 보유 최대 10개
+    "correlation_limit": 0.7,       // 상관관계 0.7 이상 종목 추가 제한
+    "volatility_scaling": {
+      "enabled": true,
+      "target_volatility": 0.15,   // 목표 변동성 15%
+      "lookback_period": 20         // 20일 변동성 기준
+    }
+  },
+
+  "trading_costs": {
+    "commission": 0.00015,         // 0.015% 증권사 수수료
+    "tax": 0.0023,                 // 0.23% 증권거래세 (매도 시)
+    "slippage_model": {
+      "type": "adaptive",          // "fixed", "adaptive", "ml_predicted"
+      "base_slippage": 0.001,      // 기본 0.1%
+      "volume_impact": 0.0005,     // 거래량 영향
+      "volatility_multiplier": 1.5 // 변동성에 따른 배율
+    }
+  },
+
+  "market_filters": {
+    "market_regime": {
+      "enabled": true,
+      "bull_market_only": false,   // true면 상승장에서만 거래
+      "min_market_score": 0.5      // 시장 점수 50점 이상
+    },
+    "vix_filter": {
+      "enabled": true,
+      "max_vix": 30,               // VIX 30 이상 시 거래 중단
+      "reduce_position_vix": 25    // VIX 25 이상 시 포지션 50% 축소
+    }
+  }
+}
+```
+
+---
+
+## 🐍 Step 3: Data Engine 백테스트 엔진 개선
+
+### 파일: `quant-jump-stock-data-engine/src/services/enhanced_backtest_service.py`
+
+```python
+from typing import Dict, List, Optional
+import pandas as pd
+import numpy as np
+from datetime import datetime, timedelta
+from dataclasses import dataclass
+
+@dataclass
+class Trade:
+    """거래 상세 정보"""
+    date: str
+    symbol: str
+    action: str  # 'BUY', 'SELL'
+    shares: int
+    entry_price: float
+    exit_price: Optional[float]
+    execution_price: float
+    slippage_amount: float
+    commission_amount: float
+    tax_amount: float
+    exit_reason: Optional[str]  # 'SIGNAL', 'STOP_LOSS', 'TAKE_PROFIT', 'TIME_STOP'
+    pnl: Optional[float]
+    pnl_percentage: Optional[float]
+    holding_days: Optional[int]
+
+@dataclass
+class Position:
+    """포지션 정보"""
+    symbol: str
+    shares: int
+    entry_price: float
+    entry_date: str
+    current_price: float
+    unrealized_pnl: float
+    unrealized_pnl_pct: float
+    highest_price: float  # 진입 후 최고가 (trailing stop용)
+
+class EnhancedBacktestService:
+    """실전 트레이딩 시뮬레이션 엔진"""
+
+    def __init__(self):
+        self.kafka_consumer = KafkaConsumer('backtest-requests')
+        self.kafka_producer = KafkaProducer()
+
+    async def run_backtest(self, request: BacktestRequest):
+        """향상된 백테스트 실행"""
+        try:
+            # 1. 데이터 로드
+            data = await self.load_historical_data(
+                symbols=request.symbols,
+                start_date=request.start_date,
+                end_date=request.end_date
+            )
+
+            # 2. 전략 조건 적용
+            signals = self.apply_strategy_conditions(
+                data=data,
+                conditions=request.conditions
+            )
+
+            # 3. 리스크 파라미터 추출
+            risk_settings = request.conditions.get('risk_settings', {})
+            position_sizing = request.conditions.get('position_sizing', {})
+            trading_costs = request.conditions.get('trading_costs', {})
+
+            # 4. 향상된 백테스트 실행
+            result = self.execute_enhanced_backtest(
+                data=data,
+                signals=signals,
+                initial_capital=request.initial_capital,
+                risk_settings=risk_settings,
+                position_sizing=position_sizing,
+                trading_costs=trading_costs
+            )
+
+            # 5. 상세 지표 계산
+            metrics = self.calculate_enhanced_metrics(result)
+
+            # 6. 결과 발행
+            await self.kafka_producer.send('backtest-results', {
+                'job_id': request.job_id,
+                'strategy_id': request.strategy_id,
+                'status': 'COMPLETED',
+                **metrics,
+                'trades': result['trades'],
+                'equity_curve': result['equity_curve']
+            })
+
+        except Exception as e:
+            await self.kafka_producer.send('backtest-results', {
+                'job_id': request.job_id,
+                'strategy_id': request.strategy_id,
+                'status': 'FAILED',
+                'error': str(e)
+            })
+
+    def execute_enhanced_backtest(
+        self,
+        data: pd.DataFrame,
+        signals: pd.DataFrame,
+        initial_capital: float,
+        risk_settings: Dict,
+        position_sizing: Dict,
+        trading_costs: Dict
+    ) -> Dict:
+        """향상된 백테스트 실행"""
+
+        portfolio = {
+            'cash': initial_capital,
+            'initial_capital': initial_capital,
+            'positions': {},  # symbol -> Position
+            'equity': [initial_capital],
+            'trades': [],
+            'daily_returns': []
+        }
+
+        # 거래 비용 설정
+        commission_rate = trading_costs.get('commission', 0.00015)
+        tax_rate = trading_costs.get('tax', 0.0023)
+        slippage_config = trading_costs.get('slippage_model', {})
+        base_slippage = slippage_config.get('base_slippage', 0.001)
+
+        # 포지션 사이징 설정
+        max_position_pct = position_sizing.get('max_position_pct', 20.0) / 100
+        max_positions = position_sizing.get('max_positions', 10)
+        max_total_exposure = position_sizing.get('max_total_exposure', 80.0) / 100
+
+        # 리스크 설정
+        stop_loss = risk_settings.get('stop_loss', {})
+        take_profit = risk_settings.get('take_profit', {})
+        trailing_stop = risk_settings.get('trailing_stop', {})
+        time_stop = risk_settings.get('time_stop', {})
+
+        for date, row in signals.iterrows():
+            current_equity = self._calculate_equity(portfolio, data, date)
+            portfolio['equity'].append(current_equity)
+
+            # 1. 포지션 리스크 체크 (손절/익절)
+            self._check_risk_exits(
+                portfolio=portfolio,
+                data=data,
+                date=date,
+                stop_loss=stop_loss,
+                take_profit=take_profit,
+                trailing_stop=trailing_stop,
+                time_stop=time_stop,
+                commission_rate=commission_rate,
+                tax_rate=tax_rate,
+                base_slippage=base_slippage
+            )
+
+            # 2. 매도 신호 체크
+            if row['sell_signal']:
+                self._process_sell_signal(
+                    portfolio=portfolio,
+                    row=row,
+                    date=date,
+                    commission_rate=commission_rate,
+                    tax_rate=tax_rate,
+                    base_slippage=base_slippage
+                )
+
+            # 3. 매수 신호 체크
+            if row['buy_signal']:
+                # 포지션 제한 체크
+                if len(portfolio['positions']) >= max_positions:
+                    continue
+
+                # 총 투자 비중 체크
+                total_exposure = self._calculate_total_exposure(portfolio, data, date)
+                if total_exposure >= max_total_exposure:
+                    continue
+
+                # 포지션 사이징
+                position_size = self._calculate_position_size(
+                    portfolio=portfolio,
+                    current_equity=current_equity,
+                    row=row,
+                    max_position_pct=max_position_pct,
+                    position_sizing=position_sizing
+                )
+
+                if position_size > 0:
+                    self._process_buy_signal(
+                        portfolio=portfolio,
+                        row=row,
+                        date=date,
+                        position_size=position_size,
+                        commission_rate=commission_rate,
+                        base_slippage=base_slippage
+                    )
+
+        # 최종 청산
+        self._close_all_positions(
+            portfolio=portfolio,
+            data=data,
+            commission_rate=commission_rate,
+            tax_rate=tax_rate,
+            base_slippage=base_slippage
+        )
+
+        return portfolio
+
+    def _check_risk_exits(
+        self,
+        portfolio: Dict,
+        data: pd.DataFrame,
+        date: str,
+        stop_loss: Dict,
+        take_profit: Dict,
+        trailing_stop: Dict,
+        time_stop: Dict,
+        commission_rate: float,
+        tax_rate: float,
+        base_slippage: float
+    ):
+        """리스크 관리 청산 체크"""
+
+        positions_to_close = []
+
+        for symbol, position in portfolio['positions'].items():
+            current_price = data.loc[date, 'close']
+            position.current_price = current_price
+
+            # 최고가 업데이트 (trailing stop용)
+            if current_price > position.highest_price:
+                position.highest_price = current_price
+
+            # 미실현 손익 계산
+            position.unrealized_pnl = (current_price - position.entry_price) * position.shares
+            position.unrealized_pnl_pct = (current_price / position.entry_price - 1) * 100
+
+            exit_reason = None
+
+            # 1. 손절 체크
+            if stop_loss.get('enabled', False):
+                stop_loss_pct = stop_loss.get('value', -5.0)
+                if position.unrealized_pnl_pct <= stop_loss_pct:
+                    exit_reason = 'STOP_LOSS'
+
+            # 2. 익절 체크
+            if take_profit.get('enabled', False):
+                take_profit_pct = take_profit.get('value', 10.0)
+                if position.unrealized_pnl_pct >= take_profit_pct:
+                    exit_reason = 'TAKE_PROFIT'
+
+            # 3. 트레일링 스탑 체크
+            if trailing_stop.get('enabled', False):
+                trigger_profit = trailing_stop.get('trigger_profit', 5.0)
+                trail_pct = trailing_stop.get('trail_percentage', 3.0)
+
+                # 수익이 trigger_profit 이상 났다면 트레일링 스탑 활성화
+                max_profit_pct = (position.highest_price / position.entry_price - 1) * 100
+                if max_profit_pct >= trigger_profit:
+                    drawdown_from_high = (position.highest_price / current_price - 1) * 100
+                    if drawdown_from_high >= trail_pct:
+                        exit_reason = 'TRAILING_STOP'
+
+            # 4. 시간 손절 체크
+            if time_stop.get('enabled', False):
+                max_holding_days = time_stop.get('max_holding_days', 30)
+                holding_days = (pd.to_datetime(date) - pd.to_datetime(position.entry_date)).days
+                if holding_days >= max_holding_days:
+                    exit_reason = 'TIME_STOP'
+
+            if exit_reason:
+                positions_to_close.append((symbol, exit_reason))
+
+        # 포지션 청산
+        for symbol, exit_reason in positions_to_close:
+            position = portfolio['positions'][symbol]
+            current_price = data.loc[date, 'close']
+
+            # 슬리피지 적용 (매도는 불리하게)
+            execution_price = current_price * (1 - base_slippage)
+
+            revenue = position.shares * execution_price
+            commission = revenue * commission_rate
+            tax = revenue * tax_rate
+            net_revenue = revenue - commission - tax
+
+            # 손익 계산
+            cost_basis = position.shares * position.entry_price
+            pnl = net_revenue - cost_basis
+            pnl_pct = (net_revenue / cost_basis - 1) * 100
+
+            holding_days = (pd.to_datetime(date) - pd.to_datetime(position.entry_date)).days
+
+            # 거래 기록
+            portfolio['trades'].append({
+                'date': str(date),
+                'symbol': symbol,
+                'action': 'SELL',
+                'shares': position.shares,
+                'entry_price': position.entry_price,
+                'exit_price': current_price,
+                'execution_price': execution_price,
+                'slippage_amount': revenue * base_slippage,
+                'commission_amount': commission,
+                'tax_amount': tax,
+                'exit_reason': exit_reason,
+                'pnl': pnl,
+                'pnl_percentage': pnl_pct,
+                'holding_days': holding_days
+            })
+
+            # 현금 업데이트
+            portfolio['cash'] += net_revenue
+
+            # 포지션 제거
+            del portfolio['positions'][symbol]
+
+    def _calculate_position_size(
+        self,
+        portfolio: Dict,
+        current_equity: float,
+        row: pd.Series,
+        max_position_pct: float,
+        position_sizing: Dict
+    ) -> float:
+        """포지션 크기 계산"""
+
+        method = position_sizing.get('method', 'fixed_percentage')
+
+        if method == 'fixed_percentage':
+            # 고정 비율
+            position_value = current_equity * max_position_pct
+
+        elif method == 'volatility_adjusted':
+            # 변동성 조정
+            volatility_scaling = position_sizing.get('volatility_scaling', {})
+            if volatility_scaling.get('enabled', False):
+                target_vol = volatility_scaling.get('target_volatility', 0.15)
+                lookback = volatility_scaling.get('lookback_period', 20)
+
+                # 최근 변동성 계산
+                recent_vol = row.get('volatility_20d', target_vol)
+
+                # 변동성 역수로 포지션 조정
+                vol_scalar = min(target_vol / recent_vol, 2.0)  # 최대 2배
+                position_value = current_equity * max_position_pct * vol_scalar
+            else:
+                position_value = current_equity * max_position_pct
+
+        elif method == 'kelly':
+            # 켈리 기준 (간단 버전)
+            win_rate = portfolio.get('historical_win_rate', 0.5)
+            avg_win = portfolio.get('historical_avg_win', 0.05)
+            avg_loss = portfolio.get('historical_avg_loss', 0.03)
+
+            if avg_loss > 0:
+                kelly_pct = (win_rate * avg_win - (1 - win_rate) * avg_loss) / avg_win
+                kelly_pct = max(0, min(kelly_pct, max_position_pct))  # 0 ~ max_position_pct
+                position_value = current_equity * kelly_pct
+            else:
+                position_value = current_equity * max_position_pct
+
+        else:
+            position_value = current_equity * max_position_pct
+
+        return min(position_value, portfolio['cash'])
+
+    def _process_buy_signal(
+        self,
+        portfolio: Dict,
+        row: pd.Series,
+        date: str,
+        position_size: float,
+        commission_rate: float,
+        base_slippage: float
+    ):
+        """매수 신호 처리"""
+
+        symbol = row.get('symbol', 'STOCK')
+        current_price = row['close']
+
+        # 슬리피지 적용 (매수는 불리하게)
+        execution_price = current_price * (1 + base_slippage)
+
+        shares = int(position_size / execution_price)
+
+        if shares > 0:
+            cost = shares * execution_price
+            commission = cost * commission_rate
+            total_cost = cost + commission
+
+            if total_cost <= portfolio['cash']:
+                # 포지션 생성
+                portfolio['positions'][symbol] = Position(
+                    symbol=symbol,
+                    shares=shares,
+                    entry_price=execution_price,
+                    entry_date=str(date),
+                    current_price=execution_price,
+                    unrealized_pnl=0,
+                    unrealized_pnl_pct=0,
+                    highest_price=execution_price
+                )
+
+                # 현금 차감
+                portfolio['cash'] -= total_cost
+
+                # 거래 기록
+                portfolio['trades'].append({
+                    'date': str(date),
+                    'symbol': symbol,
+                    'action': 'BUY',
+                    'shares': shares,
+                    'entry_price': current_price,
+                    'exit_price': None,
+                    'execution_price': execution_price,
+                    'slippage_amount': cost * base_slippage,
+                    'commission_amount': commission,
+                    'tax_amount': 0,
+                    'exit_reason': None,
+                    'pnl': None,
+                    'pnl_percentage': None,
+                    'holding_days': None
+                })
+
+    def _process_sell_signal(
+        self,
+        portfolio: Dict,
+        row: pd.Series,
+        date: str,
+        commission_rate: float,
+        tax_rate: float,
+        base_slippage: float
+    ):
+        """매도 신호 처리"""
+
+        symbol = row.get('symbol', 'STOCK')
+
+        if symbol in portfolio['positions']:
+            position = portfolio['positions'][symbol]
+            current_price = row['close']
+
+            # 슬리피지 적용
+            execution_price = current_price * (1 - base_slippage)
+
+            revenue = position.shares * execution_price
+            commission = revenue * commission_rate
+            tax = revenue * tax_rate
+            net_revenue = revenue - commission - tax
+
+            # 손익 계산
+            cost_basis = position.shares * position.entry_price
+            pnl = net_revenue - cost_basis
+            pnl_pct = (net_revenue / cost_basis - 1) * 100
+
+            holding_days = (pd.to_datetime(date) - pd.to_datetime(position.entry_date)).days
+
+            # 거래 기록 업데이트
+            portfolio['trades'].append({
+                'date': str(date),
+                'symbol': symbol,
+                'action': 'SELL',
+                'shares': position.shares,
+                'entry_price': position.entry_price,
+                'exit_price': current_price,
+                'execution_price': execution_price,
+                'slippage_amount': revenue * base_slippage,
+                'commission_amount': commission,
+                'tax_amount': tax,
+                'exit_reason': 'SIGNAL',
+                'pnl': pnl,
+                'pnl_percentage': pnl_pct,
+                'holding_days': holding_days
+            })
+
+            # 현금 업데이트
+            portfolio['cash'] += net_revenue
+
+            # 포지션 제거
+            del portfolio['positions'][symbol]
+
+    def calculate_enhanced_metrics(self, result: Dict) -> Dict:
+        """향상된 성과 지표 계산"""
+
+        equity_curve = pd.Series(result['equity'])
+        trades = result['trades']
+
+        # 기본 지표
+        total_return = (equity_curve.iloc[-1] / equity_curve.iloc[0] - 1) * 100
+
+        # 거래 비용 분석
+        total_commission = sum(t['commission_amount'] for t in trades)
+        total_slippage = sum(t['slippage_amount'] for t in trades)
+        total_tax = sum(t.get('tax_amount', 0) for t in trades)
+
+        # 거래 분석
+        completed_trades = [t for t in trades if t['action'] == 'SELL']
+        winning_trades = [t for t in completed_trades if t['pnl'] > 0]
+        losing_trades = [t for t in completed_trades if t['pnl'] <= 0]
+
+        win_rate = len(winning_trades) / len(completed_trades) * 100 if completed_trades else 0
+
+        total_wins = sum(t['pnl'] for t in winning_trades)
+        total_losses = abs(sum(t['pnl'] for t in losing_trades))
+        profit_factor = total_wins / total_losses if total_losses > 0 else 0
+
+        avg_win = total_wins / len(winning_trades) if winning_trades else 0
+        avg_loss = total_losses / len(losing_trades) if losing_trades else 0
+
+        # 기댓값
+        expectancy = (win_rate / 100 * avg_win) - ((1 - win_rate / 100) * avg_loss)
+
+        # 켈리 비율
+        if avg_loss > 0:
+            kelly_pct = (win_rate / 100 * avg_win - (1 - win_rate / 100) * avg_loss) / avg_win * 100
+        else:
+            kelly_pct = 0
+
+        # 손절/익절 분석
+        stop_loss_trades = [t for t in completed_trades if t.get('exit_reason') == 'STOP_LOSS']
+        take_profit_trades = [t for t in completed_trades if t.get('exit_reason') == 'TAKE_PROFIT']
+
+        # 보유 기간
+        holding_periods = [t['holding_days'] for t in completed_trades if t.get('holding_days')]
+        avg_holding_period = sum(holding_periods) / len(holding_periods) if holding_periods else 0
+
+        # 최대/최소 거래
+        best_trade = max([t['pnl'] for t in completed_trades]) if completed_trades else 0
+        worst_trade = min([t['pnl'] for t in completed_trades]) if completed_trades else 0
+
+        # CAGR, MDD, Sharpe (기존 로직)
+        returns = equity_curve.pct_change().dropna()
+        years = len(equity_curve) / 252
+        cagr = (1 + total_return / 100) ** (1 / years) - 1 if years > 0 else 0
+
+        cumulative = (1 + returns).cumprod()
+        running_max = cumulative.cummax()
+        drawdown = (cumulative - running_max) / running_max
+        mdd = drawdown.min()
+
+        sharpe_ratio = returns.mean() / returns.std() * (252 ** 0.5) if returns.std() > 0 else 0
+
+        # 포지션 크기 분석
+        position_sizes = []
+        for trade in trades:
+            if trade['action'] == 'BUY':
+                position_sizes.append(trade['shares'] * trade['execution_price'])
+
+        max_position_size = max(position_sizes) if position_sizes else 0
+        avg_position_size = sum(position_sizes) / len(position_sizes) if position_sizes else 0
+
+        return {
+            # 기본 지표
+            'cagr': round(cagr * 100, 2),
+            'mdd': round(abs(mdd) * 100, 2),
+            'sharpe_ratio': round(sharpe_ratio, 2),
+            'total_return': round(total_return, 2),
+            'win_rate': round(win_rate, 2),
+
+            # 거래 비용
+            'total_commission': round(total_commission, 2),
+            'total_slippage': round(total_slippage, 2),
+            'total_tax': round(total_tax, 2),
+            'net_profit_after_costs': round(equity_curve.iloc[-1] - result['initial_capital'], 2),
+
+            # 거래 분석
+            'total_trades': len(completed_trades),
+            'winning_trades': len(winning_trades),
+            'losing_trades': len(losing_trades),
+            'profit_factor': round(profit_factor, 2),
+            'expectancy': round(expectancy, 2),
+            'kelly_percentage': round(kelly_pct, 2),
+
+            # 리스크 분석
+            'total_trades_stopped_out': len(stop_loss_trades),
+            'total_trades_taken_profit': len(take_profit_trades),
+            'avg_holding_period': round(avg_holding_period, 1),
+            'best_trade': round(best_trade, 2),
+            'worst_trade': round(worst_trade, 2),
+
+            # 포지션 분석
+            'max_position_size': round(max_position_size, 2),
+            'avg_position_size': round(avg_position_size, 2),
+
+            # 자산 곡선
+            'equity_curve': [float(x) for x in equity_curve.tolist()]
+        }
+```
+
+---
+
+## 🎨 Step 4: Frontend 사용자 대시보드 (초보자 친화)
+
+### 4.1 백테스트 결과 대시보드 (주요 화면)
+
+**파일**: `quant-jump-stock-frontend/src/app/strategies/[id]/backtest/page.tsx`
+
+#### 레이아웃 구조
+```tsx
+/**
+ * 🎯 UX 목표: 초보자도 5초 안에 전략 성과를 이해할 수 있어야 함
+ *
+ * 레이아웃 우선순위:
+ * 1. 한눈에 보는 핵심 지표 (상단)
+ * 2. 수익 곡선 차트 (중앙 대형)
+ * 3. 거래 비용 상세 (중요하지만 덜 눈에 띄게)
+ * 4. 거래 내역 테이블 (하단, 펼치기 가능)
+ */
+
+<DashboardLayout>
+  {/* 1단계: 신호등 시스템 - 초보자 즉각 판단 */}
+  <PerformanceSignal
+    status="good" | "warning" | "danger"
+    message="이 전략은 안정적이에요 ✅"
+  />
+
+  {/* 2단계: 핵심 지표 카드 (4개) */}
+  <MetricsGrid>
+    <MetricCard
+      label="💰 예상 수익률"
+      value="+35.2%"
+      comparison="+12.5% vs 코스피"
+      tooltip="2020~2024년 평균 연간 수익률"
+      status="good"
+    />
+    <MetricCard
+      label="📉 최대 손실"
+      value="-8.5%"
+      tooltip="역사상 최악의 순간에도 8.5% 손실"
+      status="warning"
+    />
+    <MetricCard
+      label="🎯 승률"
+      value="66.7%"
+      subtitle="10번 중 7번 수익"
+      status="good"
+    />
+    <MetricCard
+      label="💸 거래 비용"
+      value="₩125,000"
+      subtitle="수수료+세금+슬리피지"
+      status="neutral"
+    />
+  </MetricsGrid>
+
+  {/* 3단계: 자산 성장 차트 (스토리텔링) */}
+  <EquityCurveChart
+    data={equityCurve}
+    highlights={[
+      { date: '2020-03', label: '코로나 쇼크', color: 'red' },
+      { date: '2021-06', label: '회복 구간', color: 'green' }
+    ]}
+    showComparison={true} // vs 코스피 비교
+  />
+
+  {/* 4단계: 리스크 분석 (접을 수 있게) */}
+  <Collapsible title="🛡️ 리스크 분석 (고급)">
+    <RiskMetricsGrid>
+      <RiskCard
+        icon="🛑"
+        title="손절매 작동"
+        value="12회"
+        description="총 35회 거래 중 손절 12회"
+        goodOrBad="neutral"
+      />
+      <RiskCard
+        icon="✅"
+        title="익절 성공"
+        value="8회"
+        description="목표가 도달 후 자동 매도"
+        goodOrBad="good"
+      />
+      <RiskCard
+        icon="📊"
+        title="평균 보유기간"
+        value="12.5일"
+        description="단타보다는 스윙 전략"
+        goodOrBad="neutral"
+      />
+      <RiskCard
+        icon="⚡"
+        title="Profit Factor"
+        value="2.3"
+        description="수익이 손실의 2.3배"
+        goodOrBad="good"
+      />
+    </RiskMetricsGrid>
+  </Collapsible>
+
+  {/* 5단계: 거래 비용 상세 (초보자용 설명) */}
+  <TradingCostsBreakdown
+    commission={45000}
+    tax={65000}
+    slippage={15000}
+    showEducation={true} // 각 항목 설명 툴팁
+  />
+
+  {/* 6단계: 거래 내역 (테이블) */}
+  <TradesTable
+    trades={backtestTrades}
+    highlightWinners={true}
+    highlightLosers={true}
+    sortBy="pnl_percentage"
+  />
+
+  {/* 7단계: 초보자 가이드 (플로팅 버튼) */}
+  <FloatingHelpButton onClick={() => openEducationModal()} />
+</DashboardLayout>
+```
+
+### 4.2 초보자 친화 용어 시스템
+
+**파일**: `quant-jump-stock-frontend/src/components/education/TermTooltip.tsx`
+
+```tsx
+/**
+ * 🎓 초보자용 용어 설명 시스템
+ *
+ * 원칙:
+ * - 전문 용어 옆에 항상 물음표 아이콘
+ * - 호버 시 평문 설명 표시
+ * - 1-2문장으로 명확하게
+ * - 이모지 활용해서 시각적으로
+ */
+
+interface TermDefinitions {
+  // 성과 지표
+  'CAGR': {
+    simple: '연평균 수익률',
+    explanation: '1년에 평균적으로 벌 수 있는 수익률이에요. 15%면 1000만원이 1년 뒤 1150만원이 돼요.',
+    emoji: '📈'
+  },
+  'MDD': {
+    simple: '최대 낙폭',
+    explanation: '역사상 가장 힘들었던 순간의 손실률이에요. -20%면 1000만원이 800만원까지 떨어진 적이 있다는 뜻이에요.',
+    emoji: '📉'
+  },
+  'Sharpe Ratio': {
+    simple: '위험 대비 수익',
+    explanation: '같은 위험을 감수할 때 얼마나 더 벌 수 있는지 나타내요. 1.5 이상이면 좋은 전략이에요.',
+    emoji: '⚖️'
+  },
+
+  // 거래 비용
+  'Slippage': {
+    simple: '체결 미끄러짐',
+    explanation: '원하는 가격과 실제 체결가의 차이예요. 시장이 빠르게 움직이면 더 불리한 가격에 사게 돼요.',
+    emoji: '🎢'
+  },
+  'Commission': {
+    simple: '증권사 수수료',
+    explanation: '거래할 때마다 증권사에 내는 비용이에요. 보통 0.015% 정도예요.',
+    emoji: '💸'
+  },
+
+  // 리스크 관리
+  'Stop Loss': {
+    simple: '손절매',
+    explanation: '손실이 일정 수준(-5%) 이상 나면 자동으로 팔아서 큰 손실을 막아요.',
+    emoji: '🛑'
+  },
+  'Take Profit': {
+    simple: '익절',
+    explanation: '목표 수익(+10%)에 도달하면 자동으로 팔아서 수익을 확정해요.',
+    emoji: '✅'
+  },
+  'Trailing Stop': {
+    simple: '추적 손절',
+    explanation: '수익이 나면 자동으로 손절 기준을 올려요. 수익은 지키면서 더 오르는 것도 노릴 수 있어요.',
+    emoji: '🎯'
+  },
+
+  // 포지션
+  'Position Sizing': {
+    simple: '투자 금액 조절',
+    explanation: '한 종목에 얼마씩 투자할지 자동으로 계산해요. 위험한 종목은 적게, 안전한 종목은 많이 투자해요.',
+    emoji: '⚖️'
+  },
+  'Max Exposure': {
+    simple: '최대 투자 비중',
+    explanation: '전체 자산 중 80%만 주식에 투자하고 20%는 현금으로 유지해요. 급락 대비용이에요.',
+    emoji: '🛡️'
+  },
+
+  // 고급 지표
+  'Profit Factor': {
+    simple: '수익 대비',
+    explanation: '총 수익이 총 손실의 몇 배인지 보여줘요. 2.0이면 손실의 2배를 벌었다는 뜻이에요.',
+    emoji: '💰'
+  },
+  'Expectancy': {
+    simple: '기댓값',
+    explanation: '한 번 거래할 때 평균적으로 벌 수 있는 금액이에요. +50,000원이면 거래할 때마다 평균 5만원 수익이에요.',
+    emoji: '🎲'
+  },
+  'Kelly Criterion': {
+    simple: '최적 투자 비중',
+    explanation: '통계적으로 가장 효율적인 투자 비중이에요. 15%면 자산의 15%를 이 전략에 써야 한다는 뜻이에요.',
+    emoji: '🎯'
+  }
+}
+
+// 사용 예시
+<TermTooltip term="CAGR" value="15.2%" />
+// → 💰 연평균 수익률: 15.2% [?]
+//    (호버 시) "1년에 평균적으로 벌 수 있는 수익률이에요..."
+```
+
+### 4.3 컴포넌트 구조
+
+```
+quant-jump-stock-frontend/src/
+├── app/strategies/[id]/
+│   ├── backtest/
+│   │   ├── page.tsx                    # 메인 대시보드
+│   │   ├── components/
+│   │   │   ├── PerformanceSignal.tsx   # 신호등 시스템
+│   │   │   ├── MetricsGrid.tsx         # 핵심 지표 4개
+│   │   │   ├── EquityCurveChart.tsx    # 수익 곡선 차트
+│   │   │   ├── RiskMetricsGrid.tsx     # 리스크 분석
+│   │   │   ├── TradingCostsBreakdown.tsx # 거래 비용 분석
+│   │   │   └── TradesTable.tsx         # 거래 내역
+│
+├── components/
+│   ├── charts/
+│   │   ├── EquityChart.tsx             # Recharts/D3 기반
+│   │   ├── DrawdownChart.tsx           # 낙폭 차트
+│   │   ├── MonthlyReturnsHeatmap.tsx   # 월별 수익률 히트맵
+│   │   └── WinRatePieChart.tsx         # 승률 파이 차트
+│   │
+│   ├── education/
+│   │   ├── TermTooltip.tsx             # 용어 설명 툴팁
+│   │   ├── EducationModal.tsx          # 상세 가이드 모달
+│   │   ├── InteractiveTutorial.tsx     # 인터랙티브 튜토리얼
+│   │   └── VideoGuide.tsx              # 비디오 가이드 임베드
+│   │
+│   ├── metrics/
+│   │   ├── MetricCard.tsx              # 지표 카드 (재사용)
+│   │   ├── RiskCard.tsx                # 리스크 지표 카드
+│   │   ├── ComparisonBadge.tsx         # 비교 배지 (vs 코스피)
+│   │   └── PerformanceGrade.tsx        # 성과 등급 (A+, B, C)
+│   │
+│   └── branding/
+│       ├── TrustBadge.tsx              # 신뢰 배지
+│       ├── SocialProof.tsx             # 사용자 통계
+│       └── SuccessStory.tsx            # 성공 사례
+```
+
+### 4.4 차트 시각화 전략
+
+**차트 라이브러리**: Recharts (초보자 친화) + D3.js (고급 기능)
+
+```tsx
+// EquityCurveChart.tsx - 핵심 차트
+import { LineChart, Line, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ReferenceLine } from 'recharts';
+
+/**
+ * 🎨 디자인 원칙:
+ * 1. 색상: 수익=초록, 손실=빨강 (직관적)
+ * 2. 기준선: 초기 자본(점선), 코스피 비교(회색)
+ * 3. 하이라이트: 주요 이벤트 표시 (코로나, 금리인상 등)
+ * 4. 인터랙션: 호버 시 해당 날짜 상세 정보
+ */
+
+<LineChart data={equityData} height={400}>
+  <CartesianGrid strokeDasharray="3 3" opacity={0.1} />
+
+  {/* X축: 날짜 */}
+  <XAxis
+    dataKey="date"
+    tickFormatter={(date) => new Date(date).toLocaleDateString('ko-KR', { year: '2-digit', month: 'short' })}
+  />
+
+  {/* Y축: 금액 */}
+  <YAxis
+    tickFormatter={(value) => `${(value / 10000).toFixed(0)}만원`}
+  />
+
+  {/* 초기 자본 기준선 */}
+  <ReferenceLine
+    y={initialCapital}
+    stroke="#666"
+    strokeDasharray="5 5"
+    label="초기 자본"
+  />
+
+  {/* 수익 영역 (그라데이션) */}
+  <defs>
+    <linearGradient id="profitGradient" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+    </linearGradient>
+  </defs>
+
+  {/* 내 전략 (굵은 초록선) */}
+  <Area
+    type="monotone"
+    dataKey="equity"
+    stroke="#10b981"
+    strokeWidth={3}
+    fill="url(#profitGradient)"
+    name="내 전략"
+  />
+
+  {/* 코스피 비교 (얇은 회색선) */}
+  <Line
+    type="monotone"
+    dataKey="kospi"
+    stroke="#9ca3af"
+    strokeWidth={2}
+    strokeDasharray="5 5"
+    name="코스피"
+  />
+
+  {/* 호버 툴팁 (커스텀) */}
+  <Tooltip
+    content={<CustomTooltip />}
+    cursor={{ stroke: '#6366f1', strokeWidth: 2 }}
+  />
+
+  <Legend
+    wrapperStyle={{ paddingTop: '20px' }}
+    iconType="line"
+  />
+</LineChart>
+
+// 커스텀 툴팁
+const CustomTooltip = ({ active, payload, label }) => {
+  if (!active || !payload) return null;
+
+  const data = payload[0].payload;
+  const profitOrLoss = data.equity - initialCapital;
+  const returnPct = (profitOrLoss / initialCapital * 100).toFixed(2);
+
+  return (
+    <div className="bg-white p-4 rounded-lg shadow-xl border-2 border-gray-200">
+      <p className="font-bold text-lg">{label}</p>
+      <p className="text-2xl font-bold text-green-600">
+        {profitOrLoss > 0 ? '+' : ''}{profitOrLoss.toLocaleString()}원
+      </p>
+      <p className="text-sm text-gray-600">
+        수익률: <span className={profitOrLoss > 0 ? 'text-green-600' : 'text-red-600'}>
+          {returnPct}%
+        </span>
+      </p>
+      <div className="mt-2 pt-2 border-t border-gray-200">
+        <p className="text-xs text-gray-500">
+          📊 총 자산: {data.equity.toLocaleString()}원<br/>
+          💰 현금: {data.cash.toLocaleString()}원<br/>
+          📈 포지션: {data.positions}개
+        </p>
+      </div>
+    </div>
+  );
+};
+```
+
+### 4.5 반응형 디자인 (모바일 최적화)
+
+```css
+/* 📱 모바일: 세로 스택 레이아웃 */
+@media (max-width: 768px) {
+  .metrics-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .chart-container {
+    height: 300px; /* 모바일은 차트 높이 축소 */
+    overflow-x: auto; /* 가로 스크롤 */
+  }
+
+  .trades-table {
+    display: none; /* 모바일은 테이블 숨기고 */
+  }
+
+  .trades-cards {
+    display: block; /* 카드 형식으로 표시 */
+  }
+}
+
+/* 💻 태블릿: 2열 그리드 */
+@media (min-width: 768px) and (max-width: 1024px) {
+  .metrics-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* 🖥️ 데스크탑: 4열 그리드 */
+@media (min-width: 1024px) {
+  .metrics-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+```
+
+### 4.6 API 연동
+
+**파일**: `quant-jump-stock-frontend/src/app/strategies/[id]/backtest/hooks/useBacktestResults.ts`
+
+```typescript
+import useSWR from 'swr';
+
+export function useBacktestResults(strategyId: string, backtestId: string) {
+  const { data, error, isLoading } = useSWR(
+    `/api/strategies/${strategyId}/backtests/${backtestId}`,
+    fetcher,
+    {
+      refreshInterval: 5000, // 5초마다 폴링 (진행중일 때)
+      revalidateOnFocus: true
+    }
+  );
+
+  return {
+    result: data?.result,
+    trades: data?.trades || [],
+    equityCurve: data?.equity_curve || [],
+    metrics: data?.metrics,
+    status: data?.status, // 'RUNNING', 'COMPLETED', 'FAILED'
+    isLoading,
+    error
+  };
+}
+```
+
+---
+
+## 🏢 Step 5: Backoffice 운영자 대시보드
+
+### 5.1 전략 모니터링 대시보드
+
+**파일**: `quant-jump-stock-backoffice/src/app/monitoring/strategies/page.tsx`
+
+```tsx
+/**
+ * 🎯 Backoffice 목적:
+ * - 모든 사용자의 백테스트 실행 상태 모니터링
+ * - 시스템 성능 및 리소스 사용량 추적
+ * - 이상 징후 조기 발견 및 알림
+ */
+
+<BackofficeDashboard>
+  {/* 1. 실시간 시스템 상태 */}
+  <SystemHealthPanel>
+    <StatusCard
+      title="백테스트 큐"
+      value={queueLength}
+      status={queueLength > 50 ? 'warning' : 'good'}
+      icon="📊"
+    />
+    <StatusCard
+      title="Data Engine"
+      value="Running"
+      lastPing="2초 전"
+      status="good"
+      icon="🐍"
+    />
+    <StatusCard
+      title="Kafka"
+      value={`${kafkaLag}ms lag`}
+      status={kafkaLag > 1000 ? 'warning' : 'good'}
+      icon="📡"
+    />
+    <StatusCard
+      title="DB Connection Pool"
+      value={`${dbPoolUsage}%`}
+      status={dbPoolUsage > 80 ? 'danger' : 'good'}
+      icon="🗄️"
+    />
+  </SystemHealthPanel>
+
+  {/* 2. 실행중인 백테스트 (실시간) */}
+  <RunningBacktestsTable>
+    <thead>
+      <tr>
+        <th>사용자</th>
+        <th>전략명</th>
+        <th>진행률</th>
+        <th>예상 완료</th>
+        <th>리소스</th>
+        <th>액션</th>
+      </tr>
+    </thead>
+    <tbody>
+      {runningBacktests.map(bt => (
+        <tr key={bt.id}>
+          <td>{bt.user_email}</td>
+          <td>{bt.strategy_name}</td>
+          <td>
+            <ProgressBar value={bt.progress} />
+            {bt.progress}%
+          </td>
+          <td>{bt.estimated_completion}</td>
+          <td>
+            CPU: {bt.cpu_usage}%<br/>
+            Mem: {bt.memory_usage}MB
+          </td>
+          <td>
+            <Button onClick={() => killBacktest(bt.id)}>
+              중단
+            </Button>
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </RunningBacktestsTable>
+
+  {/* 3. 성과 통계 (집계) */}
+  <AggregateMetrics>
+    <MetricCard
+      title="오늘 완료된 백테스트"
+      value={todayCompletedCount}
+      trend="+12% vs 어제"
+    />
+    <MetricCard
+      title="평균 실행 시간"
+      value={`${avgExecutionTime}초`}
+      trend="-5% (개선)"
+    />
+    <MetricCard
+      title="실패율"
+      value={`${failureRate}%`}
+      status={failureRate > 5 ? 'warning' : 'good'}
+    />
+  </AggregateMetrics>
+
+  {/* 4. 에러 로그 (최근 10건) */}
+  <ErrorLogTable>
+    <thead>
+      <tr>
+        <th>시간</th>
+        <th>사용자</th>
+        <th>에러 유형</th>
+        <th>메시지</th>
+        <th>Stack Trace</th>
+      </tr>
+    </thead>
+    <tbody>
+      {recentErrors.map(error => (
+        <tr key={error.id}>
+          <td>{error.timestamp}</td>
+          <td>{error.user_email}</td>
+          <td>
+            <Badge color="red">{error.error_type}</Badge>
+          </td>
+          <td>{error.message}</td>
+          <td>
+            <Button onClick={() => viewStackTrace(error.stack_trace)}>
+              보기
+            </Button>
+          </td>
+        </tr>
+      ))}
+    </tbody>
+  </ErrorLogTable>
+
+  {/* 5. 알림 설정 */}
+  <AlertConfigPanel>
+    <AlertRule
+      condition="큐 길이 > 100"
+      action="Slack 알림"
+      enabled={true}
+    />
+    <AlertRule
+      condition="실패율 > 10%"
+      action="이메일 알림"
+      enabled={true}
+    />
+  </AlertConfigPanel>
+</BackofficeDashboard>
+```
+
+### 5.2 사용자 전략 분석
+
+```tsx
+/**
+ * 🔍 전략 트렌드 분석
+ * - 어떤 지표가 인기있는지
+ * - 어떤 리스크 설정이 많이 쓰이는지
+ * - 성과가 좋은 전략 패턴 발견
+ */
+
+<StrategyAnalyticsDashboard>
+  <PopularIndicatorsChart
+    data={[
+      { name: 'RSI', count: 234 },
+      { name: 'SMA', count: 189 },
+      { name: 'Bollinger Bands', count: 156 }
+    ]}
+  />
+
+  <RiskSettingsDistribution
+    stopLoss={[
+      { range: '0-3%', count: 45 },
+      { range: '3-5%', count: 123 },
+      { range: '5-10%', count: 67 }
+    ]}
+  />
+
+  <PerformanceCorrelation
+    insights="SMA + RSI 조합이 평균 12.3% 더 높은 수익률"
+  />
+</StrategyAnalyticsDashboard>
+```
+
+---
+
+## 🎨 Step 6: UX/UI 디자인 시스템
+
+### 6.1 색상 팔레트 (감정 유도)
+
+```css
+/**
+ * 🎨 주식 UX 색상 심리학
+ *
+ * - 초록: 수익, 안전, 긍정 (primary)
+ * - 빨강: 손실, 위험, 주의 (danger)
+ * - 파랑: 신뢰, 안정, 전문성 (brand)
+ * - 회색: 중립, 정보, 기준 (neutral)
+ */
+
+:root {
+  /* 브랜드 색상 */
+  --brand-primary: #3b82f6;      /* 파랑 - 신뢰 */
+  --brand-secondary: #8b5cf6;    /* 보라 - 혁신 */
+
+  /* 성과 색상 */
+  --success-green: #10b981;      /* 수익 */
+  --danger-red: #ef4444;         /* 손실 */
+  --warning-yellow: #f59e0b;     /* 주의 */
+  --info-blue: #3b82f6;          /* 정보 */
+
+  /* 중립 색상 */
+  --neutral-50: #f9fafb;
+  --neutral-100: #f3f4f6;
+  --neutral-500: #6b7280;
+  --neutral-900: #111827;
+
+  /* 그라데이션 */
+  --gradient-profit: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  --gradient-loss: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+  --gradient-brand: linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%);
+}
+
+/* 상태별 배경색 */
+.status-good {
+  background: var(--success-green);
+  color: white;
+}
+
+.status-warning {
+  background: var(--warning-yellow);
+  color: #78350f;
+}
+
+.status-danger {
+  background: var(--danger-red);
+  color: white;
+}
+```
+
+### 6.2 타이포그래피 (가독성 최적화)
+
+```css
+/**
+ * 📖 주식 데이터는 숫자가 많아서 가독성이 생명
+ *
+ * 원칙:
+ * - 큰 숫자: Tabular 폰트 (숫자 정렬)
+ * - 본문: Sans-serif (깔끔)
+ * - 강조: Bold + Color
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Pretendard:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Roboto+Mono:wght@400;500;600&display=swap');
+
+body {
+  font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+/* 숫자 전용 폰트 (등폭) */
+.metric-value,
+.price,
+.percentage {
+  font-family: 'Roboto Mono', monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* 계층 구조 */
+h1 { font-size: 2.25rem; font-weight: 700; } /* 36px */
+h2 { font-size: 1.875rem; font-weight: 600; } /* 30px */
+h3 { font-size: 1.5rem; font-weight: 600; }   /* 24px */
+h4 { font-size: 1.25rem; font-weight: 500; }  /* 20px */
+
+.body-large { font-size: 1.125rem; }  /* 18px */
+.body-medium { font-size: 1rem; }     /* 16px */
+.body-small { font-size: 0.875rem; }  /* 14px */
+.caption { font-size: 0.75rem; }      /* 12px */
+
+/* 수익률 강조 */
+.profit {
+  color: var(--success-green);
+  font-weight: 600;
+  font-size: 1.25rem;
+}
+
+.loss {
+  color: var(--danger-red);
+  font-weight: 600;
+  font-size: 1.25rem;
+}
+```
+
+### 6.3 초보자 온보딩 플로우
+
+```tsx
+/**
+ * 🎓 첫 방문자 온보딩 (단계별 가이드)
+ *
+ * 목표: 5분 안에 첫 백테스트 완료
+ */
+
+<OnboardingFlow steps={[
+  {
+    step: 1,
+    title: "백테스트가 뭔가요?",
+    content: (
+      <>
+        <p>과거 데이터로 투자 전략을 미리 테스트해보는 거예요.</p>
+        <img src="/onboarding/backtest-concept.png" />
+        <p>💡 실제 돈 없이 안전하게 실험할 수 있어요!</p>
+      </>
+    ),
+    cta: "다음",
+    duration: 30 // 예상 읽기 시간 (초)
+  },
+
+  {
+    step: 2,
+    title: "전략 선택하기",
+    content: (
+      <>
+        <p>초보자라면 <strong>RSI 골든크로스</strong>부터 시작해보세요.</p>
+        <StrategyCard
+          name="RSI 골든크로스"
+          description="RSI 지표를 활용한 안정적인 전략"
+          difficulty="초급"
+          avgReturn="+12.5%"
+          badge="추천"
+        />
+      </>
+    ),
+    cta: "이 전략으로 시작",
+    highlightElement: "#strategy-list"
+  },
+
+  {
+    step: 3,
+    title: "기간 설정",
+    content: (
+      <>
+        <p>언제부터 언제까지 테스트할까요?</p>
+        <DateRangePicker
+          default="최근 1년"
+          presets={['최근 1년', '최근 3년', '최근 5년']}
+        />
+        <p className="text-sm text-gray-500">
+          💡 기간이 길수록 신뢰도가 높아져요. 최소 1년 이상 추천!
+        </p>
+      </>
+    ),
+    cta: "백테스트 시작"
+  },
+
+  {
+    step: 4,
+    title: "실행 중...",
+    content: (
+      <>
+        <LoadingSpinner />
+        <p>과거 데이터를 불러와서 전략을 실행하고 있어요.</p>
+        <ProgressBar value={progress} />
+        <p className="text-sm">예상 시간: 약 30초</p>
+      </>
+    ),
+    autoNext: true
+  },
+
+  {
+    step: 5,
+    title: "결과 해석하기",
+    content: (
+      <>
+        <p>축하해요! 첫 백테스트 완료! 🎉</p>
+        <MetricCard
+          label="예상 수익률"
+          value="+15.2%"
+          highlight={true}
+        />
+        <p>이 전략으로 1000만원을 투자했다면 <strong>1년에 152만원</strong>을 벌 수 있었어요.</p>
+        <p className="text-sm text-gray-500">
+          ⚠️ 과거 성과가 미래를 보장하지는 않아요.
+        </p>
+      </>
+    ),
+    cta: "대시보드 보기"
+  }
+]} />
+```
+
+### 6.4 인터랙티브 요소
+
+```tsx
+/**
+ * 🖱️ 인터랙션 가이드라인
+ *
+ * - 호버: 추가 정보 표시
+ * - 클릭: 상세 페이지/모달
+ * - 드래그: 날짜 범위 선택
+ * - 스크롤: 무한 로딩
+ */
+
+// 예시 1: 차트 호버 시 상세 정보
+<EquityCurveChart
+  onHover={(dataPoint) => {
+    showTooltip({
+      date: dataPoint.date,
+      equity: dataPoint.equity,
+      dailyReturn: dataPoint.dailyReturn,
+      positions: dataPoint.positions
+    });
+  }}
+/>
+
+// 예시 2: 지표 카드 클릭 시 상세 설명
+<MetricCard
+  label="Sharpe Ratio"
+  value="1.52"
+  onClick={() => {
+    openModal({
+      title: "Sharpe Ratio 상세 설명",
+      content: <SharpeRatioEducation />
+    });
+  }}
+/>
+
+// 예시 3: 거래 내역 정렬
+<TradesTable
+  sortable={true}
+  defaultSort="pnl_percentage"
+  filters={['winning', 'losing', 'stopped']}
+/>
+```
+
+---
+
+## 🚀 Step 7: 마케팅 & 브랜딩 요소
+
+### 7.1 신뢰성 구축 (Trust Signals)
+
+```tsx
+/**
+ * 🛡️ 초보자는 신뢰가 필요해요
+ *
+ * 신뢰 요소:
+ * - 투명한 성과 공개
+ * - 실제 사용자 통계
+ * - 전문성 증명
+ * - 보안 인증
+ */
+
+<TrustSection>
+  {/* 1. 실시간 통계 */}
+  <SocialProofBanner>
+    <StatBadge
+      icon="👥"
+      value="12,345명"
+      label="활성 사용자"
+    />
+    <StatBadge
+      icon="📊"
+      value="58,234개"
+      label="백테스트 실행"
+    />
+    <StatBadge
+      icon="💰"
+      value="평균 +18.2%"
+      label="전략 수익률"
+    />
+  </SocialProofBanner>
+
+  {/* 2. 성공 사례 */}
+  <SuccessStoryCarousel>
+    <TestimonialCard
+      user="김** (30대, 직장인)"
+      strategy="RSI + 볼린저밴드"
+      result="+32.5% 수익"
+      quote="백테스트로 미리 검증하니 실전에서 자신감이 생겼어요!"
+      avatar="/testimonials/user1.jpg"
+    />
+    <TestimonialCard
+      user="이** (40대, 개인사업자)"
+      strategy="모멘텀 전략"
+      result="+28.1% 수익"
+      quote="손절매 자동화 덕분에 큰 손실 없이 수익을 냈어요."
+    />
+  </SuccessStoryCarousel>
+
+  {/* 3. 전문성 증명 */}
+  <ExpertiseSection>
+    <Badge>📈 금융공학 기반</Badge>
+    <Badge>🔒 암호화된 데이터</Badge>
+    <Badge>✅ 실시간 시장 데이터</Badge>
+    <Badge>📱 모바일 최적화</Badge>
+  </ExpertiseSection>
+
+  {/* 4. 투명성 */}
+  <TransparencyPanel>
+    <h3>⚠️ 리스크 고지</h3>
+    <ul>
+      <li>과거 성과는 미래 수익을 보장하지 않습니다.</li>
+      <li>모든 투자에는 원금 손실 위험이 있습니다.</li>
+      <li>백테스트는 참고용이며, 실전과 다를 수 있습니다.</li>
+    </ul>
+  </TransparencyPanel>
+</TrustSection>
+```
+
+### 7.2 사용자 여정 최적화 (User Journey)
+
+```
+📍 랜딩 페이지
+    ↓
+💡 "무료로 백테스트 해보기" (CTA)
+    ↓
+🎓 온보딩 튜토리얼 (5분)
+    ↓
+📊 첫 백테스트 실행 (30초)
+    ↓
+🎉 결과 확인 + 축하 메시지
+    ↓
+💬 "이 전략으로 실전 투자하시겠어요?" (업셀)
+    ↓
+📈 [무료 플랜] 주 5회 백테스트
+📊 [Pro 플랜] 무제한 + 실시간 알림
+```
+
+### 7.3 이메일 마케팅 트리거
+
+```typescript
+/**
+ * 📧 자동 이메일 발송 시나리오
+ */
+
+interface EmailTriggers {
+  // 온보딩
+  'signup': {
+    delay: 0,
+    subject: "환영합니다! 첫 백테스트 가이드 🎉",
+    template: "welcome-guide.html"
+  },
+
+  // 리텐션
+  'backtest_completed': {
+    delay: '1 hour',
+    subject: "백테스트 결과가 나왔어요! 📊",
+    template: "backtest-result-notification.html"
+  },
+
+  'inactive_7days': {
+    delay: '7 days',
+    subject: "돌아오세요! 새로운 전략을 준비했어요 💰",
+    template: "re-engagement.html"
+  },
+
+  // 업셀
+  'free_limit_reached': {
+    delay: 0,
+    subject: "이번 주 백테스트를 모두 사용하셨어요",
+    template: "upgrade-to-pro.html",
+    cta: "Pro로 업그레이드 (무제한)"
+  },
+
+  // 교육
+  'first_profit_strategy': {
+    delay: '1 day',
+    subject: "수익 전략 발견! 다음 단계는? 🚀",
+    template: "next-steps-after-profit.html"
+  }
+}
+```
+
+### 7.4 A/B 테스트 포인트
+
+```typescript
+/**
+ * 🧪 최적화할 A/B 테스트 항목
+ */
+
+const ABTestVariants = {
+  // CTA 버튼 문구
+  'cta_button': [
+    { variant: 'A', text: '무료로 시작하기' },
+    { variant: 'B', text: '지금 백테스트 해보기' },
+    { variant: 'C', text: '내 전략 검증하기' }
+  ],
+
+  // 메인 헤드라인
+  'headline': [
+    { variant: 'A', text: 'AI 기반 퀀트 투자 플랫폼' },
+    { variant: 'B', text: '과거 데이터로 미래 수익 예측' },
+    { variant: 'C', text: '1분만에 투자 전략 검증' }
+  ],
+
+  // 가격 표시
+  'pricing': [
+    { variant: 'A', model: 'monthly', price: '₩9,900/월' },
+    { variant: 'B', model: 'annual', price: '₩99,000/년 (2개월 무료)' }
+  ],
+
+  // 성과 지표 순서
+  'metrics_order': [
+    { variant: 'A', order: ['수익률', 'MDD', 'Sharpe', '승률'] },
+    { variant: 'B', order: ['승률', '수익률', 'MDD', 'Sharpe'] },
+    { variant: 'C', order: ['수익률', '승률', 'Sharpe', 'MDD'] }
+  ]
+};
+```
+
+---
+
+## 📝 Step 8: 구현 체크리스트
+
+### Frontend (사용자)
+- [ ] 백테스트 결과 대시보드 (Step 4.1)
+- [ ] 용어 설명 툴팁 시스템 (Step 4.2)
+- [ ] 수익 곡선 차트 (Recharts) (Step 4.4)
+- [ ] 반응형 디자인 (모바일/태블릿) (Step 4.5)
+- [ ] 온보딩 플로우 (Step 6.3)
+- [ ] 신뢰 요소 (통계, 후기) (Step 7.1)
+
+### Backoffice (운영자)
+- [ ] 실시간 모니터링 대시보드 (Step 5.1)
+- [ ] 백테스트 큐 관리 (Step 5.1)
+- [ ] 에러 로그 뷰어 (Step 5.1)
+- [ ] 전략 트렌드 분석 (Step 5.2)
+- [ ] 알림 설정 (Slack/Email) (Step 5.1)
+
+### Backend (기존 Step 1~3)
+- [ ] DB Migration (V18__Add_Risk_Management_Columns.sql)
+- [ ] Enhanced Backtest Service (Python)
+- [ ] Kafka 이벤트 처리
+- [ ] API 엔드포인트 추가
+
+### 디자인 시스템
+- [ ] 색상 팔레트 정의 (Step 6.1)
+- [ ] 타이포그래피 시스템 (Step 6.2)
+- [ ] 컴포넌트 라이브러리 (Storybook)
+- [ ] 아이콘 세트 (Lucide React)
+
+### 마케팅
+- [ ] 랜딩 페이지 최적화 (Step 7.2)
+- [ ] 이메일 자동화 설정 (Step 7.3)
+- [ ] A/B 테스트 셋업 (Step 7.4)
+- [ ] SEO 최적화
+
+---
+
+## 🎯 우선순위 (Phase별 구현)
+
+### Phase 1: 코어 기능 (2주)
+1. Backend DB Migration + Python Service (Step 1-3)
+2. Frontend 백테스트 결과 대시보드 (Step 4.1)
+3. 기본 차트 (수익 곡선) (Step 4.4)
+
+### Phase 2: UX 개선 (1주)
+4. 용어 설명 시스템 (Step 4.2)
+5. 반응형 디자인 (Step 4.5)
+6. 온보딩 플로우 (Step 6.3)
+
+### Phase 3: 운영 도구 (1주)
+7. Backoffice 모니터링 (Step 5.1)
+8. 에러 추적 시스템 (Step 5.1)
+
+### Phase 4: 성장 (지속)
+9. 마케팅 자동화 (Step 7.3)
+10. A/B 테스트 (Step 7.4)
+11. 사용자 피드백 반영
+
+---
+
+## 🔧 기술 스택 요약
+
+| 레이어 | 기술 | 용도 |
+|--------|------|------|
+| **Frontend** | Next.js 15 + React 19 | 사용자 UI |
+| **Charts** | Recharts + D3.js | 데이터 시각화 |
+| **UI Library** | Tailwind CSS + shadcn/ui | 디자인 시스템 |
+| **State** | SWR (React Hooks) | 서버 상태 관리 |
+| **Backoffice** | Next.js 15 | 운영자 도구 |
+| **Backend** | Spring Boot (Kotlin) | Core API |
+| **Data Engine** | Python + FastAPI | 백테스트 엔진 |
+| **Database** | PostgreSQL | 전략/결과 저장 |
+| **Queue** | Kafka | 이벤트 스트리밍 |
+| **Monitoring** | Prometheus + Grafana | 시스템 모니터링 |
+
+---
+
+## 📚 참고 자료
+
+- [Recharts 공식 문서](https://recharts.org/)
+- [shadcn/ui 컴포넌트](https://ui.shadcn.com/)
+- [주식 UX 베스트 프랙티스](https://www.nngroup.com/articles/financial-ux/)
+- [데이터 시각화 가이드](https://www.storytellingwithdata.com/)
+
+---
+
+## 🎬 다음 단계
+
+이제 각 Step을 순서대로 구현하면 됩니다:
+
+```bash
+# 1. Backend Migration 실행
+cd quant-jump-stock-backend/quant-jump-stock-core
+./gradlew flywayMigrate
+
+# 2. Python Service 배포
+cd quant-jump-stock-backend/quant-jump-stock-data-engine
+python src/services/enhanced_backtest_service.py
+
+# 3. Frontend 개발 서버 실행
+cd quant-jump-stock-frontend
+pnpm dev
+
+# 4. Backoffice 개발 서버 실행
+cd quant-jump-stock-backoffice
+pnpm dev
+```
+
+---
+
+## 📚 관련 문서
+
+### 기술 문서
+- [Kafka 아키텍처](./kafka-architecture-detailed.md) - Kafka 상세 설계
+- [전략 관리 구현 계획](./strategy-management-implementation-plan.md) - 전략 시스템 구현
+
+### Jira 계획
+- [Jira 티켓 계획](../jira-ticket-plan.md) - 전체 티켓 계획
+- [Epic 1: 백테스트](../jira-epics/epic-1-backtest.md) - 백테스트 관련
+- [Epic 5: 대시보드](../jira-epics/epic-5-dashboard.md) - 대시보드 & 알림
+- [Epic 6: 프리미엄](../jira-epics/epic-6-premium.md) - 결제 연동
+- [Epic 8: Backoffice](../jira-epics/epic-8-backoffice.md) - 운영자 도구
+- [Epic 9: 디자인 시스템](../jira-epics/epic-9-design-system.md) - UX/UI
+
+### API 명세
+- [Trading API](../api/trading.md) - 트레이딩 API
+- [Scheduler API](../api/scheduler.md) - 스케줄러 API
+- [Users API](../api/users.md) - 사용자 API
+
+### 프로젝트 문서
+- [ERD](../erd.md) - 데이터베이스 스키마
+- [PRD v2.0](../prd-v2.md) - 제품 요구사항
+
+### Backend 문서
+- [데이터베이스 스키마](../../quant-jump-stock-backend/docs/database/SCHEMA.md)
+- [이벤트 기반 아키텍처](../../quant-jump-stock-backend/docs/architecture/이벤트_기반_아키텍처.md)
+- [코드 스타일](../../quant-jump-stock-backend/docs/guidelines/CODE_STYLE.md)
