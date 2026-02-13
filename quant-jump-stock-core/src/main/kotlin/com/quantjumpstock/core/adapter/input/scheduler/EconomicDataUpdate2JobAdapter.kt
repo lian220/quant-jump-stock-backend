@@ -45,10 +45,6 @@ class EconomicDataUpdate2JobAdapter(
                 .thenAccept { result ->
                     logger.info("✅ 경제 데이터 재수집 완료: $result")
                 }
-                .exceptionally { e ->
-                    logger.error("❌ 경제 데이터 재수집 실패", e)
-                    null
-                }
                 .get()
 
             // 2단계: Vertex AI 예측 실행 (Kafka 경로)
