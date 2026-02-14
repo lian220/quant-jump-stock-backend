@@ -194,14 +194,23 @@ data class BacktestMetrics(
     val expectancy: BigDecimal? = null,          // 기대값 (거래당 평균 수익)
     val kellyPercentage: BigDecimal? = null,     // 켈리 비율
 
-    // SCRUM-259: 거래 분석
-    val totalTradesStoppedOut: Int? = null,      // 손절 종료 거래 수
-    val totalTradesTakenProfit: Int? = null,     // 익절 종료 거래 수
+    // SCRUM-330: 리스크 비율
+    val riskRewardRatio: BigDecimal? = null,     // 손익비
+    val calmarRatio: BigDecimal? = null,         // Calmar Ratio (CAGR/MDD)
+
+    // SCRUM-259/330: 거래 분석
+    val totalTradesStoppedOut: Int? = null,      // 손절 종료 거래 수 (deprecated, use stopLossCount)
+    val totalTradesTakenProfit: Int? = null,     // 익절 종료 거래 수 (deprecated, use takeProfitCount)
     val avgHoldingPeriod: BigDecimal? = null,    // 평균 보유 기간 (일)
     val bestTrade: BigDecimal? = null,           // 최고 수익 거래
     val worstTrade: BigDecimal? = null,          // 최대 손실 거래
     val maxConsecutiveWins: Int? = null,         // 최대 연속 승리
-    val maxConsecutiveLosses: Int? = null        // 최대 연속 패배
+    val maxConsecutiveLosses: Int? = null,       // 최대 연속 패배
+
+    // SCRUM-330: 청산 사유별 통계
+    val stopLossCount: Int = 0,
+    val takeProfitCount: Int = 0,
+    val trailingStopCount: Int = 0,
 )
 
 /**

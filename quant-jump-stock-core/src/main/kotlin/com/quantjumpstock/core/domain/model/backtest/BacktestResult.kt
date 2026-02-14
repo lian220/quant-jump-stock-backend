@@ -41,6 +41,28 @@ data class BacktestResult(
     val avgWin: BigDecimal? = null,
     val avgLoss: BigDecimal? = null,
 
+    // SCRUM-330: Advanced Risk Metrics
+    val profitFactor: BigDecimal? = null,
+    val expectancy: BigDecimal? = null,
+    val kellyPercentage: BigDecimal? = null,
+    val riskRewardRatio: BigDecimal? = null,
+    val calmarRatio: BigDecimal? = null,
+    val totalCommission: BigDecimal? = null,
+    val totalSlippage: BigDecimal? = null,
+    val totalTax: BigDecimal? = null,
+    val netProfitAfterCosts: BigDecimal? = null,
+    val avgHoldingPeriod: BigDecimal? = null,
+    val bestTrade: BigDecimal? = null,
+    val worstTrade: BigDecimal? = null,
+    val maxConsecutiveWins: Int? = null,
+    val maxConsecutiveLosses: Int? = null,
+    val stopLossCount: Int = 0,
+    val takeProfitCount: Int = 0,
+    val trailingStopCount: Int = 0,
+    val riskSettings: String? = null,
+    val positionSizing: String? = null,
+    val tradingCosts: String? = null,
+
     // Benchmark Comparison
     val benchmarkReturn: BigDecimal? = null,
     val alpha: BigDecimal? = null,

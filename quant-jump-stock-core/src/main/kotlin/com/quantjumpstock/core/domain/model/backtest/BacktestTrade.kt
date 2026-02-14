@@ -27,6 +27,12 @@ data class BacktestTrade(
     val holdingDays: Int? = null,
     val signalReason: String? = null,
 
+    // SCRUM-330: Exit Reason & Cost Details
+    val exitReason: String? = null,
+    val slippageAmount: BigDecimal? = null,
+    val taxAmount: BigDecimal? = null,
+    val executionPrice: BigDecimal? = null,
+
     // Timestamps
     val createdAt: LocalDateTime = LocalDateTime.now()
 )

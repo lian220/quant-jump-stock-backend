@@ -171,7 +171,11 @@ class BacktestApplicationService:
         checkpoint: Optional[Dict[str, Any]] = None,
         equity_curve_data: Optional[List[Dict[str, Any]]] = None,
         benchmark: str = DEFAULT_BENCHMARK,
-        user_id: Optional[int] = None
+        user_id: Optional[int] = None,
+        # SCRUM-330: 리스크 관리 파라미터
+        risk_settings: Optional[Dict[str, Any]] = None,
+        position_sizing: Optional[Dict[str, Any]] = None,
+        trading_costs: Optional[Dict[str, Any]] = None,
     ) -> IncrementalBacktestResult:
         """
         증분 백테스트 실행
@@ -205,6 +209,23 @@ class BacktestApplicationService:
             raise ValueError(f"Strategy not found: {strategy_id}")
 
         # 2. 백테스트 설정
+        # SCRUM-330: 리스크 파라미터 적용
+        position_sizing_method = "fixed_percentage"
+        max_position_pct = Decimal("0.1")
+        if position_sizing:
+            position_sizing_method = position_sizing.get("method", "fixed_percentage")
+            max_pct = position_sizing.get("maxPositionPct")
+            if max_pct is not None:
+                max_position_pct = Decimal(str(max_pct)) / Decimal("100")
+
+        tax_rate = Decimal("0.0023")
+        slippage_model = "fixed"
+        if trading_costs:
+            tax_val = trading_costs.get("tax")
+            if tax_val is not None:
+                tax_rate = Decimal(str(tax_val)) / Decimal("100")
+            slippage_model = trading_costs.get("slippageModel", "fixed")
+
         config = BacktestConfig(
             start_date=self._parse_date(start_date),
             end_date=self._parse_date(end_date),
@@ -213,6 +234,11 @@ class BacktestApplicationService:
             commission_rate=Decimal(str(commission_rate)),
             slippage_rate=Decimal(str(slippage_rate)),
             benchmark_ticker=benchmark,
+            risk_settings=risk_settings,
+            position_sizing_method=position_sizing_method,
+            position_size_pct=max_position_pct,
+            tax_rate=tax_rate,
+            slippage_model=slippage_model,
         )
 
         # 3. 엔진 생성

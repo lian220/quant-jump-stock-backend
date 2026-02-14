@@ -42,6 +42,10 @@ class BacktestTrade:
     realized_pnl_pct: Optional[Decimal] = None
     entry_price: Optional[Decimal] = None
     holding_days: Optional[int] = None
+    # SCRUM-330: 거래 비용 상세
+    slippage_amount: Optional[Decimal] = None
+    tax_amount: Optional[Decimal] = None
+    execution_price: Optional[Decimal] = None
 
 
 @dataclass
@@ -78,6 +82,30 @@ class BacktestResult:
     largest_loss: Optional[Decimal] = None
     profit_factor: Optional[Decimal] = None
     avg_holding_days: Optional[Decimal] = None
+
+    # SCRUM-330: 고급 리스크 지표
+    expectancy: Optional[Decimal] = None
+    kelly_percentage: Optional[Decimal] = None
+    risk_reward_ratio: Optional[Decimal] = None
+    calmar_ratio: Optional[Decimal] = None
+    best_trade: Optional[Decimal] = None  # 최고 수익률 (%)
+    worst_trade: Optional[Decimal] = None  # 최저 수익률 (%)
+    max_consecutive_wins: Optional[int] = None
+    max_consecutive_losses: Optional[int] = None
+    stop_loss_count: int = 0
+    take_profit_count: int = 0
+    trailing_stop_count: int = 0
+
+    # SCRUM-330: 거래 비용 집계
+    total_commission: Optional[Decimal] = None
+    total_slippage: Optional[Decimal] = None
+    total_tax: Optional[Decimal] = None
+    net_profit_after_costs: Optional[Decimal] = None
+
+    # SCRUM-330: 설정 기록
+    risk_settings: Optional[Dict[str, Any]] = None
+    position_sizing: Optional[Dict[str, Any]] = None
+    trading_costs_config: Optional[Dict[str, Any]] = None
 
     # 벤치마크 비교
     benchmark_return: Optional[Decimal] = None
@@ -152,6 +180,24 @@ class BacktestResult:
             "largest_loss": float(self.largest_loss) if self.largest_loss else None,
             "profit_factor": float(self.profit_factor) if self.profit_factor else None,
             "avg_holding_days": float(self.avg_holding_days) if self.avg_holding_days else None,
+            "expectancy": float(self.expectancy) if self.expectancy else None,
+            "kelly_percentage": float(self.kelly_percentage) if self.kelly_percentage else None,
+            "risk_reward_ratio": float(self.risk_reward_ratio) if self.risk_reward_ratio else None,
+            "calmar_ratio": float(self.calmar_ratio) if self.calmar_ratio else None,
+            "best_trade": float(self.best_trade) if self.best_trade else None,
+            "worst_trade": float(self.worst_trade) if self.worst_trade else None,
+            "max_consecutive_wins": self.max_consecutive_wins,
+            "max_consecutive_losses": self.max_consecutive_losses,
+            "stop_loss_count": self.stop_loss_count,
+            "take_profit_count": self.take_profit_count,
+            "trailing_stop_count": self.trailing_stop_count,
+            "total_commission": float(self.total_commission) if self.total_commission else None,
+            "total_slippage": float(self.total_slippage) if self.total_slippage else None,
+            "total_tax": float(self.total_tax) if self.total_tax else None,
+            "net_profit_after_costs": float(self.net_profit_after_costs) if self.net_profit_after_costs else None,
+            "risk_settings": self.risk_settings,
+            "position_sizing": self.position_sizing,
+            "trading_costs": self.trading_costs_config,
             "benchmark_return": float(self.benchmark_return) if self.benchmark_return else None,
             "alpha": float(self.alpha) if self.alpha else None,
             "beta": float(self.beta) if self.beta else None,

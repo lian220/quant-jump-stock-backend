@@ -36,6 +36,8 @@ from domain.strategy.models import StrategyDefinition, SignalType
 from domain.strategy.interpreter import StrategyInterpreter
 from domain.backtest.models import Portfolio, Position, ExitReason, TradeType
 from domain.backtest.risk_manager import RiskManager
+from domain.backtest.position_sizer import PositionSizer
+from domain.backtest.trading_costs import TradingCostCalculator
 
 from .data_loader import DataLoader
 from .result import BacktestResult, BacktestTrade, EquityCurvePoint
@@ -83,6 +85,12 @@ class BacktestConfig:
     benchmark_ticker: Optional[str] = None
     min_historical_bars: int = 50  # 전략 실행에 필요한 최소 과거 데이터 수
 
+    # SCRUM-330: 리스크 관리 파라미터
+    risk_settings: Optional[Dict[str, Any]] = None  # stopLoss, takeProfit, trailingStop
+    position_sizing_method: str = "fixed_percentage"
+    tax_rate: Decimal = Decimal("0.0023")  # 매도 시 증권거래세 0.23%
+    slippage_model: str = "fixed"  # none, fixed, adaptive
+
 
 class BacktestEngine:
     """
@@ -114,8 +122,15 @@ class BacktestEngine:
         self._data: Dict[str, pd.DataFrame] = {}
         self._portfolio: Optional[Portfolio] = None
         self._risk_manager: Optional[RiskManager] = None
+        self._position_sizer: Optional[PositionSizer] = None
+        self._cost_calculator: Optional[TradingCostCalculator] = None
         self._equity_curve: List[EquityCurvePoint] = []
         self._high_watermark: Decimal = Decimal("0")
+
+        # SCRUM-330: 거래 비용 누적
+        self._total_commission: Decimal = Decimal("0")
+        self._total_slippage: Decimal = Decimal("0")
+        self._total_tax: Decimal = Decimal("0")
 
         # 벤치마크 데이터
         self._benchmark_data: Optional[pd.DataFrame] = None
@@ -195,9 +210,27 @@ class BacktestEngine:
             strategy.risk_management
         )
 
+        # SCRUM-330: 포지션 사이저 초기화
+        self._position_sizer = PositionSizer(
+            method=self.config.position_sizing_method,
+            max_position_pct=self.config.position_size_pct,
+            max_positions=self.config.max_positions,
+        )
+
+        # SCRUM-330: 거래 비용 계산기 초기화
+        self._cost_calculator = TradingCostCalculator(
+            commission_rate=self.config.commission_rate,
+            tax_rate=self.config.tax_rate,
+            slippage_model=self.config.slippage_model,
+            base_slippage=self.config.slippage_rate,
+        )
+
         # 상태 초기화
         self._equity_curve = []
         self._high_watermark = self.config.initial_capital
+        self._total_commission = Decimal("0")
+        self._total_slippage = Decimal("0")
+        self._total_tax = Decimal("0")
         self._data = {}
         self._benchmark_data = None
         self._benchmark_values = []  # List of (date, Decimal) tuples for date-alignment
@@ -424,32 +457,37 @@ class BacktestEngine:
         if self._portfolio.position_count >= self.config.max_positions:
             return
 
-        # 포지션 크기 계산
-        position_value = self._portfolio.total_value * self.config.position_size_pct
+        # SCRUM-330: PositionSizer로 포지션 크기 계산
+        position_value = self._position_sizer.calculate(
+            portfolio_value=self._portfolio.total_value,
+            price=price,
+        )
         quantity = int(position_value / price)
 
         if quantity <= 0:
             return
 
-        # 수수료 계산
-        amount = price * quantity
-        commission = amount * self.config.commission_rate
+        # SCRUM-330: TradingCostCalculator로 비용 계산
+        cost = self._cost_calculator.calculate_total_cost(
+            price=price, quantity=quantity, side="BUY"
+        )
 
-        # 슬리피지 적용 (매수는 더 비싸게)
-        adjusted_price = price * (1 + self.config.slippage_rate)
+        # 비용 누적
+        self._total_commission += cost.commission
+        self._total_slippage += cost.slippage
 
-        # 매수 실행
+        # 매수 실행 (슬리피지 반영 체결가)
         trade = self._portfolio.open_position(
             symbol=symbol,
             trade_date=trade_date,
-            price=adjusted_price,
+            price=cost.execution_price,
             quantity=quantity,
-            commission=commission
+            commission=cost.commission
         )
 
         if trade:
             logger.debug(
-                f"[BUY] {symbol}: {quantity}주 @ {adjusted_price:,.0f}"
+                f"[BUY] {symbol}: {quantity}주 @ {cost.execution_price:,.0f}"
             )
 
     def _execute_sell(
@@ -463,27 +501,30 @@ class BacktestEngine:
         if symbol not in self._portfolio.positions:
             return
 
-        # 수수료 계산
+        # SCRUM-330: TradingCostCalculator로 비용 계산
         position = self._portfolio.positions[symbol]
-        amount = price * position.quantity
-        commission = amount * self.config.commission_rate
+        cost = self._cost_calculator.calculate_total_cost(
+            price=price, quantity=position.quantity, side="SELL"
+        )
 
-        # 슬리피지 적용 (매도는 더 싸게)
-        adjusted_price = price * (1 - self.config.slippage_rate)
+        # 비용 누적
+        self._total_commission += cost.commission
+        self._total_slippage += cost.slippage
+        self._total_tax += cost.tax
 
-        # 매도 실행
+        # 매도 실행 (슬리피지 반영 체결가)
         trade = self._portfolio.close_position(
             symbol=symbol,
             trade_date=trade_date,
-            price=adjusted_price,
+            price=cost.execution_price,
             exit_reason=exit_reason,
-            commission=commission
+            commission=cost.commission
         )
 
         if trade:
             logger.debug(
                 f"[SELL:{exit_reason.value}] {symbol}: "
-                f"{trade.quantity}주 @ {adjusted_price:,.0f}, "
+                f"{trade.quantity}주 @ {cost.execution_price:,.0f}, "
                 f"PnL: {trade.realized_pnl:+,.0f}"
             )
 
@@ -551,7 +592,8 @@ class BacktestEngine:
                 exit_reason=t.exit_reason.value if t.exit_reason else None,
                 realized_pnl=t.realized_pnl,
                 realized_pnl_pct=t.realized_pnl_pct,
-                entry_price=t.entry_price
+                entry_price=t.entry_price,
+                execution_price=t.price,  # 이미 슬리피지 반영된 가격
             )
             for t in self._portfolio.trades
         ]
@@ -607,6 +649,32 @@ class BacktestEngine:
                         beta=bm_beta
                     )
 
+        # SCRUM-330: 고급 지표 계산
+        expectancy = metrics.get("expectancy")
+        kelly_percentage = metrics.get("kelly_percentage")
+        risk_reward_ratio = metrics.get("risk_reward_ratio")
+
+        # Calmar Ratio = CAGR / |MDD|
+        calmar_ratio = None
+        if metrics["cagr"] and mdd and mdd != Decimal("0"):
+            calmar_ratio = metrics["cagr"] / abs(mdd)
+
+        # 최대 연속 승/패
+        max_consecutive_wins, max_consecutive_losses = self._calculate_consecutive_streaks(sell_trades)
+
+        # 최고/최저 수익률
+        best_trade = None
+        worst_trade = None
+        if sell_trades:
+            pnl_pcts = [t.realized_pnl_pct for t in sell_trades if t.realized_pnl_pct is not None]
+            if pnl_pcts:
+                best_trade = max(pnl_pcts)
+                worst_trade = min(pnl_pcts)
+
+        # 순이익 (비용 차감)
+        total_pnl = self._portfolio.total_value - self.config.initial_capital
+        net_profit = total_pnl - self._total_commission - self._total_slippage - self._total_tax
+
         result = BacktestResult(
             strategy_id=0,  # 나중에 DB 저장 시 설정
             strategy_name=strategy.name,
@@ -630,6 +698,25 @@ class BacktestEngine:
             largest_loss=metrics["largest_loss"],
             profit_factor=metrics["profit_factor"],
             avg_holding_days=metrics["avg_holding_days"],
+            # SCRUM-330: 고급 지표
+            expectancy=expectancy,
+            kelly_percentage=kelly_percentage,
+            risk_reward_ratio=risk_reward_ratio,
+            calmar_ratio=calmar_ratio,
+            best_trade=best_trade,
+            worst_trade=worst_trade,
+            max_consecutive_wins=max_consecutive_wins,
+            max_consecutive_losses=max_consecutive_losses,
+            stop_loss_count=exit_reason_counts.get("stop_loss", 0),
+            take_profit_count=exit_reason_counts.get("take_profit", 0),
+            trailing_stop_count=exit_reason_counts.get("trailing_stop", 0),
+            total_commission=self._total_commission,
+            total_slippage=self._total_slippage,
+            total_tax=self._total_tax,
+            net_profit_after_costs=net_profit,
+            risk_settings=self.config.risk_settings,
+            position_sizing={"method": self.config.position_sizing_method, "maxPositionPct": float(self.config.position_size_pct)},
+            trading_costs_config={"commission": float(self.config.commission_rate), "tax": float(self.config.tax_rate), "slippageModel": self.config.slippage_model},
             benchmark_return=bm_return,
             alpha=bm_alpha,
             beta=bm_beta,
@@ -702,6 +789,30 @@ class BacktestEngine:
         ]
         trade_metrics = calculate_trade_metrics(trades_for_metrics)
 
+        # SCRUM-330: 추가 지표 계산
+        win_rate = trade_metrics.win_rate
+        avg_win = trade_metrics.avg_win
+        avg_loss = trade_metrics.avg_loss
+
+        # Expectancy = (승률 × 평균수익) - (패률 × 평균손실)
+        expectancy = None
+        if win_rate is not None and avg_win is not None and avg_loss is not None:
+            wr = win_rate / Decimal("100")
+            lr = Decimal("1") - wr
+            expectancy = (wr * avg_win) - (lr * avg_loss)
+
+        # Kelly % = (승률 × 평균수익 - 패률 × 평균손실) / 평균수익
+        kelly_percentage = None
+        if win_rate is not None and avg_win and avg_win > 0 and avg_loss is not None:
+            wr = win_rate / Decimal("100")
+            lr = Decimal("1") - wr
+            kelly_percentage = ((wr * avg_win - lr * avg_loss) / avg_win) * Decimal("100")
+
+        # Risk/Reward Ratio
+        risk_reward_ratio = None
+        if avg_win is not None and avg_loss is not None and avg_loss > 0:
+            risk_reward_ratio = avg_win / avg_loss
+
         return {
             "total_return": total_return,
             "total_return_pct": total_return_pct,
@@ -719,7 +830,35 @@ class BacktestEngine:
             "largest_loss": trade_metrics.largest_loss,
             "profit_factor": trade_metrics.profit_factor,
             "avg_holding_days": trade_metrics.avg_holding_days,
+            "expectancy": expectancy,
+            "kelly_percentage": kelly_percentage,
+            "risk_reward_ratio": risk_reward_ratio,
         }
+
+    @staticmethod
+    def _calculate_consecutive_streaks(
+        sell_trades: List[BacktestTrade],
+    ) -> tuple:
+        """최대 연속 승/패 계산"""
+        max_wins = 0
+        max_losses = 0
+        current_wins = 0
+        current_losses = 0
+
+        for trade in sell_trades:
+            if trade.realized_pnl is not None and trade.realized_pnl > 0:
+                current_wins += 1
+                current_losses = 0
+                max_wins = max(max_wins, current_wins)
+            elif trade.realized_pnl is not None and trade.realized_pnl < 0:
+                current_losses += 1
+                current_wins = 0
+                max_losses = max(max_losses, current_losses)
+            else:
+                current_wins = 0
+                current_losses = 0
+
+        return max_wins, max_losses
 
     def _create_error_result(
         self,
