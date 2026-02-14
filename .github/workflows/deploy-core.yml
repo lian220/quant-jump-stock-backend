@@ -117,4 +117,13 @@ jobs:
               echo "  ...attempt $i/60"
             done
             echo "❌ Core API not ready after 300s"
+            echo ""
+            echo "=== Container Status ==="
+            docker ps -a --filter name=qjs-core --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+            echo ""
+            echo "=== Core API Container Logs (last 100 lines) ==="
+            docker logs qjs-core --tail 100 2>&1
+            echo ""
+            echo "=== Direct Health Check (bypass Nginx) ==="
+            curl -sv http://localhost:10010/api/v1/auth/oauth2/urls 2>&1 || true
             exit 1
