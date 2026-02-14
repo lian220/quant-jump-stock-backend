@@ -81,6 +81,7 @@ class PubSubEventListenerAdapter(
         try {
             val event = objectMapper.readTree(message)
             val payload = event.get("payload")
+                ?: throw IllegalArgumentException("경제 데이터 업데이트 이벤트에 payload가 없습니다: $message")
             val requestId = payload.get("requestId")?.asText() ?: "unknown"
             val status = payload.get("status")?.asText() ?: "unknown"
             val duration = payload.get("duration")?.asDouble() ?: 0.0
@@ -104,6 +105,7 @@ class PubSubEventListenerAdapter(
         try {
             val event = objectMapper.readTree(message)
             val payload = event.get("payload")
+                ?: throw IllegalArgumentException("경제 데이터 동기화 실패 이벤트에 payload가 없습니다: $message")
             val requestId = payload.get("requestId")?.asText() ?: "unknown"
             val errorCode = payload.get("errorCode")?.asText() ?: "UNKNOWN"
             val errorMessage = payload.get("errorMessage")?.asText() ?: "Unknown error"
@@ -133,6 +135,7 @@ class PubSubEventListenerAdapter(
         try {
             val event = objectMapper.readTree(message)
             val payload = event.get("payload")
+                ?: throw IllegalArgumentException("매매 신호 이벤트에 payload가 없습니다: $message")
             val symbol = payload.get("symbol")?.asText() ?: "unknown"
             val signalType = payload.get("signalType")?.asText() ?: "unknown"
             val confidence = payload.get("confidence")?.asDouble() ?: 0.0

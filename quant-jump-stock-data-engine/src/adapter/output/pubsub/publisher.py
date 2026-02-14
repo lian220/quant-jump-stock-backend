@@ -72,7 +72,7 @@ class PubSubPublisherAdapter:
             topic_path = publisher.topic_path(self._project_id, pubsub_topic)
 
             future = publisher.publish(topic_path, message)
-            future.result()  # 발행 완료 대기
+            future.result(timeout=30)  # 발행 완료 대기 (30초 타임아웃)
 
             logger.info(f"Event published: {event_type} -> {pubsub_topic}")
 
@@ -97,7 +97,7 @@ class PubSubPublisherAdapter:
             "ANALYSIS_SENTIMENT_FAILED": "analysis.sentiment.failed",
             # 종목 추천
             "STOCK_RECOMMENDATION_COMPLETED": "quantiq.analysis.completed",
-            "STOCK_RECOMMENDATION_FAILED": "quantiq.analysis.completed",
+            "STOCK_RECOMMENDATION_FAILED": "analysis.recommendation.failed",
             # 전략 실행
             "STRATEGY_EXECUTION_COMPLETED": "strategy.execution.completed",
             "STRATEGY_EXECUTION_FAILED": "strategy.execution.failed",

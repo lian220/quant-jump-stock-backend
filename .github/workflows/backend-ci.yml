@@ -93,6 +93,11 @@ jobs:
           PUBSUB_PROJECT1: "quantiq-local,economic-data-update-request:economic-data-update-request-sub,analysis-technical-request:analysis-technical-request-sub,analysis-sentiment-request:analysis-sentiment-request-sub,quantiq-backtest-request:quantiq-backtest-request-sub,vertex-ai-run-request:vertex-ai-run-request-sub,quantiq-economic-data-updated:quantiq-economic-data-updated-sub,quantiq-economic-data-sync-failed:quantiq-economic-data-sync-failed-sub,quantiq-analysis-completed:quantiq-analysis-completed-sub,quantiq-backtest-completed:quantiq-backtest-completed-sub,quantiq-backtest-failed:quantiq-backtest-failed-sub,quantiq-trading-signal-detected:quantiq-trading-signal-detected-sub,analysis-technical-failed:analysis-technical-failed-sub,analysis-sentiment-failed:analysis-sentiment-failed-sub,strategy-execution-completed:strategy-execution-completed-sub,strategy-execution-failed:strategy-execution-failed-sub,vertex-ai-run-submitted:vertex-ai-run-submitted-sub,vertex-ai-run-failed:vertex-ai-run-failed-sub,analysis-recommendation-request:analysis-recommendation-request-sub"
         ports:
           - 8681:8681
+        options: >-
+          --health-cmd "curl -f http://localhost:8681 || exit 1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: 📥 Checkout code

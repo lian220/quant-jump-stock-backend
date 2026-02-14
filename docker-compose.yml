@@ -135,9 +135,9 @@ services:
       DB_PORT: ${DB_PORT:-5432}
       # Server Port (Data Engine)
       SERVER_PORT: ${DATA_ENGINE_PORT:-10020}
-      # Pub/Sub (PUBSUB_EMULATOR_HOST만 컨테이너 네트워크용 기본값 설정)
-      # GCP_PROJECT_ID, PUBSUB_PROJECT_ID는 env_file(.env.local)에서 로드
+      # Pub/Sub (컨테이너 네트워크용 기본값 설정)
       PUBSUB_EMULATOR_HOST: ${PUBSUB_EMULATOR_HOST:-pubsub-emulator:8681}
+      PUBSUB_PROJECT_ID: ${PUBSUB_PROJECT_ID:-quantiq-local}
       # APIs
       FRED_API_KEY: ${FRED_API_KEY}
       # Slack (SLACK_BOT_TOKEN은 .env.common에서 로드)
@@ -194,9 +194,9 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-quantiq_password}
       # MongoDB - env var 우선, 미설정시 로컬 Docker
       SPRING_DATA_MONGODB_URI: ${MONGODB_URI:-mongodb://quantiq_user:quantiq_password@mongodb:27017/stock_trading?authSource=admin}
-      # Pub/Sub (PUBSUB_EMULATOR_HOST만 컨테이너 네트워크용 기본값 설정)
-      # GCP_PROJECT_ID, PUBSUB_PROJECT_ID는 env_file(.env.local)에서 로드
+      # Pub/Sub (컨테이너 네트워크용 기본값 설정)
       PUBSUB_EMULATOR_HOST: ${PUBSUB_EMULATOR_HOST:-pubsub-emulator:8681}
+      PUBSUB_PROJECT_ID: ${PUBSUB_PROJECT_ID:-quantiq-local}
       # Slack (SLACK_BOT_TOKEN은 .env.common에서 로드)
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL_TRADING}
       SLACK_CHANNEL: "C0A1XASTLH2"
