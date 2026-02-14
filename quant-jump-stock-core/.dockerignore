@@ -1,0 +1,34 @@
+# Build & IDE
+.gradle/
+.idea/
+*.iml
+out/
+
+# Source (JAR에 이미 포함)
+src/
+build/classes/
+build/generated/
+build/reports/
+build/test-results/
+build/tmp/
+
+# build/libs/*.jar만 필요하므로 나머지 build 하위는 제외
+# Dockerfile에서 COPY build/libs/*.jar 사용
+
+# Git
+.git/
+.gitignore
+
+# Docs & Config
+*.md
+docs/
+CLAUDE.md
+
+# Test
+build/test-results/
+build/reports/
+
+# Credentials (보안)
+credentials/
+*.json
+!build/libs/*.jar

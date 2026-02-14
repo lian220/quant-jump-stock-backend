@@ -1,0 +1,16 @@
+# ============================================
+# Cloud Run Profile (SPRING_PROFILES_ACTIVE=prod,cloudrun)
+# ============================================
+# Cloud Run에서는 Quartz 스케줄러를 비활성화하고
+# VM에서만 스케줄러가 동작하는 하이브리드 구조
+
+spring:
+  quartz:
+    auto-startup: false
+
+# Swagger 비활성화 (Cloud Run 프로덕션)
+springdoc:
+  api-docs:
+    enabled: false
+  swagger-ui:
+    enabled: false

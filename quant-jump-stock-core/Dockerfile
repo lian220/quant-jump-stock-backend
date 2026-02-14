@@ -14,6 +14,13 @@ RUN pip3 install --no-cache-dir google-cloud-aiplatform google-cloud-storage pym
 # Copy Spring Boot fat JAR (not the -plain.jar)
 COPY build/libs/quant-jump-stock-core-0.0.1-SNAPSHOT.jar app.jar
 
-EXPOSE 10010
+# Cloud Run: SERVER_PORT=8080 (env var로 오버라이드)
+# VM Scheduler: SERVER_PORT=10010 (docker-compose에서 설정)
+ENV SERVER_PORT=8080
+EXPOSE 8080
 
-ENTRYPOINT ["java", "-jar", "app.jar"]
+ENTRYPOINT ["java", \
+  "-XX:+UseG1GC", \
+  "-XX:MaxRAMPercentage=75.0", \
+  "-Djava.security.egd=file:/dev/./urandom", \
+  "-jar", "app.jar"]
