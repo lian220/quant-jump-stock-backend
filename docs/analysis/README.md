@@ -1,6 +1,6 @@
 # 분석 기능 아키텍처
 
-**최종 업데이트**: 2026-02-13
+**최종 업데이트**: 2026-02-14
 
 ---
 
@@ -66,7 +66,7 @@ QuantIQ는 4가지 분석 방식을 독립적으로 운영하며, 향후 **Compo
 |--------|------|--------------|---------|
 | `daily_stock_data` | FRED + Yahoo Finance 통합 경제 지표 | 일일 22:00 | economicDataUpdate2Job |
 | `stock_predictions` | Vertex AI 주가 예측 결과 | 일일 22:00 | economicDataUpdate2Job |
-| `stock_recommendations` | 기술적 분석 기반 매수 추천 | 일일 23:05 | parallelAnalysisJob |
+| `stock_recommendations` | 기술적 분석 기반 매수 추천 (+ recommendation_score) | 일일 23:05 | parallelAnalysisJob |
 | `sentiment_analysis` | 뉴스 감정 분석 결과 | 일일 23:05 | parallelAnalysisJob |
 | `stocks` | 종목 마스터 데이터 | 수동 | - |
 | `fred_indicators` | FRED 지표 정의 | 수동 | - |

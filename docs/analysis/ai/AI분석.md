@@ -1,6 +1,6 @@
 # AI 분석 (Vertex AI 예측)
 
-**최종 업데이트**: 2026-02-13
+**최종 업데이트**: 2026-02-14
 
 ---
 
@@ -137,6 +137,43 @@ Input 2: 경제 지표 시계열 (90일 lookback)
 
 ---
 
+## 예측 품질 게이트
+
+MAPE(Mean Absolute Percentage Error) 기반으로 저신뢰 예측을 자동 필터링한다.
+
+| 항목 | 값 |
+|------|-----|
+| **임계값** | `MAX_RELIABLE_MAPE = 30.0%` |
+| **적용 위치** | `predict_optimized.py` → `generate_recommendation()`, `save_predictions_to_db()` |
+
+**동작:**
+```
+MAPE ≤ 30%  →  prediction_confidence = "high"  →  정상 추천 (STRONG BUY / BUY / SELL)
+MAPE > 30%  →  prediction_confidence = "low"   →  "HOLD (Low Confidence)"
+```
+
+**추천 분류:**
+| 추천 | 조건 |
+|------|------|
+| `STRONG BUY` | 상승 예측 & rise_prob > 2% & MAPE ≤ 30% |
+| `BUY` | 상승 예측 & rise_prob ≤ 2% & MAPE ≤ 30% |
+| `HOLD (Low Confidence)` | MAPE > 30% (예측 신뢰도 낮음) |
+| `SELL` | 하락 예측 & MAPE ≤ 30% |
+
+**저장 필드 (MongoDB `stock_predictions`):**
+```json
+{
+  "metrics": {
+    "prediction_confidence": "low",
+    "prediction_warning": "MAPE 153.0% exceeds threshold 30.0%"
+  }
+}
+```
+
+> NVDA(153%), TSLA(53%), AVGO(40%) 등 고오류 종목의 잘못된 매수 신호를 방지.
+
+---
+
 ## 외부 API / 인프라
 
 ### Google Vertex AI
@@ -171,6 +208,7 @@ Input 2: 경제 지표 시계열 (90일 lookback)
 | Vertex AI CustomJob 통합 | ✅ 완료 |
 | GCS 모델 업로드/로드 | ✅ 완료 |
 | MongoDB 예측 결과 저장 | ✅ 완료 |
+| 예측 품질 게이트 (MAPE) | ✅ 완료 |
 | Slack 알림 | ✅ 완료 |
 | Kafka 이벤트 발행/수신 | ✅ 완료 |
 
