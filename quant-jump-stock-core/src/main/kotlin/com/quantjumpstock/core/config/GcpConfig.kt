@@ -41,8 +41,8 @@ class GcpConfig(
      */
     @Bean
     fun storageClient(): Storage {
-        val credPath = System.getenv("GOOGLE_APPLICATION_CREDENTIALS")
-        logger.info("Loading GCP credentials from: $credPath")
+        val credPath = gcpProperties.credentialsPath
+        logger.info("Loading Vertex AI credentials from: ${credPath ?: "ADC"}")
 
         val credentials = try {
             if (!credPath.isNullOrBlank()) {

@@ -15,7 +15,7 @@ from pytz import timezone
 
 from adapter.output.postgresql.backtest_repository import BacktestCheckpoint
 from application.backtest.service import DEFAULT_BENCHMARK
-from .subscriber import PubSubMessage
+from .subscriber import PubSubMessage, NonRetryableError
 
 KST = timezone('Asia/Seoul')
 logger = logging.getLogger(__name__)
@@ -539,6 +539,18 @@ class VertexAIHandler(MessageHandler):
     def topic(self) -> str:
         return "vertex.ai.run.request"
 
+    # 재시도해도 성공할 수 없는 에러 패턴
+    _NON_RETRYABLE_PATTERNS = [
+        "permission denied", "403", "unauthorized", "401",
+        "not found", "404", "invalid", "credentials",
+        "quota exceeded", "billing", "disabled",
+    ]
+
+    def _is_non_retryable(self, error_message: str) -> bool:
+        """재시도 불가능한 에러인지 판별"""
+        lower = error_message.lower()
+        return any(p in lower for p in self._NON_RETRYABLE_PATTERNS)
+
     def handle(self, message: PubSubMessage) -> None:
         start_time = self._log_start(message, "Vertex AI 예측 실행 요청")
 
@@ -567,7 +579,25 @@ class VertexAIHandler(MessageHandler):
                         "duration": time.time() - start_time
                     })
             else:
-                raise RuntimeError(result.message)
+                # 실패 원인 분석: 재시도 가능 여부 판별
+                error_msg = result.message or "Unknown error"
+                if self._is_non_retryable(error_msg):
+                    raise NonRetryableError(f"Vertex AI 비재시도성 에러: {error_msg}")
+                raise RuntimeError(error_msg)
+
+        except NonRetryableError as e:
+            # NonRetryableError는 실패 이벤트 발행 후 그대로 re-raise → subscriber가 ACK 처리
+            self._log_error("Vertex AI 예측 실행 (재시도 불가)", e)
+
+            if self.publisher:
+                self.publisher.publish("VERTEX_AI_JOB_FAILED", {
+                    "status": "failed",
+                    "timestamp": datetime.now(KST).isoformat(),
+                    "requestId": message.request_id,
+                    "error": str(e),
+                    "retryable": False
+                })
+            raise
 
         except Exception as e:
             self._log_error("Vertex AI 예측 실행", e)
@@ -577,7 +607,8 @@ class VertexAIHandler(MessageHandler):
                     "status": "failed",
                     "timestamp": datetime.now(KST).isoformat(),
                     "requestId": message.request_id,
-                    "error": str(e)
+                    "error": str(e),
+                    "retryable": True
                 })
             raise
 

@@ -99,7 +99,7 @@ class GcpSettings(BaseSettings):
     enabled: bool = Field(default=False, alias="GCP_ENABLED")
     project_id: str = Field(default="", alias="GCP_PROJECT_ID")
     region: str = Field(default="asia-northeast3", alias="GCP_REGION")
-    credentials_path: Optional[str] = Field(default=None, alias="GOOGLE_APPLICATION_CREDENTIALS")
+    credentials_path: Optional[str] = Field(default=None, alias="VERTEX_AI_CREDENTIALS_PATH")
 
     # Vertex AI
     model_bucket: str = Field(default="", alias="GCP_BUCKET_NAME")

@@ -37,7 +37,7 @@ class PubSubPublisherAdapter:
 
     def __init__(self, settings: Settings):
         self.settings = settings
-        self._project_id = settings.gcp.project_id
+        self._project_id = settings.pubsub.project_id
         self._publisher: Optional[pubsub_v1.PublisherClient] = None
 
     def _get_publisher(self) -> pubsub_v1.PublisherClient:

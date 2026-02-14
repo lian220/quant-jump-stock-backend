@@ -16,6 +16,15 @@ from config.settings import Settings
 logger = logging.getLogger(__name__)
 
 
+class NonRetryableError(Exception):
+    """재시도해도 성공할 수 없는 에러 (403, 설정 오류, 유효성 검증 실패 등)
+
+    이 예외를 raise하면 subscriber가 메시지를 ACK 처리하여
+    무한 재시도 폭풍을 방지합니다.
+    """
+    pass
+
+
 def to_pubsub_subscription(topic: str) -> str:
     """dot 표기법 토픽을 Pub/Sub 구독명으로 변환
     예: 'economic.data.update.request' → 'economic-data-update-request-sub'
@@ -52,7 +61,7 @@ class PubSubSubscriberAdapter:
 
     def __init__(self, settings: Settings):
         self.settings = settings
-        self._project_id = settings.gcp.project_id
+        self._project_id = settings.pubsub.project_id
         self._subscriber = pubsub_v1.SubscriberClient()
         self._handlers: Dict[str, Callable[[PubSubMessage], None]] = {}
         self._streaming_futures = []
@@ -107,8 +116,11 @@ class PubSubSubscriberAdapter:
                 logger.info(f"Processing message from {topic}, requestId={parsed.request_id}")
                 handler(parsed)
                 message.ack()
+            except NonRetryableError as e:
+                logger.error(f"Non-retryable error for {topic} (ACK처리, 재시도 안함): {e}")
+                message.ack()
             except Exception as e:
-                logger.exception(f"Handler error for {topic}: {e}")
+                logger.exception(f"Handler error for {topic} (NACK처리, 재시도 예정): {e}")
                 message.nack()
 
         return callback

@@ -171,7 +171,7 @@ gcp:
   enabled: ${GCP_ENABLED:false}  # 환경변수로 제어 (기본값: false)
   project-id: ${GCP_PROJECT_ID:}
   region: ${GCP_REGION:us-central1}
-  credentials-path: ${GOOGLE_APPLICATION_CREDENTIALS:}
+  credentials-path: ${VERTEX_AI_CREDENTIALS_PATH:}
   vertex-ai:
     staging-bucket: ${GCP_STAGING_BUCKET:}
     model-bucket: ${GCS_BUCKET:quantiq-ml-models}

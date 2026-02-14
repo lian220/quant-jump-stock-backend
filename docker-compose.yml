@@ -135,17 +135,16 @@ services:
       DB_PORT: ${DB_PORT:-5432}
       # Server Port (Data Engine)
       SERVER_PORT: ${DATA_ENGINE_PORT:-10020}
-      # Pub/Sub
+      # Pub/Sub (PUBSUB_EMULATOR_HOST만 컨테이너 네트워크용 기본값 설정)
+      # GCP_PROJECT_ID, PUBSUB_PROJECT_ID는 env_file(.env.local)에서 로드
       PUBSUB_EMULATOR_HOST: ${PUBSUB_EMULATOR_HOST:-pubsub-emulator:8681}
-      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-quantiq-local}
-      PUBSUB_PROJECT_ID: ${PUBSUB_PROJECT_ID:-${GCP_PROJECT_ID:-quantiq-local}}
       # APIs
       FRED_API_KEY: ${FRED_API_KEY}
       # Slack (SLACK_BOT_TOKEN은 .env.common에서 로드)
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL_SCHEDULER}
       SLACK_CHANNEL: "C0A1XASTLH2"
       # Google Cloud (container path override)
-      GOOGLE_APPLICATION_CREDENTIALS: "/app/credentials/vertex-ai-key.json"
+      VERTEX_AI_CREDENTIALS_PATH: "/app/credentials/vertex-ai-key.json"
       # ML Scripts path
       ML_SCRIPTS_DIR: "/scripts/ml"
     volumes:
@@ -195,10 +194,9 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-quantiq_password}
       # MongoDB - env var 우선, 미설정시 로컬 Docker
       SPRING_DATA_MONGODB_URI: ${MONGODB_URI:-mongodb://quantiq_user:quantiq_password@mongodb:27017/stock_trading?authSource=admin}
-      # Pub/Sub
+      # Pub/Sub (PUBSUB_EMULATOR_HOST만 컨테이너 네트워크용 기본값 설정)
+      # GCP_PROJECT_ID, PUBSUB_PROJECT_ID는 env_file(.env.local)에서 로드
       PUBSUB_EMULATOR_HOST: ${PUBSUB_EMULATOR_HOST:-pubsub-emulator:8681}
-      GCP_PROJECT_ID: ${GCP_PROJECT_ID:-quantiq-local}
-      PUBSUB_PROJECT_ID: ${PUBSUB_PROJECT_ID:-${GCP_PROJECT_ID:-quantiq-local}}
       # Slack (SLACK_BOT_TOKEN은 .env.common에서 로드)
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL_TRADING}
       SLACK_CHANNEL: "C0A1XASTLH2"
@@ -209,9 +207,9 @@ services:
       DB_DUAL_WRITE: "true"
       DB_READ_SOURCE: "rdb"
       RUN_MIGRATION: "true"
-      # Google Cloud
-      GCP_ENABLED: ${GCP_ENABLED:-false}
-      GOOGLE_APPLICATION_CREDENTIALS: "/app/credentials/vertex-ai-key.json"
+      # Google Cloud (GCP_ENABLED는 env_file에서 로드)
+      # 컨테이너 내부 크레덴셜 경로만 고정 설정
+      VERTEX_AI_CREDENTIALS_PATH: "/app/credentials/vertex-ai-key.json"
       # JVM Heap Settings
       JAVA_OPTS: "-Xmx768m -Xms512m -XX:MaxMetaspaceSize=256m"
     deploy:
