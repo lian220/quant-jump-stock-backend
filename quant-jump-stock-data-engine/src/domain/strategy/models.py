@@ -43,6 +43,18 @@ class IndicatorType(str, Enum):
     PER = "per"                      # 주가수익비율
     PBR = "pbr"                      # 주가순자산비율
     DIVIDEND_YIELD = "dividend_yield"  # 배당수익률
+    # 펀더멘탈 지표 (신규)
+    ROE = "roe"                              # 자기자본이익률
+    EARNINGS_GROWTH = "earnings_growth"      # 이익성장률
+    DEBT_TO_EQUITY = "debt_to_equity"        # 부채비율
+    FORWARD_PE = "forward_pe"                # 선행 PER
+    # 감성 분석 지표
+    SENTIMENT_SCORE = "sentiment_score"      # 감성 분석 점수
+    SENTIMENT_COUNT = "sentiment_count"      # 감성 분석 기사 수
+    # 추천 지표
+    IS_RECOMMENDED = "is_recommended"        # 기술적 분석 추천 여부
+    REC_RSI = "rec_rsi"                      # 추천 시 RSI 값
+    REC_SCORE = "rec_score"                  # 추천 점수
     # AI/ML 지표
     ENSEMBLE_SCORE = "ensemble_score"        # AI 앙상블 스코어
     ML_PREDICTION = "ml_prediction"          # ML 예측값

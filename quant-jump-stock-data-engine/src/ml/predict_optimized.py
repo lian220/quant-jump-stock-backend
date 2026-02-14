@@ -1720,13 +1720,24 @@ def save_analysis_to_db(result_df):
 
                     try:
                         # 분석 데이터 구조화 (한 번만 수행)
+                        mape_val = record.get('MAPE (%)')
                         metrics = {
                             'mae': record.get('MAE'),
                             'mse': record.get('MSE'),
                             'rmse': record.get('RMSE'),
-                            'mape': record.get('MAPE (%)'),
+                            'mape': mape_val,
                             'accuracy': record.get('Accuracy (%)')
                         }
+
+                        # 품질 게이트: MAPE 기반 예측 신뢰도 분류
+                        if mape_val is None or pd.isna(mape_val):
+                            metrics['prediction_confidence'] = 'unknown'
+                            metrics['prediction_warning'] = 'MAPE not available'
+                        elif mape_val > MAX_RELIABLE_MAPE:
+                            metrics['prediction_confidence'] = 'low'
+                            metrics['prediction_warning'] = f'MAPE {mape_val:.1f}% exceeds threshold {MAX_RELIABLE_MAPE}%'
+                        else:
+                            metrics['prediction_confidence'] = 'high'
                         
                         predictions = {
                             'last_actual_price': record.get('Last Actual Price'),
@@ -2050,18 +2061,27 @@ def analyze_rise_predictions(data, target_columns):
 #######################################
 # (3) Buy/Sell Recommendation and Analysis
 #######################################
+# 예측 품질 게이트: MAPE > 이 임계값이면 예측 신뢰도 낮음
+MAX_RELIABLE_MAPE = 30.0
+
 def generate_recommendation(row):
     """
     Example logic:
+    - MAPE > MAX_RELIABLE_MAPE => HOLD (Low Confidence)
     - (Predicted Rise == True) and (Rise Probability > 0) => BUY
     - (Rise Probability > 2) => STRONG BUY
     - Otherwise => SELL
     """
     rise_prob = row.get('Rise Probability (%)', 0)
     predicted_rise = row.get('Predicted Rise', False)
+    mape = row.get('MAPE (%)', None)
 
     if pd.isna(rise_prob) or pd.isna(predicted_rise):
         return "No Data"
+
+    # 품질 게이트: MAPE가 높으면 예측 신뢰도 낮음
+    if mape is not None and not pd.isna(mape) and mape > MAX_RELIABLE_MAPE:
+        return "HOLD (Low Confidence)"
 
     if predicted_rise and rise_prob > 0:
         if rise_prob > 2:
@@ -2080,9 +2100,13 @@ def generate_analysis(row):
     stock_name = row['Stock']
     rise_prob = row.get('Rise Probability (%)', 0)
     predicted_rise = row.get('Predicted Rise', False)
+    mape = row.get('MAPE (%)', None)
 
     if pd.isna(rise_prob) or pd.isna(predicted_rise):
         return f"{stock_name}: Not enough data"
+
+    if mape is not None and not pd.isna(mape) and mape > MAX_RELIABLE_MAPE:
+        return f"{stock_name}: Prediction unreliable (MAPE {mape:.1f}%). Holding recommended."
 
     if predicted_rise:
         return f"{stock_name} is expected to rise by about {rise_prob:.2f}%. Consider buying or holding."

@@ -225,6 +225,35 @@ class StrategyInterpreter:
                         logger.warning("Dividend yield data not available in market_data")
                         indicators["dividend_yield"] = pd.Series(dtype=float)
 
+                # === 펀더멘탈 지표 (신규) ===
+                elif indicator_type == IndicatorType.ROE:
+                    if 'roe' in data.columns:
+                        indicators["roe"] = data['roe']
+                    else:
+                        logger.warning("ROE data not available in market_data")
+                        indicators["roe"] = pd.Series(dtype=float)
+
+                elif indicator_type == IndicatorType.EARNINGS_GROWTH:
+                    if 'earnings_growth' in data.columns:
+                        indicators["earnings_growth"] = data['earnings_growth']
+                    else:
+                        logger.warning("Earnings growth data not available in market_data")
+                        indicators["earnings_growth"] = pd.Series(dtype=float)
+
+                elif indicator_type == IndicatorType.DEBT_TO_EQUITY:
+                    if 'debt_to_equity' in data.columns:
+                        indicators["debt_to_equity"] = data['debt_to_equity']
+                    else:
+                        logger.warning("Debt to equity data not available in market_data")
+                        indicators["debt_to_equity"] = pd.Series(dtype=float)
+
+                elif indicator_type == IndicatorType.FORWARD_PE:
+                    if 'forward_pe' in data.columns:
+                        indicators["forward_pe"] = data['forward_pe']
+                    else:
+                        logger.warning("Forward PE data not available in market_data")
+                        indicators["forward_pe"] = pd.Series(dtype=float)
+
                 # === 감성 분석 지표 (SCRUM-324) ===
                 elif indicator_type == IndicatorType.SENTIMENT_SCORE:
                     if 'sentiment_score' in data.columns:

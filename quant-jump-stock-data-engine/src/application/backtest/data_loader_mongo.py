@@ -34,6 +34,17 @@ _LEGACY_HIGH_RATIO = 1.005
 _LEGACY_LOW_RATIO = 0.995
 _LEGACY_VOLUME_DEFAULT = 1_000_000
 
+# 펀더멘탈 필드 매핑: {DSL 컬럼명: MongoDB info 필드명}
+_FUNDAMENTAL_FIELDS = {
+    "per": "trailingPE",
+    "pbr": "priceToBook",
+    "dividend_yield": "dividendYield",
+    "roe": "returnOnEquity",
+    "earnings_growth": "earningsGrowth",
+    "debt_to_equity": "debtToEquity",
+    "forward_pe": "forwardPE",
+}
+
 class MongoDataLoader(DataLoader):
     """
     MongoDB daily_stock_data 컬렉션에서 데이터 로드
@@ -100,10 +111,12 @@ class MongoDataLoader(DataLoader):
         start_date: date,
         end_date: date,
         include_sentiment: bool = False,
-        include_recommendations: bool = False
+        include_recommendations: bool = False,
+        include_fundamentals: bool = False,
+        **kwargs
     ) -> Dict[str, pd.DataFrame]:
         """
-        MongoDB에서 주식 데이터 로드 (감성 분석 + 추천 지표 통합)
+        MongoDB에서 주식 데이터 로드 (감성 분석 + 추천 지표 + 펀더멘탈 통합)
 
         Args:
             symbols: 종목 코드 리스트 (예: ["AAPL", "NVDA"])
@@ -111,12 +124,14 @@ class MongoDataLoader(DataLoader):
             end_date: 종료일
             include_sentiment: 감성 분석 데이터 포함 여부
             include_recommendations: 기술적 추천 데이터 포함 여부
+            include_fundamentals: 펀더멘탈 데이터 포함 여부 (info 필드에서 추출)
 
         Returns:
             {symbol: DataFrame} 딕셔너리
             DataFrame columns: open, high, low, close, volume
                               [sentiment_score, sentiment_count] (옵션)
                               [is_recommended, rec_rsi, rec_score] (옵션)
+                              [per, pbr, dividend_yield, roe, earnings_growth, debt_to_equity, forward_pe] (옵션)
         """
         client = self._get_client()
         db = client[self.database]
@@ -227,6 +242,15 @@ class MongoDataLoader(DataLoader):
                             "close": close,
                             "volume": _LEGACY_VOLUME_DEFAULT
                         })
+
+                    # Left Join: 펀더멘탈 데이터 추가 (info 필드)
+                    # 누락된 값은 NaN으로 표시 (0.0과 구분하기 위해)
+                    if include_fundamentals:
+                        info = stock_data.get("info", {}) if isinstance(stock_data, dict) else {}
+                        _nan = float('nan')
+                        for col, info_key in _FUNDAMENTAL_FIELDS.items():
+                            val = info.get(info_key)
+                            record[col] = float(val) if val is not None else _nan
 
                     # Left Join: 감성 분석 데이터 추가
                     if include_sentiment:

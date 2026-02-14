@@ -139,7 +139,7 @@ class BacktestEngine:
             self._initialize(strategy)
 
             # 2. 데이터 로드
-            self._load_data()
+            self._load_data(strategy)
 
             if not self._data:
                 return self._create_error_result(
@@ -203,7 +203,48 @@ class BacktestEngine:
         self._benchmark_values = []  # List of (date, Decimal) tuples for date-alignment
         self._benchmark_first_close = None
 
-    def _load_data(self) -> None:
+    def _detect_extra_data_needs(self, strategy: StrategyDefinition) -> Dict[str, bool]:
+        """전략에서 사용하는 지표를 분석하여 추가 데이터 로드 필요 여부 결정"""
+        from domain.strategy.models import IndicatorType
+
+        kwargs: Dict[str, bool] = {}
+
+        # 전략에서 사용하는 모든 지표 수집
+        used_indicators = set()
+        for rule in strategy.rules:
+            for condition in rule.conditions:
+                used_indicators.add(condition.indicator.value)
+
+        # 감성 분석 지표 감지
+        sentiment_indicators = {
+            IndicatorType.SENTIMENT_SCORE.value,
+            IndicatorType.SENTIMENT_COUNT.value,
+        }
+        if used_indicators & sentiment_indicators:
+            kwargs["include_sentiment"] = True
+
+        # 추천 지표 감지
+        recommendation_indicators = {
+            IndicatorType.IS_RECOMMENDED.value,
+            IndicatorType.REC_RSI.value,
+            IndicatorType.REC_SCORE.value,
+        }
+        if used_indicators & recommendation_indicators:
+            kwargs["include_recommendations"] = True
+
+        # 펀더멘탈 지표 감지
+        fundamental_indicators = {
+            IndicatorType.PER.value, IndicatorType.PBR.value,
+            IndicatorType.DIVIDEND_YIELD.value,
+            IndicatorType.ROE.value, IndicatorType.EARNINGS_GROWTH.value,
+            IndicatorType.DEBT_TO_EQUITY.value, IndicatorType.FORWARD_PE.value,
+        }
+        if used_indicators & fundamental_indicators:
+            kwargs["include_fundamentals"] = True
+
+        return kwargs
+
+    def _load_data(self, strategy: Optional[StrategyDefinition] = None) -> None:
         """데이터 로드"""
         symbols = self.config.tickers
 
@@ -211,10 +252,18 @@ class BacktestEngine:
             logger.warning("No symbols specified")
             return
 
+        # 전략 기반 추가 데이터 필요 여부 감지
+        extra_kwargs = {}
+        if strategy is not None:
+            extra_kwargs = self._detect_extra_data_needs(strategy)
+            if extra_kwargs:
+                logger.info(f"Extra data needs detected: {extra_kwargs}")
+
         self._data = self.data_loader.load(
             symbols=symbols,
             start_date=self.config.start_date,
-            end_date=self.config.end_date
+            end_date=self.config.end_date,
+            **extra_kwargs
         )
 
         logger.info(f"Loaded data for {len(self._data)} symbols")
@@ -837,7 +886,7 @@ class BacktestEngine:
 
         try:
             # 1. 데이터 로드 (전체 기간)
-            self._load_data()
+            self._load_data(strategy)
 
             if not self._data:
                 return self._create_error_result(

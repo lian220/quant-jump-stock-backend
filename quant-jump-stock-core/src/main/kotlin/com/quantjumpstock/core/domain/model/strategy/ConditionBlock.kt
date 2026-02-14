@@ -157,6 +157,29 @@ sealed class ConditionBlock {
     }
 
     /**
+     * 펀더멘탈 필터 조건 (통합)
+     *
+     * ROE, earningsGrowth, debtToEquity, forwardPE 등 펀더멘탈 지표 필터링
+     * 예: ROE > 15%, debtToEquity < 100
+     */
+    data class FundamentalFilter(
+        val indicator: IndicatorType,
+        val operator: ConditionOperator,
+        val threshold: BigDecimal
+    ) : ConditionBlock() {
+        override val type: String = "FUNDAMENTAL_FILTER"
+
+        init {
+            require(IndicatorType.isFundamentalIndicator(indicator.dslCode)) {
+                "FundamentalFilter indicator must be a fundamental type, got: $indicator"
+            }
+            require(!operator.isCrossOperator()) {
+                "Fundamental filter does not support cross operators, got: $operator"
+            }
+        }
+    }
+
+    /**
      * 포트폴리오 배분 조건
      *
      * 예: AAPL 목표 비중 30%, 허용 오차 5%

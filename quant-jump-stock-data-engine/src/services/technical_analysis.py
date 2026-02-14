@@ -134,6 +134,13 @@ class TechnicalAnalysisService:
                 macd_buy = latest_row['macd'] > latest_row['signal']
                 is_recommended = golden_cross and (latest_row['rsi'] < 50) and macd_buy
 
+                # recommendation_score 계산 (0~1 가중 평균)
+                rsi_val = latest_row['rsi']
+                rsi_score = max(0.0, (50.0 - rsi_val) / 50.0) if not np.isnan(rsi_val) else 0.0
+                macd_score = 1.0 if macd_buy else 0.0
+                sma_score = 1.0 if golden_cross else 0.0
+                recommendation_score = (sma_score * 0.4) + (rsi_score * 0.3) + (macd_score * 0.3)
+
                 rec_data = {
                     "date": latest_date.strftime("%Y-%m-%d"),
                     "ticker": ticker,
@@ -148,6 +155,7 @@ class TechnicalAnalysisService:
                         "macd_buy_signal": bool(macd_buy)
                     },
                     "is_recommended": bool(is_recommended),
+                    "recommendation_score": round(recommendation_score, 4),
                     "updated_at": datetime.utcnow()
                 }
 

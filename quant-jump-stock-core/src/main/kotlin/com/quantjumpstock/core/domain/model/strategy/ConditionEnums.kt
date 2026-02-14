@@ -19,12 +19,23 @@ enum class IndicatorType(val dslCode: String) {
     PRICE("price"),
     PER("per"),
     PBR("pbr"),
-    DIVIDEND_YIELD("dividend_yield");
+    DIVIDEND_YIELD("dividend_yield"),
+    // 펀더멘탈 지표 (신규)
+    ROE("roe"),
+    EARNINGS_GROWTH("earnings_growth"),
+    DEBT_TO_EQUITY("debt_to_equity"),
+    FORWARD_PE("forward_pe");
 
     companion object {
+        private val FUNDAMENTAL_CODES = setOf(
+            "per", "pbr", "dividend_yield", "roe", "earnings_growth", "debt_to_equity", "forward_pe"
+        )
+
         fun fromDslCode(code: String): IndicatorType =
             entries.find { it.dslCode == code }
                 ?: throw IllegalArgumentException("Unknown IndicatorType dslCode: $code")
+
+        fun isFundamentalIndicator(code: String): Boolean = code in FUNDAMENTAL_CODES
     }
 }
 

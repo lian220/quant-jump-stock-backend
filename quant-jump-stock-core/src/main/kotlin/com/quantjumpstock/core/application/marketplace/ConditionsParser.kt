@@ -259,6 +259,17 @@ class ConditionsParser(
                     ConditionBlock.DividendYield(operator = operator, threshold = threshold)
                 }
 
+                "roe", "earnings_growth", "debt_to_equity", "forward_pe" -> {
+                    val operator = ConditionOperator.fromDslCode(operatorCode)
+                    val threshold = BigDecimal(value)
+                    val indicatorType = IndicatorType.fromDslCode(indicator.lowercase())
+                    ConditionBlock.FundamentalFilter(
+                        indicator = indicatorType,
+                        operator = operator,
+                        threshold = threshold
+                    )
+                }
+
                 else -> {
                     logger.warn("미지원 indicator: $indicator, 조건 건너뜀")
                     null
@@ -336,6 +347,12 @@ class ConditionsParser(
 
             is ConditionBlock.DividendYield -> {
                 params["${prefix}indicator"] = "dividend_yield"
+                params["${prefix}operator"] = block.operator.dslCode
+                params["${prefix}compareValue"] = block.threshold.toPlainString()
+            }
+
+            is ConditionBlock.FundamentalFilter -> {
+                params["${prefix}indicator"] = block.indicator.dslCode
                 params["${prefix}operator"] = block.operator.dslCode
                 params["${prefix}compareValue"] = block.threshold.toPlainString()
             }
