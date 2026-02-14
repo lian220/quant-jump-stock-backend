@@ -92,8 +92,6 @@ jobs:
             : > .env
             grep -v '^\s*#' ./quant-jump-stock-backend/.env.common | grep -v '^\s*$' >> .env
             grep -v '^\s*#' ./quant-jump-stock-backend/.env.prod | grep -v '^\s*$' >> .env
-            echo "AR_REPO=asia-northeast3-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/qjs-docker" >> .env
-
             # Sync config files from repo (nginx.conf, docker-compose 등)
             git fetch origin main --quiet 2>/dev/null || true
             git checkout origin/main -- docker-compose.prod.yml nginx/ 2>/dev/null || true
