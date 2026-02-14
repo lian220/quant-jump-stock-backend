@@ -307,6 +307,55 @@ class SentimentAnalysisHandler(MessageHandler):
             raise
 
 
+class StockRecommendationHandler(MessageHandler):
+    """종목 추천 핸들러 (Composite Score 계산)"""
+
+    def __init__(
+        self,
+        publisher: Optional[EventPublisherProtocol] = None
+    ):
+        self.publisher = publisher
+
+    @property
+    def topic(self) -> str:
+        return "analysis.recommendation.request"
+
+    def handle(self, message: PubSubMessage) -> None:
+        start_time = self._log_start(message, "종목 추천 실행")
+
+        try:
+            from application.recommendation.sync_service import RecommendationSyncService
+
+            analysis_date = message.end_date or date.today().isoformat()
+
+            sync_service = RecommendationSyncService()
+            result = sync_service.sync_latest_recommendations(analysis_date)
+
+            self._log_success("종목 추천", start_time)
+
+            if self.publisher:
+                self.publisher.publish("STOCK_RECOMMENDATION_COMPLETED", {
+                    "status": "success",
+                    "timestamp": datetime.now(KST).isoformat(),
+                    "requestId": message.request_id,
+                    "syncedCount": result.get("synced_count", 0),
+                    "analysisDate": analysis_date,
+                    "duration": time.time() - start_time
+                })
+
+        except Exception as e:
+            self._log_error("종목 추천", e)
+
+            if self.publisher:
+                self.publisher.publish("STOCK_RECOMMENDATION_FAILED", {
+                    "status": "failed",
+                    "timestamp": datetime.now(KST).isoformat(),
+                    "requestId": message.request_id,
+                    "error": str(e)
+                })
+            raise
+
+
 class StrategyExecutionHandler(MessageHandler):
     """
     전략 실행 핸들러 (신규)

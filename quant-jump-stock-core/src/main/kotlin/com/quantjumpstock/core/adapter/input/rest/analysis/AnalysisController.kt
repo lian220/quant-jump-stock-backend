@@ -176,6 +176,76 @@ class AnalysisController(
     }
 
     @Operation(
+        summary = "종목 추천 실행",
+        description = """
+            Composite Score 기반 종목 추천을 실행합니다.
+
+            **실행 흐름:**
+            1. Pub/Sub 이벤트 발행 (analysis.recommendation.request)
+            2. Python Data Engine에서 Composite Score 계산
+            3. AI(30%) + Technical(40%) + Sentiment(30%) 가중 합산
+            4. PostgreSQL prediction_results 테이블에 결과 저장
+
+            **사전 조건:**
+            - 기술적 분석 완료 (23:30)
+            - 감정 분석 완료 (23:30)
+            - Vertex AI 예측 완료 (00:15~00:20)
+        """
+    )
+    @ApiResponses(
+        value = [
+            ApiResponse(
+                responseCode = "200",
+                description = "추천 요청 성공",
+                content = [Content(
+                    mediaType = "application/json",
+                    examples = [ExampleObject(
+                        value = """{
+  "success": true,
+  "message": "종목 추천 요청이 발행되었습니다.",
+  "analysisType": "RECOMMENDATION",
+  "timestamp": "2026-02-01T10:30:00Z"
+}"""
+                    )]
+                )]
+            ),
+            ApiResponse(responseCode = "500", description = "추천 요청 실패")
+        ]
+    )
+    @PostMapping("/recommendation")
+    fun executeStockRecommendation(
+        @RequestParam(required = false) startDate: String?,
+        @RequestParam(required = false) endDate: String?
+    ): ResponseEntity<Map<String, Any>> {
+        return try {
+            val dateInfo = formatDateRange(startDate, endDate)
+            logger.info("종목 추천 요청: $dateInfo")
+
+            analysisUseCase.triggerStockRecommendation(startDate, endDate).get()
+
+            val response = mutableMapOf<String, Any>(
+                "success" to true,
+                "message" to "종목 추천 요청이 발행되었습니다.",
+                "analysisType" to "RECOMMENDATION",
+                "timestamp" to Instant.now().toString()
+            )
+            startDate?.let { response["startDate"] = it }
+            endDate?.let { response["endDate"] = it }
+
+            ResponseEntity.ok(response.toMap())
+        } catch (e: Exception) {
+            logger.error("종목 추천 트리거 실패", e)
+            ResponseEntity.status(500).body(
+                mapOf<String, Any>(
+                    "success" to false,
+                    "message" to "종목 추천 요청 실패: ${e.message}",
+                    "timestamp" to Instant.now().toString()
+                )
+            )
+        }
+    }
+
+    @Operation(
         summary = "병렬 분석 실행 (기술적 + 감정 동시)",
         description = """
             기술적 분석과 감정 분석을 동시에 실행합니다.
@@ -264,6 +334,7 @@ class AnalysisController(
                     "availableEndpoints" to listOf(
                         "POST /api/v1/analyses/technical - 기술적 분석만 실행",
                         "POST /api/v1/analyses/sentiment - 감정 분석만 실행",
+                        "POST /api/v1/analyses/recommendation - 종목 추천 (Composite Score)",
                         "POST /api/v1/analyses/parallel - 병렬 분석 실행 (동시)",
                         "GET  /api/v1/analyses/status - 상태 조회"
                     )

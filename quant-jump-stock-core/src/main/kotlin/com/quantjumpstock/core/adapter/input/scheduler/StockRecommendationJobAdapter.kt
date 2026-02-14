@@ -1,10 +1,12 @@
 package com.quantjumpstock.core.adapter.input.scheduler
 
+import com.quantjumpstock.core.domain.analysis.port.input.AnalysisUseCase
 import org.quartz.Job
 import org.quartz.JobExecutionContext
 import org.quartz.JobExecutionException
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
+import java.util.concurrent.TimeUnit
 
 /**
  * 종목 추천 Job (Input Adapter)
@@ -24,21 +26,21 @@ import org.springframework.stereotype.Component
  * - daily_stock_data: 경제 지표 + 주가 + 기술 지표
  * - stock_predictions: AI 예측 결과
  * - news_sentiment: 감정 분석 결과
- *
- * TODO: AnalysisUseCase.triggerStockRecommendation() 구현 후 활성화
  */
 @Component
-class StockRecommendationJobAdapter : Job {
+class StockRecommendationJobAdapter(
+    private val analysisUseCase: AnalysisUseCase
+) : Job {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
     override fun execute(context: JobExecutionContext?) {
         try {
-            logger.info("⚠️ StockRecommendationJob: 미구현 상태, 건너뜀 (TODO: AnalysisUseCase.triggerStockRecommendation)")
+            logger.info("🏆 StockRecommendationJob 시작: Composite Score 기반 종목 추천")
 
-            // TODO: 종목 추천 UseCase 메소드 구현 후 아래 주석 해제
-            // val result = analysisUseCase.triggerStockRecommendation()
-            //     .get(3, TimeUnit.MINUTES)
-            // logger.info("✅ 종목 추천 완료: ${result.candidateCount}개 종목")
+            val result = analysisUseCase.triggerStockRecommendation()
+                .get(3, TimeUnit.MINUTES)
+
+            logger.info("✅ 종목 추천 완료: $result")
 
         } catch (e: Exception) {
             logger.error("❌ 종목 추천 Job 실행 중 오류", e)

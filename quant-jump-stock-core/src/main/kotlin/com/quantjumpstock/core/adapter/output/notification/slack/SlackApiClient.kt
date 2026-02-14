@@ -314,6 +314,59 @@ class SlackApiClient(
     }
 
     /**
+     * 종목 추천 요청 알림 (스레드 루트 메시지)
+     *
+     * @param requestId 요청 ID
+     * @param startDate 분석 시작 날짜, null이면 자동 결정
+     * @param endDate 분석 종료 날짜, null이면 오늘
+     * @return Slack 스레드 타임스탬프 (답글용)
+     */
+    fun notifyStockRecommendationRequest(requestId: String, startDate: String? = null, endDate: String? = null): String? {
+        val dateInfo = formatDateRange(startDate, endDate)
+
+        if (slackBotToken.isBlank()) {
+            logger.warn("⚠️ Slack Bot Token 없음 - Webhook으로 fallback")
+            notifyViaWebhook("🏆 종목 추천 요청", requestId, "종목 추천 (Composite Score)", dateInfo)
+            return null
+        }
+
+        try {
+            val message = SlackApiMessage(
+                channel = slackChannel,
+                text = "🏆 종목 추천 요청",
+                attachments = listOf(
+                    SlackAttachment(
+                        color = "7b2d8e",
+                        title = "종목 추천 (Composite Score) 시작",
+                        text = "AI(30%) + Technical(40%) + Sentiment(30%) 기반 종목 추천이 요청되었습니다.",
+                        fields = listOf(
+                            SlackField("Request ID", requestId, true),
+                            SlackField("Date Range", "📅 $dateInfo", true),
+                            SlackField("Timestamp", getCurrentTimeKST(), true),
+                            SlackField("Source", "Quartz Scheduler", true),
+                            SlackField("Status", "🔄 Processing", true)
+                        )
+                    )
+                )
+            )
+
+            val response = sendToSlackApi(message)
+            val threadTs = response?.ts
+
+            if (threadTs != null) {
+                logger.info("✅ Slack 스레드 루트 생성: requestId=$requestId, threadTs=$threadTs")
+            } else {
+                logger.warn("⚠️ Slack 메시지 발송 성공하지만 threadTs 없음")
+            }
+
+            return threadTs
+        } catch (e: Exception) {
+            logger.error("❌ Slack API 알림 발송 실패", e)
+            return null
+        }
+    }
+
+    /**
      * 분석 오류 알림
      */
     fun notifyAnalysisError(requestId: String, analysisType: String, error: String) {

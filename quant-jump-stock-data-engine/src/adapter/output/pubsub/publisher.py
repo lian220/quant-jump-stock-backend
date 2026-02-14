@@ -94,6 +94,9 @@ class PubSubPublisherAdapter:
             "ANALYSIS_TECHNICAL_FAILED": "analysis.technical.failed",
             "ANALYSIS_SENTIMENT_COMPLETED": "quantiq.analysis.completed",
             "ANALYSIS_SENTIMENT_FAILED": "analysis.sentiment.failed",
+            # 종목 추천
+            "STOCK_RECOMMENDATION_COMPLETED": "quantiq.analysis.completed",
+            "STOCK_RECOMMENDATION_FAILED": "quantiq.analysis.completed",
             # 전략 실행
             "STRATEGY_EXECUTION_COMPLETED": "strategy.execution.completed",
             "STRATEGY_EXECUTION_FAILED": "strategy.execution.failed",

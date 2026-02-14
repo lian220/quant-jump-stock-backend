@@ -34,6 +34,7 @@ from adapter.input.pubsub.handlers import (
     EconomicDataHandler,
     TechnicalAnalysisHandler,
     SentimentAnalysisHandler,
+    StockRecommendationHandler,
     StrategyExecutionHandler,
     VertexAIHandler,
     BacktestRequestHandler,
@@ -92,6 +93,7 @@ def read_root():
             "economic.data.update.request",
             "analysis.technical.request",
             "analysis.sentiment.request",
+            "analysis.recommendation.request",
             "strategy.execution.request",
             "vertex.ai.run.request",
             "quantiq.backtest.request",
@@ -293,6 +295,10 @@ def main():
         publisher=pubsub_publisher
     )
 
+    recommendation_handler = StockRecommendationHandler(
+        publisher=pubsub_publisher
+    )
+
     # 6.1. 백테스트 핸들러 (SCRUM-186)
     strategy_pg_repository = PostgresStrategyRepository(pool=pg_pool)
     backtest_repository = PostgresBacktestRepository(pool=pg_pool)
@@ -349,6 +355,7 @@ def main():
     subscriber.register_handler(economic_handler.topic, economic_handler.handle)
     subscriber.register_handler(technical_handler.topic, technical_handler.handle)
     subscriber.register_handler(sentiment_handler.topic, sentiment_handler.handle)
+    subscriber.register_handler(recommendation_handler.topic, recommendation_handler.handle)
     subscriber.register_handler(backtest_handler.topic, backtest_handler.handle)
 
     # Vertex AI 핸들러 등록 (GCP 활성화 시)
@@ -360,6 +367,7 @@ def main():
         economic_handler.topic,
         technical_handler.topic,
         sentiment_handler.topic,
+        recommendation_handler.topic,
         backtest_handler.topic,
     ]
 

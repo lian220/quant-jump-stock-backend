@@ -61,7 +61,7 @@ class PubSubSettings(BaseSettings):
     """Pub/Sub 설정"""
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 
-    project_id: str = Field(default="quantiq-local", alias="GCP_PROJECT_ID")
+    project_id: str = Field(default="quantiq-local", alias="PUBSUB_PROJECT_ID")
     emulator_host: str = Field(default="", alias="PUBSUB_EMULATOR_HOST")
 
     # Topics (dot notation - adapter 레이어에서 hyphen으로 변환)

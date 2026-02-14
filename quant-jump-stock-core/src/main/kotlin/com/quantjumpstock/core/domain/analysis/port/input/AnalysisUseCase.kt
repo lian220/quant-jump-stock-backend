@@ -23,4 +23,12 @@ interface AnalysisUseCase {
      * @param endDate 분석 종료 날짜 (yyyy-MM-dd), null이면 오늘
      */
     fun triggerSentimentAnalysis(startDate: String? = null, endDate: String? = null): CompletableFuture<String>
+
+    /**
+     * 종목 추천 트리거
+     * Composite Score 계산: AI(30%) + Technical(40%) + Sentiment(30%)
+     * @param startDate 분석 시작 날짜 (yyyy-MM-dd), null이면 Data Engine이 결정
+     * @param endDate 분석 종료 날짜 (yyyy-MM-dd), null이면 오늘
+     */
+    fun triggerStockRecommendation(startDate: String? = null, endDate: String? = null): CompletableFuture<String>
 }

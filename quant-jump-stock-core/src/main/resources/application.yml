@@ -91,6 +91,7 @@ spring:
     gcp:
       project-id: ${GCP_PROJECT_ID:quantiq-local}
       pubsub:
+        project-id: ${PUBSUB_PROJECT_ID:${GCP_PROJECT_ID:quantiq-local}}
         emulator-host: ${PUBSUB_EMULATOR_HOST:}
 
   # ============================================
