@@ -56,7 +56,7 @@ for DATE in "${DATES[@]}"; do
     echo "📊 날짜: $DATE 처리 중..."
 
     URL="${API_HOST}${ENDPOINT}?date=${DATE}&minConfidence=${MIN_CONFIDENCE}"
-    RESPONSE=$(curl -s -w "\n%{http_code}" "$URL")
+    RESPONSE=$(curl -s --max-time 30 -w "\n%{http_code}" "$URL")
     HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
     BODY=$(echo "$RESPONSE" | sed '$d')
 
@@ -100,7 +100,7 @@ chmod +x /tmp/backfill_recommendations.sh
 
 ## 예상 출력
 
-```
+```text
 ======================================
 📅 오늘 날짜: 2026-02-14
 🔄 최근 7일치 추천 데이터 백필 시작...

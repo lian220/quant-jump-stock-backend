@@ -1729,8 +1729,11 @@ def save_analysis_to_db(result_df):
                             'accuracy': record.get('Accuracy (%)')
                         }
 
-                        # 품질 게이트: MAPE > 임계값이면 low confidence 마킹
-                        if mape_val is not None and not pd.isna(mape_val) and mape_val > MAX_RELIABLE_MAPE:
+                        # 품질 게이트: MAPE 기반 예측 신뢰도 분류
+                        if mape_val is None or pd.isna(mape_val):
+                            metrics['prediction_confidence'] = 'unknown'
+                            metrics['prediction_warning'] = 'MAPE not available'
+                        elif mape_val > MAX_RELIABLE_MAPE:
                             metrics['prediction_confidence'] = 'low'
                             metrics['prediction_warning'] = f'MAPE {mape_val:.1f}% exceeds threshold {MAX_RELIABLE_MAPE}%'
                         else:
@@ -2097,9 +2100,13 @@ def generate_analysis(row):
     stock_name = row['Stock']
     rise_prob = row.get('Rise Probability (%)', 0)
     predicted_rise = row.get('Predicted Rise', False)
+    mape = row.get('MAPE (%)', None)
 
     if pd.isna(rise_prob) or pd.isna(predicted_rise):
         return f"{stock_name}: Not enough data"
+
+    if mape is not None and not pd.isna(mape) and mape > MAX_RELIABLE_MAPE:
+        return f"{stock_name}: Prediction unreliable (MAPE {mape:.1f}%). Holding recommended."
 
     if predicted_rise:
         return f"{stock_name} is expected to rise by about {rise_prob:.2f}%. Consider buying or holding."

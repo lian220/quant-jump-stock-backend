@@ -44,7 +44,7 @@ for DATE in "${DATES[@]}"; do
     URL="${API_HOST}${ENDPOINT}?date=${DATE}&minConfidence=${MIN_CONFIDENCE}"
 
     # API 호출
-    RESPONSE=$(curl -s -w "\n%{http_code}" "$URL")
+    RESPONSE=$(curl -s --max-time 30 -w "\n%{http_code}" "$URL")
     HTTP_CODE=$(echo "$RESPONSE" | tail -n1)
     BODY=$(echo "$RESPONSE" | sed '$d')
 

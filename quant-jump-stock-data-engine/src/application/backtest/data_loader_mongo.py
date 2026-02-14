@@ -34,6 +34,17 @@ _LEGACY_HIGH_RATIO = 1.005
 _LEGACY_LOW_RATIO = 0.995
 _LEGACY_VOLUME_DEFAULT = 1_000_000
 
+# 펀더멘탈 필드 매핑: {DSL 컬럼명: MongoDB info 필드명}
+_FUNDAMENTAL_FIELDS = {
+    "per": "trailingPE",
+    "pbr": "priceToBook",
+    "dividend_yield": "dividendYield",
+    "roe": "returnOnEquity",
+    "earnings_growth": "earningsGrowth",
+    "debt_to_equity": "debtToEquity",
+    "forward_pe": "forwardPE",
+}
+
 class MongoDataLoader(DataLoader):
     """
     MongoDB daily_stock_data 컬렉션에서 데이터 로드
@@ -101,7 +112,8 @@ class MongoDataLoader(DataLoader):
         end_date: date,
         include_sentiment: bool = False,
         include_recommendations: bool = False,
-        include_fundamentals: bool = False
+        include_fundamentals: bool = False,
+        **kwargs
     ) -> Dict[str, pd.DataFrame]:
         """
         MongoDB에서 주식 데이터 로드 (감성 분석 + 추천 지표 + 펀더멘탈 통합)
@@ -236,13 +248,9 @@ class MongoDataLoader(DataLoader):
                     if include_fundamentals:
                         info = stock_data.get("info", {}) if isinstance(stock_data, dict) else {}
                         _nan = float('nan')
-                        record["per"] = float(info["trailingPE"]) if info.get("trailingPE") is not None else _nan
-                        record["pbr"] = float(info["priceToBook"]) if info.get("priceToBook") is not None else _nan
-                        record["dividend_yield"] = float(info["dividendYield"]) if info.get("dividendYield") is not None else _nan
-                        record["roe"] = float(info["returnOnEquity"]) if info.get("returnOnEquity") is not None else _nan
-                        record["earnings_growth"] = float(info["earningsGrowth"]) if info.get("earningsGrowth") is not None else _nan
-                        record["debt_to_equity"] = float(info["debtToEquity"]) if info.get("debtToEquity") is not None else _nan
-                        record["forward_pe"] = float(info["forwardPE"]) if info.get("forwardPE") is not None else _nan
+                        for col, info_key in _FUNDAMENTAL_FIELDS.items():
+                            val = info.get(info_key)
+                            record[col] = float(val) if val is not None else _nan
 
                     # Left Join: 감성 분석 데이터 추가
                     if include_sentiment:
