@@ -388,6 +388,110 @@ class ConditionsParserTest : DescribeSpec({
             parser.parseToDefinition(json).shouldBeNull()
         }
 
+        it("ROE 조건 → FundamentalFilter") {
+            val json = """
+            {
+              "rules": [{
+                "name": "고ROE",
+                "signal_type": "buy",
+                "conditions": [{
+                  "indicator": "roe",
+                  "operator": "gt",
+                  "value": "15"
+                }],
+                "weight": 1.0,
+                "logic": "and"
+              }]
+            }
+            """.trimIndent()
+
+            val definition = parser.parseToDefinition(json)
+            definition.shouldNotBeNull()
+
+            val cond = definition.rules[0].conditions[0]
+            cond.shouldBeInstanceOf<ConditionBlock.FundamentalFilter>()
+            cond.indicator shouldBe IndicatorType.ROE
+            cond.operator shouldBe ConditionOperator.GT
+            cond.threshold shouldBe BigDecimal("15")
+        }
+
+        it("earnings_growth 조건 → FundamentalFilter") {
+            val json = """
+            {
+              "rules": [{
+                "name": "이익성장",
+                "signal_type": "buy",
+                "conditions": [{
+                  "indicator": "earnings_growth",
+                  "operator": "gte",
+                  "value": "10"
+                }],
+                "weight": 1.0,
+                "logic": "and"
+              }]
+            }
+            """.trimIndent()
+
+            val definition = parser.parseToDefinition(json)
+            definition.shouldNotBeNull()
+
+            val cond = definition.rules[0].conditions[0]
+            cond.shouldBeInstanceOf<ConditionBlock.FundamentalFilter>()
+            cond.indicator shouldBe IndicatorType.EARNINGS_GROWTH
+            cond.operator shouldBe ConditionOperator.GTE
+            cond.threshold shouldBe BigDecimal("10")
+        }
+
+        it("debt_to_equity 조건 → FundamentalFilter") {
+            val json = """
+            {
+              "rules": [{
+                "name": "저부채",
+                "signal_type": "buy",
+                "conditions": [{
+                  "indicator": "debt_to_equity",
+                  "operator": "lt",
+                  "value": "100"
+                }],
+                "weight": 1.0,
+                "logic": "and"
+              }]
+            }
+            """.trimIndent()
+
+            val definition = parser.parseToDefinition(json)
+            definition.shouldNotBeNull()
+
+            val cond = definition.rules[0].conditions[0]
+            cond.shouldBeInstanceOf<ConditionBlock.FundamentalFilter>()
+            cond.indicator shouldBe IndicatorType.DEBT_TO_EQUITY
+        }
+
+        it("forward_pe 조건 → FundamentalFilter") {
+            val json = """
+            {
+              "rules": [{
+                "name": "저선행PER",
+                "signal_type": "buy",
+                "conditions": [{
+                  "indicator": "forward_pe",
+                  "operator": "lte",
+                  "value": "20"
+                }],
+                "weight": 1.0,
+                "logic": "and"
+              }]
+            }
+            """.trimIndent()
+
+            val definition = parser.parseToDefinition(json)
+            definition.shouldNotBeNull()
+
+            val cond = definition.rules[0].conditions[0]
+            cond.shouldBeInstanceOf<ConditionBlock.FundamentalFilter>()
+            cond.indicator shouldBe IndicatorType.FORWARD_PE
+        }
+
         it("빈 이름의 규칙은 건너뜀") {
             val json = """
             {

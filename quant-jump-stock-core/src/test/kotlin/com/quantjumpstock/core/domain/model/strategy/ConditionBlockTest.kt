@@ -338,6 +338,71 @@ class ConditionBlockTest : DescribeSpec({
         }
     }
 
+    describe("FundamentalFilter") {
+        it("ROE 필터 생성") {
+            val block = ConditionBlock.FundamentalFilter(
+                indicator = IndicatorType.ROE,
+                operator = ConditionOperator.GT,
+                threshold = BigDecimal("15")
+            )
+
+            block.type shouldBe "FUNDAMENTAL_FILTER"
+            block.indicator shouldBe IndicatorType.ROE
+            block.operator shouldBe ConditionOperator.GT
+            block.threshold shouldBe BigDecimal("15")
+        }
+
+        it("earnings_growth 필터 생성") {
+            val block = ConditionBlock.FundamentalFilter(
+                indicator = IndicatorType.EARNINGS_GROWTH,
+                operator = ConditionOperator.GTE,
+                threshold = BigDecimal("10")
+            )
+
+            block.indicator shouldBe IndicatorType.EARNINGS_GROWTH
+        }
+
+        it("debt_to_equity 필터 생성") {
+            val block = ConditionBlock.FundamentalFilter(
+                indicator = IndicatorType.DEBT_TO_EQUITY,
+                operator = ConditionOperator.LT,
+                threshold = BigDecimal("100")
+            )
+
+            block.indicator shouldBe IndicatorType.DEBT_TO_EQUITY
+        }
+
+        it("forward_pe 필터 생성") {
+            val block = ConditionBlock.FundamentalFilter(
+                indicator = IndicatorType.FORWARD_PE,
+                operator = ConditionOperator.LTE,
+                threshold = BigDecimal("20")
+            )
+
+            block.indicator shouldBe IndicatorType.FORWARD_PE
+        }
+
+        it("비펀더멘탈 지표로 생성 시 예외") {
+            shouldThrow<IllegalArgumentException> {
+                ConditionBlock.FundamentalFilter(
+                    indicator = IndicatorType.SMA,
+                    operator = ConditionOperator.GT,
+                    threshold = BigDecimal("15")
+                )
+            }
+        }
+
+        it("cross 연산자 사용 시 예외") {
+            shouldThrow<IllegalArgumentException> {
+                ConditionBlock.FundamentalFilter(
+                    indicator = IndicatorType.ROE,
+                    operator = ConditionOperator.CROSSES_ABOVE,
+                    threshold = BigDecimal("15")
+                )
+            }
+        }
+    }
+
     describe("ConditionBlock sealed class") {
         it("모든 서브클래스의 type이 고유") {
             val types = listOf(
@@ -347,10 +412,11 @@ class ConditionBlockTest : DescribeSpec({
                 ConditionBlock.PerFilter(operator = ConditionOperator.LT, threshold = BigDecimal("15")),
                 ConditionBlock.PbrFilter(operator = ConditionOperator.LT, threshold = BigDecimal("1.5")),
                 ConditionBlock.DividendYield(operator = ConditionOperator.GTE, threshold = BigDecimal("3")),
+                ConditionBlock.FundamentalFilter(indicator = IndicatorType.ROE, operator = ConditionOperator.GT, threshold = BigDecimal("15")),
                 ConditionBlock.Allocation(targetWeightPct = BigDecimal("30"))
             ).map { it.type }
 
-            types.toSet().size shouldBe 7
+            types.toSet().size shouldBe 8
         }
     }
 })

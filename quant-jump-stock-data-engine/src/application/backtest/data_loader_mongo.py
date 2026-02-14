@@ -100,10 +100,11 @@ class MongoDataLoader(DataLoader):
         start_date: date,
         end_date: date,
         include_sentiment: bool = False,
-        include_recommendations: bool = False
+        include_recommendations: bool = False,
+        include_fundamentals: bool = False
     ) -> Dict[str, pd.DataFrame]:
         """
-        MongoDB에서 주식 데이터 로드 (감성 분석 + 추천 지표 통합)
+        MongoDB에서 주식 데이터 로드 (감성 분석 + 추천 지표 + 펀더멘탈 통합)
 
         Args:
             symbols: 종목 코드 리스트 (예: ["AAPL", "NVDA"])
@@ -111,12 +112,14 @@ class MongoDataLoader(DataLoader):
             end_date: 종료일
             include_sentiment: 감성 분석 데이터 포함 여부
             include_recommendations: 기술적 추천 데이터 포함 여부
+            include_fundamentals: 펀더멘탈 데이터 포함 여부 (info 필드에서 추출)
 
         Returns:
             {symbol: DataFrame} 딕셔너리
             DataFrame columns: open, high, low, close, volume
                               [sentiment_score, sentiment_count] (옵션)
                               [is_recommended, rec_rsi, rec_score] (옵션)
+                              [per, pbr, dividend_yield, roe, earnings_growth, debt_to_equity, forward_pe] (옵션)
         """
         client = self._get_client()
         db = client[self.database]
@@ -227,6 +230,17 @@ class MongoDataLoader(DataLoader):
                             "close": close,
                             "volume": _LEGACY_VOLUME_DEFAULT
                         })
+
+                    # Left Join: 펀더멘탈 데이터 추가 (info 필드)
+                    if include_fundamentals:
+                        info = stock_data.get("info", {}) if isinstance(stock_data, dict) else {}
+                        record["per"] = float(info.get("trailingPE") or 0.0)
+                        record["pbr"] = float(info.get("priceToBook") or 0.0)
+                        record["dividend_yield"] = float(info.get("dividendYield") or 0.0)
+                        record["roe"] = float(info.get("returnOnEquity") or 0.0)
+                        record["earnings_growth"] = float(info.get("earningsGrowth") or 0.0)
+                        record["debt_to_equity"] = float(info.get("debtToEquity") or 0.0)
+                        record["forward_pe"] = float(info.get("forwardPE") or 0.0)
 
                     # Left Join: 감성 분석 데이터 추가
                     if include_sentiment:

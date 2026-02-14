@@ -31,6 +31,25 @@ class ConditionEnumsTest : DescribeSpec({
             IndicatorType.fromDslCode("dividend_yield") shouldBe IndicatorType.DIVIDEND_YIELD
         }
 
+        it("펀더멘탈 지표 코드 확인") {
+            IndicatorType.fromDslCode("roe") shouldBe IndicatorType.ROE
+            IndicatorType.fromDslCode("earnings_growth") shouldBe IndicatorType.EARNINGS_GROWTH
+            IndicatorType.fromDslCode("debt_to_equity") shouldBe IndicatorType.DEBT_TO_EQUITY
+            IndicatorType.fromDslCode("forward_pe") shouldBe IndicatorType.FORWARD_PE
+        }
+
+        it("isFundamentalIndicator 판별") {
+            IndicatorType.isFundamentalIndicator("per") shouldBe true
+            IndicatorType.isFundamentalIndicator("pbr") shouldBe true
+            IndicatorType.isFundamentalIndicator("dividend_yield") shouldBe true
+            IndicatorType.isFundamentalIndicator("roe") shouldBe true
+            IndicatorType.isFundamentalIndicator("earnings_growth") shouldBe true
+            IndicatorType.isFundamentalIndicator("debt_to_equity") shouldBe true
+            IndicatorType.isFundamentalIndicator("forward_pe") shouldBe true
+            IndicatorType.isFundamentalIndicator("sma") shouldBe false
+            IndicatorType.isFundamentalIndicator("rsi") shouldBe false
+        }
+
         it("잘못된 코드로 변환 시 예외") {
             shouldThrow<IllegalArgumentException> {
                 IndicatorType.fromDslCode("invalid")
