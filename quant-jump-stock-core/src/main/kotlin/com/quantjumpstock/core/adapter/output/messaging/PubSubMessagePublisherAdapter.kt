@@ -8,16 +8,14 @@ import com.quantjumpstock.core.domain.model.VertexAIPredictionRequest
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.google.cloud.spring.pubsub.core.PubSubTemplate
 import org.slf4j.LoggerFactory
-import org.springframework.context.annotation.Primary
 import org.springframework.stereotype.Component
 import java.util.*
 
 /**
  * Pub/Sub Message Publisher Adapter (Output Adapter)
  * MessagePublisher 인터페이스를 구현하여 Google Cloud Pub/Sub과 연동합니다.
- * Kafka 어댑터보다 우선 사용됩니다 (@Primary).
+ * 로컬: Pub/Sub 에뮬레이터, 프로덕션: 실제 GCP Pub/Sub 사용.
  */
-@Primary
 @Component
 class PubSubMessagePublisherAdapter(
     private val pubSubTemplate: PubSubTemplate,

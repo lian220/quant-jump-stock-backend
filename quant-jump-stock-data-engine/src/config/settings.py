@@ -42,21 +42,6 @@ class DatabaseSettings(BaseSettings):
     postgres_password: str = Field(default="", alias="DB_PASSWORD")
 
 
-class KafkaSettings(BaseSettings):
-    """Kafka 설정"""
-    model_config = SettingsConfigDict(env_prefix="", extra="ignore")
-
-    bootstrap_servers: str = Field(default="localhost:9092", alias="KAFKA_BOOTSTRAP_SERVERS")
-
-    # Topics
-    topic_analysis_request: str = "quantiq.analysis.request"
-    topic_analysis_completed: str = "quantiq.analysis.completed"
-    topic_economic_data_update_request: str = "economic.data.update.request"
-    topic_economic_data_updated: str = "economic.data.updated"
-    topic_technical_analysis_request: str = "analysis.technical.request"
-    topic_sentiment_analysis_request: str = "analysis.sentiment.request"
-
-
 class PubSubSettings(BaseSettings):
     """Pub/Sub 설정"""
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
@@ -129,7 +114,6 @@ class Settings(BaseSettings):
 
     # 하위 설정
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
-    kafka: KafkaSettings = Field(default_factory=KafkaSettings)
     pubsub: PubSubSettings = Field(default_factory=PubSubSettings)
     api: ApiSettings = Field(default_factory=ApiSettings)
     slack: SlackSettings = Field(default_factory=SlackSettings)
@@ -143,18 +127,6 @@ class Settings(BaseSettings):
     @property
     def MONGODB_DB_NAME(self) -> str:
         return self.database.mongodb_db_name
-
-    @property
-    def KAFKA_BOOTSTRAP_SERVERS(self) -> str:
-        return self.kafka.bootstrap_servers
-
-    @property
-    def KAFKA_TOPIC_ECONOMIC_DATA_UPDATE_REQUEST(self) -> str:
-        return self.kafka.topic_economic_data_update_request
-
-    @property
-    def KAFKA_TOPIC_ECONOMIC_DATA_UPDATED(self) -> str:
-        return self.kafka.topic_economic_data_updated
 
     @property
     def FRED_API_KEY(self) -> str:
@@ -179,10 +151,6 @@ class Settings(BaseSettings):
     @property
     def SLACK_ENABLED(self) -> bool:
         return self.slack.enabled
-
-    @property
-    def KAFKA_TOPIC_ANALYSIS_COMPLETED(self) -> str:
-        return self.kafka.topic_analysis_completed
 
     @property
     def POSTGRES_HOST(self) -> str:

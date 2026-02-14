@@ -48,13 +48,6 @@ class Settings:
     POSTGRES_USER = os.getenv("DB_USER", "postgres")
     POSTGRES_PASSWORD = os.getenv("DB_PASSWORD", "")
 
-    # Kafka - Local
-    KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
-    KAFKA_TOPIC_ANALYSIS_REQUEST = "quantiq.analysis.request"
-    KAFKA_TOPIC_ANALYSIS_COMPLETED = "quantiq.analysis.completed"
-    KAFKA_TOPIC_ECONOMIC_DATA_UPDATE_REQUEST = "economic.data.update.request"
-    KAFKA_TOPIC_ECONOMIC_DATA_UPDATED = "economic.data.updated"
-
     # APIs
     FRED_API_KEY = os.getenv("FRED_API_KEY", "aedfbcd8ba091c740281c0bd8ca93b46")
     ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY", "")

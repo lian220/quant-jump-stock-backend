@@ -49,7 +49,9 @@ services:
       - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
       - SPRING_DATA_MONGODB_URI=${MONGODB_URI}
       - SPRING_QUARTZ_JOB_STORE_TYPE=memory
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - MESSAGING_PROVIDER=pubsub
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - PUBSUB_PROJECT_ID=${PUBSUB_PROJECT_ID:-${GCP_PROJECT_ID}}
       - SPRING_FLYWAY_BASELINE_ON_MIGRATE=true
       - SPRING_FLYWAY_VALIDATE_ON_MIGRATE=false
       # OAuth2 + JWT
@@ -67,8 +69,6 @@ services:
       - ./credentials:/app/credentials:ro
     expose:
       - "10010"
-    depends_on:
-      - kafka
     deploy:
       resources:
         limits:
@@ -87,8 +87,9 @@ services:
     environment:
       - ENVIRONMENT=prod
       - SERVER_PORT=10020
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - MONGODB_URI=${MONGODB_URI}
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - PUBSUB_PROJECT_ID=${PUBSUB_PROJECT_ID:-${GCP_PROJECT_ID}}
       # GCP credentials (GCP SDK 인증 + Vertex AI)
       - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/vertex-ai-key.json
       - VERTEX_AI_CREDENTIALS_PATH=/app/credentials/vertex-ai-key.json
@@ -96,47 +97,9 @@ services:
       - ./credentials:/app/credentials:ro
     expose:
       - "10020"
-    depends_on:
-      - kafka
     deploy:
       resources:
         limits:
           memory: 512M
     restart: unless-stopped
 
-  # ── Kafka (초경량 설정) ─────────────────────────────────────
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.5.0
-    container_name: qjs-zookeeper
-    environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    volumes:
-      - ./data/zookeeper/data:/var/lib/zookeeper/data
-      - ./data/zookeeper/log:/var/lib/zookeeper/log
-    deploy:
-      resources:
-        limits:
-          memory: 96M
-    restart: unless-stopped
-
-  kafka:
-    image: confluentinc/cp-kafka:7.5.0
-    container_name: qjs-kafka
-    depends_on:
-      - zookeeper
-    environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT
-      KAFKA_INTER_BROKER_LISTENER_PROTOCOL: PLAINTEXT
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_HEAP_OPTS: "-Xmx256M -Xms192M"
-    volumes:
-      - ./data/kafka:/var/lib/kafka/data
-    deploy:
-      resources:
-        limits:
-          memory: 384M
-    restart: unless-stopped

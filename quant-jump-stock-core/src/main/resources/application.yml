@@ -12,10 +12,6 @@ spring:
     name: quantiq-core
   main:
     allow-bean-definition-overriding: true
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
-
   # ============================================
   # PostgreSQL (RDB) Configuration
   # ============================================
@@ -72,20 +68,7 @@ spring:
       auto-index-creation: true
 
   # ============================================
-  # Kafka Configuration (레거시, 롤백 용도로 유지)
-  # ============================================
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
-    consumer:
-      group-id: quantiq-core
-      auto-offset-reset: earliest
-      max-poll-records: 10
-    producer:
-      acks: all
-      retries: 3
-
-  # ============================================
-  # Google Cloud Pub/Sub Configuration (활성)
+  # Google Cloud Pub/Sub Configuration
   # ============================================
   cloud:
     gcp:
