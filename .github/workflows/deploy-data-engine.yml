@@ -12,6 +12,7 @@ on:
 env:
   REGION: asia-northeast3
   AR_REPO: asia-northeast3-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/qjs-docker
+  CLOUD_RUN_SERVICE: qjs-data-engine
 
 jobs:
   build-and-deploy:
@@ -45,63 +46,39 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # ── Deploy to VM ────────────────────────────────
-      - name: Deploy Data Engine to VM
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.GCE_HOST }}
-          username: ${{ secrets.GCE_USERNAME }}
-          key: ${{ secrets.GCE_SSH_PRIVATE_KEY }}
-          script: |
-            cd /opt/quant-jump-stock
+      # ── Deploy to Cloud Run ────────────────────────
+      - name: Deploy Data Engine to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.CLOUD_RUN_SERVICE }} \
+            --image ${{ env.AR_REPO }}/qjs-data-engine:latest \
+            --region ${{ env.REGION }} \
+            --platform managed \
+            --no-allow-unauthenticated \
+            --quiet
 
-            # Pull .env from Secret Manager
-            gcloud secrets versions access latest --secret=qjs-env-common \
-              > ./quant-jump-stock-backend/.env.common 2>/dev/null
-            gcloud secrets versions access latest --secret=qjs-env-prod \
-              > ./quant-jump-stock-backend/.env.prod 2>/dev/null
+      # ── Health Check ───────────────────────────────
+      - name: Verify Deployment
+        run: |
+          SERVICE_URL=$(gcloud run services describe ${{ env.CLOUD_RUN_SERVICE }} \
+            --region ${{ env.REGION }} \
+            --format 'value(status.url)')
 
-            # Validate secrets were fetched
-            if [ ! -s ./quant-jump-stock-backend/.env.common ] || [ ! -s ./quant-jump-stock-backend/.env.prod ]; then
-              echo "❌ Failed to fetch secrets from Secret Manager"
-              exit 1
+          echo "Cloud Run URL: $SERVICE_URL"
+
+          # Cloud Run 서비스가 인증 필요하므로 gcloud로 토큰 발급 후 체크
+          TOKEN=$(gcloud auth print-identity-token)
+
+          echo "Waiting for Data Engine startup..."
+          for i in $(seq 1 10); do
+            sleep 5
+            HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" \
+              -H "Authorization: Bearer $TOKEN" \
+              "$SERVICE_URL/health" 2>/dev/null || echo "000")
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "Data Engine is healthy!"
+              exit 0
             fi
-
-            # Vertex AI credentials
-            mkdir -p ./credentials
-            gcloud secrets versions access latest --secret=qjs-vertex-ai-key \
-              > ./credentials/vertex-ai-key.json 2>/dev/null || echo "⚠️ qjs-vertex-ai-key not found (Vertex AI disabled)"
-            if [ -f ./credentials/vertex-ai-key.json ] && [ -s ./credentials/vertex-ai-key.json ]; then
-              chmod 600 ./credentials/vertex-ai-key.json
-            fi
-
-            # Create docker-compose .env
-            : > .env
-            grep -v '^\s*#' ./quant-jump-stock-backend/.env.common | grep -v '^\s*$' >> .env
-            grep -v '^\s*#' ./quant-jump-stock-backend/.env.prod | grep -v '^\s*$' >> .env
-            echo "AR_REPO=asia-northeast3-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/qjs-docker" >> .env
-
-            # Sync config files from repo (nginx.conf, docker-compose 등)
-            git fetch origin main --quiet 2>/dev/null || true
-            git checkout origin/main -- docker-compose.prod.yml nginx/ 2>/dev/null || true
-
-            # Pull & restart Data Engine only
-            docker compose -f docker-compose.prod.yml pull data-engine
-            docker compose -f docker-compose.prod.yml up -d --no-deps data-engine
-            docker image prune -f
-
-            # Nginx graceful reload → 새 컨테이너 IP 즉시 반영 (다운타임 없음)
-            docker exec qjs-nginx nginx -s reload 2>/dev/null || true
-
-            # Health check
-            echo "⏳ Waiting for Data Engine startup..."
-            for i in $(seq 1 20); do
-              sleep 3
-              if curl -sf http://localhost/data-api/health > /dev/null 2>&1; then
-                echo "✅ Data Engine is healthy!"
-                exit 0
-              fi
-              echo "  ...attempt $i/20"
-            done
-            echo "❌ Data Engine not ready after 60s"
-            exit 1
+            echo "  ...attempt $i/10 (HTTP $HTTP_CODE)"
+          done
+          echo "Data Engine not ready after 50s"
+          exit 1

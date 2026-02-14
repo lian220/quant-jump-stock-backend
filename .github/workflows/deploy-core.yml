@@ -92,7 +92,6 @@ jobs:
             : > .env
             grep -v '^\s*#' ./quant-jump-stock-backend/.env.common | grep -v '^\s*$' >> .env
             grep -v '^\s*#' ./quant-jump-stock-backend/.env.prod | grep -v '^\s*$' >> .env
-            echo "AR_REPO=asia-northeast3-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/qjs-docker" >> .env
 
             # Sync config files from repos
             # 1) Root repo: nginx config
