@@ -107,8 +107,8 @@ jobs:
           echo "Waiting for Core API startup..."
           for i in $(seq 1 12); do
             sleep 10
-            HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" \
-              "http://${{ secrets.GCE_HOST }}/api/v1/auth/oauth2/urls" 2>/dev/null || echo "000")
+            HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" -k \
+              "https://${{ secrets.GCE_HOST }}/api/v1/auth/oauth2/urls" 2>/dev/null || echo "000")
             if [ "$HTTP_CODE" = "200" ]; then
               echo "Core API is healthy!"
               exit 0
