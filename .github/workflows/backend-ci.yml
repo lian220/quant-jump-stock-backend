@@ -122,7 +122,7 @@ jobs:
           SPRING_CLOUD_GCP_PUBSUB_EMULATOR_HOST: localhost:8681
           PUBSUB_PROJECT_ID: quantiq-local
           GCP_PROJECT_ID: quantiq-local
-          GCP_ENABLED: false
+          VERTEX_AI_ENABLED: false
 
       - name: 🧪 Run tests
         working-directory: ./quant-jump-stock-core
@@ -145,7 +145,7 @@ jobs:
           SPRING_CLOUD_GCP_PUBSUB_EMULATOR_HOST: localhost:8681
           PUBSUB_PROJECT_ID: quantiq-local
           GCP_PROJECT_ID: quantiq-local
-          GCP_ENABLED: false
+          VERTEX_AI_ENABLED: false
           MESSAGING_PROVIDER: pubsub
           # Security
           APP_ENCRYPTION_KEY: CHANGE_THIS_TO_32_CHARACTERS_KEY

@@ -79,17 +79,17 @@ class SlackSettings(BaseSettings):
 
 
 class GcpSettings(BaseSettings):
-    """GCP 설정"""
+    """Vertex AI / GCP 설정"""
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 
-    enabled: bool = Field(default=False, alias="GCP_ENABLED")
-    project_id: str = Field(default="", alias="GCP_PROJECT_ID")
-    region: str = Field(default="asia-northeast3", alias="GCP_REGION")
+    enabled: bool = Field(default=False, alias="VERTEX_AI_ENABLED")
+    project_id: str = Field(default="", alias="VERTEX_AI_PROJECT_ID")
+    region: str = Field(default="asia-northeast3", alias="VERTEX_AI_REGION")
     credentials_path: Optional[str] = Field(default=None, alias="VERTEX_AI_CREDENTIALS_PATH")
 
     # Vertex AI
-    model_bucket: str = Field(default="", alias="GCP_BUCKET_NAME")
-    package_base_path: str = Field(default="ml-packages", alias="GCP_PACKAGE_BASE_PATH")
+    model_bucket: str = Field(default="", alias="VERTEX_AI_BUCKET_NAME")
+    package_base_path: str = Field(default="ml-packages", alias="VERTEX_AI_PACKAGE_BASE_PATH")
     job_name: str = Field(default="quantiq-stock-prediction", alias="VERTEX_AI_JOB_NAME")
     machine_type: str = Field(default="n1-standard-4", alias="VERTEX_AI_MACHINE_TYPE")
     accelerator_type: str = Field(default="NVIDIA_TESLA_T4", alias="VERTEX_AI_ACCELERATOR_TYPE")

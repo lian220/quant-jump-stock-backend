@@ -30,7 +30,7 @@ def get_prediction_service():
     if _prediction_service is None:
         raise HTTPException(
             status_code=503,
-            detail="GCP가 비활성화 상태입니다. GCP_ENABLED=true로 설정해주세요."
+            detail="Vertex AI가 비활성화 상태입니다. VERTEX_AI_ENABLED=true로 설정해주세요."
         )
     return _prediction_service
 

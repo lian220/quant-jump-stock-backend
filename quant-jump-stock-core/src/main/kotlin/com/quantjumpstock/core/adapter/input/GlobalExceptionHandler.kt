@@ -13,6 +13,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException
 import org.springframework.web.bind.MissingRequestHeaderException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException
 import org.springframework.web.servlet.resource.NoResourceFoundException
 
 /**
@@ -149,6 +150,22 @@ class GlobalExceptionHandler(
             .body(ErrorResponse(
                 error = "Bad Request",
                 message = ex.message ?: "Invalid request",
+                status = HttpStatus.BAD_REQUEST.value()
+            ))
+    }
+
+    /**
+     * 경로 변수 타입 불일치 (예: /strategies/{id}에 문자열 전달)
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException::class)
+    fun handleMethodArgumentTypeMismatch(ex: MethodArgumentTypeMismatchException): ResponseEntity<ErrorResponse> {
+        logger.debug("⚠️ Type mismatch: parameter '{}' value '{}' - {}", ex.name, ex.value, ex.message)
+
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(
+                error = "Bad Request",
+                message = "잘못된 요청 형식입니다",
                 status = HttpStatus.BAD_REQUEST.value()
             ))
     }

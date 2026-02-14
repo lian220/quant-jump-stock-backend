@@ -28,7 +28,6 @@ from config.settings import get_settings
 # Legacy imports (점진적 교체 예정)
 from core.database import MongoDB, PostgreSQL
 from features.economic_data.router import router as economic_router
-from features.ml_package.router import router as ml_package_router
 from features.economic_data.service import EconomicDataService
 from services.recommendation_service import RecommendationService
 from services.slack_notifier import SlackNotifier
@@ -87,7 +86,6 @@ app = FastAPI(
 )
 
 app.include_router(economic_router)
-app.include_router(ml_package_router)
 app.include_router(ml_router.router)
 app.include_router(analysis_router.router)
 
@@ -310,7 +308,7 @@ def _init_services():
     # Vertex AI 핸들러 (GCP 활성화 시)
     vertexai_handler = None
     if settings.gcp.enabled:
-        logger.info("GCP enabled - initializing Vertex AI services...")
+        logger.info("Vertex AI enabled - initializing services...")
         try:
             gcp_config = GcpConfig(
                 project_id=settings.gcp.project_id,

@@ -150,10 +150,16 @@ slack:
 #   (설정 불필요 - DB에서 조회)
 
 # ============================================
-# Google Cloud Configuration
+# Messaging Configuration
+# ============================================
+messaging:
+  provider: ${MESSAGING_PROVIDER:pubsub}  # pubsub (기본값)
+
+# ============================================
+# Vertex AI Configuration
 # ============================================
 gcp:
-  enabled: ${GCP_ENABLED:false}  # 환경변수로 제어 (기본값: false)
+  enabled: ${VERTEX_AI_ENABLED:false}  # Vertex AI 기능 활성화 여부
   vertex-ai:
     job-name: ${VERTEX_AI_JOB_NAME:quantiq-stock-prediction-job}
 

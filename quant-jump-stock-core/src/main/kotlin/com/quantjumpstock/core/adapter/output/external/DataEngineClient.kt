@@ -33,21 +33,31 @@ class DataEngineClient(
     )
 
     /**
-     * ML 패키지 상태 응답
+     * ML 패키지 최신 버전 정보
+     */
+    data class LatestPackage(
+        val gcs_uri: String? = null,
+        val size: Long? = null,
+        val updated: String? = null
+    )
+
+    /**
+     * ML 패키지 상태 응답 (Data Engine 실제 형식)
      */
     data class PackageStatusResponse(
-        val service: String,
-        val status: String,
-        val message: String? = null,
+        val bucket: String,
+        val base_path: String,
+        val current_version: Int,
+        val latest_package: LatestPackage? = null,
         val timestamp: String
     )
 
     /**
      * ML 패키지를 GCS에 업로드
-     * data-engine의 /ml/upload-package 엔드포인트 호출
+     * data-engine의 /api/v1/ml/upload 엔드포인트 호출
      */
     fun uploadMlPackage(): PackageUploadResponse {
-        val url = "$baseUrl/ml/upload-package"
+        val url = "$baseUrl/api/v1/ml/upload"
         logger.info("📦 data-engine ML 패키지 업로드 호출: $url")
 
         return try {
@@ -88,10 +98,10 @@ class DataEngineClient(
 
     /**
      * ML 패키지 상태 조회
-     * data-engine의 /ml/package-status 엔드포인트 호출
+     * data-engine의 /api/v1/ml/status 엔드포인트 호출
      */
     fun getPackageStatus(): PackageStatusResponse {
-        val url = "$baseUrl/ml/package-status"
+        val url = "$baseUrl/api/v1/ml/status"
         logger.info("📋 data-engine ML 패키지 상태 조회: $url")
 
         return try {
@@ -103,17 +113,18 @@ class DataEngineClient(
                 .block()
 
             response ?: PackageStatusResponse(
-                service = "ml-package-manager",
-                status = "unknown",
-                message = "data-engine 응답이 null입니다",
+                bucket = "unknown",
+                base_path = "unknown",
+                current_version = 0,
                 timestamp = java.time.LocalDateTime.now().toString()
             )
         } catch (e: Exception) {
             logger.error("❌ data-engine 상태 조회 실패: ${e.message}", e)
             PackageStatusResponse(
-                service = "ml-package-manager",
-                status = "error",
-                message = "data-engine 상태 조회 실패: ${e.message}",
+                bucket = "error",
+                base_path = "",
+                current_version = 0,
+                latest_package = LatestPackage(gcs_uri = "data-engine 상태 조회 실패: ${e.message}"),
                 timestamp = java.time.LocalDateTime.now().toString()
             )
         }

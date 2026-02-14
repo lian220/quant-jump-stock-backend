@@ -26,7 +26,11 @@ class VertexAIJobEnvLoader:
         if env_db_path:
             self._path = Path(env_db_path)
         else:
-            self._path = Path(__file__).parent.parent.parent / ".env.db.prod"
+            # Docker: /config/.env.db.prod (볼륨 마운트)
+            # Local: backend/.env.db.prod (상대경로)
+            docker_path = Path("/config/.env.db.prod")
+            local_path = Path(__file__).parent.parent.parent / ".env.db.prod"
+            self._path = docker_path if docker_path.exists() else local_path
 
     def load(self) -> Dict[str, str]:
         """

@@ -160,6 +160,7 @@ services:
       - ./quant-jump-stock-data-engine:/app
       - ./credentials:/app/credentials
       - ./scripts:/scripts
+      - ./.env.db.prod:/config/.env.db.prod:ro
     deploy:
       resources:
         limits:
@@ -220,9 +221,11 @@ services:
       DB_DUAL_WRITE: "true"
       DB_READ_SOURCE: "rdb"
       RUN_MIGRATION: "true"
-      # Google Cloud (GCP_ENABLED는 env_file에서 로드)
+      # Vertex AI (VERTEX_AI_ENABLED는 env_file에서 로드)
       # 컨테이너 내부 크레덴셜 경로만 고정 설정
       VERTEX_AI_CREDENTIALS_PATH: "/app/credentials/vertex-ai-key.json"
+      # Data Engine (컨테이너 네트워크용)
+      DATA_ENGINE_BASE_URL: "http://quant-jump-stock-data-engine:${DATA_ENGINE_PORT:-10020}"
       # JVM Heap Settings
       JAVA_OPTS: "-Xmx768m -Xms512m -XX:MaxMetaspaceSize=256m"
     deploy:

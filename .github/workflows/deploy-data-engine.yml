@@ -36,13 +36,15 @@ jobs:
       - name: Load environment variables
         run: |
           gcloud secrets versions access latest --secret=qjs-env-common > /tmp/env-common
+          gcloud secrets versions access latest --secret=qjs-env-db-prod > /tmp/env-db-prod
           gcloud secrets versions access latest --secret=qjs-env-prod > /tmp/env-prod
 
           # 주석/빈줄 제거 후 GITHUB_ENV에 추가
           grep -v '^\s*#' /tmp/env-common | grep -v '^\s*$' >> $GITHUB_ENV
+          grep -v '^\s*#' /tmp/env-db-prod | grep -v '^\s*$' >> $GITHUB_ENV
           grep -v '^\s*#' /tmp/env-prod | grep -v '^\s*$' >> $GITHUB_ENV
 
-          rm -f /tmp/env-common /tmp/env-prod
+          rm -f /tmp/env-common /tmp/env-db-prod /tmp/env-prod
 
       # ── Docker Build & Push ─────────────────────────
       - name: Set up Docker Buildx
@@ -74,7 +76,7 @@ jobs:
           env_vars: |
             PUBSUB_MODE=push
             ENVIRONMENT=prod
-            GCP_ENABLED=true
+            VERTEX_AI_ENABLED=true
             PUBSUB_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
             LOG_LEVEL=INFO
             MONGODB_URI=${{ env.MONGODB_URI }}

@@ -69,7 +69,7 @@ src/main/kotlin/com/quantjumpstock/core/
 │   │   │   ├── strategy/       # 전략 API
 │   │   │   ├── user/           # 사용자 API
 │   │   │   └── vertexai/       # Vertex AI API
-│   │   ├── messaging/          # Kafka 컨슈머
+│   │   ├── messaging/          # Pub/Sub 컨슈머
 │   │   └── scheduler/          # Quartz 잡 스케줄러
 │   └── output/                 # 아웃바운드 어댑터
 │       ├── persistence/
@@ -78,7 +78,7 @@ src/main/kotlin/com/quantjumpstock/core/
 │       ├── external/           # 외부 API 클라이언트 (KIS, FRED)
 │       ├── gcp/                # GCP 서비스
 │       │   └── vertexai/       # Vertex AI 클라이언트
-│       ├── messaging/          # Kafka 프로듀서
+│       ├── messaging/          # Pub/Sub 프로듀서
 │       └── notification/       # Slack 알림
 │
 ├── application/                # 애플리케이션 레이어 (유스케이스)
@@ -206,7 +206,7 @@ class EntityName(
 | FRED API | 미국 경제 지표 | `adapter/output/external/` |
 | Vertex AI | AI 예측 모델 | `adapter/output/gcp/vertexai/` |
 | Slack | 알림 전송 | `adapter/output/notification/slack/` |
-| Kafka | 이벤트 스트리밍 | `adapter/input/messaging/`, `adapter/output/messaging/` |
+| Pub/Sub | 이벤트 메시징 (GCP) | `adapter/input/messaging/`, `adapter/output/messaging/` |
 
 ## 스케줄러 (Quartz)
 
