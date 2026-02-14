@@ -210,8 +210,6 @@ services:
       PUBSUB_EMULATOR_HOST: ${PUBSUB_EMULATOR_HOST:-pubsub-emulator:8681}
       SPRING_CLOUD_GCP_PUBSUB_EMULATORHOST: ${PUBSUB_EMULATOR_HOST:-pubsub-emulator:8681}
       PUBSUB_PROJECT_ID: ${PUBSUB_PROJECT_ID:-quantiq-local}
-      # KafkaAutoConfiguration 제외 (로컬에서 Kafka 브로커 없음)
-      SPRING_AUTOCONFIGURE_EXCLUDE: "org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration"
       # Slack (SLACK_BOT_TOKEN은 .env.common에서 로드)
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL_TRADING}
       SLACK_CHANNEL: "C0A1XASTLH2"
