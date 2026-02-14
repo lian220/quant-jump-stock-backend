@@ -789,6 +789,12 @@ class BacktestRequestHandler(MessageHandler):
                 else:
                     checkpoint_date = datetime.strptime(checkpoint_date_value, "%Y-%m-%d").date()
 
+                required_keys = ["cash", "high_watermark", "positions", "trade_count"]
+                missing = [k for k in required_keys if k not in checkpoint_data]
+                if missing:
+                    logger.warning(f"checkpoint_data에 필수 키 누락: {missing}. 체크포인트 저장을 건너뜁니다. backtest_id={result_id}")
+                    return result, result_id, incremental_result.is_incremental
+
                 new_checkpoint = BacktestCheckpoint(
                     backtest_id=result_id,
                     checkpoint_date=checkpoint_date,

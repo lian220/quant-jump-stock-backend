@@ -8,6 +8,12 @@ services:
     container_name: qjs-pubsub-emulator
     ports:
       - "8681:8681"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8681 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     environment:
       # 프로젝트ID,토픽:구독 형식 (thekevjames 이미지는 PUBSUB_PROJECT 사용)
       # ARM64 (Apple Silicon) 네이티브 지원
@@ -122,7 +128,7 @@ services:
       - "${DATA_ENGINE_PORT:-10020}:${DATA_ENGINE_PORT:-10020}"
     depends_on:
       pubsub-emulator:
-        condition: service_started
+        condition: service_healthy
     env_file:
       - .env.common
       - ${ENV_FILE:-.env.local}
@@ -170,7 +176,7 @@ services:
       - "${CORE_API_PORT:-10010}:${CORE_API_PORT:-10010}"
     depends_on:
       pubsub-emulator:
-        condition: service_started
+        condition: service_healthy
     env_file:
       - .env.common
       - ${ENV_FILE:-.env.local}
