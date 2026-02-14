@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
 import java.time.Instant
+import java.util.concurrent.TimeUnit
 
 /**
  * 분석 Controller (Input Adapter)
@@ -93,7 +94,7 @@ class AnalysisController(
             logger.info("기술적 분석 요청: $dateInfo")
 
             // Kafka 이벤트 1개 발행 (날짜 범위 전달)
-            analysisUseCase.triggerTechnicalAnalysis(startDate, endDate).get()
+            analysisUseCase.triggerTechnicalAnalysis(startDate, endDate).get(30, TimeUnit.SECONDS)
 
             val response = mutableMapOf<String, Any>(
                 "success" to true,
@@ -151,7 +152,7 @@ class AnalysisController(
             logger.info("감정 분석 요청: $dateInfo")
 
             // Kafka 이벤트 1개 발행 (날짜 범위 전달)
-            analysisUseCase.triggerSentimentAnalysis(startDate, endDate).get()
+            analysisUseCase.triggerSentimentAnalysis(startDate, endDate).get(30, TimeUnit.SECONDS)
 
             val response = mutableMapOf<String, Any>(
                 "success" to true,
@@ -221,7 +222,7 @@ class AnalysisController(
             val dateInfo = formatDateRange(startDate, endDate)
             logger.info("종목 추천 요청: $dateInfo")
 
-            analysisUseCase.triggerStockRecommendation(startDate, endDate).get()
+            analysisUseCase.triggerStockRecommendation(startDate, endDate).get(30, TimeUnit.SECONDS)
 
             val response = mutableMapOf<String, Any>(
                 "success" to true,
@@ -286,7 +287,7 @@ class AnalysisController(
                         )
                     )
                 }
-                .get()
+                .get(30, TimeUnit.SECONDS)
         } catch (e: Exception) {
             logger.error("병렬 분석 트리거 실패", e)
             ResponseEntity.status(500).body(

@@ -53,7 +53,13 @@ class PubSubMessagePublisherAdapter(
             logger.debug("📤 Pub/Sub 메시지 생성: $eventJson")
 
             pubSubTemplate.publish(pubsubTopic, eventJson)
-            logger.info("Pub/Sub 메시지 발행 성공: topic=$pubsubTopic, requestId=${request.requestId}")
+                .whenComplete { _, ex ->
+                    if (ex == null) {
+                        logger.info("Pub/Sub 메시지 발행 성공: topic=$pubsubTopic, requestId=${request.requestId}")
+                    } else {
+                        logger.error("Pub/Sub 메시지 발행 실패: topic=$pubsubTopic", ex)
+                    }
+                }
         } catch (e: Exception) {
             logger.error("Pub/Sub 메시지 발행 실패: topic=$topic", e)
             throw e
@@ -88,7 +94,13 @@ class PubSubMessagePublisherAdapter(
             logger.debug("📤 Pub/Sub 메시지 생성: $eventJson")
 
             pubSubTemplate.publish(pubsubTopic, eventJson)
-            logger.info("Pub/Sub 메시지 발행 성공: topic=$pubsubTopic, requestId=${request.requestId}, type=${request.analysisType}")
+                .whenComplete { _, ex ->
+                    if (ex == null) {
+                        logger.info("Pub/Sub 메시지 발행 성공: topic=$pubsubTopic, requestId=${request.requestId}, type=${request.analysisType}")
+                    } else {
+                        logger.error("Pub/Sub 메시지 발행 실패: topic=$pubsubTopic", ex)
+                    }
+                }
         } catch (e: Exception) {
             logger.error("Pub/Sub 메시지 발행 실패: topic=$topic", e)
             throw e
@@ -121,7 +133,13 @@ class PubSubMessagePublisherAdapter(
             logger.debug("📤 Pub/Sub Vertex AI 메시지 생성: $eventJson")
 
             pubSubTemplate.publish(pubsubTopic, eventJson)
-            logger.info("Pub/Sub Vertex AI 메시지 발행 성공: topic=$pubsubTopic, requestId=${request.requestId}")
+                .whenComplete { _, ex ->
+                    if (ex == null) {
+                        logger.info("Pub/Sub Vertex AI 메시지 발행 성공: topic=$pubsubTopic, requestId=${request.requestId}")
+                    } else {
+                        logger.error("Pub/Sub Vertex AI 메시지 발행 실패: topic=$pubsubTopic", ex)
+                    }
+                }
         } catch (e: Exception) {
             logger.error("Pub/Sub Vertex AI 메시지 발행 실패: topic=$topic", e)
             throw e
@@ -138,7 +156,7 @@ class PubSubMessagePublisherAdapter(
                 "strategyId" to request.strategyId,
                 "startDate" to request.startDate,
                 "endDate" to request.endDate,
-                "initialCapital" to request.initialCapital.toString(),
+                "initialCapital" to request.initialCapital,
                 "userId" to request.userId,
                 "tickers" to request.tickers,
                 "benchmark" to request.benchmark,
@@ -164,7 +182,13 @@ class PubSubMessagePublisherAdapter(
             logger.debug("📤 Pub/Sub 백테스트 요청 메시지 생성: $eventJson")
 
             pubSubTemplate.publish(pubsubTopic, eventJson)
-            logger.info("Pub/Sub 백테스트 요청 메시지 발행 성공: topic=$pubsubTopic, requestId=${request.requestId}, strategyId=${request.strategyId}")
+                .whenComplete { _, ex ->
+                    if (ex == null) {
+                        logger.info("Pub/Sub 백테스트 요청 메시지 발행 성공: topic=$pubsubTopic, requestId=${request.requestId}, strategyId=${request.strategyId}")
+                    } else {
+                        logger.error("Pub/Sub 백테스트 요청 메시지 발행 실패: topic=$pubsubTopic", ex)
+                    }
+                }
         } catch (e: Exception) {
             logger.error("Pub/Sub 백테스트 요청 메시지 발행 실패: topic=$topic", e)
             throw e

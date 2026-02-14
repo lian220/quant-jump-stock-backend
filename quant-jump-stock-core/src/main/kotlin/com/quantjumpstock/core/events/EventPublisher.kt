@@ -52,6 +52,11 @@ class EventPublisher(
             val pubsubTopic = toPubSubTopic(topic)
             logger.info("📤 Publishing event (async) to topic [$pubsubTopic]: ${event.eventType}")
             pubSubTemplate.publish(pubsubTopic, message)
+                .whenComplete { _, ex ->
+                    if (ex != null) {
+                        logger.error("❌ Async publish failed for topic [$pubsubTopic]", ex)
+                    }
+                }
         } catch (e: Exception) {
             logger.error("❌ Error publishing event asynchronously to topic [$topic]", e)
         }

@@ -39,7 +39,7 @@ class MessageHandler(ABC):
         """처리 시작 로깅"""
         date_info = self._format_date_range(message.start_date, message.end_date)
         logger.info("=" * 80)
-        logger.info(f"{description} Kafka 메시지 수신")
+        logger.info(f"{description} Pub/Sub 메시지 수신")
         logger.info(f"Request ID: {message.request_id}")
         logger.info(f"Date Range: {date_info}")
         logger.info(f"Thread TS: {message.thread_ts}")
@@ -143,7 +143,7 @@ class EconomicDataHandler(MessageHandler):
 
         # 수집 시작 알림
         if self.notifier:
-            source = message.payload.get("source", "kafka")
+            source = message.payload.get("source", "pubsub")
             self.notifier.notify_start(message.request_id, source, message.thread_ts)
 
         try:
@@ -386,7 +386,7 @@ class StrategyExecutionHandler(MessageHandler):
             if not symbols:
                 raise ValueError("symbols 필드가 필요합니다")
 
-            # 비동기 실행을 동기로 래핑 (Kafka 핸들러는 동기)
+            # 비동기 실행을 동기로 래핑 (Pub/Sub 핸들러는 동기)
             import asyncio
 
             async def _execute():
@@ -398,14 +398,7 @@ class StrategyExecutionHandler(MessageHandler):
                 )
                 return await self.service.execute_batch(request)
 
-            # 이벤트 루프 생성/재사용
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-            result = loop.run_until_complete(_execute())
+            result = asyncio.run(_execute())
 
             self._log_success("전략 실행", start_time)
 
@@ -462,7 +455,8 @@ class BacktestServiceProtocol(Protocol):
         existing_backtest: Optional[dict],
         checkpoint: Optional[object],
         equity_curve_data: Optional[list] = None,
-        benchmark: str = DEFAULT_BENCHMARK
+        benchmark: str = DEFAULT_BENCHMARK,
+        user_id: Optional[int] = None
     ) -> object:
         """증분 백테스트 실행"""
         ...
@@ -524,7 +518,7 @@ class VertexAIHandler(MessageHandler):
     """
     Vertex AI 예측 실행 핸들러
 
-    Kafka 메시지를 받아 Vertex AI Custom Job을 실행합니다.
+    Pub/Sub 메시지를 받아 Vertex AI Custom Job을 실행합니다.
     """
 
     def __init__(
@@ -617,7 +611,7 @@ class BacktestRequestHandler(MessageHandler):
     """
     백테스트 실행 요청 핸들러
 
-    SCRUM-186: Kafka로 백테스트 요청을 받아 실행하고
+    SCRUM-186: Pub/Sub으로 백테스트 요청을 받아 실행하고
     결과를 PostgreSQL에 저장합니다.
     """
 
@@ -703,6 +697,8 @@ class BacktestRequestHandler(MessageHandler):
                     
                 logger.info(f"모든 종목({len(tickers)}개)의 데이터 존재 확인 완료")
                 
+            except ValueError:
+                raise  # missing tickers → propagate to caller
             except Exception as data_check_error:
                 logger.error(f"데이터 존재 여부 확인 중 오류: {data_check_error}")
                 # 데이터 체크 실패 시에도 백테스트는 진행 (기존 동작 유지)
@@ -806,14 +802,7 @@ class BacktestRequestHandler(MessageHandler):
 
                 return result, result_id, incremental_result.is_incremental
 
-            # 이벤트 루프 생성/재사용
-            try:
-                loop = asyncio.get_event_loop()
-            except RuntimeError:
-                loop = asyncio.new_event_loop()
-                asyncio.set_event_loop(loop)
-
-            result, result_id, is_incremental = loop.run_until_complete(_execute())
+            result, result_id, is_incremental = asyncio.run(_execute())
 
             elapsed = time.time() - start_time
             execution_type = "증분" if is_incremental else "전체"

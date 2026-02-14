@@ -536,7 +536,7 @@ docker exec quantiq-data-engine printenv SLACK_CHANNEL
 
 ### 아키텍처
 - [스케줄러 아키텍처](../architecture/스케줄러_아키텍처.md) - Quartz 스케줄러 구조
-- [이벤트 기반 아키텍처](../../../docs/infra/kafka-to-pubsub-migration.md) - 메시징 아키텍처 (Pub/Sub)
+- [메시징 아키텍처 (Kafka→Pub/Sub 마이그레이션)](../../../docs/infra/kafka-to-pubsub-migration.md) - GCP Pub/Sub 마이그레이션 전략
 
 ### 설정 가이드
 - [환경설정 가이드](./환경설정_가이드.md) - 전체 환경 설정

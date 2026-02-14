@@ -6,8 +6,9 @@ Pub/Sub Publisher Adapter
 
 import logging
 import json
+import uuid
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from google.cloud import pubsub_v1
 
 from config.settings import Settings
@@ -60,8 +61,8 @@ class PubSubPublisherAdapter:
 
         event = {
             "eventType": event_type,
-            "eventId": f"{event_type}_{datetime.utcnow().timestamp()}",
-            "timestamp": datetime.utcnow().isoformat(),
+            "eventId": str(uuid.uuid4()),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "payload": data
         }
 
@@ -115,6 +116,7 @@ class PubSubPublisherAdapter:
     def close(self) -> None:
         """Publisher 종료"""
         if self._publisher:
+            self._publisher.stop()
             self._publisher = None
             logger.info("Pub/Sub publisher closed")
 

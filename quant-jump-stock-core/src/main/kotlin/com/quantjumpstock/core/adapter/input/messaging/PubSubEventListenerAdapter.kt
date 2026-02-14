@@ -41,7 +41,7 @@ class PubSubEventListenerAdapter(
                 handler(data)
                 message.ack()
             } catch (e: Exception) {
-                logger.error("메시지 처리 실패 (subscription=$subscription): $e")
+                logger.error("메시지 처리 실패 (subscription=$subscription)", e)
                 message.nack()
             }
         }
@@ -68,6 +68,7 @@ class PubSubEventListenerAdapter(
             logger.info("✅ 분석 완료 이벤트 처리 완료")
         } catch (e: Exception) {
             logger.error("❌ 분석 완료 이벤트 처리 실패: $message", e)
+            throw e
         }
     }
 
@@ -90,6 +91,7 @@ class PubSubEventListenerAdapter(
             logger.info("Duration: ${duration}초")
         } catch (e: Exception) {
             logger.error("❌ 경제 데이터 업데이트 이벤트 처리 실패: $message", e)
+            throw e
         }
     }
 
@@ -118,6 +120,7 @@ class PubSubEventListenerAdapter(
             }
         } catch (e: Exception) {
             logger.error("❌ 경제 데이터 동기화 실패 이벤트 처리 실패: $message", e)
+            throw e
         }
     }
 
@@ -140,6 +143,7 @@ class PubSubEventListenerAdapter(
             logger.info("신뢰도: ${confidence * 100}%")
         } catch (e: Exception) {
             logger.error("❌ 매매 신호 이벤트 처리 실패: $message", e)
+            throw e
         }
     }
 
@@ -168,6 +172,7 @@ class PubSubEventListenerAdapter(
             logger.info("✅ 백테스트 결과 저장 완료")
         } catch (e: Exception) {
             logger.error("❌ 백테스트 완료 이벤트 처리 실패: $message", e)
+            throw e
         }
     }
 
@@ -196,6 +201,7 @@ class PubSubEventListenerAdapter(
             logger.info("✅ 백테스트 실패 결과 저장 완료")
         } catch (e: Exception) {
             logger.error("❌ 백테스트 실패 이벤트 처리 실패: $message", e)
+            throw e
         }
     }
 
