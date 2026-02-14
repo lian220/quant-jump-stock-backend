@@ -61,6 +61,7 @@ services:
     profiles: [ "local" ]
     env_file:
       - .env.common
+      - ${DB_ENV_FILE:-.env.db.local}
       - ${ENV_FILE:-.env.local}
     environment:
       POSTGRES_DB: ${DB_NAME:-quantiq}
@@ -98,6 +99,7 @@ services:
       - "27017:27017"
     env_file:
       - .env.common
+      - ${DB_ENV_FILE:-.env.db.local}
       - ${ENV_FILE:-.env.local}
     environment:
       MONGO_INITDB_ROOT_USERNAME: quantiq_user
@@ -131,6 +133,7 @@ services:
         condition: service_healthy
     env_file:
       - .env.common
+      - ${DB_ENV_FILE:-.env.db.local}
       - ${ENV_FILE:-.env.local}
     environment:
       TZ: "Asia/Seoul"
@@ -179,6 +182,7 @@ services:
         condition: service_healthy
     env_file:
       - .env.common
+      - ${DB_ENV_FILE:-.env.db.local}
       - ${ENV_FILE:-.env.local}
     volumes:
       - ./credentials:/app/credentials

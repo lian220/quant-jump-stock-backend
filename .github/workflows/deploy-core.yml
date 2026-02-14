@@ -12,7 +12,6 @@ on:
 env:
   REGION: asia-northeast3
   AR_REPO: asia-northeast3-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/qjs-docker
-  CLOUD_RUN_SERVICE: qjs-core-api
 
 jobs:
   build-and-deploy:
@@ -31,18 +30,6 @@ jobs:
 
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
-
-      # ── Load env from Secret Manager ──────────────
-      - name: Load environment variables
-        run: |
-          gcloud secrets versions access latest --secret=qjs-env-common > /tmp/env-common
-          gcloud secrets versions access latest --secret=qjs-env-prod > /tmp/env-prod
-
-          # 주석/빈줄 제거 후 GITHUB_ENV에 추가
-          grep -v '^\s*#' /tmp/env-common | grep -v '^\s*$' >> $GITHUB_ENV
-          grep -v '^\s*#' /tmp/env-prod | grep -v '^\s*$' >> $GITHUB_ENV
-
-          rm -f /tmp/env-common /tmp/env-prod
 
       # ── Java Build ──────────────────────────────────
       - name: Set up JDK 21
@@ -71,76 +58,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # ── Deploy to Cloud Run ────────────────────────
-      - name: Deploy Core API to Cloud Run
-        uses: google-github-actions/deploy-cloudrun@v2
-        with:
-          service: ${{ env.CLOUD_RUN_SERVICE }}
-          image: ${{ env.AR_REPO }}/qjs-core:latest
-          region: ${{ env.REGION }}
-          flags: >-
-            --allow-unauthenticated
-            --memory=1Gi --cpu=1
-            --min-instances=1 --max-instances=4
-            --port=8080 --timeout=300 --concurrency=80
-            --service-account=qjs-core-api@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
-          env_vars: |
-            SPRING_PROFILES_ACTIVE=prod,cloudrun
-            SERVER_PORT=8080
-            MESSAGING_PROVIDER=pubsub
-            GCP_ENABLED=true
-            PUBSUB_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
-            DB_HOST=${{ env.DB_HOST }}
-            DB_PORT=${{ env.DB_PORT }}
-            DB_NAME=${{ env.DB_NAME }}
-            DB_USER=${{ env.DB_USER }}
-            DB_PASSWORD=${{ env.DB_PASSWORD }}
-            MONGODB_URI=${{ env.MONGODB_URI }}
-            MONGODB_DB_NAME=${{ env.MONGODB_DB_NAME }}
-            FRED_API_KEY=${{ env.FRED_API_KEY }}
-            ALPHA_VANTAGE_API_KEY=${{ env.ALPHA_VANTAGE_API_KEY }}
-            NAVER_CLIENT_ID=${{ env.NAVER_CLIENT_ID }}
-            NAVER_CLIENT_SECRET=${{ env.NAVER_CLIENT_SECRET }}
-            NAVER_REDIRECT_URI=${{ env.NAVER_REDIRECT_URI }}
-            OAUTH_FRONTEND_REDIRECT_URL=${{ env.OAUTH_FRONTEND_REDIRECT_URL }}
-            JWT_SECRET=${{ env.JWT_SECRET }}
-            JWT_EXPIRATION_HOURS=${{ env.JWT_EXPIRATION_HOURS }}
-            JWT_ISSUER=${{ env.JWT_ISSUER }}
-            CORS_ALLOWED_ORIGINS=${{ env.CORS_ALLOWED_ORIGINS }}
-            SLACK_ENABLED=${{ env.SLACK_ENABLED }}
-            SLACK_WEBHOOK_URL_TRADING=${{ env.SLACK_WEBHOOK_URL_TRADING }}
-            SLACK_WEBHOOK_URL_ANALYSIS=${{ env.SLACK_WEBHOOK_URL_ANALYSIS }}
-            SLACK_WEBHOOK_URL_SCHEDULER=${{ env.SLACK_WEBHOOK_URL_SCHEDULER }}
-            SLACK_WEBHOOK_URL_ERROR=${{ env.SLACK_WEBHOOK_URL_ERROR }}
-            SLACK_BOT_TOKEN=${{ env.SLACK_BOT_TOKEN }}
-            SLACK_CHANNEL=${{ env.SLACK_CHANNEL }}
-            KIS_BASE_URL=${{ env.KIS_BASE_URL }}
-            SWAGGER_ENABLED=false
-
-      # ── Health Check ────────────────────────────────
-      - name: Verify Cloud Run Deployment
-        run: |
-          SERVICE_URL=$(gcloud run services describe ${{ env.CLOUD_RUN_SERVICE }} \
-            --region ${{ env.REGION }} \
-            --format 'value(status.url)')
-          echo "Cloud Run URL: $SERVICE_URL"
-
-          echo "Waiting for Core API startup..."
-          for i in $(seq 1 12); do
-            sleep 10
-            HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" \
-              "$SERVICE_URL/api/v1/auth/oauth2/urls" 2>/dev/null || echo "000")
-            if [ "$HTTP_CODE" = "200" ]; then
-              echo "✅ Core API is healthy!"
-              exit 0
-            fi
-            echo "  ...attempt $i/12 (HTTP $HTTP_CODE)"
-          done
-          echo "❌ Core API not ready after 120s"
-          exit 1
-
-      # ── Update VM Scheduler ────────────────────────
-      - name: Update VM Scheduler
+      # ── Deploy to VM ────────────────────────────────
+      - name: Deploy Core API to VM
         uses: appleboy/ssh-action@v1
         with:
           host: ${{ secrets.GCE_HOST }}
@@ -149,24 +68,16 @@ jobs:
           script: |
             cd /opt/quant-jump-stock
 
-            # Pull .env from Secret Manager
+            # Secret Manager에서 env 파일 3개 다운로드
             gcloud secrets versions access latest --secret=qjs-env-common \
-              > ./quant-jump-stock-backend/.env.common 2>/dev/null
+              > ./quant-jump-stock-backend/.env.common
+            gcloud secrets versions access latest --secret=qjs-env-db-prod \
+              > ./quant-jump-stock-backend/.env.db.prod
             gcloud secrets versions access latest --secret=qjs-env-prod \
-              > ./quant-jump-stock-backend/.env.prod 2>/dev/null
+              > ./quant-jump-stock-backend/.env.prod
 
-            # Vertex AI credentials
-            mkdir -p ./credentials
-            gcloud secrets versions access latest --secret=qjs-vertex-ai-key \
-              > ./credentials/vertex-ai-key.json 2>/dev/null || echo "⚠️ qjs-vertex-ai-key not found"
-            if [ -f ./credentials/vertex-ai-key.json ] && [ -s ./credentials/vertex-ai-key.json ]; then
-              chmod 600 ./credentials/vertex-ai-key.json
-            fi
-
-            # Create docker-compose .env
-            : > .env
-            grep -v '^\s*#' ./quant-jump-stock-backend/.env.common | grep -v '^\s*$' >> .env
-            grep -v '^\s*#' ./quant-jump-stock-backend/.env.prod | grep -v '^\s*$' >> .env
+            # docker-compose ${AR_REPO} 치환용 .env
+            grep '^AR_REPO=' ./quant-jump-stock-backend/.env.prod > .env
 
             # Sync config files from repo
             git fetch origin main --quiet 2>/dev/null || true
@@ -179,12 +90,30 @@ jobs:
               cp -f ./quant-jump-stock-backend/docker-compose.prod.yml docker-compose.prod.yml
             fi
 
-            # Pull & restart scheduler
-            docker compose -f docker-compose.prod.yml pull scheduler
-            docker compose -f docker-compose.prod.yml up -d --no-deps scheduler
+            # Pull & restart Core API
+            docker compose -f docker-compose.prod.yml pull core
+            docker compose -f docker-compose.prod.yml up -d --no-deps core
             docker image prune -f
 
-            # Nginx reload (설정 변경 반영)
+            # Nginx reload
+            docker compose -f docker-compose.prod.yml up -d --no-deps nginx
             docker exec qjs-nginx nginx -s reload 2>/dev/null || true
 
-            echo "✅ VM Scheduler updated"
+            echo "Core API deployed to VM"
+
+      # ── Health Check ────────────────────────────────
+      - name: Verify Deployment
+        run: |
+          echo "Waiting for Core API startup..."
+          for i in $(seq 1 12); do
+            sleep 10
+            HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" \
+              "http://${{ secrets.GCE_HOST }}/api/v1/auth/oauth2/urls" 2>/dev/null || echo "000")
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "Core API is healthy!"
+              exit 0
+            fi
+            echo "  ...attempt $i/12 (HTTP $HTTP_CODE)"
+          done
+          echo "Core API not ready after 120s"
+          exit 1

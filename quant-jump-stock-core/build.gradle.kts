@@ -51,13 +51,6 @@ dependencies {
     // Quartz Scheduler
     implementation("org.springframework.boot:spring-boot-starter-quartz")
 
-    // Google Cloud Vertex AI
-    implementation("com.google.cloud:google-cloud-aiplatform:3.38.0")
-    implementation("com.google.cloud:google-cloud-storage:2.30.1")
-
-    // Apache Commons Compress for tar.gz
-    implementation("org.apache.commons:commons-compress:1.25.0")
-
     // SpringDoc OpenAPI (Swagger)
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.3.0")
 

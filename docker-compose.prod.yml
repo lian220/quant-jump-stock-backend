@@ -1,12 +1,17 @@
 # ============================================================
 # Quant Jump Stock - Production (GCE VM)
 # ============================================================
-# Scheduler (Quartz) + Nginx만 VM에서 실행.
-# Core API / Data Engine / Frontend / Backoffice는 Cloud Run.
+# Core API (HTTP + Quartz + Pub/Sub) + Nginx를 VM에서 실행.
+# Data Engine / Frontend / Backoffice는 Cloud Run.
+#
+# 환경변수: Secret Manager → .env 파일 3개 다운로드
+#   qjs-env-common  → .env.common
+#   qjs-env-db-prod → .env.db.prod
+#   qjs-env-prod    → .env.prod
 # ============================================================
 
 services:
-  # ── Nginx (Scheduler Health Check + 레거시 호환) ──────────
+  # ── Nginx (Reverse Proxy) ──────────────────────────────
   nginx:
     image: nginx:1.25-alpine
     container_name: qjs-nginx
@@ -17,7 +22,7 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./ssl:/etc/nginx/ssl:ro
     depends_on:
-      scheduler:
+      core:
         condition: service_started
     deploy:
       resources:
@@ -25,44 +30,35 @@ services:
           memory: 32M
     restart: unless-stopped
 
-  # ── Scheduler (Quartz Only) ─────────────────────────────
-  # Core API와 동일 이미지, cloudrun 프로필 미사용 → Quartz 활성화
-  # HTTP 트래픽은 Cloud Run으로 이동, VM은 스케줄러 + Pub/Sub 발행만
-  scheduler:
+  # ── Core API (HTTP + Quartz + Pub/Sub) ─────────────────
+  core:
     image: ${AR_REPO}/qjs-core:latest
-    container_name: qjs-scheduler
+    container_name: qjs-core
     env_file:
+      # Secret Manager에서 다운로드한 env 파일 3개
+      # Spring Boot application.yml이 ${DB_HOST}, ${MONGODB_URI} 등을 직접 읽음
       - path: ./quant-jump-stock-backend/.env.common
+        required: false
+      - path: ./quant-jump-stock-backend/.env.db.prod
         required: false
       - path: ./quant-jump-stock-backend/.env.prod
         required: false
     environment:
+      # docker-compose 전용 설정 (env 파일에 없는 것들만)
       - DOCKER_CONTAINER=true
       - SERVER_PORT=10010
-      - JAVA_OPTS=-Xmx512m -Xms256m
+      - JAVA_OPTS=-Xmx768m -Xms384m
       - SPRING_PROFILES_ACTIVE=prod
-      - SPRING_DATASOURCE_URL=jdbc:postgresql://${DB_HOST}:${DB_PORT:-5432}/${DB_NAME:-quantiq}?prepareThreshold=0
-      - SPRING_DATASOURCE_USERNAME=${DB_USER}
-      - SPRING_DATASOURCE_PASSWORD=${DB_PASSWORD}
-      - SPRING_DATA_MONGODB_URI=${MONGODB_URI}
       - SPRING_QUARTZ_JOB_STORE_TYPE=memory
-      - MESSAGING_PROVIDER=pubsub
-      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
-      - PUBSUB_PROJECT_ID=${PUBSUB_PROJECT_ID:-${GCP_PROJECT_ID}}
       - SPRING_FLYWAY_BASELINE_ON_MIGRATE=true
       - SPRING_FLYWAY_VALIDATE_ON_MIGRATE=false
-      # Vertex AI 전용 인증 (Pub/Sub는 ADC 사용)
-      - VERTEX_AI_CREDENTIALS_PATH=/app/credentials/vertex-ai-key.json
-    volumes:
-      - ./credentials:/app/credentials:ro
     expose:
       - "10010"
     deploy:
       resources:
         limits:
-          memory: 768M
+          memory: 1024M
     restart: unless-stopped
 
-  # NOTE: Core API HTTP 트래픽은 Cloud Run qjs-core-api로 이동
   # NOTE: Data Engine은 Cloud Run qjs-data-engine으로 분리됨
   # NOTE: Kafka/Zookeeper는 Pub/Sub으로 대체됨

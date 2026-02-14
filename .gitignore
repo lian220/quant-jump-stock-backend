@@ -9,6 +9,7 @@ data/
 .env.local
 .env.common
 .env.*.local
+.env.db.*
 .env.github
 
 # IDE
