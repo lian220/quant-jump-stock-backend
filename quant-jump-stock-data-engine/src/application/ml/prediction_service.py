@@ -116,29 +116,27 @@ class PredictionService:
             # 최신 패키지 URI 조회
             package_uri = self.storage_service.get_latest_package_uri()
 
-            # 기본 환경 변수 (VERTEX_AI_ prefix 통일)
             import os
             from datetime import datetime
+            from config.vertex_ai_job_env import VertexAIJobEnvLoader
 
             # target_date가 None이면 현재 날짜 사용
             analysis_date = target_date or datetime.now().strftime("%Y-%m-%d")
 
+            # .env.db.prod에서 DB 환경변수 로드 (프로세스 환경 오염 없음)
+            db_env = VertexAIJobEnvLoader().load()
+
             job_env_vars = {
-                "GCS_BUCKET": self.config.bucket_name,
-                "GCP_PROJECT_ID": self.config.project_id,
-                "TARGET_DATE": analysis_date,  # 🆕 분석 기준 날짜
+                # Vertex AI / GCS 설정
+                "VERTEX_AI_MODEL_BUCKET": self.config.bucket_name,
+                "VERTEX_AI_PROJECT_ID": self.config.project_id,
+                # 학습 설정
+                "TARGET_DATE": analysis_date,
                 "FINE_TUNE_MODE": "true",
                 "FINE_TUNE_EPOCHS": "5",
                 "FULL_TRAIN_EPOCHS": "50",
-                # DB 연결 정보 (VERTEX_AI_ prefix 통일)
-                "VERTEX_AI_DB_HOST": os.getenv("VERTEX_AI_DB_HOST", ""),
-                "VERTEX_AI_DB_PORT": os.getenv("VERTEX_AI_DB_PORT", "5432"),
-                "VERTEX_AI_DB_NAME": os.getenv("VERTEX_AI_DB_NAME", "quantiq"),
-                "VERTEX_AI_DB_USER": os.getenv("VERTEX_AI_DB_USER", ""),
-                "VERTEX_AI_DB_PASSWORD": os.getenv("VERTEX_AI_DB_PASSWORD", ""),
-                # MongoDB 연결 정보 (VERTEX_AI_ prefix 통일)
-                "VERTEX_AI_MONGODB_URI": os.getenv("VERTEX_AI_MONGODB_URI", ""),
-                "VERTEX_AI_MONGODB_DATABASE": os.getenv("VERTEX_AI_MONGODB_DATABASE", "stock_trading"),
+                # DB 연결 정보 (.env.db.prod에서 로드)
+                **db_env,
                 # Slack 설정
                 "SLACK_BOT_TOKEN": os.getenv("SLACK_BOT_TOKEN", ""),
                 "SLACK_CHANNEL": os.getenv("SLACK_CHANNEL", "#trading-alerts"),

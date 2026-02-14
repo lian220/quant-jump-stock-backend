@@ -33,6 +33,12 @@ load_env() {
         exit 1
     }
 
+    gcloud secrets versions access latest --secret=qjs-env-db-prod \
+        > ./quant-jump-stock-backend/.env.db.prod 2>/dev/null || {
+        log_error "Failed to fetch qjs-env-db-prod"
+        exit 1
+    }
+
     gcloud secrets versions access latest --secret=qjs-env-prod \
         > ./quant-jump-stock-backend/.env.prod 2>/dev/null || {
         log_error "Failed to fetch qjs-env-prod"
@@ -40,25 +46,29 @@ load_env() {
     }
 
     # Validate
-    if [ ! -s ./quant-jump-stock-backend/.env.common ] || [ ! -s ./quant-jump-stock-backend/.env.prod ]; then
+    if [ ! -s ./quant-jump-stock-backend/.env.common ] || \
+       [ ! -s ./quant-jump-stock-backend/.env.db.prod ] || \
+       [ ! -s ./quant-jump-stock-backend/.env.prod ]; then
         log_error "Environment files are empty"
         exit 1
     fi
 
     # Vertex AI credentials
-    mkdir -p ./credentials
+    mkdir -p ./quant-jump-stock-backend/credentials
     gcloud secrets versions access latest --secret=qjs-vertex-ai-key \
-        > ./credentials/vertex-ai-key.json 2>/dev/null || {
+        > ./quant-jump-stock-backend/credentials/vertex-ai-key.json 2>/dev/null || {
         log_warn "qjs-vertex-ai-key not found in Secret Manager (Vertex AI disabled)"
     }
-    if [ -f ./credentials/vertex-ai-key.json ] && [ -s ./credentials/vertex-ai-key.json ]; then
-        chmod 600 ./credentials/vertex-ai-key.json
+    if [ -f ./quant-jump-stock-backend/credentials/vertex-ai-key.json ] && \
+       [ -s ./quant-jump-stock-backend/credentials/vertex-ai-key.json ]; then
+        chmod 600 ./quant-jump-stock-backend/credentials/vertex-ai-key.json
         log_info "Vertex AI credentials loaded"
     fi
 
-    # docker-compose용 .env 생성
+    # docker-compose용 .env 생성 (env 파일 3개 병합)
     : > .env
     grep -v '^\s*#' ./quant-jump-stock-backend/.env.common | grep -v '^\s*$' >> .env
+    grep -v '^\s*#' ./quant-jump-stock-backend/.env.db.prod | grep -v '^\s*$' >> .env
     grep -v '^\s*#' ./quant-jump-stock-backend/.env.prod | grep -v '^\s*$' >> .env
 
     # Artifact Registry 경로 추가

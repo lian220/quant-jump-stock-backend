@@ -25,31 +25,31 @@ source "$ENV_FILE"
 set +a
 echo ""
 
-# 2. GCP 설정 확인
-if [ "$GCP_ENABLED" != "true" ]; then
-    echo "❌ 오류: GCP_ENABLED=true로 설정해주세요."
+# 2. Vertex AI 설정 확인
+if [ "$VERTEX_AI_ENABLED" != "true" ]; then
+    echo "❌ 오류: VERTEX_AI_ENABLED=true로 설정해주세요."
     exit 1
 fi
 
-if [ -z "$GCP_PROJECT_ID" ]; then
-    echo "❌ 오류: GCP_PROJECT_ID를 설정해주세요."
+if [ -z "$VERTEX_AI_PROJECT_ID" ]; then
+    echo "❌ 오류: VERTEX_AI_PROJECT_ID를 설정해주세요."
     exit 1
 fi
 
-if [ -z "$GCS_BUCKET" ]; then
-    echo "❌ 오류: GCS_BUCKET을 설정해주세요."
+if [ -z "$VERTEX_AI_MODEL_BUCKET" ]; then
+    echo "❌ 오류: VERTEX_AI_MODEL_BUCKET을 설정해주세요."
     exit 1
 fi
 
-GCS_BUCKET="${GCS_BUCKET:-quantiq-ml-models}"
+VERTEX_AI_MODEL_BUCKET="${VERTEX_AI_MODEL_BUCKET:-quantiq-ml-models}"
 GCS_PACKAGE_BASE_PATH="${GCS_PACKAGE_BASE_PATH:-ml-packages}"
 TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 PACKAGE_NAME="quantiq-ml-package-${TIMESTAMP}.tar.gz"
-GCS_PACKAGE_URI="gs://${GCS_BUCKET}/${GCS_PACKAGE_BASE_PATH}/${PACKAGE_NAME}"
+GCS_PACKAGE_URI="gs://${VERTEX_AI_MODEL_BUCKET}/${GCS_PACKAGE_BASE_PATH}/${PACKAGE_NAME}"
 
-echo "✅ GCP 설정 확인 완료"
-echo "  프로젝트: $GCP_PROJECT_ID"
-echo "  버킷: $GCS_BUCKET"
+echo "✅ Vertex AI 설정 확인 완료"
+echo "  프로젝트: $VERTEX_AI_PROJECT_ID"
+echo "  버킷: $VERTEX_AI_MODEL_BUCKET"
 echo "  패키지 경로: $GCS_PACKAGE_BASE_PATH"
 echo "  패키지명: $PACKAGE_NAME"
 echo ""
@@ -89,11 +89,11 @@ else
 fi
 
 # 프로젝트 설정
-gcloud config set project "$GCP_PROJECT_ID" 2>/dev/null
+gcloud config set project "$VERTEX_AI_PROJECT_ID" 2>/dev/null
 
 # 버킷 존재 확인
-if ! gsutil ls "gs://${GCS_BUCKET}" &> /dev/null; then
-    echo "❌ 오류: GCS 버킷 'gs://${GCS_BUCKET}'에 접근할 수 없습니다."
+if ! gsutil ls "gs://${VERTEX_AI_MODEL_BUCKET}" &> /dev/null; then
+    echo "❌ 오류: GCS 버킷 'gs://${VERTEX_AI_MODEL_BUCKET}'에 접근할 수 없습니다."
     echo "   버킷을 생성하거나 권한을 확인해주세요."
     exit 1
 fi

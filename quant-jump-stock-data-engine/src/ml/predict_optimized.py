@@ -21,8 +21,8 @@ from pymongo import MongoClient, UpdateOne
 from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 
 # MongoDB 연결 설정 (MONGODB_URI 통일)
-mongodb_uri: str = os.getenv("VERTEX_AI_MONGODB_URI") or os.getenv("MONGODB_URI") or ""
-mongodb_database: str = os.getenv("VERTEX_AI_MONGODB_DATABASE") or os.getenv("MONGODB_DB_NAME") or "stock_trading"
+mongodb_uri: str = os.getenv("MONGODB_URI") or ""
+mongodb_database: str = os.getenv("MONGODB_DB_NAME") or "stock_trading"
 
 def get_mongodb_client(mongodb_uri: str, mongodb_database: str):
     """MongoDB 클라이언트 연결"""
@@ -31,7 +31,7 @@ def get_mongodb_client(mongodb_uri: str, mongodb_database: str):
     print(f"MONGODB_DATABASE: {mongodb_database}")
 
     if not mongodb_uri:
-        raise ValueError("MONGODB_URI 환경변수가 설정되지 않았습니다. VERTEX_AI_MONGODB_URI 또는 MONGODB_URI를 설정해주세요.")
+        raise ValueError("MONGODB_URI 환경변수가 설정되지 않았습니다.")
 
     final_url = mongodb_uri
     
@@ -74,8 +74,8 @@ except Exception as e:
     print(f"   에러 타입: {type(e).__name__}")
     print(f"   에러 메시지: {str(e)}")
     print(f"\n환경변수 확인:")
-    print(f"   VERTEX_AI_MONGODB_URI: {'설정됨' if os.getenv('VERTEX_AI_MONGODB_URI') else '❌ 없음'}")
-    print(f"   VERTEX_AI_MONGODB_DATABASE: {'설정됨' if os.getenv('VERTEX_AI_MONGODB_DATABASE') else '기본값 사용 (stock_trading)'}")
+    print(f"   MONGODB_URI: {'설정됨' if os.getenv('MONGODB_URI') else '❌ 없음'}")
+    print(f"   MONGODB_DB_NAME: {'설정됨' if os.getenv('MONGODB_DB_NAME') else '기본값 사용 (stock_trading)'}")
     db = None
     mongodb_client = None
 
@@ -85,12 +85,12 @@ except Exception as e:
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-# PostgreSQL 연결 설정 (VERTEX_AI_ prefix 통일)
-pg_host = os.getenv("VERTEX_AI_DB_HOST") or os.getenv("DB_HOST") or "localhost"
-pg_port = os.getenv("VERTEX_AI_DB_PORT") or os.getenv("DB_PORT") or "5432"
-pg_database = os.getenv("VERTEX_AI_DB_NAME") or os.getenv("DB_NAME") or "quantiq"
-pg_user = os.getenv("VERTEX_AI_DB_USER") or os.getenv("DB_USER") or "quantiq_user"
-pg_password = os.getenv("VERTEX_AI_DB_PASSWORD") or os.getenv("DB_PASSWORD") or "quantiq_password"
+# PostgreSQL 연결 설정
+pg_host = os.getenv("DB_HOST") or "localhost"
+pg_port = os.getenv("DB_PORT") or "5432"
+pg_database = os.getenv("DB_NAME") or "quantiq"
+pg_user = os.getenv("DB_USER") or "quantiq_user"
+pg_password = os.getenv("DB_PASSWORD") or "quantiq_password"
 
 def get_postgres_connection():
     """PostgreSQL 연결 생성"""
@@ -202,21 +202,21 @@ def send_slack_notification(status: str, message: str = None, error_detail: str 
 pg_connection_available = False
 
 print("\n=== PostgreSQL 연결 시도 ===")
-print(f"VERTEX_AI_DB_HOST 설정 여부: {'설정됨 (' + pg_host + ')' if os.getenv('VERTEX_AI_DB_HOST') else '기본값 사용 (localhost)'}")
-print(f"VERTEX_AI_DB_PORT: {pg_port}")
-print(f"VERTEX_AI_DB_NAME: {pg_database}")
-print(f"VERTEX_AI_DB_USER 설정 여부: {'설정됨' if os.getenv('VERTEX_AI_DB_USER') else '기본값 사용'}")
-print(f"VERTEX_AI_DB_PASSWORD 설정 여부: {'설정됨' if os.getenv('VERTEX_AI_DB_PASSWORD') else '기본값 사용'}")
+print(f"DB_HOST: {'설정됨 (' + pg_host + ')' if os.getenv('DB_HOST') else '기본값 사용 (localhost)'}")
+print(f"DB_PORT: {pg_port}")
+print(f"DB_NAME: {pg_database}")
+print(f"DB_USER: {'설정됨' if os.getenv('DB_USER') else '기본값 사용'}")
+print(f"DB_PASSWORD: {'설정됨' if os.getenv('DB_PASSWORD') else '기본값 사용'}")
 
-# PostgreSQL 환경변수 필수 체크 (VERTEX_AI_ prefix)
-if not os.getenv("VERTEX_AI_DB_HOST"):
+# PostgreSQL 환경변수 필수 체크
+if not os.getenv("DB_HOST"):
     print("⚠️ PostgreSQL 환경변수 미설정 - PostgreSQL 연결 스킵")
     print("PostgreSQL 연결 상태: ❌ 미연결")
     # 환경변수 미설정 시 Slack 알림 전송 후 종료
     send_slack_notification(
         status="FAILED",
-        message="PostgreSQL 환경변수(VERTEX_AI_DB_HOST 등)가 설정되지 않았습니다.",
-        error_detail="VERTEX_AI_DB_HOST 환경변수가 필요합니다. Vertex AI Job 환경변수 설정을 확인해주세요."
+        message="PostgreSQL 환경변수(DB_HOST 등)가 설정되지 않았습니다.",
+        error_detail="DB_HOST 환경변수가 필요합니다. Vertex AI Job 환경변수 설정을 확인해주세요."
     )
     print("\n❌ PostgreSQL 연결 필수 - 스크립트 종료")
     exit(1)

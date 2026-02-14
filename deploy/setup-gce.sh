@@ -78,6 +78,12 @@ gcloud secrets versions access latest --secret=qjs-env-common \
     exit 1
 }
 
+gcloud secrets versions access latest --secret=qjs-env-db-prod \
+    > ./quant-jump-stock-backend/.env.db.prod 2>/dev/null || {
+    log_error "qjs-env-db-prod 가져오기 실패"
+    exit 1
+}
+
 gcloud secrets versions access latest --secret=qjs-env-prod \
     > ./quant-jump-stock-backend/.env.prod 2>/dev/null || {
     log_error "qjs-env-prod 가져오기 실패"
@@ -86,21 +92,23 @@ gcloud secrets versions access latest --secret=qjs-env-prod \
 
 # Vertex AI credentials
 log_info "Vertex AI credentials 다운로드..."
-mkdir -p "$APP_DIR/credentials"
+mkdir -p "$APP_DIR/quant-jump-stock-backend/credentials"
 gcloud secrets versions access latest --secret=qjs-vertex-ai-key \
-    > "$APP_DIR/credentials/vertex-ai-key.json" 2>/dev/null || {
+    > "$APP_DIR/quant-jump-stock-backend/credentials/vertex-ai-key.json" 2>/dev/null || {
     log_warn "qjs-vertex-ai-key not found in Secret Manager (Vertex AI disabled)"
 }
-if [ -f "$APP_DIR/credentials/vertex-ai-key.json" ] && [ -s "$APP_DIR/credentials/vertex-ai-key.json" ]; then
-    chmod 600 "$APP_DIR/credentials/vertex-ai-key.json"
+if [ -f "$APP_DIR/quant-jump-stock-backend/credentials/vertex-ai-key.json" ] && \
+   [ -s "$APP_DIR/quant-jump-stock-backend/credentials/vertex-ai-key.json" ]; then
+    chmod 600 "$APP_DIR/quant-jump-stock-backend/credentials/vertex-ai-key.json"
     log_info "Vertex AI credentials 설정 완료"
 else
     log_warn "Vertex AI credentials 파일이 비어있습니다. 나중에 수동으로 설정하세요."
 fi
 
-# docker-compose용 .env 생성
+# docker-compose용 .env 생성 (env 파일 3개 병합)
 : > .env
 grep -v '^\s*#' ./quant-jump-stock-backend/.env.common | grep -v '^\s*$' >> .env
+grep -v '^\s*#' ./quant-jump-stock-backend/.env.db.prod | grep -v '^\s*$' >> .env
 grep -v '^\s*#' ./quant-jump-stock-backend/.env.prod | grep -v '^\s*$' >> .env
 
 # Artifact Registry 경로 추가
