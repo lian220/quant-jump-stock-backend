@@ -13,7 +13,7 @@ Quantiq의 백엔드 시스템 설계 및 구조입니다.
 - **[email-phone-verification.md](./email-phone-verification.md)** - 이메일/전화번호 인증 계획
 
 ### 이벤트 & 트레이딩
-- **[kafka-architecture-detailed.md](./kafka-architecture-detailed.md)** - Kafka 이벤트 스트리밍 상세 설계
+- **[kafka-to-pubsub-migration.md](../../../docs/infra/kafka-to-pubsub-migration.md)** - 메시징 아키텍처 (Kafka→Pub/Sub 마이그레이션)
 - **[trading-system-enhancements.md](./trading-system-enhancements.md)** - 실전 트레이딩 시스템 보완
 
 ### 데이터 아키텍처

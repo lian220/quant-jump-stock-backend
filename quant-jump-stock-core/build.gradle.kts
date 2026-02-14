@@ -32,6 +32,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-cache")
     implementation("com.github.ben-manes.caffeine:caffeine:3.1.8")
     implementation("org.springframework.kafka:spring-kafka")
+    implementation("com.google.cloud:spring-cloud-gcp-starter-pubsub:5.0.0")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
 
@@ -79,7 +80,7 @@ dependencies {
     testImplementation("org.testcontainers:testcontainers:1.19.3")
     testImplementation("org.testcontainers:postgresql:1.19.3")
     testImplementation("org.testcontainers:mongodb:1.19.3")
-    testImplementation("org.testcontainers:kafka:1.19.3")
+    testImplementation("org.testcontainers:gcloud:1.19.3")
     testImplementation("org.testcontainers:junit-jupiter:1.19.3")
 
     // Embedded MongoDB (경량 테스트용)

@@ -6,20 +6,21 @@ import com.quantjumpstock.core.domain.model.BacktestRequest
 import com.quantjumpstock.core.domain.model.EconomicDataUpdateRequest
 import com.quantjumpstock.core.domain.model.VertexAIPredictionRequest
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.google.cloud.spring.pubsub.core.PubSubTemplate
 import org.slf4j.LoggerFactory
-import org.springframework.kafka.core.KafkaTemplate
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.context.annotation.Primary
 import org.springframework.stereotype.Component
 import java.util.*
 
 /**
- * Kafka Message Publisher Adapter (Output Adapter, 레거시 - 롤백 용도로 유지)
- * messaging.provider=kafka 일 때만 활성화됩니다.
+ * Pub/Sub Message Publisher Adapter (Output Adapter)
+ * MessagePublisher 인터페이스를 구현하여 Google Cloud Pub/Sub과 연동합니다.
+ * Kafka 어댑터보다 우선 사용됩니다 (@Primary).
  */
+@Primary
 @Component
-@ConditionalOnProperty(name = ["messaging.provider"], havingValue = "kafka", matchIfMissing = false)
-class KafkaMessagePublisherAdapter(
-    private val kafkaTemplate: KafkaTemplate<String, String>,
+class PubSubMessagePublisherAdapter(
+    private val pubSubTemplate: PubSubTemplate,
     private val objectMapper: ObjectMapper
 ) : MessagePublisher {
 
@@ -30,10 +31,9 @@ class KafkaMessagePublisherAdapter(
         request: EconomicDataUpdateRequest
     ) {
         try {
-            // 이벤트 래퍼 생성 (eventType 포함)
             val event = mapOf(
                 "eventId" to UUID.randomUUID().toString(),
-                "eventType" to topic,  // 토픽을 eventType으로 사용
+                "eventType" to topic,
                 "version" to "1.0",
                 "timestamp" to request.timestamp,
                 "source" to request.source,
@@ -41,24 +41,21 @@ class KafkaMessagePublisherAdapter(
                     "requestId" to request.requestId,
                     "source" to request.source,
                     "timestamp" to request.timestamp,
-                    "threadTs" to request.threadTs,  // Slack 스레드 타임스탬프 추가
+                    "threadTs" to request.threadTs,
                     "startDate" to request.startDate,
                     "endDate" to request.endDate
                 )
             )
 
             val eventJson = objectMapper.writeValueAsString(event)
+            val pubsubTopic = toPubSubTopic(topic)
 
-            logger.debug("📤 Kafka 메시지 생성: $eventJson")
+            logger.debug("📤 Pub/Sub 메시지 생성: $eventJson")
 
-            kafkaTemplate.send(
-                topic,
-                request.requestId,
-                eventJson
-            )
-            logger.info("Kafka 메시지 발행 성공: topic=$topic, requestId=${request.requestId}")
+            pubSubTemplate.publish(pubsubTopic, eventJson)
+            logger.info("Pub/Sub 메시지 발행 성공: topic=$pubsubTopic, requestId=${request.requestId}")
         } catch (e: Exception) {
-            logger.error("Kafka 메시지 발행 실패: topic=$topic", e)
+            logger.error("Pub/Sub 메시지 발행 실패: topic=$topic", e)
             throw e
         }
     }
@@ -68,10 +65,9 @@ class KafkaMessagePublisherAdapter(
         request: AnalysisRequest
     ) {
         try {
-            // 이벤트 래퍼 생성 (eventType 포함)
             val event = mapOf(
                 "eventId" to UUID.randomUUID().toString(),
-                "eventType" to topic,  // 토픽을 eventType으로 사용
+                "eventType" to topic,
                 "version" to "1.0",
                 "timestamp" to request.timestamp,
                 "source" to request.source,
@@ -79,7 +75,7 @@ class KafkaMessagePublisherAdapter(
                     "requestId" to request.requestId,
                     "source" to request.source,
                     "timestamp" to request.timestamp,
-                    "threadTs" to request.threadTs,  // Slack 스레드 타임스탬프 추가
+                    "threadTs" to request.threadTs,
                     "analysisType" to request.analysisType,
                     "startDate" to request.startDate,
                     "endDate" to request.endDate
@@ -87,17 +83,14 @@ class KafkaMessagePublisherAdapter(
             )
 
             val eventJson = objectMapper.writeValueAsString(event)
+            val pubsubTopic = toPubSubTopic(topic)
 
-            logger.debug("📤 Kafka 메시지 생성: $eventJson")
+            logger.debug("📤 Pub/Sub 메시지 생성: $eventJson")
 
-            kafkaTemplate.send(
-                topic,
-                request.requestId,
-                eventJson
-            )
-            logger.info("Kafka 메시지 발행 성공: topic=$topic, requestId=${request.requestId}, type=${request.analysisType}")
+            pubSubTemplate.publish(pubsubTopic, eventJson)
+            logger.info("Pub/Sub 메시지 발행 성공: topic=$pubsubTopic, requestId=${request.requestId}, type=${request.analysisType}")
         } catch (e: Exception) {
-            logger.error("Kafka 메시지 발행 실패: topic=$topic", e)
+            logger.error("Pub/Sub 메시지 발행 실패: topic=$topic", e)
             throw e
         }
     }
@@ -107,7 +100,6 @@ class KafkaMessagePublisherAdapter(
         request: VertexAIPredictionRequest
     ) {
         try {
-            // 이벤트 래퍼 생성 (eventType 포함)
             val event = mapOf(
                 "eventId" to UUID.randomUUID().toString(),
                 "eventType" to topic,
@@ -124,17 +116,14 @@ class KafkaMessagePublisherAdapter(
             )
 
             val eventJson = objectMapper.writeValueAsString(event)
+            val pubsubTopic = toPubSubTopic(topic)
 
-            logger.debug("📤 Kafka Vertex AI 메시지 생성: $eventJson")
+            logger.debug("📤 Pub/Sub Vertex AI 메시지 생성: $eventJson")
 
-            kafkaTemplate.send(
-                topic,
-                request.requestId,
-                eventJson
-            )
-            logger.info("Kafka Vertex AI 메시지 발행 성공: topic=$topic, requestId=${request.requestId}")
+            pubSubTemplate.publish(pubsubTopic, eventJson)
+            logger.info("Pub/Sub Vertex AI 메시지 발행 성공: topic=$pubsubTopic, requestId=${request.requestId}")
         } catch (e: Exception) {
-            logger.error("Kafka Vertex AI 메시지 발행 실패: topic=$topic", e)
+            logger.error("Pub/Sub Vertex AI 메시지 발행 실패: topic=$topic", e)
             throw e
         }
     }
@@ -144,7 +133,6 @@ class KafkaMessagePublisherAdapter(
         request: BacktestRequest
     ) {
         try {
-            // 기본 페이로드 구성
             val payload = mutableMapOf<String, Any?>(
                 "requestId" to request.requestId,
                 "strategyId" to request.strategyId,
@@ -157,7 +145,6 @@ class KafkaMessagePublisherAdapter(
                 "rebalancePeriod" to request.rebalancePeriod
             )
 
-            // SCRUM-258: 리스크 파라미터 추가
             request.riskSettings?.let { payload["riskSettings"] = it }
             request.positionSizing?.let { payload["positionSizing"] = it }
             request.tradingCosts?.let { payload["tradingCosts"] = it }
@@ -172,18 +159,25 @@ class KafkaMessagePublisherAdapter(
             )
 
             val eventJson = objectMapper.writeValueAsString(event)
+            val pubsubTopic = toPubSubTopic(topic)
 
-            logger.debug("📤 Kafka 백테스트 요청 메시지 생성: $eventJson")
+            logger.debug("📤 Pub/Sub 백테스트 요청 메시지 생성: $eventJson")
 
-            kafkaTemplate.send(
-                topic,
-                request.requestId,
-                eventJson
-            )
-            logger.info("Kafka 백테스트 요청 메시지 발행 성공: topic=$topic, requestId=${request.requestId}, strategyId=${request.strategyId}")
+            pubSubTemplate.publish(pubsubTopic, eventJson)
+            logger.info("Pub/Sub 백테스트 요청 메시지 발행 성공: topic=$pubsubTopic, requestId=${request.requestId}, strategyId=${request.strategyId}")
         } catch (e: Exception) {
-            logger.error("Kafka 백테스트 요청 메시지 발행 실패: topic=$topic", e)
+            logger.error("Pub/Sub 백테스트 요청 메시지 발행 실패: topic=$topic", e)
             throw e
+        }
+    }
+
+    companion object {
+        /**
+         * dot 표기법 토픽을 Pub/Sub 토픽명으로 변환
+         * "economic.data.update.request" → "economic-data-update-request"
+         */
+        fun toPubSubTopic(topic: String): String {
+            return topic.replace('.', '-')
         }
     }
 }
