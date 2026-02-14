@@ -58,6 +58,17 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # ── Sync Config Files to VM ─────────────────────
+      - name: Upload config files to VM
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.GCE_HOST }}
+          username: ${{ secrets.GCE_USERNAME }}
+          key: ${{ secrets.GCE_SSH_PRIVATE_KEY }}
+          source: "docker-compose.prod.yml,nginx/nginx.conf"
+          target: /opt/quant-jump-stock
+          overwrite: true
+
       # ── Deploy to VM ────────────────────────────────
       - name: Deploy Core API to VM
         uses: appleboy/ssh-action@v1
@@ -78,17 +89,6 @@ jobs:
 
             # docker-compose ${AR_REPO} 치환용 .env
             grep '^AR_REPO=' ./quant-jump-stock-backend/.env.prod > .env
-
-            # Sync config files from repo
-            git fetch origin main --quiet 2>/dev/null || true
-            git checkout origin/main -- nginx/ 2>/dev/null || true
-            if [ -d ./quant-jump-stock-backend/.git ]; then
-              cd ./quant-jump-stock-backend
-              git fetch origin main --quiet 2>/dev/null || true
-              git checkout origin/main -- docker-compose.prod.yml 2>/dev/null || true
-              cd ..
-              cp -f ./quant-jump-stock-backend/docker-compose.prod.yml docker-compose.prod.yml
-            fi
 
             # Pull & restart Core API
             docker compose -f docker-compose.prod.yml pull core
