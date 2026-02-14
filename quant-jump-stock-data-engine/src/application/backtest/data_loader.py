@@ -30,7 +30,8 @@ class DataLoader(ABC):
         self,
         symbols: List[str],
         start_date: date,
-        end_date: date
+        end_date: date,
+        **kwargs
     ) -> Dict[str, pd.DataFrame]:
         """
         여러 종목의 OHLCV 데이터 로드
@@ -39,6 +40,7 @@ class DataLoader(ABC):
             symbols: 종목 코드 목록
             start_date: 시작일
             end_date: 종료일
+            **kwargs: 서브클래스별 추가 옵션 (예: include_sentiment, include_fundamentals)
 
         Returns:
             {symbol: DataFrame} - 각 DataFrame은 OHLCV 컬럼을 가짐
@@ -102,7 +104,8 @@ class YFinanceDataLoader(DataLoader):
         self,
         symbols: List[str],
         start_date: date,
-        end_date: date
+        end_date: date,
+        **kwargs
     ) -> Dict[str, pd.DataFrame]:
         """여러 종목 데이터 로드"""
         result = {}
@@ -194,7 +197,8 @@ class PandasDataLoader(DataLoader):
         self,
         symbols: List[str],
         start_date: date,
-        end_date: date
+        end_date: date,
+        **kwargs
     ) -> Dict[str, pd.DataFrame]:
         """데이터 필터링하여 반환"""
         result = {}

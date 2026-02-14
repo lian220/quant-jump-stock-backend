@@ -232,15 +232,17 @@ class MongoDataLoader(DataLoader):
                         })
 
                     # Left Join: 펀더멘탈 데이터 추가 (info 필드)
+                    # 누락된 값은 NaN으로 표시 (0.0과 구분하기 위해)
                     if include_fundamentals:
                         info = stock_data.get("info", {}) if isinstance(stock_data, dict) else {}
-                        record["per"] = float(info.get("trailingPE") or 0.0)
-                        record["pbr"] = float(info.get("priceToBook") or 0.0)
-                        record["dividend_yield"] = float(info.get("dividendYield") or 0.0)
-                        record["roe"] = float(info.get("returnOnEquity") or 0.0)
-                        record["earnings_growth"] = float(info.get("earningsGrowth") or 0.0)
-                        record["debt_to_equity"] = float(info.get("debtToEquity") or 0.0)
-                        record["forward_pe"] = float(info.get("forwardPE") or 0.0)
+                        _nan = float('nan')
+                        record["per"] = float(info["trailingPE"]) if info.get("trailingPE") is not None else _nan
+                        record["pbr"] = float(info["priceToBook"]) if info.get("priceToBook") is not None else _nan
+                        record["dividend_yield"] = float(info["dividendYield"]) if info.get("dividendYield") is not None else _nan
+                        record["roe"] = float(info["returnOnEquity"]) if info.get("returnOnEquity") is not None else _nan
+                        record["earnings_growth"] = float(info["earningsGrowth"]) if info.get("earningsGrowth") is not None else _nan
+                        record["debt_to_equity"] = float(info["debtToEquity"]) if info.get("debtToEquity") is not None else _nan
+                        record["forward_pe"] = float(info["forwardPE"]) if info.get("forwardPE") is not None else _nan
 
                     # Left Join: 감성 분석 데이터 추가
                     if include_sentiment:

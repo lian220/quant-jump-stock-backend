@@ -58,11 +58,11 @@ for DATE in "${DATES[@]}"; do
             echo "$BODY" | head -c 200
             echo "..."
         fi
-        ((SUCCESS_COUNT++))
+        SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
     else
         echo "❌ 실패 (HTTP $HTTP_CODE)"
         echo "응답: $BODY"
-        ((FAIL_COUNT++))
+        FAIL_COUNT=$((FAIL_COUNT + 1))
     fi
 
     # Rate limit 방지 (1초 대기)

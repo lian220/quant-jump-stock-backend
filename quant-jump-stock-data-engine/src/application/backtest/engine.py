@@ -216,19 +216,28 @@ class BacktestEngine:
                 used_indicators.add(condition.indicator.value)
 
         # 감성 분석 지표 감지
-        sentiment_indicators = {"sentiment_score", "sentiment_count"}
+        sentiment_indicators = {
+            IndicatorType.SENTIMENT_SCORE.value,
+            IndicatorType.SENTIMENT_COUNT.value,
+        }
         if used_indicators & sentiment_indicators:
             kwargs["include_sentiment"] = True
 
         # 추천 지표 감지
-        recommendation_indicators = {"is_recommended", "rec_rsi", "rec_score"}
+        recommendation_indicators = {
+            IndicatorType.IS_RECOMMENDED.value,
+            IndicatorType.REC_RSI.value,
+            IndicatorType.REC_SCORE.value,
+        }
         if used_indicators & recommendation_indicators:
             kwargs["include_recommendations"] = True
 
         # 펀더멘탈 지표 감지
         fundamental_indicators = {
-            "per", "pbr", "dividend_yield",
-            "roe", "earnings_growth", "debt_to_equity", "forward_pe"
+            IndicatorType.PER.value, IndicatorType.PBR.value,
+            IndicatorType.DIVIDEND_YIELD.value,
+            IndicatorType.ROE.value, IndicatorType.EARNINGS_GROWTH.value,
+            IndicatorType.DEBT_TO_EQUITY.value, IndicatorType.FORWARD_PE.value,
         }
         if used_indicators & fundamental_indicators:
             kwargs["include_fundamentals"] = True

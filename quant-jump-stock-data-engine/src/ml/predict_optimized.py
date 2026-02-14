@@ -1730,7 +1730,7 @@ def save_analysis_to_db(result_df):
                         }
 
                         # 품질 게이트: MAPE > 임계값이면 low confidence 마킹
-                        if mape_val is not None and mape_val > MAX_RELIABLE_MAPE:
+                        if mape_val is not None and not pd.isna(mape_val) and mape_val > MAX_RELIABLE_MAPE:
                             metrics['prediction_confidence'] = 'low'
                             metrics['prediction_warning'] = f'MAPE {mape_val:.1f}% exceeds threshold {MAX_RELIABLE_MAPE}%'
                         else:
