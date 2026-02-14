@@ -119,6 +119,7 @@ jobs:
         run: ./gradlew build -x test
         env:
           PUBSUB_EMULATOR_HOST: localhost:8681
+          SPRING_CLOUD_GCP_PUBSUB_EMULATOR_HOST: localhost:8681
           PUBSUB_PROJECT_ID: quantiq-local
           GCP_PROJECT_ID: quantiq-local
           GCP_ENABLED: false
@@ -141,9 +142,11 @@ jobs:
           SPRING_DATA_MONGODB_URI: mongodb://quantiq_user:quantiq_password@localhost:27017/stock_trading?authSource=admin
           # Pub/Sub Emulator
           PUBSUB_EMULATOR_HOST: localhost:8681
+          SPRING_CLOUD_GCP_PUBSUB_EMULATOR_HOST: localhost:8681
           PUBSUB_PROJECT_ID: quantiq-local
           GCP_PROJECT_ID: quantiq-local
           GCP_ENABLED: false
+          MESSAGING_PROVIDER: pubsub
           # Security
           APP_ENCRYPTION_KEY: CHANGE_THIS_TO_32_CHARACTERS_KEY
           # Test keys (not real)
