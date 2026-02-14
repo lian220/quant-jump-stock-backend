@@ -86,22 +86,18 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
-      # Kafka (테스트에 필요한 경우)
-      zookeeper:
-        image: confluentinc/cp-zookeeper:7.5.0
+      # Pub/Sub Emulator
+      pubsub-emulator:
+        image: thekevjames/gcloud-pubsub-emulator:latest
         env:
-          ZOOKEEPER_CLIENT_PORT: 2181
-          ZOOKEEPER_TICK_TIME: 2000
-
-      kafka:
-        image: confluentinc/cp-kafka:7.5.0
-        env:
-          KAFKA_BROKER_ID: 1
-          KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
-          KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092
-          KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+          PUBSUB_PROJECT1: "quantiq-local,economic-data-update-request:economic-data-update-request-sub,analysis-technical-request:analysis-technical-request-sub,analysis-sentiment-request:analysis-sentiment-request-sub,quantiq-backtest-request:quantiq-backtest-request-sub,vertex-ai-run-request:vertex-ai-run-request-sub,quantiq-economic-data-updated:quantiq-economic-data-updated-sub,quantiq-economic-data-sync-failed:quantiq-economic-data-sync-failed-sub,quantiq-analysis-completed:quantiq-analysis-completed-sub,quantiq-backtest-completed:quantiq-backtest-completed-sub,quantiq-backtest-failed:quantiq-backtest-failed-sub,quantiq-trading-signal-detected:quantiq-trading-signal-detected-sub,analysis-technical-failed:analysis-technical-failed-sub,analysis-sentiment-failed:analysis-sentiment-failed-sub,strategy-execution-completed:strategy-execution-completed-sub,strategy-execution-failed:strategy-execution-failed-sub,vertex-ai-run-submitted:vertex-ai-run-submitted-sub,vertex-ai-run-failed:vertex-ai-run-failed-sub,analysis-recommendation-request:analysis-recommendation-request-sub"
         ports:
-          - 9092:9092
+          - 8681:8681
+        options: >-
+          --health-cmd "nc -z localhost 8681 || exit 1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     steps:
       - name: 📥 Checkout code
@@ -121,6 +117,11 @@ jobs:
       - name: 📦 Build with Gradle
         working-directory: ./quant-jump-stock-core
         run: ./gradlew build -x test
+        env:
+          PUBSUB_EMULATOR_HOST: localhost:8681
+          PUBSUB_PROJECT_ID: quantiq-local
+          GCP_PROJECT_ID: quantiq-local
+          GCP_ENABLED: false
 
       - name: 🧪 Run tests
         working-directory: ./quant-jump-stock-core
@@ -138,9 +139,11 @@ jobs:
           # MongoDB
           MONGODB_URI: mongodb://quantiq_user:quantiq_password@localhost:27017/stock_trading?authSource=admin
           SPRING_DATA_MONGODB_URI: mongodb://quantiq_user:quantiq_password@localhost:27017/stock_trading?authSource=admin
-          # Kafka
-          KAFKA_BOOTSTRAP_SERVERS: localhost:9092
-          SPRING_KAFKA_BOOTSTRAP_SERVERS: localhost:9092
+          # Pub/Sub Emulator
+          PUBSUB_EMULATOR_HOST: localhost:8681
+          PUBSUB_PROJECT_ID: quantiq-local
+          GCP_PROJECT_ID: quantiq-local
+          GCP_ENABLED: false
           # Security
           APP_ENCRYPTION_KEY: CHANGE_THIS_TO_32_CHARACTERS_KEY
           # Test keys (not real)
@@ -187,6 +190,19 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+      # Pub/Sub Emulator
+      pubsub-emulator:
+        image: thekevjames/gcloud-pubsub-emulator:latest
+        env:
+          PUBSUB_PROJECT1: "quantiq-local,economic-data-update-request:economic-data-update-request-sub,analysis-technical-request:analysis-technical-request-sub,analysis-sentiment-request:analysis-sentiment-request-sub,quantiq-backtest-request:quantiq-backtest-request-sub,vertex-ai-run-request:vertex-ai-run-request-sub,quantiq-economic-data-updated:quantiq-economic-data-updated-sub,quantiq-economic-data-sync-failed:quantiq-economic-data-sync-failed-sub,quantiq-analysis-completed:quantiq-analysis-completed-sub,quantiq-backtest-completed:quantiq-backtest-completed-sub,quantiq-backtest-failed:quantiq-backtest-failed-sub,quantiq-trading-signal-detected:quantiq-trading-signal-detected-sub,analysis-technical-failed:analysis-technical-failed-sub,analysis-sentiment-failed:analysis-sentiment-failed-sub,strategy-execution-completed:strategy-execution-completed-sub,strategy-execution-failed:strategy-execution-failed-sub,vertex-ai-run-submitted:vertex-ai-run-submitted-sub,vertex-ai-run-failed:vertex-ai-run-failed-sub,analysis-recommendation-request:analysis-recommendation-request-sub"
+        ports:
+          - 8681:8681
+        options: >-
+          --health-cmd "nc -z localhost 8681 || exit 1"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -221,6 +237,8 @@ jobs:
           MONGODB_URI: mongodb://quantiq_user:quantiq_password@localhost:27017/stock_trading?authSource=admin
           DB_HOST: localhost
           DB_PORT: 5432
+          PUBSUB_EMULATOR_HOST: localhost:8681
+          PUBSUB_PROJECT_ID: quantiq-local
 
       - name: 📊 Upload Python test results
         uses: actions/upload-artifact@v4

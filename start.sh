@@ -130,15 +130,15 @@ if [ "$SKIP_INFRA" = false ]; then
     echo -e "${YELLOW}📦 Starting infrastructure...${NC}"
 
     if [ "$ENV_MODE" = "prod" ]; then
-        # Prod mode: Only start Kafka (use remote PostgreSQL/MongoDB)
+        # Prod mode: Only start Pub/Sub emulator (use remote PostgreSQL/MongoDB)
         echo -e "${CYAN}   → Using production PostgreSQL: ${DB_HOST}${NC}"
         # Mask MongoDB URI credentials
         MASKED_MONGODB_URI=$(echo "${MONGODB_URI}" | sed 's|://[^@]*@|://****:****@|')
         echo -e "${CYAN}   → Using production MongoDB: ${MASKED_MONGODB_URI}${NC}"
-        docker compose up -d zookeeper kafka kafka-ui
+        docker compose up -d pubsub-emulator pubsub-emulator-ui
     else
         # Local mode: Start all infrastructure with local profile
-        docker compose --profile local up -d zookeeper kafka kafka-ui postgresql mongodb
+        docker compose --profile local up -d pubsub-emulator pubsub-emulator-ui postgresql mongodb
 
         # Wait for PostgreSQL
         echo -e "${YELLOW}⏳ Waiting for PostgreSQL...${NC}"
@@ -154,16 +154,10 @@ if [ "$SKIP_INFRA" = false ]; then
         done
     fi
 
-    # Wait for Kafka
-    echo -e "${YELLOW}⏳ Waiting for Kafka...${NC}"
-    sleep 5
-
-    # Kafka topic creation
-    echo -e "${YELLOW}📝 Creating Kafka topics...${NC}"
-    if [ -f "$PROJECT_ROOT/scripts/setup/create-kafka-topics.sh" ]; then
-        bash "$PROJECT_ROOT/scripts/setup/create-kafka-topics.sh" 2>/dev/null || true
-        echo -e "${GREEN}✓ Kafka topics ready${NC}"
-    fi
+    # Wait for Pub/Sub emulator
+    echo -e "${YELLOW}⏳ Waiting for Pub/Sub emulator...${NC}"
+    sleep 2
+    echo -e "${GREEN}✓ Pub/Sub emulator ready (topics auto-created)${NC}"
 
     echo -e "${GREEN}✓ Infrastructure ready${NC}"
 fi
@@ -201,7 +195,7 @@ echo ""
 echo "📊 Endpoints:"
 echo "   • Core API:    http://localhost:10010"
 echo "   • Data Engine: http://localhost:10020"
-echo "   • Kafka UI:    http://localhost:8089"
+echo "   • Pub/Sub UI:  http://localhost:8680"
 echo "   • Swagger UI:  http://localhost:10010/swagger-ui.html"
 
 if [ "$ENV_MODE" = "local" ]; then

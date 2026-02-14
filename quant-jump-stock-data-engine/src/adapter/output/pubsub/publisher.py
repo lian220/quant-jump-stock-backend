@@ -1,14 +1,15 @@
 """
-Kafka Producer Adapter
+Pub/Sub Publisher Adapter
 
-이벤트를 Kafka로 발행하는 어댑터.
+이벤트를 Google Cloud Pub/Sub으로 발행하는 어댑터.
 """
 
 import logging
 import json
+import uuid
 from typing import Dict, Any, Optional
-from datetime import datetime
-from confluent_kafka import Producer
+from datetime import datetime, timezone
+from google.cloud import pubsub_v1
 
 from config.settings import Settings
 
@@ -22,46 +23,30 @@ def _json_serializer(obj):
     raise TypeError(f"Type {type(obj)} not serializable")
 
 
-class KafkaProducerAdapter:
-    """
-    Kafka Producer 어댑터
+def to_pubsub_topic(topic: str) -> str:
+    """dot 표기법 토픽을 Pub/Sub 토픽명으로 변환"""
+    return topic.replace('.', '-')
 
-    애플리케이션 이벤트를 Kafka로 발행.
+
+class PubSubPublisherAdapter:
+    """
+    Pub/Sub Publisher 어댑터
+
+    애플리케이션 이벤트를 Pub/Sub으로 발행.
+    EventPublisherProtocol과 동일한 publish() 인터페이스 제공.
     """
 
-    def __init__(
-        self,
-        settings: Settings,
-        client_id: str = "quantiq-data-engine"
-    ):
+    def __init__(self, settings: Settings):
         self.settings = settings
-        self.client_id = client_id
-        self._producer: Optional[Producer] = None
+        self._project_id = settings.pubsub.project_id
+        self._publisher: Optional[pubsub_v1.PublisherClient] = None
 
-    def _get_producer(self) -> Producer:
-        """Producer 인스턴스 반환 (Lazy init)"""
-        if self._producer is None:
-            conf = {
-                'bootstrap.servers': self.settings.KAFKA_BOOTSTRAP_SERVERS,
-                'client.id': self.client_id,
-                'acks': 'all',
-                'retries': 3,
-                'retry.backoff.ms': 100,
-                'batch.size': 16384,
-                'linger.ms': 10,
-                'compression.type': 'snappy',
-                'enable.idempotence': True
-            }
-            self._producer = Producer(conf)
-            logger.info(f"Kafka producer created: {self.settings.KAFKA_BOOTSTRAP_SERVERS}")
-        return self._producer
-
-    def _delivery_callback(self, err, msg):
-        """전송 결과 콜백"""
-        if err:
-            logger.error(f"Message delivery failed: {err}")
-        else:
-            logger.debug(f"Message delivered to {msg.topic()} [{msg.partition()}]")
+    def _get_publisher(self) -> pubsub_v1.PublisherClient:
+        """Publisher 인스턴스 반환 (Lazy init)"""
+        if self._publisher is None:
+            self._publisher = pubsub_v1.PublisherClient()
+            logger.info(f"Pub/Sub publisher created for project: {self._project_id}")
+        return self._publisher
 
     def publish(self, event_type: str, data: Dict[str, Any]) -> None:
         """
@@ -72,26 +57,24 @@ class KafkaProducerAdapter:
             data: 이벤트 페이로드
         """
         topic = self._resolve_topic(event_type)
+        pubsub_topic = to_pubsub_topic(topic)
 
         event = {
             "eventType": event_type,
-            "eventId": f"{event_type}_{datetime.utcnow().timestamp()}",
-            "timestamp": datetime.utcnow().isoformat(),
+            "eventId": str(uuid.uuid4()),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "payload": data
         }
 
         try:
-            producer = self._get_producer()
+            publisher = self._get_publisher()
             message = json.dumps(event, default=_json_serializer).encode('utf-8')
+            topic_path = publisher.topic_path(self._project_id, pubsub_topic)
 
-            producer.produce(
-                topic,
-                message,
-                callback=self._delivery_callback
-            )
-            producer.flush()
+            future = publisher.publish(topic_path, message)
+            future.result(timeout=30)  # 발행 완료 대기 (30초 타임아웃)
 
-            logger.info(f"Event published: {event_type} → {topic}")
+            logger.info(f"Event published: {event_type} -> {pubsub_topic}")
 
         except Exception as e:
             logger.error(f"Failed to publish event {event_type}: {e}")
@@ -112,6 +95,9 @@ class KafkaProducerAdapter:
             "ANALYSIS_TECHNICAL_FAILED": "analysis.technical.failed",
             "ANALYSIS_SENTIMENT_COMPLETED": "quantiq.analysis.completed",
             "ANALYSIS_SENTIMENT_FAILED": "analysis.sentiment.failed",
+            # 종목 추천
+            "STOCK_RECOMMENDATION_COMPLETED": "quantiq.analysis.completed",
+            "STOCK_RECOMMENDATION_FAILED": "analysis.recommendation.failed",
             # 전략 실행
             "STRATEGY_EXECUTION_COMPLETED": "strategy.execution.completed",
             "STRATEGY_EXECUTION_FAILED": "strategy.execution.failed",
@@ -125,14 +111,14 @@ class KafkaProducerAdapter:
             "VERTEX_AI_JOB_FAILED": "vertex.ai.run.failed",
         }
 
-        return topic_mapping.get(event_type, "data-engine.events")
+        return topic_mapping.get(event_type, "data-engine-events")
 
     def close(self) -> None:
-        """Producer 종료"""
-        if self._producer:
-            self._producer.flush()
-            self._producer = None
-            logger.info("Kafka producer closed")
+        """Publisher 종료"""
+        if self._publisher:
+            self._publisher.stop()
+            self._publisher = None
+            logger.info("Pub/Sub publisher closed")
 
     def __enter__(self):
         return self

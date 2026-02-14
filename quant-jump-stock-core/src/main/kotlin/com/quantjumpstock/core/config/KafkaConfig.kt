@@ -7,12 +7,18 @@ import org.apache.kafka.common.serialization.StringSerializer
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.kafka.annotation.EnableKafka
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory
 import org.springframework.kafka.core.*
 
+/**
+ * Kafka 설정 (레거시, 롤백 용도로 유지)
+ * messaging.provider=kafka 일 때만 활성화됩니다.
+ */
 @EnableKafka
 @Configuration
+@ConditionalOnProperty(name = ["messaging.provider"], havingValue = "kafka", matchIfMissing = false)
 class KafkaConfig {
 
     @Value("\${spring.kafka.bootstrap-servers}") private lateinit var bootstrapServers: String

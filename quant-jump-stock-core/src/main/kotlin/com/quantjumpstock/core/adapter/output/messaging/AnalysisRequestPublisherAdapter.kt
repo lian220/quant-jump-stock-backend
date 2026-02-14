@@ -2,16 +2,16 @@ package com.quantjumpstock.core.adapter.output.messaging
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
-import org.springframework.kafka.core.KafkaTemplate
+import com.google.cloud.spring.pubsub.core.PubSubTemplate
 import org.springframework.stereotype.Component
 
 /**
  * Analysis Request Publisher Adapter (Output Adapter)
- * 분석 요청 메시지를 Kafka로 발행합니다.
+ * 분석 요청 메시지를 Pub/Sub으로 발행합니다.
  */
 @Component
 class AnalysisRequestPublisherAdapter(
-    private val kafkaTemplate: KafkaTemplate<String, String>,
+    private val pubSubTemplate: PubSubTemplate,
     private val objectMapper: ObjectMapper
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -22,6 +22,7 @@ class AnalysisRequestPublisherAdapter(
         val message = objectMapper.writeValueAsString(payload)
 
         logger.info("Sending analysis request: $message")
-        kafkaTemplate.send(TOPIC, message)
+        val pubsubTopic = TOPIC.replace('.', '-')
+        pubSubTemplate.publish(pubsubTopic, message)
     }
 }

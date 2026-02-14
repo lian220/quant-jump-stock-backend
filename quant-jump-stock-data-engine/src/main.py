@@ -1,11 +1,11 @@
 """
 Quantiq Data Engine - Hexagonal Architecture
 
-Primary: Kafka 메시지 처리 워커
+Primary: Pub/Sub 메시지 처리 워커
 Secondary: REST API (헬스체크, ML 패키지 업로드)
 
 Architecture:
-    adapter/input/kafka → application/strategy → adapter/output/*
+    adapter/input/pubsub → application/strategy → adapter/output/*
 """
 
 import logging
@@ -28,19 +28,20 @@ from features.economic_data.service import EconomicDataService
 from services.recommendation_service import RecommendationService
 from services.slack_notifier import SlackNotifier
 
-# New Hexagonal imports
-from adapter.input.kafka.consumer import KafkaConsumerAdapter, KafkaMessage
-from adapter.input.kafka.handlers import (
+# Hexagonal imports - Pub/Sub adapters
+from adapter.input.pubsub.subscriber import PubSubSubscriberAdapter, PubSubMessage
+from adapter.input.pubsub.handlers import (
     EconomicDataHandler,
     TechnicalAnalysisHandler,
     SentimentAnalysisHandler,
+    StockRecommendationHandler,
     StrategyExecutionHandler,
     VertexAIHandler,
     BacktestRequestHandler,
 )
 from adapter.input.rest import ml_router
 from adapter.input.rest import analysis_router
-from adapter.output.kafka.producer import KafkaProducerAdapter
+from adapter.output.pubsub.publisher import PubSubPublisherAdapter
 from adapter.output.postgresql.stock_repository import PostgresStockRepository
 from adapter.output.postgresql.strategy_repository import PostgresStrategyRepository
 from adapter.output.postgresql.backtest_repository import PostgresBacktestRepository
@@ -88,10 +89,11 @@ def read_root():
         "service": "Quantiq Data Engine",
         "architecture": "Hexagonal (Ports & Adapters)",
         "status": "running",
-        "subscribed_kafka_topics": [
+        "subscribed_pubsub_topics": [
             "economic.data.update.request",
             "analysis.technical.request",
             "analysis.sentiment.request",
+            "analysis.recommendation.request",
             "strategy.execution.request",
             "vertex.ai.run.request",
             "quantiq.backtest.request",
@@ -231,9 +233,9 @@ def main():
         logger.error("Failed to connect to MongoDB")
         return
 
-    # 3. Kafka 연결 대기
-    logger.info("Waiting for Kafka to be ready...")
-    time.sleep(5)
+    # 3. Pub/Sub 에뮬레이터 연결 대기
+    logger.info("Waiting for Pub/Sub emulator to be ready...")
+    time.sleep(2)
 
     # 4. 서비스 초기화
     economic_service = LegacyEconomicServiceAdapter(EconomicDataService())
@@ -273,24 +275,28 @@ def main():
     recommendation_service = RecommendationService()
     sentiment_service = LegacySentimentAnalysisAdapter(recommendation_service)
 
-    # 5. Kafka Producer 초기화
-    kafka_producer = KafkaProducerAdapter(settings)
+    # 5. Pub/Sub Publisher 초기화
+    pubsub_publisher = PubSubPublisherAdapter(settings)
 
     # 6. 핸들러 생성
     economic_handler = EconomicDataHandler(
         service=economic_service,
         notifier=slack_notifier,
-        publisher=kafka_producer
+        publisher=pubsub_publisher
     )
 
     technical_handler = TechnicalAnalysisHandler(
         service=technical_service,
-        publisher=kafka_producer
+        publisher=pubsub_publisher
     )
 
     sentiment_handler = SentimentAnalysisHandler(
         service=sentiment_service,
-        publisher=kafka_producer
+        publisher=pubsub_publisher
+    )
+
+    recommendation_handler = StockRecommendationHandler(
+        publisher=pubsub_publisher
     )
 
     # 6.1. 백테스트 핸들러 (SCRUM-186)
@@ -304,7 +310,7 @@ def main():
     backtest_handler = BacktestRequestHandler(
         backtest_service=backtest_service,
         backtest_repository=backtest_repository,
-        publisher=kafka_producer
+        publisher=pubsub_publisher
     )
 
     # 6.2. Vertex AI 핸들러 (GCP 활성화 시에만)
@@ -331,10 +337,10 @@ def main():
             # ML Router에 서비스 설정
             ml_router.set_prediction_service(prediction_service)
 
-            # Vertex AI Kafka 핸들러
+            # Vertex AI Pub/Sub 핸들러
             vertexai_handler = VertexAIHandler(
                 service=prediction_service,
-                publisher=kafka_producer
+                publisher=pubsub_publisher
             )
             logger.info("✅ Vertex AI services initialized")
         except Exception as e:
@@ -342,27 +348,26 @@ def main():
     else:
         logger.info("GCP disabled - Vertex AI services not available")
 
-    # 7. Kafka Consumer 설정
-    consumer = KafkaConsumerAdapter(
-        settings=settings,
-        group_id="quantiq-data-engine-hex"
-    )
+    # 7. Pub/Sub Subscriber 설정
+    subscriber = PubSubSubscriberAdapter(settings=settings)
 
     # 핸들러 등록
-    consumer.register_handler(economic_handler.topic, economic_handler.handle)
-    consumer.register_handler(technical_handler.topic, technical_handler.handle)
-    consumer.register_handler(sentiment_handler.topic, sentiment_handler.handle)
-    consumer.register_handler(backtest_handler.topic, backtest_handler.handle)
+    subscriber.register_handler(economic_handler.topic, economic_handler.handle)
+    subscriber.register_handler(technical_handler.topic, technical_handler.handle)
+    subscriber.register_handler(sentiment_handler.topic, sentiment_handler.handle)
+    subscriber.register_handler(recommendation_handler.topic, recommendation_handler.handle)
+    subscriber.register_handler(backtest_handler.topic, backtest_handler.handle)
 
     # Vertex AI 핸들러 등록 (GCP 활성화 시)
     if vertexai_handler:
-        consumer.register_handler(vertexai_handler.topic, vertexai_handler.handle)
+        subscriber.register_handler(vertexai_handler.topic, vertexai_handler.handle)
 
     # 토픽 목록
     topics = [
         economic_handler.topic,
         technical_handler.topic,
         sentiment_handler.topic,
+        recommendation_handler.topic,
         backtest_handler.topic,
     ]
 
@@ -373,25 +378,18 @@ def main():
     logger.info(f"Subscribing to topics: {topics}")
 
     try:
-        # 8. Consumer 시작
-        consumer.start(topics)
+        # 8. Subscriber 시작 (streaming pull)
+        subscriber.start(topics)
 
-        # 9. 메시지 처리 루프
-        logger.info("Starting message processing loop...")
-
-        while True:
-            message = consumer.poll_once(timeout=1.0)
-            if message:
-                try:
-                    consumer.process_message(message)
-                except Exception as e:
-                    logger.exception(f"Error processing message: {e}")
+        # 9. 메시지 처리 루프 (streaming pull이 백그라운드에서 처리)
+        logger.info("Starting Pub/Sub streaming pull...")
+        subscriber.run_forever()
 
     except KeyboardInterrupt:
         logger.info("Shutdown requested...")
     finally:
-        consumer.stop()
-        kafka_producer.close()
+        subscriber.stop()
+        pubsub_publisher.close()
         PostgreSQL.close_pool()
         logger.info("Data Engine stopped")
 

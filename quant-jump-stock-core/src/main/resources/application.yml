@@ -12,6 +12,9 @@ spring:
     name: quantiq-core
   main:
     allow-bean-definition-overriding: true
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
 
   # ============================================
   # PostgreSQL (RDB) Configuration
@@ -69,27 +72,33 @@ spring:
       auto-index-creation: true
 
   # ============================================
-  # Kafka Configuration
+  # Kafka Configuration (레거시, 롤백 용도로 유지)
   # ============================================
   kafka:
     bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
     consumer:
       group-id: quantiq-core
+      auto-offset-reset: earliest
       max-poll-records: 10
     producer:
       acks: all
       retries: 3
 
   # ============================================
+  # Google Cloud Pub/Sub Configuration (활성)
+  # ============================================
+  cloud:
+    gcp:
+      project-id: ${GCP_PROJECT_ID:quantiq-local}
+      pubsub:
+        project-id: ${PUBSUB_PROJECT_ID:${GCP_PROJECT_ID:quantiq-local}}
+        emulator-host: ${PUBSUB_EMULATOR_HOST:}
+
+  # ============================================
   # Quartz Scheduler Configuration
   # ============================================
   quartz:
     job-store-type: memory
-
-  # ============================================
-  # Kafka Configuration (Already set at line 66)
-  # ============================================
-  # Configuration moved to top-level kafka section for consistency
 
 # ============================================
 # Actuator Configuration
@@ -162,7 +171,7 @@ gcp:
   enabled: ${GCP_ENABLED:false}  # 환경변수로 제어 (기본값: false)
   project-id: ${GCP_PROJECT_ID:}
   region: ${GCP_REGION:us-central1}
-  credentials-path: ${GOOGLE_APPLICATION_CREDENTIALS:}
+  credentials-path: ${VERTEX_AI_CREDENTIALS_PATH:}
   vertex-ai:
     staging-bucket: ${GCP_STAGING_BUCKET:}
     model-bucket: ${GCS_BUCKET:quantiq-ml-models}

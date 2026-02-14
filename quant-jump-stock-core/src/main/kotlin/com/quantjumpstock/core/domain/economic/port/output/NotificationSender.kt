@@ -39,6 +39,15 @@ interface NotificationSender {
     fun notifySentimentAnalysisRequest(requestId: String, startDate: String? = null, endDate: String? = null): String?
 
     /**
+     * 종목 추천 요청 알림 (스레드 루트 메시지)
+     * @param requestId 요청 ID
+     * @param startDate 분석 시작 날짜 (yyyy-MM-dd), null이면 자동 결정
+     * @param endDate 분석 종료 날짜 (yyyy-MM-dd), null이면 오늘
+     * @return Slack 스레드 타임스탬프 (threadTs)
+     */
+    fun notifyStockRecommendationRequest(requestId: String, startDate: String? = null, endDate: String? = null): String?
+
+    /**
      * 분석 오류 알림
      */
     fun notifyAnalysisError(requestId: String, analysisType: String, error: String)

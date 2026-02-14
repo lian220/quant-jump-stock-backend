@@ -29,6 +29,10 @@ class SlackNotificationAdapter(
         return slackApiClient.notifySentimentAnalysisRequest(requestId, startDate, endDate)
     }
 
+    override fun notifyStockRecommendationRequest(requestId: String, startDate: String?, endDate: String?): String? {
+        return slackApiClient.notifyStockRecommendationRequest(requestId, startDate, endDate)
+    }
+
     override fun notifyAnalysisError(requestId: String, analysisType: String, error: String) {
         slackApiClient.notifyAnalysisError(requestId, analysisType, error)
     }

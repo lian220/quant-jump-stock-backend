@@ -57,6 +57,22 @@ class KafkaSettings(BaseSettings):
     topic_sentiment_analysis_request: str = "analysis.sentiment.request"
 
 
+class PubSubSettings(BaseSettings):
+    """Pub/Sub 설정"""
+    model_config = SettingsConfigDict(env_prefix="", extra="ignore")
+
+    project_id: str = Field(default="quantiq-local", alias="PUBSUB_PROJECT_ID")
+    emulator_host: str = Field(default="", alias="PUBSUB_EMULATOR_HOST")
+
+    # Topics (dot notation - adapter 레이어에서 hyphen으로 변환)
+    topic_analysis_request: str = "quantiq.analysis.request"
+    topic_analysis_completed: str = "quantiq.analysis.completed"
+    topic_economic_data_update_request: str = "economic.data.update.request"
+    topic_economic_data_updated: str = "economic.data.updated"
+    topic_technical_analysis_request: str = "analysis.technical.request"
+    topic_sentiment_analysis_request: str = "analysis.sentiment.request"
+
+
 class ApiSettings(BaseSettings):
     """외부 API 설정"""
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
@@ -83,7 +99,7 @@ class GcpSettings(BaseSettings):
     enabled: bool = Field(default=False, alias="GCP_ENABLED")
     project_id: str = Field(default="", alias="GCP_PROJECT_ID")
     region: str = Field(default="asia-northeast3", alias="GCP_REGION")
-    credentials_path: Optional[str] = Field(default=None, alias="GOOGLE_APPLICATION_CREDENTIALS")
+    credentials_path: Optional[str] = Field(default=None, alias="VERTEX_AI_CREDENTIALS_PATH")
 
     # Vertex AI
     model_bucket: str = Field(default="", alias="GCP_BUCKET_NAME")
@@ -114,6 +130,7 @@ class Settings(BaseSettings):
     # 하위 설정
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     kafka: KafkaSettings = Field(default_factory=KafkaSettings)
+    pubsub: PubSubSettings = Field(default_factory=PubSubSettings)
     api: ApiSettings = Field(default_factory=ApiSettings)
     slack: SlackSettings = Field(default_factory=SlackSettings)
     gcp: GcpSettings = Field(default_factory=GcpSettings)

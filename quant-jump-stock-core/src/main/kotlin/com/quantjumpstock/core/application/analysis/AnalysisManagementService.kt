@@ -122,6 +122,55 @@ class AnalysisManagementService(
         }
     }
 
+    override fun triggerStockRecommendation(startDate: String?, endDate: String?): CompletableFuture<String> {
+        return try {
+            val dateInfo = formatDateRange(startDate, endDate)
+            logger.info("종목 추천 요청 시작 ($dateInfo)")
+
+            val requestId = UUID.randomUUID().toString()
+
+            // Slack 알림 전송 먼저 (스레드 루트 메시지 생성 → threadTs 반환)
+            val threadTs = try {
+                notificationSender.notifyStockRecommendationRequest(requestId, startDate, endDate)
+            } catch (e: Exception) {
+                logger.warn("Slack 알림 전송 실패: ${e.message}")
+                null
+            }
+
+            // threadTs와 날짜 범위를 포함한 요청 생성
+            val request = AnalysisRequest(
+                timestamp = ZonedDateTime.now(kst).toString(),
+                source = "quartz_scheduler",
+                requestId = requestId,
+                threadTs = threadTs,
+                analysisType = "RECOMMENDATION",
+                startDate = startDate,
+                endDate = endDate
+            )
+
+            // Pub/Sub 이벤트 발행
+            messagePublisher.publishAnalysisRequest(
+                TOPIC_STOCK_RECOMMENDATION_REQUEST,
+                request
+            )
+
+            logger.info("✅ Pub/Sub 이벤트 발행 완료: requestId=$requestId, threadTs=$threadTs, type=RECOMMENDATION, $dateInfo")
+
+            CompletableFuture.completedFuture("종목 추천 요청이 발행되었습니다.")
+        } catch (e: Exception) {
+            logger.error("❌ 종목 추천 요청 실패", e)
+
+            // Slack 오류 알림
+            try {
+                notificationSender.notifyAnalysisError("unknown", "RECOMMENDATION", e.message ?: "Unknown error")
+            } catch (slackError: Exception) {
+                logger.warn("Slack 오류 알림 전송 실패")
+            }
+
+            CompletableFuture.failedFuture(e)
+        }
+    }
+
     private fun formatDateRange(startDate: String?, endDate: String?): String {
         return when {
             startDate != null && endDate != null -> "기간: $startDate ~ $endDate"
@@ -133,5 +182,6 @@ class AnalysisManagementService(
     companion object {
         const val TOPIC_ANALYSIS_TECHNICAL_REQUEST = "analysis.technical.request"
         const val TOPIC_ANALYSIS_SENTIMENT_REQUEST = "analysis.sentiment.request"
+        const val TOPIC_STOCK_RECOMMENDATION_REQUEST = "analysis.recommendation.request"
     }
 }

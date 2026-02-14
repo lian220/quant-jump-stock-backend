@@ -36,37 +36,35 @@ class GcpConfig(
     }
 
     /**
-     * Google Cloud Credentials
+     * Google Cloud Storage Client
+     * 크레덴셜을 직접 로드하여 Storage 클라이언트를 생성합니다.
      */
     @Bean
-    fun googleCredentials(): GoogleCredentials {
-        logger.info("Loading Google Cloud Credentials...")
-        logger.info("GOOGLE_APPLICATION_CREDENTIALS env: ${System.getenv("GOOGLE_APPLICATION_CREDENTIALS")}")
+    fun storageClient(): Storage {
+        val credPath = gcpProperties.credentialsPath
+        logger.info("Loading Vertex AI credentials from: ${credPath ?: "ADC"}")
 
-        // Application Default Credentials 사용 (GOOGLE_APPLICATION_CREDENTIALS 환경변수 활용)
-        var credentials = GoogleCredentials.getApplicationDefault()
+        val credentials = try {
+            if (!credPath.isNullOrBlank()) {
+                java.io.FileInputStream(credPath).use { stream ->
+                    GoogleCredentials.fromStream(stream)
+                }
+            } else {
+                GoogleCredentials.getApplicationDefault()
+            }
+        } catch (e: Exception) {
+            logger.error("Failed to load GCP credentials: ${e.message}", e)
+            throw e
+        }
 
-        // Vertex AI API 사용을 위한 스코프 설정 (무조건 적용)
-        // ServiceAccountCredentials는 항상 scoping이 필요
-        credentials = credentials.createScoped(
+        val scoped = credentials.createScoped(
             listOf("https://www.googleapis.com/auth/cloud-platform")
         )
-        logger.info("✅ Credentials scoped for Vertex AI (cloud-platform)")
+        logger.info("✅ Storage client created for project: $projectId")
 
-        logger.info("✅ Credentials loaded successfully")
-        logger.info("Credentials type: ${credentials.javaClass.simpleName}")
-
-        return credentials
-    }
-
-    /**
-     * Google Cloud Storage Client
-     */
-    @Bean
-    fun storageClient(credentials: GoogleCredentials): Storage {
         return StorageOptions.newBuilder()
             .setProjectId(projectId)
-            .setCredentials(credentials)
+            .setCredentials(scoped)
             .build()
             .service
     }

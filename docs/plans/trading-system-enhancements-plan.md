@@ -1942,7 +1942,7 @@ pnpm dev
 ## 📚 관련 문서
 
 ### 기술 문서
-- [Kafka 아키텍처](./kafka-architecture-detailed.md) - Kafka 상세 설계
+- [메시징 아키텍처 (Kafka→Pub/Sub)](../../../docs/infra/kafka-to-pubsub-migration.md) - 이벤트 드리븐 아키텍처
 - [전략 관리 구현 계획](./strategy-management-implementation-plan.md) - 전략 시스템 구현
 
 ### Jira 계획

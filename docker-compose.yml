@@ -3,75 +3,52 @@ services:
   # ========================================
   # Infrastructure (Always needed)
   # ========================================
-  zookeeper:
-    image: confluentinc/cp-zookeeper:7.5.0
-    container_name: qjs-zookeeper
+  pubsub-emulator:
+    image: thekevjames/gcloud-pubsub-emulator:latest
+    container_name: qjs-pubsub-emulator
     ports:
-      - "2181:2181"
+      - "8681:8681"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z localhost 8681 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
     environment:
-      ZOOKEEPER_CLIENT_PORT: 2181
-      ZOOKEEPER_TICK_TIME: 2000
-    volumes:
-      - ./data/zookeeper/data:/var/lib/zookeeper/data
-      - ./data/zookeeper/log:/var/lib/zookeeper/log
+      # 프로젝트ID,토픽:구독 형식 (thekevjames 이미지는 PUBSUB_PROJECT 사용)
+      # ARM64 (Apple Silicon) 네이티브 지원
+      PUBSUB_PROJECT1: "quantiq-local,economic-data-update-request:economic-data-update-request-sub,analysis-technical-request:analysis-technical-request-sub,analysis-sentiment-request:analysis-sentiment-request-sub,quantiq-backtest-request:quantiq-backtest-request-sub,vertex-ai-run-request:vertex-ai-run-request-sub,quantiq-economic-data-updated:quantiq-economic-data-updated-sub,quantiq-economic-data-sync-failed:quantiq-economic-data-sync-failed-sub,quantiq-analysis-completed:quantiq-analysis-completed-sub,quantiq-backtest-completed:quantiq-backtest-completed-sub,quantiq-backtest-failed:quantiq-backtest-failed-sub,quantiq-trading-signal-detected:quantiq-trading-signal-detected-sub,analysis-technical-failed:analysis-technical-failed-sub,analysis-sentiment-failed:analysis-sentiment-failed-sub,strategy-execution-completed:strategy-execution-completed-sub,strategy-execution-failed:strategy-execution-failed-sub,vertex-ai-run-submitted:vertex-ai-run-submitted-sub,vertex-ai-run-failed:vertex-ai-run-failed-sub,analysis-recommendation-request:analysis-recommendation-request-sub"
     deploy:
       resources:
         limits:
           cpus: '0.5'
-          memory: 512M
-        reservations:
           memory: 256M
+        reservations:
+          memory: 128M
     networks:
       - quantiq-network
 
-  kafka:
-    image: confluentinc/cp-kafka:7.5.0
-    container_name: qjs-kafka
+  pubsub-emulator-ui:
+    image: ghcr.io/drehelis/gcp-emulator-ui:main
+    container_name: qjs-pubsub-emulator-ui
     ports:
-      - "9092:9092"
+      - "8680:80"
     depends_on:
-      - zookeeper
+      - pubsub-emulator
     environment:
-      KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: 'zookeeper:2181'
-      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_INTERNAL:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://localhost:9092,PLAINTEXT_INTERNAL://kafka:29092
-      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
-      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
-      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
-      KAFKA_HEAP_OPTS: "-Xmx512M -Xms256M"
-    volumes:
-      - ./data/kafka:/var/lib/kafka/data
+      PUBSUB_EMULATOR_URL: "pubsub-emulator:8681"
+      # 미사용 에뮬레이터 - nginx upstream 해소용 더미 값
+      STORAGE_EMULATOR_URL: "pubsub-emulator:8681"
+      FIRESTORE_EMULATOR_URL: "pubsub-emulator:8681"
+      DATASTORE_EMULATOR_URL: "pubsub-emulator:8681"
+      DATASTORE_FILE_SERVER_URL: "pubsub-emulator:8681"
     deploy:
       resources:
         limits:
-          cpus: '1.0'
-          memory: 1G
+          cpus: '0.3'
+          memory: 128M
         reservations:
-          memory: 512M
-    networks:
-      - quantiq-network
-
-  kafka-ui:
-    image: provectuslabs/kafka-ui:latest
-    container_name: qjs-kafka-ui
-    ports:
-      - "8089:8080"
-    depends_on:
-      - kafka
-    environment:
-      KAFKA_CLUSTERS_0_NAME: qjs-cluster
-      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
-      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
-      DYNAMIC_CONFIG_ENABLED: "true"
-    deploy:
-      resources:
-        limits:
-          cpus: '0.5'
-          memory: 512M
-        reservations:
-          memory: 256M
+          memory: 64M
     networks:
       - quantiq-network
 
@@ -150,8 +127,8 @@ services:
     ports:
       - "${DATA_ENGINE_PORT:-10020}:${DATA_ENGINE_PORT:-10020}"
     depends_on:
-      kafka:
-        condition: service_started
+      pubsub-emulator:
+        condition: service_healthy
     env_file:
       - .env.common
       - ${ENV_FILE:-.env.local}
@@ -164,15 +141,16 @@ services:
       DB_PORT: ${DB_PORT:-5432}
       # Server Port (Data Engine)
       SERVER_PORT: ${DATA_ENGINE_PORT:-10020}
-      # Kafka
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
+      # Pub/Sub (컨테이너 네트워크용 기본값 설정)
+      PUBSUB_EMULATOR_HOST: ${PUBSUB_EMULATOR_HOST:-pubsub-emulator:8681}
+      PUBSUB_PROJECT_ID: ${PUBSUB_PROJECT_ID:-quantiq-local}
       # APIs
       FRED_API_KEY: ${FRED_API_KEY}
       # Slack (SLACK_BOT_TOKEN은 .env.common에서 로드)
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL_SCHEDULER}
       SLACK_CHANNEL: "C0A1XASTLH2"
       # Google Cloud (container path override)
-      GOOGLE_APPLICATION_CREDENTIALS: "/app/credentials/vertex-ai-key.json"
+      VERTEX_AI_CREDENTIALS_PATH: "/app/credentials/vertex-ai-key.json"
       # ML Scripts path
       ML_SCRIPTS_DIR: "/scripts/ml"
     volumes:
@@ -197,8 +175,8 @@ services:
     ports:
       - "${CORE_API_PORT:-10010}:${CORE_API_PORT:-10010}"
     depends_on:
-      kafka:
-        condition: service_started
+      pubsub-emulator:
+        condition: service_healthy
     env_file:
       - .env.common
       - ${ENV_FILE:-.env.local}
@@ -222,8 +200,9 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-quantiq_password}
       # MongoDB - env var 우선, 미설정시 로컬 Docker
       SPRING_DATA_MONGODB_URI: ${MONGODB_URI:-mongodb://quantiq_user:quantiq_password@mongodb:27017/stock_trading?authSource=admin}
-      # Kafka
-      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:29092}
+      # Pub/Sub (컨테이너 네트워크용 기본값 설정)
+      PUBSUB_EMULATOR_HOST: ${PUBSUB_EMULATOR_HOST:-pubsub-emulator:8681}
+      PUBSUB_PROJECT_ID: ${PUBSUB_PROJECT_ID:-quantiq-local}
       # Slack (SLACK_BOT_TOKEN은 .env.common에서 로드)
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL_TRADING}
       SLACK_CHANNEL: "C0A1XASTLH2"
@@ -234,9 +213,9 @@ services:
       DB_DUAL_WRITE: "true"
       DB_READ_SOURCE: "rdb"
       RUN_MIGRATION: "true"
-      # Google Cloud
-      GCP_ENABLED: ${GCP_ENABLED:-false}
-      GOOGLE_APPLICATION_CREDENTIALS: "/app/credentials/vertex-ai-key.json"
+      # Google Cloud (GCP_ENABLED는 env_file에서 로드)
+      # 컨테이너 내부 크레덴셜 경로만 고정 설정
+      VERTEX_AI_CREDENTIALS_PATH: "/app/credentials/vertex-ai-key.json"
       # JVM Heap Settings
       JAVA_OPTS: "-Xmx768m -Xms512m -XX:MaxMetaspaceSize=256m"
     deploy:

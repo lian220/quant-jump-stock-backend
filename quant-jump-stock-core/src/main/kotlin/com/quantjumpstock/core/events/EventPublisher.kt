@@ -2,33 +2,34 @@ package com.quantjumpstock.core.events
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.slf4j.LoggerFactory
-import org.springframework.kafka.core.KafkaTemplate
+import com.google.cloud.spring.pubsub.core.PubSubTemplate
 import org.springframework.stereotype.Service
 
 /**
  * Generic Event Publisher
- * Kafka로 이벤트를 발행하는 범용 서비스입니다.
+ * Pub/Sub으로 이벤트를 발행하는 범용 서비스입니다.
  */
 @Service
 class EventPublisher(
-    private val kafkaTemplate: KafkaTemplate<String, String>,
+    private val pubSubTemplate: PubSubTemplate,
     private val objectMapper: ObjectMapper
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
     /**
-     * 이벤트를 Kafka 토픽에 발행합니다.
+     * 이벤트를 Pub/Sub 토픽에 발행합니다.
      *
-     * @param topic Kafka 토픽명
+     * @param topic 토픽명 (dot 표기법, 자동 변환됨)
      * @param event 발행할 이벤트 (BaseEvent)
      */
     fun publish(topic: String, event: BaseEvent) {
         try {
             val message = objectMapper.writeValueAsString(event)
-            logger.info("📤 Publishing event to topic [$topic]: eventId=${event.eventId}, type=${event.eventType}")
+            val pubsubTopic = toPubSubTopic(topic)
+            logger.info("📤 Publishing event to topic [$pubsubTopic]: eventId=${event.eventId}, type=${event.eventType}")
             logger.debug("Event payload: $message")
 
-            kafkaTemplate.send(topic, message)
+            pubSubTemplate.publish(pubsubTopic, message)
                 .whenComplete { _, ex ->
                     if (ex == null) {
                         logger.info("✅ Event published successfully: ${event.eventId}")
@@ -48,10 +49,22 @@ class EventPublisher(
     fun publishAsync(topic: String, event: BaseEvent) {
         try {
             val message = objectMapper.writeValueAsString(event)
-            logger.info("📤 Publishing event (async) to topic [$topic]: ${event.eventType}")
-            kafkaTemplate.send(topic, message)
+            val pubsubTopic = toPubSubTopic(topic)
+            logger.info("📤 Publishing event (async) to topic [$pubsubTopic]: ${event.eventType}")
+            pubSubTemplate.publish(pubsubTopic, message)
+                .whenComplete { _, ex ->
+                    if (ex != null) {
+                        logger.error("❌ Async publish failed for topic [$pubsubTopic]", ex)
+                    }
+                }
         } catch (e: Exception) {
             logger.error("❌ Error publishing event asynchronously to topic [$topic]", e)
+        }
+    }
+
+    companion object {
+        fun toPubSubTopic(topic: String): String {
+            return topic.replace('.', '-')
         }
     }
 }
