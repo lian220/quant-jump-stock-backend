@@ -8,20 +8,15 @@ import com.quantjumpstock.core.domain.model.VertexAIPredictionRequest
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.google.cloud.spring.pubsub.core.PubSubTemplate
 import org.slf4j.LoggerFactory
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
-import org.springframework.context.annotation.Primary
 import org.springframework.stereotype.Component
 import java.util.*
 
 /**
  * Pub/Sub Message Publisher Adapter (Output Adapter)
  * MessagePublisher 인터페이스를 구현하여 Google Cloud Pub/Sub과 연동합니다.
- * messaging.provider=pubsub 일 때만 활성화됩니다.
- * 프로덕션은 Kafka, 로컬은 Pub/Sub 사용 (docker-compose에서 MESSAGING_PROVIDER=pubsub 설정)
+ * 로컬: Pub/Sub 에뮬레이터, 프로덕션: 실제 GCP Pub/Sub 사용.
  */
-@Primary
 @Component
-@ConditionalOnProperty(name = ["messaging.provider"], havingValue = "pubsub", matchIfMissing = false)
 class PubSubMessagePublisherAdapter(
     private val pubSubTemplate: PubSubTemplate,
     private val objectMapper: ObjectMapper

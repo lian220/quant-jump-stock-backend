@@ -12,9 +12,6 @@ spring:
     name: quantiq-core
   main:
     allow-bean-definition-overriding: true
-  # autoconfigure.exclude는 로컬 docker-compose에서 환경변수로 설정
-  # (SPRING_AUTOCONFIGURE_EXCLUDE=org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration)
-
   # ============================================
   # PostgreSQL (RDB) Configuration
   # ============================================
@@ -69,19 +66,6 @@ spring:
     mongodb:
       uri: ${MONGODB_URI:mongodb://quantiq_user:quantiq_password@localhost:27017/stock_trading?authSource=admin}
       auto-index-creation: true
-
-  # ============================================
-  # Kafka Configuration (레거시, 롤백 용도로 유지)
-  # ============================================
-  kafka:
-    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
-    consumer:
-      group-id: quantiq-core
-      auto-offset-reset: earliest
-      max-poll-records: 10
-    producer:
-      acks: all
-      retries: 3
 
   # ============================================
   # Google Cloud Pub/Sub Configuration
