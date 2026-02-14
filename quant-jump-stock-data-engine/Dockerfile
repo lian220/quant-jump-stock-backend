@@ -23,7 +23,8 @@ COPY . .
 # Set Python path to include src directory
 ENV PYTHONPATH=/app/src
 
-EXPOSE 10020
+# Cloud Run은 PORT 환경변수 사용 (기본 8080), VM은 10020
+EXPOSE ${PORT:-10020}
 
 # Run the application
 CMD ["python", "-m", "src.main"]

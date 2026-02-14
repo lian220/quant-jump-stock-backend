@@ -48,6 +48,7 @@ class PubSubSettings(BaseSettings):
 
     project_id: str = Field(default="quantiq-local", alias="PUBSUB_PROJECT_ID")
     emulator_host: str = Field(default="", alias="PUBSUB_EMULATOR_HOST")
+    mode: str = Field(default="pull", alias="PUBSUB_MODE")  # pull | push
 
     # Topics (dot notation - adapter 레이어에서 hyphen으로 변환)
     topic_analysis_request: str = "quantiq.analysis.request"

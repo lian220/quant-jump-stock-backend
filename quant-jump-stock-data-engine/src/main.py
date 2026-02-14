@@ -6,8 +6,13 @@ Secondary: REST API (헬스체크, ML 패키지 업로드)
 
 Architecture:
     adapter/input/pubsub → application/strategy → adapter/output/*
+
+실행 모드 (PUBSUB_MODE 환경변수):
+    pull (기본): Streaming pull - VM/로컬 개발용
+    push: HTTP push endpoint - Cloud Run용 (scale-to-zero 지원)
 """
 
+import os
 import logging
 import time
 import threading
@@ -30,6 +35,10 @@ from services.slack_notifier import SlackNotifier
 
 # Hexagonal imports - Pub/Sub adapters
 from adapter.input.pubsub.subscriber import PubSubSubscriberAdapter, PubSubMessage
+from adapter.input.pubsub.push_handler import (
+    router as push_handler_router,
+    register_push_handler,
+)
 from adapter.input.pubsub.handlers import (
     EconomicDataHandler,
     TechnicalAnalysisHandler,
@@ -218,33 +227,28 @@ class LegacySlackNotifierAdapter:
         SlackNotifier.notify_economic_data_collection_error(request_id, error, thread_ts)
 
 
-def main():
-    logger.info("=" * 80)
-    logger.info("Quantiq Data Engine Started (Hexagonal Architecture)")
-    logger.info("=" * 80)
+def _init_services():
+    """서비스 및 핸들러 초기화 (push/pull 공통)
 
-    # 1. API 서버 시작 (별도 스레드)
-    api_thread = threading.Thread(target=run_api, daemon=True)
-    api_thread.start()
-
-    # 2. MongoDB 연결
+    Returns:
+        tuple: (handlers_map, pubsub_publisher, vertexai_handler)
+            handlers_map: {topic_str: handler.handle} 딕셔너리
+            pubsub_publisher: PubSubPublisherAdapter
+            vertexai_handler: VertexAIHandler 또는 None
+    """
+    # MongoDB 연결
     db = MongoDB.get_db()
     if db is None:
-        logger.error("Failed to connect to MongoDB")
-        return
+        raise RuntimeError("Failed to connect to MongoDB")
 
-    # 3. Pub/Sub 에뮬레이터 연결 대기
-    logger.info("Waiting for Pub/Sub emulator to be ready...")
-    time.sleep(2)
-
-    # 4. 서비스 초기화
+    # 서비스 초기화
     economic_service = LegacyEconomicServiceAdapter(EconomicDataService())
     slack_notifier = LegacySlackNotifierAdapter()
 
-    # 4.1. PostgreSQL 커넥션 풀 생성 (모든 repository에서 공유)
+    # PostgreSQL 커넥션 풀 생성
     pg_pool = PostgreSQL.get_pool()
 
-    # 4.2. 새 Hexagonal 분석 서비스 초기화
+    # Hexagonal 분석 서비스
     stock_repository = PostgresStockRepository(pool=pg_pool)
     price_repository = MongoPriceRepository(db)
     result_repository = MongoAnalysisResultRepository(db)
@@ -258,65 +262,53 @@ def main():
         lookback_days=180
     )
 
-    # RecommendationApplicationService는 향후 사용 예정
     _recommendation_app_service = RecommendationApplicationService(
         technical_service=technical_app_service,
-        sentiment_service=None,  # TODO: 감정 분석 서비스 연결
+        sentiment_service=None,
         notifier=analysis_notifier
     )
 
-    # 4.3. 새 서비스 어댑터 (핸들러 프로토콜 호환)
     technical_service = NewTechnicalAnalysisAdapter(technical_app_service)
-
-    # 4.3.1. REST API에 분석 서비스 등록
     analysis_router.set_technical_service(technical_service)
 
-    # 4.4. 레거시 서비스 (점진적 교체 예정)
     recommendation_service = RecommendationService()
     sentiment_service = LegacySentimentAnalysisAdapter(recommendation_service)
 
-    # 5. Pub/Sub Publisher 초기화
+    # Pub/Sub Publisher
     pubsub_publisher = PubSubPublisherAdapter(settings)
 
-    # 6. 핸들러 생성
+    # 핸들러 생성
     economic_handler = EconomicDataHandler(
         service=economic_service,
         notifier=slack_notifier,
         publisher=pubsub_publisher
     )
-
     technical_handler = TechnicalAnalysisHandler(
         service=technical_service,
         publisher=pubsub_publisher
     )
-
     sentiment_handler = SentimentAnalysisHandler(
         service=sentiment_service,
         publisher=pubsub_publisher
     )
-
     recommendation_handler = StockRecommendationHandler(
         publisher=pubsub_publisher
     )
 
-    # 6.1. 백테스트 핸들러 (SCRUM-186)
+    # 백테스트 핸들러
     strategy_pg_repository = PostgresStrategyRepository(pool=pg_pool)
     backtest_repository = PostgresBacktestRepository(pool=pg_pool)
-
     backtest_service = BacktestApplicationService(
         strategy_repository=strategy_pg_repository
     )
-
     backtest_handler = BacktestRequestHandler(
         backtest_service=backtest_service,
         backtest_repository=backtest_repository,
         publisher=pubsub_publisher
     )
 
-    # 6.2. Vertex AI 핸들러 (GCP 활성화 시에만)
+    # Vertex AI 핸들러 (GCP 활성화 시)
     vertexai_handler = None
-    prediction_service = None
-
     if settings.gcp.enabled:
         logger.info("GCP enabled - initializing Vertex AI services...")
         try:
@@ -333,58 +325,94 @@ def main():
                 container_uri=settings.gcp.container_uri
             )
             prediction_service = PredictionService(config=gcp_config)
-
-            # ML Router에 서비스 설정
             ml_router.set_prediction_service(prediction_service)
-
-            # Vertex AI Pub/Sub 핸들러
             vertexai_handler = VertexAIHandler(
                 service=prediction_service,
                 publisher=pubsub_publisher
             )
-            logger.info("✅ Vertex AI services initialized")
+            logger.info("Vertex AI services initialized")
         except Exception as e:
-            logger.error(f"❌ Failed to initialize Vertex AI services: {e}")
+            logger.error(f"Failed to initialize Vertex AI services: {e}")
     else:
         logger.info("GCP disabled - Vertex AI services not available")
 
-    # 7. Pub/Sub Subscriber 설정
+    # 핸들러 맵 구성
+    handlers_map = {
+        economic_handler.topic: economic_handler.handle,
+        technical_handler.topic: technical_handler.handle,
+        sentiment_handler.topic: sentiment_handler.handle,
+        recommendation_handler.topic: recommendation_handler.handle,
+        backtest_handler.topic: backtest_handler.handle,
+    }
+    if vertexai_handler:
+        handlers_map[vertexai_handler.topic] = vertexai_handler.handle
+
+    return handlers_map, pubsub_publisher
+
+
+def main():
+    pubsub_mode = settings.pubsub.mode.lower()
+
+    logger.info("=" * 80)
+    logger.info(f"Quantiq Data Engine Started (mode={pubsub_mode})")
+    logger.info("=" * 80)
+
+    if pubsub_mode == "push":
+        _run_push_mode()
+    else:
+        _run_pull_mode()
+
+
+def _run_push_mode():
+    """Push 모드: Cloud Run용 — FastAPI가 메인, Pub/Sub push 엔드포인트로 메시지 수신"""
+    logger.info("Starting in PUSH mode (Cloud Run)")
+
+    # 서비스 초기화
+    handlers_map, pubsub_publisher = _init_services()
+
+    # Push 핸들러 등록
+    for topic, handler in handlers_map.items():
+        register_push_handler(topic, handler)
+
+    # Push 라우터를 FastAPI 앱에 등록
+    app.include_router(push_handler_router)
+
+    logger.info(f"Push handlers registered for topics: {list(handlers_map.keys())}")
+
+    # Cloud Run은 PORT 환경변수 사용 (기본 8080)
+    port = int(os.environ.get("PORT", settings.server_port))
+    logger.info(f"Starting FastAPI server on port {port}")
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")
+
+
+def _run_pull_mode():
+    """Pull 모드: VM/로컬용 — Streaming pull이 메인, API는 별도 스레드"""
+    logger.info("Starting in PULL mode (VM/Local)")
+
+    # API 서버 시작 (별도 스레드)
+    api_thread = threading.Thread(target=run_api, daemon=True)
+    api_thread.start()
+
+    # Pub/Sub 에뮬레이터 연결 대기
+    logger.info("Waiting for Pub/Sub to be ready...")
+    time.sleep(2)
+
+    # 서비스 초기화
+    handlers_map, pubsub_publisher = _init_services()
+
+    # Subscriber 설정
     subscriber = PubSubSubscriberAdapter(settings=settings)
 
-    # 핸들러 등록
-    subscriber.register_handler(economic_handler.topic, economic_handler.handle)
-    subscriber.register_handler(technical_handler.topic, technical_handler.handle)
-    subscriber.register_handler(sentiment_handler.topic, sentiment_handler.handle)
-    subscriber.register_handler(recommendation_handler.topic, recommendation_handler.handle)
-    subscriber.register_handler(backtest_handler.topic, backtest_handler.handle)
+    for topic, handler in handlers_map.items():
+        subscriber.register_handler(topic, handler)
 
-    # Vertex AI 핸들러 등록 (GCP 활성화 시)
-    if vertexai_handler:
-        subscriber.register_handler(vertexai_handler.topic, vertexai_handler.handle)
-
-    # 토픽 목록
-    topics = [
-        economic_handler.topic,
-        technical_handler.topic,
-        sentiment_handler.topic,
-        recommendation_handler.topic,
-        backtest_handler.topic,
-    ]
-
-    # Vertex AI 토픽 추가 (GCP 활성화 시)
-    if vertexai_handler:
-        topics.append(vertexai_handler.topic)
-
+    topics = list(handlers_map.keys())
     logger.info(f"Subscribing to topics: {topics}")
 
     try:
-        # 8. Subscriber 시작 (streaming pull)
         subscriber.start(topics)
-
-        # 9. 메시지 처리 루프 (streaming pull이 백그라운드에서 처리)
         logger.info("Starting Pub/Sub streaming pull...")
         subscriber.run_forever()
-
     except KeyboardInterrupt:
         logger.info("Shutdown requested...")
     finally:
