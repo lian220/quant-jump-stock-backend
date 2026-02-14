@@ -94,9 +94,18 @@ jobs:
             grep -v '^\s*#' ./quant-jump-stock-backend/.env.prod | grep -v '^\s*$' >> .env
             echo "AR_REPO=asia-northeast3-docker.pkg.dev/${{ secrets.GCP_PROJECT_ID }}/qjs-docker" >> .env
 
-            # Sync config files from repo (nginx.conf, docker-compose 등)
+            # Sync config files from repos
+            # 1) Root repo: nginx config
             git fetch origin main --quiet 2>/dev/null || true
-            git checkout origin/main -- docker-compose.prod.yml nginx/ 2>/dev/null || true
+            git checkout origin/main -- nginx/ 2>/dev/null || true
+            # 2) Backend repo: docker-compose.prod.yml
+            if [ -d ./quant-jump-stock-backend/.git ]; then
+              cd ./quant-jump-stock-backend
+              git fetch origin main --quiet 2>/dev/null || true
+              git checkout origin/main -- docker-compose.prod.yml 2>/dev/null || true
+              cd ..
+              cp -f ./quant-jump-stock-backend/docker-compose.prod.yml docker-compose.prod.yml
+            fi
 
             # Pull & restart Core only
             docker compose -f docker-compose.prod.yml pull core

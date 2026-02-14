@@ -13,12 +13,13 @@ import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory
 import org.springframework.kafka.core.*
 
 /**
- * Kafka 설정 (레거시, 롤백 용도로 유지)
- * messaging.provider=kafka 일 때만 활성화됩니다.
+ * Kafka 설정
+ * messaging.provider가 미설정이면 기본값으로 Kafka 사용 (프로덕션 기본)
+ * 로컬 개발: docker-compose에서 MESSAGING_PROVIDER=pubsub 설정
  */
 @EnableKafka
 @Configuration
-@ConditionalOnProperty(name = ["messaging.provider"], havingValue = "kafka", matchIfMissing = false)
+@ConditionalOnProperty(name = ["messaging.provider"], havingValue = "kafka", matchIfMissing = true)
 class KafkaConfig {
 
     @Value("\${spring.kafka.bootstrap-servers}") private lateinit var bootstrapServers: String

@@ -12,9 +12,8 @@ spring:
     name: quantiq-core
   main:
     allow-bean-definition-overriding: true
-  autoconfigure:
-    exclude:
-      - org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration
+  # autoconfigure.exclude는 로컬 docker-compose에서 환경변수로 설정
+  # (SPRING_AUTOCONFIGURE_EXCLUDE=org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration)
 
   # ============================================
   # PostgreSQL (RDB) Configuration
@@ -85,14 +84,16 @@ spring:
       retries: 3
 
   # ============================================
-  # Google Cloud Pub/Sub Configuration (활성)
+  # Google Cloud Pub/Sub Configuration
   # ============================================
+  # emulator-host는 환경변수로만 설정 (SPRING_CLOUD_GCP_PUBSUB_EMULATORHOST)
+  # YAML에 빈 기본값을 두면 GcpPubSubEmulatorAutoConfiguration이 활성화되어
+  # 프로덕션에서 URI 파싱 에러 발생
   cloud:
     gcp:
       project-id: ${GCP_PROJECT_ID:quantiq-local}
       pubsub:
         project-id: ${PUBSUB_PROJECT_ID:${GCP_PROJECT_ID:quantiq-local}}
-        emulator-host: ${PUBSUB_EMULATOR_HOST:}
 
   # ============================================
   # Quartz Scheduler Configuration

@@ -200,9 +200,14 @@ services:
       DB_PASSWORD: ${DB_PASSWORD:-quantiq_password}
       # MongoDB - env var 우선, 미설정시 로컬 Docker
       SPRING_DATA_MONGODB_URI: ${MONGODB_URI:-mongodb://quantiq_user:quantiq_password@mongodb:27017/stock_trading?authSource=admin}
+      # Messaging: 로컬은 Pub/Sub 사용
+      MESSAGING_PROVIDER: "pubsub"
       # Pub/Sub (컨테이너 네트워크용 기본값 설정)
       PUBSUB_EMULATOR_HOST: ${PUBSUB_EMULATOR_HOST:-pubsub-emulator:8681}
+      SPRING_CLOUD_GCP_PUBSUB_EMULATORHOST: ${PUBSUB_EMULATOR_HOST:-pubsub-emulator:8681}
       PUBSUB_PROJECT_ID: ${PUBSUB_PROJECT_ID:-quantiq-local}
+      # KafkaAutoConfiguration 제외 (로컬에서 Kafka 브로커 없음)
+      SPRING_AUTOCONFIGURE_EXCLUDE: "org.springframework.boot.autoconfigure.kafka.KafkaAutoConfiguration"
       # Slack (SLACK_BOT_TOKEN은 .env.common에서 로드)
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL_TRADING}
       SLACK_CHANNEL: "C0A1XASTLH2"

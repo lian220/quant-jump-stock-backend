@@ -10,11 +10,11 @@ import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.stereotype.Component
 
 /**
- * Kafka Event Listener Adapter (Input Adapter, 레거시 - 롤백 용도로 유지)
- * messaging.provider=kafka 일 때만 활성화됩니다.
+ * Kafka Event Listener Adapter (Input Adapter)
+ * messaging.provider가 미설정이면 기본값으로 Kafka 사용 (프로덕션 기본)
  */
 @Component
-@ConditionalOnProperty(name = ["messaging.provider"], havingValue = "kafka", matchIfMissing = false)
+@ConditionalOnProperty(name = ["messaging.provider"], havingValue = "kafka", matchIfMissing = true)
 class KafkaEventListenerAdapter(
     private val objectMapper: ObjectMapper,
     private val autoTradingService: AutoTradingService,

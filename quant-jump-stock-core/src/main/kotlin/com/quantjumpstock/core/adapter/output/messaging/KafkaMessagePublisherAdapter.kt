@@ -13,11 +13,11 @@ import org.springframework.stereotype.Component
 import java.util.*
 
 /**
- * Kafka Message Publisher Adapter (Output Adapter, 레거시 - 롤백 용도로 유지)
- * messaging.provider=kafka 일 때만 활성화됩니다.
+ * Kafka Message Publisher Adapter (Output Adapter)
+ * messaging.provider가 미설정이면 기본값으로 Kafka 사용 (프로덕션 기본)
  */
 @Component
-@ConditionalOnProperty(name = ["messaging.provider"], havingValue = "kafka", matchIfMissing = false)
+@ConditionalOnProperty(name = ["messaging.provider"], havingValue = "kafka", matchIfMissing = true)
 class KafkaMessagePublisherAdapter(
     private val kafkaTemplate: KafkaTemplate<String, String>,
     private val objectMapper: ObjectMapper

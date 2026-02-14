@@ -9,10 +9,11 @@ import org.springframework.stereotype.Component
 /**
  * Analysis Request Publisher Adapter (Output Adapter)
  * 분석 요청 메시지를 Pub/Sub으로 발행합니다.
- * messaging.provider=pubsub (기본값) 일 때만 활성화됩니다.
+ * messaging.provider=pubsub 일 때만 활성화됩니다.
+ * 프로덕션은 Kafka, 로컬은 Pub/Sub 사용 (docker-compose에서 MESSAGING_PROVIDER=pubsub 설정)
  */
 @Component
-@ConditionalOnProperty(name = ["messaging.provider"], havingValue = "pubsub", matchIfMissing = true)
+@ConditionalOnProperty(name = ["messaging.provider"], havingValue = "pubsub", matchIfMissing = false)
 class AnalysisRequestPublisherAdapter(
     private val pubSubTemplate: PubSubTemplate,
     private val objectMapper: ObjectMapper

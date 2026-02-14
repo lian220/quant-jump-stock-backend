@@ -14,10 +14,11 @@ import org.springframework.stereotype.Component
 /**
  * Pub/Sub Event Listener Adapter (Input Adapter)
  * quantiq-data-engine에서 발행된 이벤트를 수신하여 처리합니다.
- * messaging.provider=pubsub (기본값) 일 때만 활성화됩니다.
+ * messaging.provider=pubsub 일 때만 활성화됩니다.
+ * 프로덕션은 Kafka, 로컬은 Pub/Sub 사용 (docker-compose에서 MESSAGING_PROVIDER=pubsub 설정)
  */
 @Component
-@ConditionalOnProperty(name = ["messaging.provider"], havingValue = "pubsub", matchIfMissing = true)
+@ConditionalOnProperty(name = ["messaging.provider"], havingValue = "pubsub", matchIfMissing = false)
 class PubSubEventListenerAdapter(
     private val pubSubTemplate: PubSubTemplate,
     private val objectMapper: ObjectMapper,
