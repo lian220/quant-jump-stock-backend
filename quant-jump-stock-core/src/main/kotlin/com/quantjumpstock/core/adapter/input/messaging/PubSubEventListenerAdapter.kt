@@ -8,13 +8,16 @@ import com.google.cloud.spring.pubsub.core.PubSubTemplate
 import com.google.cloud.spring.pubsub.support.BasicAcknowledgeablePubsubMessage
 import jakarta.annotation.PostConstruct
 import org.slf4j.LoggerFactory
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
 
 /**
  * Pub/Sub Event Listener Adapter (Input Adapter)
  * quantiq-data-engine에서 발행된 이벤트를 수신하여 처리합니다.
+ * messaging.provider=pubsub (기본값) 일 때만 활성화됩니다.
  */
 @Component
+@ConditionalOnProperty(name = ["messaging.provider"], havingValue = "pubsub", matchIfMissing = true)
 class PubSubEventListenerAdapter(
     private val pubSubTemplate: PubSubTemplate,
     private val objectMapper: ObjectMapper,

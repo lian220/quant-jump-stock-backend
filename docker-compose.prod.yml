@@ -50,6 +50,8 @@ services:
       - SPRING_DATA_MONGODB_URI=${MONGODB_URI}
       - SPRING_QUARTZ_JOB_STORE_TYPE=memory
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      # Messaging: 프로덕션은 Kafka 사용 (Pub/Sub 컴포넌트 비활성화)
+      - MESSAGING_PROVIDER=kafka
       - SPRING_FLYWAY_BASELINE_ON_MIGRATE=true
       - SPRING_FLYWAY_VALIDATE_ON_MIGRATE=false
       # OAuth2 + JWT

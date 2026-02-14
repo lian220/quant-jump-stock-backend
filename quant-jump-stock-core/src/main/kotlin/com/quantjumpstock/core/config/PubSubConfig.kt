@@ -1,5 +1,6 @@
 package com.quantjumpstock.core.config
 
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Configuration
 
 /**
@@ -7,6 +8,8 @@ import org.springframework.context.annotation.Configuration
  *
  * Spring Cloud GCP auto-configuration이 PubSubTemplate을 자동 생성합니다.
  * PUBSUB_EMULATOR_HOST 환경변수가 설정되면 자동으로 에뮬레이터를 사용합니다.
+ * messaging.provider=pubsub (기본값) 일 때만 활성화됩니다.
  */
 @Configuration
+@ConditionalOnProperty(name = ["messaging.provider"], havingValue = "pubsub", matchIfMissing = true)
 class PubSubConfig
