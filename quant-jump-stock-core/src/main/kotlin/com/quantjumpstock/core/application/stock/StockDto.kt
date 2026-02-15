@@ -5,6 +5,8 @@ import com.quantjumpstock.core.domain.model.stock.Market
 import io.swagger.v3.oas.annotations.media.Schema
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Size
+import java.math.BigDecimal
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 // ===== Request DTOs =====
@@ -168,7 +170,40 @@ data class StockDetailResponse(
     val createdAt: LocalDateTime,
 
     @Schema(description = "수정일")
-    val updatedAt: LocalDateTime
+    val updatedAt: LocalDateTime,
+
+    @Schema(description = "현재가")
+    val currentPrice: BigDecimal? = null,
+
+    @Schema(description = "전일 종가")
+    val previousClose: BigDecimal? = null,
+
+    @Schema(description = "등락액")
+    val changeAmount: BigDecimal? = null,
+
+    @Schema(description = "등락률 (%)")
+    val changePercent: BigDecimal? = null,
+
+    @Schema(description = "시가")
+    val open: BigDecimal? = null,
+
+    @Schema(description = "고가")
+    val high: BigDecimal? = null,
+
+    @Schema(description = "저가")
+    val low: BigDecimal? = null,
+
+    @Schema(description = "거래량")
+    val volume: Long? = null,
+
+    @Schema(description = "시가총액")
+    val marketCap: BigDecimal? = null,
+
+    @Schema(description = "PER")
+    val trailingPE: BigDecimal? = null,
+
+    @Schema(description = "가격 기준일")
+    val priceDate: LocalDate? = null
 )
 
 data class StockSummary(
@@ -197,7 +232,22 @@ data class StockSummary(
     val designationStatus: DesignationStatus,
 
     @Schema(description = "활성 여부")
-    val isActive: Boolean
+    val isActive: Boolean,
+
+    @Schema(description = "현재가")
+    val currentPrice: BigDecimal? = null,
+
+    @Schema(description = "등락률 (%)")
+    val changePercent: BigDecimal? = null,
+
+    @Schema(description = "등락액")
+    val changeAmount: BigDecimal? = null,
+
+    @Schema(description = "거래량")
+    val volume: Long? = null,
+
+    @Schema(description = "가격 기준일")
+    val priceDate: LocalDate? = null
 )
 
 data class StockSearchResponse(

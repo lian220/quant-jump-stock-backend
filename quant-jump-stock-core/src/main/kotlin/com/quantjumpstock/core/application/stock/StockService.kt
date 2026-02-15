@@ -3,6 +3,8 @@ package com.quantjumpstock.core.application.stock
 import com.quantjumpstock.core.domain.model.stock.Market
 import com.quantjumpstock.core.domain.model.stock.Stock
 import com.quantjumpstock.core.domain.model.stock.StockDesignationHistory
+import com.quantjumpstock.core.domain.model.stock.StockPriceSnapshot
+import com.quantjumpstock.core.domain.port.output.StockPriceDataPort
 import com.quantjumpstock.core.domain.port.output.StockRepository
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Pageable
@@ -12,7 +14,8 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 @Transactional(readOnly = true)
 class StockService(
-    private val stockRepository: StockRepository
+    private val stockRepository: StockRepository,
+    private val stockPriceDataPort: StockPriceDataPort
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -29,9 +32,11 @@ class StockService(
         logger.info("종목 검색: query=$query, market=$market, sector=$sector")
 
         val page = stockRepository.search(query, market, sector, isActive, pageable)
+        val tickers = page.content.map { it.ticker }
+        val priceMap = loadPricesSafely(tickers)
 
         return StockSearchResponse(
-            stocks = page.content.map { it.toSummary() },
+            stocks = page.content.map { it.toSummary(priceMap[it.ticker]) },
             totalElements = page.totalElements,
             totalPages = page.totalPages,
             currentPage = page.number
@@ -45,7 +50,8 @@ class StockService(
         val stock = stockRepository.findById(stockId)
             ?: throw StockException("종목을 찾을 수 없습니다: $stockId")
 
-        return stock.toDetailResponse()
+        val price = loadPriceSafely(stock.ticker)
+        return stock.toDetailResponse(price)
     }
 
     /**
@@ -188,9 +194,29 @@ class StockService(
         }
     }
 
+    // ===== Price Loading (Graceful Degradation) =====
+
+    private fun loadPricesSafely(tickers: List<String>): Map<String, StockPriceSnapshot> {
+        return try {
+            stockPriceDataPort.getLatestPrices(tickers)
+        } catch (e: Exception) {
+            logger.warn("가격 데이터 일괄 조회 실패, 메타데이터만 반환: ${e.message}")
+            emptyMap()
+        }
+    }
+
+    private fun loadPriceSafely(ticker: String): StockPriceSnapshot? {
+        return try {
+            stockPriceDataPort.getLatestPrice(ticker)
+        } catch (e: Exception) {
+            logger.warn("가격 데이터 조회 실패 ({}), 메타데이터만 반환: {}", ticker, e.message)
+            null
+        }
+    }
+
     // ===== Mapping Extensions =====
 
-    private fun Stock.toSummary(): StockSummary {
+    private fun Stock.toSummary(price: StockPriceSnapshot? = null): StockSummary {
         return StockSummary(
             id = this.id!!,
             ticker = this.ticker,
@@ -200,11 +226,16 @@ class StockService(
             sector = this.sector,
             isEtf = this.isEtf,
             designationStatus = this.designationStatus,
-            isActive = this.isActive
+            isActive = this.isActive,
+            currentPrice = price?.close,
+            changePercent = price?.changePercent,
+            changeAmount = price?.changeAmount,
+            volume = price?.volume,
+            priceDate = price?.date
         )
     }
 
-    private fun Stock.toDetailResponse(): StockDetailResponse {
+    private fun Stock.toDetailResponse(price: StockPriceSnapshot? = null): StockDetailResponse {
         return StockDetailResponse(
             id = this.id!!,
             ticker = this.ticker,
@@ -221,7 +252,18 @@ class StockService(
             designatedAt = this.designatedAt,
             isActive = this.isActive,
             createdAt = this.createdAt,
-            updatedAt = this.updatedAt
+            updatedAt = this.updatedAt,
+            currentPrice = price?.close,
+            previousClose = price?.previousClose,
+            changeAmount = price?.changeAmount,
+            changePercent = price?.changePercent,
+            open = price?.open,
+            high = price?.high,
+            low = price?.low,
+            volume = price?.volume,
+            marketCap = price?.marketCap,
+            trailingPE = price?.trailingPE,
+            priceDate = price?.date
         )
     }
 }
