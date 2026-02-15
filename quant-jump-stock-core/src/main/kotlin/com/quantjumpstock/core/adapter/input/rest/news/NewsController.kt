@@ -1,5 +1,6 @@
 package com.quantjumpstock.core.adapter.input.rest.news
 
+import com.quantjumpstock.core.application.news.CategoryListResponse
 import com.quantjumpstock.core.application.news.NewsListResponse
 import com.quantjumpstock.core.application.news.NewsQueryService
 import io.swagger.v3.oas.annotations.Operation
@@ -7,6 +8,7 @@ import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
+import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
@@ -60,6 +62,32 @@ class NewsController(
         @RequestParam(required = false, defaultValue = "20") limit: Int
     ): ResponseEntity<NewsListResponse> {
         val response = newsQueryService.getNewsByTags(tags, limit)
+        return ResponseEntity.ok(response)
+    }
+
+    @GetMapping("/categories")
+    @Operation(
+        summary = "뉴스 카테고리 목록 조회",
+        description = "그룹별 뉴스 카테고리 목록을 조회합니다. (시장/기업/자산/매크로/정보)"
+    )
+    fun getCategories(): ResponseEntity<CategoryListResponse> {
+        val response = newsQueryService.getCategories()
+        return ResponseEntity.ok(response)
+    }
+
+    @GetMapping("/categories/{categoryName}")
+    @Operation(
+        summary = "카테고리별 뉴스 조회",
+        description = "특정 카테고리의 뉴스를 조회합니다."
+    )
+    fun getNewsByCategory(
+        @Parameter(description = "카테고리명", example = "실적발표")
+        @PathVariable categoryName: String,
+
+        @Parameter(description = "조회 건수", example = "20")
+        @RequestParam(required = false, defaultValue = "20") limit: Int
+    ): ResponseEntity<NewsListResponse> {
+        val response = newsQueryService.getNewsByCategory(categoryName, limit)
         return ResponseEntity.ok(response)
     }
 }

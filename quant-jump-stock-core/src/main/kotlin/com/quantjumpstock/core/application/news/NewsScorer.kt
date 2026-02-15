@@ -5,7 +5,9 @@ import com.quantjumpstock.core.domain.news.model.ScoredNewsItem
 import org.springframework.stereotype.Component
 
 @Component
-class NewsScorer {
+class NewsScorer(
+    private val categoryService: NewsCategoryService
+) {
 
     private val sourceWeights = mapOf(
         "reuters" to 0.15,
@@ -16,29 +18,19 @@ class NewsScorer {
     )
     private val defaultSourceWeight = 0.05
 
-    private val categoryWeights = mapOf(
-        "속보" to 0.40,
-        "경제지표" to 0.35,
-        "연준" to 0.35,
-        "투자 의견" to 0.30,
-        "분석" to 0.25,
-        "에너지" to 0.20,
-        "종합" to 0.15,
-        "정보" to 0.15,
-        "암호화폐" to 0.10,
-        "일정" to 0.10
-    )
-
     fun score(item: NewsItem): ScoredNewsItem {
         val reasons = mutableListOf<String>()
+        val categoryWeights = categoryService.getAllCategoryWeights()
 
         val sourceScore = sourceWeights[item.originalSource] ?: defaultSourceWeight
         if (sourceScore >= 0.15) reasons += "${item.originalSource ?: "SAVE"} (고신뢰)"
 
-        val categoryScore = item.tags
+        // raw 태그를 정규화 카테고리로 변환 후 가중치 조회
+        val resolvedTags = categoryService.resolveTags(item.source.name, item.tags)
+        val categoryScore = resolvedTags
             .mapNotNull { categoryWeights[it] }
             .maxOrNull() ?: 0.10
-        val topCategory = item.tags
+        val topCategory = resolvedTags
             .maxByOrNull { categoryWeights[it] ?: 0.0 }
         if (topCategory != null) reasons += topCategory
 
@@ -60,7 +52,7 @@ class NewsScorer {
             .coerceAtMost(1.0)
 
         return ScoredNewsItem(
-            newsItem = item.copy(importanceScore = totalScore),
+            newsItem = item.copy(importanceScore = totalScore, tags = resolvedTags),
             score = totalScore,
             matchedTickers = item.tickers.toSet(),
             reasons = reasons,
