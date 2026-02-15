@@ -21,6 +21,7 @@ class NewsCollectionService(
     private val newsRepository: NewsRepository,
     private val collectorStateRepository: CollectorStateRepository,
     private val scorer: NewsScorer,
+    private val subscriptionService: NewsSubscriptionService,
     private val webClient: WebClient,
     @Value("\${slack.webhook-url:}") private val slackWebhookUrl: String
 ) : NewsCollectionUseCase {
@@ -52,12 +53,25 @@ class NewsCollectionService(
 
         newsRepository.saveAll(scored.map { it.newsItem })
 
-        // TODO: Phase 1 이후 단계에서 매칭/알림 구현
-        // scored.filter { it.score >= 0.4 }.forEach { scoredItem ->
-        //     val targets = matchingEngine.match(scoredItem)
-        //     notificationPort.dispatch(targets, scoredItem)
-        // }
+        // 구독자 매칭 → 인앱 알림 생성
+        scored.forEach { scoredItem ->
+            try {
+                subscriptionService.createNotificationsForNews(
+                    newsId = scoredItem.newsItem.externalId,
+                    title = scoredItem.newsItem.titleKo,
+                    summary = scoredItem.newsItem.contentKo?.take(200),
+                    categories = scoredItem.newsItem.tags,
+                    tickers = scoredItem.newsItem.tickers,
+                    sourceName = scoredItem.newsItem.source.name,
+                    importance = scoredItem.score,
+                    sourceUrl = scoredItem.newsItem.sourceUrl
+                )
+            } catch (e: Exception) {
+                logger.debug("알림 생성 실패: {}", e.message)
+            }
+        }
 
+        // Slack 알림 (중요 뉴스만)
         scored.filter { it.score >= 0.4 }.forEach { scoredItem ->
             val emoji = if (scoredItem.score >= 0.7) "🚨" else "📰"
             val rumorLabel = if (scoredItem.isRumor) " [미확인]" else ""
