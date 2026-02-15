@@ -323,3 +323,68 @@ class Portfolio:
     def get_trades_by_reason(self, reason: ExitReason) -> List[Trade]:
         """특정 사유의 거래만 반환"""
         return [t for t in self.trades if t.exit_reason == reason]
+
+    def get_completed_trades(self) -> list:
+        """
+        BUY/SELL 매칭하여 CompletedTrade 리스트 생성 (FIFO)
+
+        부분 청산을 지원합니다: BUY 100 → SELL 50 → SELL 50 시
+        BUY 레코드를 수량 단위로 분할하여 매칭합니다.
+
+        Returns:
+            CompletedTrade 객체 리스트
+        """
+        from domain.backtest.metrics import CompletedTrade
+        from typing import Tuple
+
+        # (entry_date, entry_price, remaining_qty) 큐
+        buy_queue: Dict[str, List[list]] = {}
+        completed = []
+
+        for t in self.trades:
+            if t.trade_type == TradeType.BUY:
+                buy_queue.setdefault(t.symbol, []).append(
+                    [t.trade_date, t.price, t.quantity]
+                )
+            elif t.trade_type == TradeType.SELL and t.realized_pnl is not None:
+                remaining = t.quantity
+                queue = buy_queue.get(t.symbol, [])
+
+                while remaining > 0 and queue:
+                    b_date, b_price, b_qty = queue[0]
+                    matched = min(remaining, b_qty)
+
+                    if matched == b_qty:
+                        queue.pop(0)
+                    else:
+                        queue[0][2] = b_qty - matched
+
+                    ratio = Decimal(str(matched)) / Decimal(str(t.quantity))
+                    completed.append(CompletedTrade(
+                        symbol=t.symbol,
+                        entry_date=b_date,
+                        exit_date=t.trade_date,
+                        entry_price=b_price,
+                        exit_price=t.price,
+                        quantity=matched,
+                        pnl=t.realized_pnl * ratio,
+                        pnl_pct=t.realized_pnl_pct or Decimal("0"),
+                        exit_reason=t.exit_reason.value if t.exit_reason else "signal",
+                    ))
+                    remaining -= matched
+
+                # BUY 매칭 없는 경우 (fallback)
+                if remaining > 0:
+                    completed.append(CompletedTrade(
+                        symbol=t.symbol,
+                        entry_date=t.trade_date,
+                        exit_date=t.trade_date,
+                        entry_price=t.entry_price or t.price,
+                        exit_price=t.price,
+                        quantity=remaining,
+                        pnl=t.realized_pnl * Decimal(str(remaining)) / Decimal(str(t.quantity)),
+                        pnl_pct=t.realized_pnl_pct or Decimal("0"),
+                        exit_reason=t.exit_reason.value if t.exit_reason else "signal",
+                    ))
+
+        return completed

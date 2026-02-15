@@ -53,7 +53,19 @@ data class CreateStrategyRequest(
     val conditions: String = "{}",
 
     @Schema(description = "리밸런싱 주기", example = "MONTHLY")
-    val rebalanceFrequency: RebalanceFrequency = RebalanceFrequency.MONTHLY
+    val rebalanceFrequency: RebalanceFrequency = RebalanceFrequency.MONTHLY,
+
+    @Schema(description = "기본 리스크 설정 (JSON)", example = "{\"stopLoss\":{\"enabled\":true,\"percentage\":5}}")
+    @JsonDeserialize(using = JsonStringDeserializer::class)
+    val riskSettings: String = "{}",
+
+    @Schema(description = "기본 포지션 사이징 설정 (JSON)", example = "{\"method\":\"fixed_percentage\",\"maxPositionPct\":20}")
+    @JsonDeserialize(using = JsonStringDeserializer::class)
+    val positionSizing: String = "{}",
+
+    @Schema(description = "기본 거래 비용 설정 (JSON)", example = "{\"commissionRate\":0.015,\"taxRate\":0.23}")
+    @JsonDeserialize(using = JsonStringDeserializer::class)
+    val tradingCosts: String = "{}"
 )
 
 /**
@@ -89,7 +101,19 @@ data class UpdateStrategyRequest(
     val conditions: String? = null,
 
     @Schema(description = "리밸런싱 주기")
-    val rebalanceFrequency: RebalanceFrequency? = null
+    val rebalanceFrequency: RebalanceFrequency? = null,
+
+    @Schema(description = "기본 리스크 설정 (JSON)")
+    @JsonDeserialize(using = JsonStringDeserializer::class)
+    val riskSettings: String? = null,
+
+    @Schema(description = "기본 포지션 사이징 설정 (JSON)")
+    @JsonDeserialize(using = JsonStringDeserializer::class)
+    val positionSizing: String? = null,
+
+    @Schema(description = "기본 거래 비용 설정 (JSON)")
+    @JsonDeserialize(using = JsonStringDeserializer::class)
+    val tradingCosts: String? = null
 )
 
 /**
@@ -134,6 +158,15 @@ data class StrategyDetailResponse(
 
     @Schema(description = "리밸런싱 주기")
     val rebalanceFrequency: RebalanceFrequency,
+
+    @Schema(description = "기본 리스크 설정 (JSON)")
+    val riskSettings: String = "{}",
+
+    @Schema(description = "기본 포지션 사이징 설정 (JSON)")
+    val positionSizing: String = "{}",
+
+    @Schema(description = "기본 거래 비용 설정 (JSON)")
+    val tradingCosts: String = "{}",
 
     @Schema(description = "구독자 수")
     val subscriberCount: Int,

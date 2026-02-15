@@ -159,8 +159,30 @@ class PostgresBacktestRepository:
                 equity_curve,
                 status,
                 created_at,
-                completed_at
+                completed_at,
+                profit_factor,
+                expectancy,
+                kelly_percentage,
+                risk_reward_ratio,
+                calmar_ratio,
+                total_commission,
+                total_slippage,
+                total_tax,
+                net_profit_after_costs,
+                avg_holding_period,
+                best_trade,
+                worst_trade,
+                max_consecutive_wins,
+                max_consecutive_losses,
+                stop_loss_count,
+                take_profit_count,
+                trailing_stop_count,
+                risk_settings,
+                position_sizing,
+                trading_costs
             ) VALUES (
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s
@@ -184,7 +206,27 @@ class PostgresBacktestRepository:
                 beta = EXCLUDED.beta,
                 equity_curve = EXCLUDED.equity_curve,
                 status = EXCLUDED.status,
-                completed_at = EXCLUDED.completed_at
+                completed_at = EXCLUDED.completed_at,
+                profit_factor = EXCLUDED.profit_factor,
+                expectancy = EXCLUDED.expectancy,
+                kelly_percentage = EXCLUDED.kelly_percentage,
+                risk_reward_ratio = EXCLUDED.risk_reward_ratio,
+                calmar_ratio = EXCLUDED.calmar_ratio,
+                total_commission = EXCLUDED.total_commission,
+                total_slippage = EXCLUDED.total_slippage,
+                total_tax = EXCLUDED.total_tax,
+                net_profit_after_costs = EXCLUDED.net_profit_after_costs,
+                avg_holding_period = EXCLUDED.avg_holding_period,
+                best_trade = EXCLUDED.best_trade,
+                worst_trade = EXCLUDED.worst_trade,
+                max_consecutive_wins = EXCLUDED.max_consecutive_wins,
+                max_consecutive_losses = EXCLUDED.max_consecutive_losses,
+                stop_loss_count = EXCLUDED.stop_loss_count,
+                take_profit_count = EXCLUDED.take_profit_count,
+                trailing_stop_count = EXCLUDED.trailing_stop_count,
+                risk_settings = EXCLUDED.risk_settings,
+                position_sizing = EXCLUDED.position_sizing,
+                trading_costs = EXCLUDED.trading_costs
             RETURNING id
             """,
             (
@@ -198,22 +240,42 @@ class PostgresBacktestRepository:
                 float(result.total_return),
                 float(result.cagr),
                 float(result.mdd),
-                float(result.sharpe_ratio) if result.sharpe_ratio else None,
-                float(result.sortino_ratio) if result.sortino_ratio else None,
-                float(result.volatility) if result.volatility else None,
+                float(result.sharpe_ratio) if result.sharpe_ratio is not None else None,
+                float(result.sortino_ratio) if result.sortino_ratio is not None else None,
+                float(result.volatility) if result.volatility is not None else None,
                 result.total_trades,
                 result.winning_trades,
                 result.losing_trades,
-                float(result.win_rate) if result.win_rate else None,
-                float(result.avg_win) if result.avg_win else None,
-                float(result.avg_loss) if result.avg_loss else None,
-                float(result.benchmark_return) if result.benchmark_return else None,
-                float(result.alpha) if result.alpha else None,
-                float(result.beta) if result.beta else None,
+                float(result.win_rate) if result.win_rate is not None else None,
+                float(result.avg_win) if result.avg_win is not None else None,
+                float(result.avg_loss) if result.avg_loss is not None else None,
+                float(result.benchmark_return) if result.benchmark_return is not None else None,
+                float(result.alpha) if result.alpha is not None else None,
+                float(result.beta) if result.beta is not None else None,
                 equity_curve_json,
                 "COMPLETED",
                 now,  # created_at
-                now   # completed_at
+                now,  # completed_at
+                float(result.profit_factor) if result.profit_factor is not None else None,
+                float(result.expectancy) if result.expectancy is not None else None,
+                float(result.kelly_percentage) if result.kelly_percentage is not None else None,
+                float(result.risk_reward_ratio) if result.risk_reward_ratio is not None else None,
+                float(result.calmar_ratio) if result.calmar_ratio is not None else None,
+                float(result.total_commission) if result.total_commission is not None else None,
+                float(result.total_slippage) if result.total_slippage is not None else None,
+                float(result.total_tax) if result.total_tax is not None else None,
+                float(result.net_profit_after_costs) if result.net_profit_after_costs is not None else None,
+                float(result.avg_holding_days) if result.avg_holding_days is not None else None,
+                float(result.best_trade) if result.best_trade is not None else None,
+                float(result.worst_trade) if result.worst_trade is not None else None,
+                result.max_consecutive_wins,
+                result.max_consecutive_losses,
+                result.stop_loss_count,
+                result.take_profit_count,
+                result.trailing_stop_count,
+                json.dumps(result.risk_settings) if result.risk_settings else '{}',
+                json.dumps(result.position_sizing) if result.position_sizing else '{}',
+                json.dumps(result.trading_costs_config) if result.trading_costs_config else '{}',
             )
         )
         return cursor.fetchone()[0]
@@ -234,10 +296,14 @@ class PostgresBacktestRepository:
                 float(trade.price),
                 float(trade.amount),
                 float(trade.commission),
-                float(trade.realized_pnl) if trade.realized_pnl else None,
-                float(trade.realized_pnl_pct) if trade.realized_pnl_pct else None,
+                float(trade.realized_pnl) if trade.realized_pnl is not None else None,
+                float(trade.realized_pnl_pct) if trade.realized_pnl_pct is not None else None,
                 trade.holding_days,
-                trade.exit_reason  # signal_reason
+                trade.exit_reason,  # signal_reason
+                trade.exit_reason,  # exit_reason (V44)
+                float(trade.slippage_amount) if trade.slippage_amount is not None else None,
+                float(trade.tax_amount) if trade.tax_amount is not None else None,
+                float(trade.execution_price) if trade.execution_price is not None else None,
             ))
 
         psycopg2.extras.execute_batch(
@@ -255,8 +321,12 @@ class PostgresBacktestRepository:
                 pnl,
                 pnl_percent,
                 holding_days,
-                signal_reason
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                signal_reason,
+                exit_reason,
+                slippage_amount,
+                tax_amount,
+                execution_price
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             values,
             page_size=100

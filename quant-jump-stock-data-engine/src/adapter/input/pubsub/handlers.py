@@ -643,6 +643,10 @@ class BacktestRequestHandler(MessageHandler):
         slippage_rate = payload.get("slippageRate", 0.0001)
         force_full = payload.get("forceFull", False)  # 강제 전체 실행 옵션
         benchmark = payload.get("benchmark", DEFAULT_BENCHMARK)
+        # SCRUM-330: 리스크 관리 파라미터 수신
+        risk_settings = payload.get("riskSettings")
+        position_sizing = payload.get("positionSizing")
+        trading_costs = payload.get("tradingCosts")
         user_id = payload.get("userId")
         if user_id is not None:
             try:
@@ -749,7 +753,10 @@ class BacktestRequestHandler(MessageHandler):
                     checkpoint=checkpoint,
                     equity_curve_data=equity_curve_data,
                     benchmark=benchmark,
-                    user_id=user_id
+                    user_id=user_id,
+                    risk_settings=risk_settings,
+                    position_sizing=position_sizing,
+                    trading_costs=trading_costs,
                 )
 
                 result = incremental_result.result

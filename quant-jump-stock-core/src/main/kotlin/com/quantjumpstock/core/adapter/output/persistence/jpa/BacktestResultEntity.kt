@@ -96,6 +96,73 @@ data class BacktestResultEntity(
     @Column(name = "equity_curve", columnDefinition = "jsonb")
     val equityCurve: String? = null,
 
+    // SCRUM-330: Advanced Risk Metrics
+    @Column(name = "profit_factor", precision = 10, scale = 4)
+    val profitFactor: BigDecimal? = null,
+
+    @Column(precision = 10, scale = 4)
+    val expectancy: BigDecimal? = null,
+
+    @Column(name = "kelly_percentage", precision = 10, scale = 4)
+    val kellyPercentage: BigDecimal? = null,
+
+    @Column(name = "risk_reward_ratio", precision = 10, scale = 4)
+    val riskRewardRatio: BigDecimal? = null,
+
+    @Column(name = "calmar_ratio", precision = 10, scale = 4)
+    val calmarRatio: BigDecimal? = null,
+
+    // SCRUM-330: Trading Cost Aggregates
+    @Column(name = "total_commission", precision = 15, scale = 2)
+    val totalCommission: BigDecimal? = null,
+
+    @Column(name = "total_slippage", precision = 15, scale = 2)
+    val totalSlippage: BigDecimal? = null,
+
+    @Column(name = "total_tax", precision = 15, scale = 2)
+    val totalTax: BigDecimal? = null,
+
+    @Column(name = "net_profit_after_costs", precision = 15, scale = 2)
+    val netProfitAfterCosts: BigDecimal? = null,
+
+    // SCRUM-330: Trade Statistics
+    @Column(name = "avg_holding_period", precision = 10, scale = 2)
+    val avgHoldingPeriod: BigDecimal? = null,
+
+    @Column(name = "best_trade", precision = 10, scale = 4)
+    val bestTrade: BigDecimal? = null,
+
+    @Column(name = "worst_trade", precision = 10, scale = 4)
+    val worstTrade: BigDecimal? = null,
+
+    @Column(name = "max_consecutive_wins")
+    val maxConsecutiveWins: Int? = null,
+
+    @Column(name = "max_consecutive_losses")
+    val maxConsecutiveLosses: Int? = null,
+
+    @Column(name = "stop_loss_count")
+    val stopLossCount: Int = 0,
+
+    @Column(name = "take_profit_count")
+    val takeProfitCount: Int = 0,
+
+    @Column(name = "trailing_stop_count")
+    val trailingStopCount: Int = 0,
+
+    // SCRUM-330: Risk Settings (JSONB)
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "risk_settings", columnDefinition = "jsonb")
+    val riskSettings: String? = null,
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "position_sizing", columnDefinition = "jsonb")
+    val positionSizing: String? = null,
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "trading_costs", columnDefinition = "jsonb")
+    val tradingCosts: String? = null,
+
     // Status
     @Enumerated(EnumType.STRING)
     @Column(length = 20)

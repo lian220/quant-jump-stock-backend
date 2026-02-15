@@ -52,6 +52,19 @@ data class BacktestTradeEntity(
     @Column(name = "signal_reason", length = 255)
     val signalReason: String? = null,
 
+    // SCRUM-330: Exit Reason & Cost Details
+    @Column(name = "exit_reason", length = 20)
+    val exitReason: String? = null,
+
+    @Column(name = "slippage_amount", precision = 10, scale = 2)
+    val slippageAmount: BigDecimal? = null,
+
+    @Column(name = "tax_amount", precision = 10, scale = 2)
+    val taxAmount: BigDecimal? = null,
+
+    @Column(name = "execution_price", precision = 15, scale = 4)
+    val executionPrice: BigDecimal? = null,
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     val createdAt: LocalDateTime = LocalDateTime.now()

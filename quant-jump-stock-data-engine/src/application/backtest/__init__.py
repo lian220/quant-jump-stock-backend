@@ -9,19 +9,7 @@ from .engine import BacktestEngine, BacktestConfig
 from .result import BacktestResult, BacktestTrade, EquityCurvePoint
 from .data_loader import DataLoader, YFinanceDataLoader, PandasDataLoader
 from .data_loader_mongo import MongoDataLoader
-from .portfolio import PerformanceMetrics
 from .service import BacktestApplicationService
-from .metrics import (
-    TradeMetrics,
-    calculate_cagr,
-    calculate_mdd,
-    calculate_volatility,
-    calculate_sharpe_ratio,
-    calculate_sortino_ratio,
-    calculate_daily_returns,
-    calculate_performance_metrics,
-    calculate_trade_metrics,
-)
 
 # Re-export domain models for convenience
 from domain.backtest.models import (
@@ -30,6 +18,13 @@ from domain.backtest.models import (
     TradeType,
     Portfolio,
     ExitReason,
+)
+from domain.backtest.metrics import (
+    MetricsCalculator,
+    BenchmarkCalculator,
+    CompletedTrade,
+    PerformanceMetrics,
+    TradeAnalysis,
 )
 
 __all__ = [
@@ -47,22 +42,16 @@ __all__ = [
     "MongoDataLoader",
     # Service (SCRUM-186)
     "BacktestApplicationService",
-    # Portfolio Domain Models (from domain.backtest)
+    # Domain Models (from domain.backtest)
     "Position",
     "Trade",
     "TradeType",
     "Portfolio",
     "ExitReason",
-    # Performance
+    # Metrics (from domain.backtest.metrics)
+    "MetricsCalculator",
+    "BenchmarkCalculator",
+    "CompletedTrade",
     "PerformanceMetrics",
-    # Metrics (SCRUM-184)
-    "TradeMetrics",
-    "calculate_cagr",
-    "calculate_mdd",
-    "calculate_volatility",
-    "calculate_sharpe_ratio",
-    "calculate_sortino_ratio",
-    "calculate_daily_returns",
-    "calculate_performance_metrics",
-    "calculate_trade_metrics",
+    "TradeAnalysis",
 ]

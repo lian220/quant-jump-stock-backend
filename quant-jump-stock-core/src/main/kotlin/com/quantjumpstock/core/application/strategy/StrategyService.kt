@@ -57,6 +57,9 @@ class StrategyService(
             stockSelectionType = request.stockSelectionType,
             investmentPhilosophy = request.investmentPhilosophy,
             conditions = request.conditions,
+            riskSettings = request.riskSettings,
+            positionSizing = request.positionSizing,
+            tradingCosts = request.tradingCosts,
             rebalanceFrequency = request.rebalanceFrequency
         )
 
@@ -126,6 +129,9 @@ class StrategyService(
             stockSelectionType = request.stockSelectionType ?: strategy.stockSelectionType,
             investmentPhilosophy = request.investmentPhilosophy ?: strategy.investmentPhilosophy,
             conditions = request.conditions ?: strategy.conditions,
+            riskSettings = request.riskSettings ?: strategy.riskSettings,
+            positionSizing = request.positionSizing ?: strategy.positionSizing,
+            tradingCosts = request.tradingCosts ?: strategy.tradingCosts,
             rebalanceFrequency = request.rebalanceFrequency ?: strategy.rebalanceFrequency
         )
 
@@ -216,6 +222,9 @@ class StrategyService(
             stockSelectionType = this.stockSelectionType,
             investmentPhilosophy = this.investmentPhilosophy,
             conditions = this.conditions,
+            riskSettings = this.riskSettings,
+            positionSizing = this.positionSizing,
+            tradingCosts = this.tradingCosts,
             rebalanceFrequency = this.rebalanceFrequency,
             subscriberCount = this.subscriberCount,
             averageRating = this.averageRating,
