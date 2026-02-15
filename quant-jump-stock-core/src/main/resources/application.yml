@@ -70,9 +70,8 @@ spring:
   # ============================================
   # Google Cloud Pub/Sub Configuration
   # ============================================
-  # emulator-host는 환경변수로만 설정 (SPRING_CLOUD_GCP_PUBSUB_EMULATORHOST)
-  # YAML에 빈 기본값을 두면 GcpPubSubEmulatorAutoConfiguration이 활성화되어
-  # 프로덕션에서 URI 파싱 에러 발생
+  # 에뮬레이터 설정은 application-local.yml에서 관리
+  # 프로덕션: 환경변수로 실제 GCP 연결
   cloud:
     gcp:
       project-id: ${GCP_PROJECT_ID:quantiq-local}
@@ -112,6 +111,7 @@ logging:
     org.springframework.data.mongodb: DEBUG
     org.hibernate.SQL: DEBUG
     org.flywaydb: WARN
+    com.google.cloud.pubsub.v1.StreamingSubscriberConnection: WARN
 
 # ============================================
 # SpringDoc OpenAPI (Swagger) Configuration

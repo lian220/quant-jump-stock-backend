@@ -1,0 +1,13 @@
+# ============================================
+# Local Development Profile
+# ============================================
+# bootRun, 네이티브 바이너리 직접 실행 시 적용
+# Docker 환경에서는 환경변수가 이 값을 오버라이드
+
+spring:
+  cloud:
+    gcp:
+      credentials:
+        enabled: false
+      pubsub:
+        emulator-host: ${PUBSUB_EMULATOR_HOST:localhost:8681}

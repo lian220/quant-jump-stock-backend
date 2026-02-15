@@ -1,0 +1,28 @@
+# ============================================================
+# GraalVM Native Image - Production
+# ============================================================
+# 빌드: CI에서 nativeCompile → 바이너리를 COPY
+# 런타임: distroless 기반, non-root, ~150-250MB RSS
+# ============================================================
+
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends curl && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -r appuser && useradd -r -g appuser -d /app appuser
+
+WORKDIR /app
+
+COPY build/native/nativeCompile/quant-jump-stock-core app
+RUN chmod +x app && chown appuser:appuser app
+
+USER appuser
+
+ENV SERVER_PORT=10010
+EXPOSE 10010
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -sf http://localhost:10010/actuator/health || exit 1
+
+ENTRYPOINT ["./app"]

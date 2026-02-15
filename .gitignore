@@ -106,7 +106,7 @@ secrets/
 secret.*
 
 # Application configs with sensitive data
-application-local.yml
+# application-local.yml은 추적 (Pub/Sub 에뮬레이터 설정만 포함, 민감정보 없음)
 application-dev.yml
 application-prod.yml
 application-secret.yml

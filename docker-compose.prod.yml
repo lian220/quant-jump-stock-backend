@@ -47,7 +47,6 @@ services:
       # docker-compose 전용 설정 (env 파일에 없는 것들만)
       - DOCKER_CONTAINER=true
       - SERVER_PORT=10010
-      - JAVA_OPTS=-Xmx768m -Xms384m
       - SPRING_PROFILES_ACTIVE=prod
       - SPRING_QUARTZ_JOB_STORE_TYPE=memory
       - SPRING_FLYWAY_BASELINE_ON_MIGRATE=true
@@ -57,7 +56,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 1024M
+          memory: 384M
     restart: unless-stopped
 
   # NOTE: Data Engine은 Cloud Run qjs-data-engine으로 분리됨
