@@ -7,5 +7,6 @@ enum class NewsSource {
     NAVER,
     YOUTUBE,
     TELEGRAM,
-    DART
+    DART,
+    MANUAL
 }

@@ -15,6 +15,7 @@ data class NewsItem(
     val tickers: List<String>,
     val importanceScore: Double,
     val isHeadlineOnly: Boolean,
+    val isHidden: Boolean = false,
     val viewCount: Int,
     val sourceUrl: String?,
     val sourceCreatedAt: LocalDateTime?,
