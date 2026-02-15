@@ -11,9 +11,9 @@ Performance Metrics Calculator - 백테스트 성과 지표 계산기
 사용 예시:
     calculator = MetricsCalculator()
 
-    # 거래 내역으로부터 지표 계산
+    # 완료된 라운드트립 거래 내역으로부터 지표 계산
     metrics = calculator.calculate_all_metrics(
-        trades=trade_list,
+        trades=completed_trade_list,
         equity_curve=equity_values,
         initial_capital=1000000,
         risk_free_rate=0.03
@@ -31,9 +31,11 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
-class Trade:
+class CompletedTrade:
     """
-    거래 기록
+    완료된 라운드트립 거래 기록 (진입 → 청산)
+
+    models.py의 Trade(개별 매수/매도 이벤트)와 구분됩니다.
 
     Attributes:
         symbol: 종목 코드
@@ -165,7 +167,7 @@ class MetricsCalculator:
 
     def calculate_all_metrics(
         self,
-        trades: List[Trade],
+        trades: List[CompletedTrade],
         equity_curve: List[Decimal],
         initial_capital: Decimal,
         start_date: Optional[date] = None,
@@ -224,7 +226,7 @@ class MetricsCalculator:
             trade_analysis=trade_analysis
         )
 
-    def _analyze_trades(self, trades: List[Trade]) -> TradeAnalysis:
+    def _analyze_trades(self, trades: List[CompletedTrade]) -> TradeAnalysis:
         """거래 분석"""
         if not trades:
             return TradeAnalysis(
@@ -381,7 +383,7 @@ class MetricsCalculator:
         sharpe = (annualized_return - float(self.risk_free_rate)) / annualized_std
         return Decimal(str(round(sharpe, 2)))
 
-    def _calculate_win_rate(self, trades: List[Trade]) -> Decimal:
+    def _calculate_win_rate(self, trades: List[CompletedTrade]) -> Decimal:
         """승률 계산"""
         if not trades:
             return Decimal("0")
@@ -391,7 +393,7 @@ class MetricsCalculator:
 
     def _calculate_avg_win_loss(
         self,
-        trades: List[Trade]
+        trades: List[CompletedTrade]
     ) -> tuple[Decimal, Decimal]:
         """평균 수익/손실 계산"""
         winners = [t for t in trades if t.is_winner]
@@ -419,7 +421,7 @@ class MetricsCalculator:
 
         return avg_win / avg_loss
 
-    def _calculate_profit_factor(self, trades: List[Trade]) -> Decimal:
+    def _calculate_profit_factor(self, trades: List[CompletedTrade]) -> Decimal:
         """
         Profit Factor 계산
 
@@ -480,7 +482,7 @@ class MetricsCalculator:
         return kelly * 100  # 퍼센트로 반환
 
     @staticmethod
-    def from_trade_dicts(trade_dicts: List[dict]) -> List[Trade]:
+    def from_trade_dicts(trade_dicts: List[dict]) -> List[CompletedTrade]:
         """
         딕셔너리 리스트에서 Trade 객체 리스트 생성
 
@@ -488,11 +490,11 @@ class MetricsCalculator:
             trade_dicts: 거래 딕셔너리 리스트
 
         Returns:
-            Trade 객체 리스트
+            CompletedTrade 객체 리스트
         """
         trades = []
         for td in trade_dicts:
-            trades.append(Trade(
+            trades.append(CompletedTrade(
                 symbol=td.get("symbol", ""),
                 entry_date=td.get("entry_date", date.today()),
                 exit_date=td.get("exit_date", date.today()),

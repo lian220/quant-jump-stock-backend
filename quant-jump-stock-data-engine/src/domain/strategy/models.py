@@ -65,6 +65,31 @@ class IndicatorType(str, Enum):
     PORTFOLIO_DRIFT = "portfolio_drift"      # 포트폴리오 드리프트
     TREASURY_10Y = "treasury_10y"            # 미국 10년물 국채금리
 
+    @classmethod
+    def is_sentiment_indicator(cls, indicator: str) -> bool:
+        """감성 분석 지표 여부"""
+        return indicator in {
+            cls.SENTIMENT_SCORE.value,
+            cls.SENTIMENT_COUNT.value,
+        }
+
+    @classmethod
+    def is_recommendation_indicator(cls, indicator: str) -> bool:
+        """추천 지표 여부"""
+        return indicator in {
+            cls.IS_RECOMMENDED.value,
+            cls.REC_RSI.value,
+            cls.REC_SCORE.value,
+        }
+
+    @classmethod
+    def requires_mongo_join(cls, indicator: str) -> bool:
+        """MongoDB Left Join이 필요한 지표"""
+        return (
+            cls.is_sentiment_indicator(indicator)
+            or cls.is_recommendation_indicator(indicator)
+        )
+
 
 class SignalType(str, Enum):
     """매매 신호 유형"""
