@@ -79,6 +79,14 @@ class SaveTickerApiAdapter(
                     val itemCreatedAt = parseDateTime(item.createdAt)
                     itemCreatedAt != null && itemCreatedAt.isAfter(lastFetchedAt)
                 }
+                .map { item ->
+                    if (!item.isHeadlineOnly) {
+                        val fullContent = fetchDetailContent(item.id)
+                        if (fullContent != null) item.copy(content = fullContent) else item
+                    } else {
+                        item
+                    }
+                }
                 .map { it.toDomain() }
 
             if (newItems.isNotEmpty()) {
@@ -95,6 +103,32 @@ class SaveTickerApiAdapter(
             )
             collectorStateRepository.recordError(source, e.message ?: "Unknown error")
             emptyList()
+        }
+    }
+
+    override fun enrichContent(externalId: String): String? = fetchDetailContent(externalId)
+
+    private fun fetchDetailContent(externalId: String): String? {
+        return try {
+            val response = webClient.get()
+                .uri("https://api.saveticker.com/api/news/detail/$externalId")
+                .header("User-Agent", "AlphaFoundry/1.0 (News Aggregator)")
+                .header("Accept", "application/json")
+                .retrieve()
+                .bodyToMono(SaveTickerDetailResponse::class.java)
+                .block()
+
+            val koContent = response?.news?.translations?.translated?.get("ko_KR")?.content
+            val rawContent = response?.news?.content
+
+            val blocks = koContent?.takeIf { it.isNotEmpty() } ?: rawContent
+
+            blocks?.filter { it.content?.isNotBlank() == true && it.content != "\n" }
+                ?.joinToString("\n\n") { it.content!! }
+                ?.takeIf { it.isNotBlank() }
+        } catch (e: Exception) {
+            logger.debug("SaveTicker 상세 API 호출 실패 (id={}): {}", externalId, e.message)
+            null
         }
     }
 

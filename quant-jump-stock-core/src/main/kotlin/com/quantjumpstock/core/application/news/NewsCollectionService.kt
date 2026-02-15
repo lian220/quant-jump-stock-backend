@@ -94,6 +94,30 @@ class NewsCollectionService(
         logger.info("${collector.source}: ${items.size}건 수집, ${importantCount}건 중요")
     }
 
+    override fun enrichExistingArticles(): Int {
+        var enrichedCount = 0
+        collectors.forEach { collector ->
+            val articles = newsRepository.findBySourceNeedingEnrichment(collector.source)
+            if (articles.isEmpty()) return@forEach
+
+            logger.info("${collector.source}: ${articles.size}건 기존 기사 본문 보강 시작")
+            articles.forEach { article ->
+                try {
+                    val fullContent = collector.enrichContent(article.externalId)
+                    if (fullContent != null) {
+                        newsRepository.saveAll(listOf(article.copy(contentKo = fullContent)))
+                        enrichedCount++
+                        logger.debug("기사 본문 보강 완료: externalId={}", article.externalId)
+                    }
+                } catch (e: Exception) {
+                    logger.debug("기사 본문 보강 실패: externalId={}, error={}", article.externalId, e.message)
+                }
+            }
+            logger.info("${collector.source}: ${enrichedCount}건 기사 본문 보강 완료")
+        }
+        return enrichedCount
+    }
+
     private fun sendSlackNotification(message: String) {
         if (slackWebhookUrl.isBlank()) return
         try {

@@ -76,6 +76,18 @@ data class SaveTickerContentBlock(
     val content: String? = null
 )
 
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class SaveTickerDetailResponse(
+    val news: SaveTickerDetailNews? = null
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class SaveTickerDetailNews(
+    val id: String,
+    val content: List<SaveTickerContentBlock>? = null,
+    val translations: SaveTickerTranslations? = null
+)
+
 private val OFFSET_FORMATTER = DateTimeFormatter.ISO_OFFSET_DATE_TIME
 private val ISO_FORMATTER = DateTimeFormatter.ISO_DATE_TIME
 

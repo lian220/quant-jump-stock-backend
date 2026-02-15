@@ -18,6 +18,9 @@ data class NewsDto(
     @Schema(description = "요약 (한국어)")
     val summary: String?,
 
+    @Schema(description = "본문 (한국어)")
+    val content: String?,
+
     @Schema(description = "뉴스 소스", example = "SAVETICKER")
     val source: String,
 
@@ -45,6 +48,7 @@ data class NewsDto(
             title = item.titleKo,
             titleEn = item.titleEn,
             summary = item.summaryKo,
+            content = item.contentKo,
             source = item.source.name,
             originalSource = item.originalSource,
             tags = item.tags,
