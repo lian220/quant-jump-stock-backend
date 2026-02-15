@@ -2,7 +2,6 @@ package com.quantjumpstock.core.adapter.output.persistence.mongodb
 
 import com.quantjumpstock.core.domain.news.model.NewsItem
 import com.quantjumpstock.core.domain.news.model.NewsSource
-import com.quantjumpstock.core.domain.news.port.output.CollectorStateRepository
 import com.quantjumpstock.core.domain.news.port.output.NewsRepository
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Sort
@@ -11,7 +10,6 @@ import org.springframework.data.mongodb.core.query.Criteria
 import org.springframework.data.mongodb.core.query.Query
 import org.springframework.data.mongodb.core.query.Update
 import org.springframework.stereotype.Component
-import java.time.LocalDateTime
 
 @Component
 class NewsMongoAdapter(
@@ -84,55 +82,5 @@ class NewsMongoAdapter(
                 .and("external_id").`is`(externalId)
         )
         return mongoTemplate.exists(query, NewsDocument::class.java)
-    }
-}
-
-@Component
-class CollectorStateMongoAdapter(
-    private val repository: CollectorStateMongoRepository,
-    private val mongoTemplate: MongoTemplate
-) : CollectorStateRepository {
-
-    override fun getState(source: NewsSource): com.quantjumpstock.core.domain.news.model.CollectorState? {
-        return repository.findBySource(source.name)?.toDomain()
-    }
-
-    override fun getLastFetchedAt(source: NewsSource): LocalDateTime? {
-        return repository.findBySource(source.name)?.lastFetchedAt
-    }
-
-    override fun getLastFetchedId(source: NewsSource): String? {
-        return repository.findBySource(source.name)?.lastFetchedId
-    }
-
-    override fun updateState(source: NewsSource, lastFetchedAt: LocalDateTime, lastFetchedId: String?) {
-        val query = Query(Criteria.where("source").`is`(source.name))
-        val update = Update()
-            .set("last_fetched_at", lastFetchedAt)
-            .set("last_fetched_id", lastFetchedId)
-            .inc("fetch_count", 1)
-            .set("consecutive_errors", 0)
-            .set("updated_at", LocalDateTime.now())
-        mongoTemplate.upsert(query, update, CollectorStateDocument::class.java)
-    }
-
-    override fun recordError(source: NewsSource, error: String) {
-        val query = Query(Criteria.where("source").`is`(source.name))
-        val update = Update()
-            .inc("consecutive_errors", 1)
-            .inc("total_errors", 1)
-            .set("last_error", error.take(500))
-            .set("last_error_at", LocalDateTime.now())
-            .set("updated_at", LocalDateTime.now())
-        mongoTemplate.upsert(query, update, CollectorStateDocument::class.java)
-    }
-
-    override fun recordSuccess(source: NewsSource, responseTimeMs: Long) {
-        val query = Query(Criteria.where("source").`is`(source.name))
-        val update = Update()
-            .set("consecutive_errors", 0)
-            .set("avg_response_time_ms", responseTimeMs)
-            .set("updated_at", LocalDateTime.now())
-        mongoTemplate.upsert(query, update, CollectorStateDocument::class.java)
     }
 }
