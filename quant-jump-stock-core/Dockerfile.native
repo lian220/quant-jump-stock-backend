@@ -22,7 +22,7 @@ USER appuser
 ENV SERVER_PORT=10010
 EXPOSE 10010
 
-HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
   CMD curl -sf http://localhost:10010/actuator/health || exit 1
 
 ENTRYPOINT ["./app"]
