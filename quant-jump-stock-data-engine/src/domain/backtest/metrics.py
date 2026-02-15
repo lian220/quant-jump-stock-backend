@@ -74,6 +74,10 @@ class CompletedTrade:
         return self.pnl < 0
 
 
+# 하위 호환 alias
+Trade = CompletedTrade
+
+
 @dataclass
 class TradeAnalysis:
     """
