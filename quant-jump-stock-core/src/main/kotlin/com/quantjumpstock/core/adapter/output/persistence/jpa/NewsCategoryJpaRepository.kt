@@ -6,5 +6,7 @@ import org.springframework.stereotype.Repository
 @Repository
 interface NewsCategoryJpaRepository : JpaRepository<NewsCategoryEntity, Long> {
     fun findByIsActiveTrue(): List<NewsCategoryEntity>
+    fun findByIsActiveTrueOrderBySortOrder(): List<NewsCategoryEntity>
+    fun findByCategoryGroupAndIsActiveTrue(categoryGroup: String): List<NewsCategoryEntity>
     fun findByName(name: String): NewsCategoryEntity?
 }

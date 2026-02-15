@@ -14,8 +14,17 @@ class NewsCategoryEntity(
     @Column(nullable = false, unique = true, length = 100)
     val name: String,
 
-    @Column(name = "name_en", length = 100)
-    val nameEn: String? = null,
+    @Column(name = "name_en", nullable = false, length = 100)
+    val nameEn: String,
+
+    @Column(name = "category_group", nullable = false, length = 30)
+    val categoryGroup: String,
+
+    @Column(length = 300)
+    val description: String? = null,
+
+    @Column(length = 50)
+    val icon: String? = null,
 
     @Column(nullable = false)
     val weight: Double = 0.10,
