@@ -83,7 +83,7 @@ class StockPriceMongoAdapter(
                 )
             }.toMap()
         } catch (e: Exception) {
-            log.warn("MongoDB 가격 데이터 조회 실패: ${e.message}")
+            log.warn("MongoDB 가격 데이터 조회 실패: {}", e.message)
             emptyMap()
         }
     }
