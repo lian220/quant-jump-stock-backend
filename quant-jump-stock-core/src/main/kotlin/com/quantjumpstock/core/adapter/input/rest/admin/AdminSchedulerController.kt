@@ -1,4 +1,4 @@
-package com.quantjumpstock.core.adapter.input.rest.scheduler
+package com.quantjumpstock.core.adapter.input.rest.admin
 
 import com.quantjumpstock.core.adapter.input.api.SchedulerApi
 import com.quantjumpstock.core.domain.model.ScheduleInfo
@@ -9,12 +9,12 @@ import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
 /**
- * 스케줄러 관리 Controller 구현체
+ * 스케줄러 관리 Controller 구현체 (Admin 전용)
  * HTTP 요청을 UseCase로 전달하는 Adapter 역할을 합니다.
  */
 @RestController
-@RequestMapping("/api/v1/scheduler")
-class SchedulerController(
+@RequestMapping("/api/v1/admin/scheduler")
+class AdminSchedulerController(
     private val schedulerUseCase: SchedulerUseCase
 ) : SchedulerApi {
 

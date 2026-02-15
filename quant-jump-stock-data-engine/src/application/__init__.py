@@ -25,11 +25,11 @@ from .backtest import (
     Portfolio,
     BacktestEngine,
     BacktestResult,
-    PerformanceMetrics,
     Position,
     Trade,
     TradeType,
 )
+from domain.backtest.metrics import PerformanceMetrics
 
 __all__ = [
     # Output Ports

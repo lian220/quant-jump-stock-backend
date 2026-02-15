@@ -1,4 +1,4 @@
-package com.quantjumpstock.core.adapter.input.rest.analysis
+package com.quantjumpstock.core.adapter.input.rest.admin
 
 import com.quantjumpstock.core.domain.analysis.port.input.AnalysisUseCase
 import io.swagger.v3.oas.annotations.Operation
@@ -18,7 +18,7 @@ import java.time.Instant
 import java.util.concurrent.TimeUnit
 
 /**
- * 분석 Controller (Input Adapter)
+ * 분석 Controller (Admin 전용 Input Adapter)
  * HTTP 요청을 AnalysisUseCase로 전달하는 Adapter 역할을 합니다.
  *
  * 지원하는 분석 유형:
@@ -26,10 +26,10 @@ import java.util.concurrent.TimeUnit
  * - 감정 분석 (Sentiment Analysis): 뉴스 감성 점수
  * - 병렬 분석 (Parallel Analysis): 기술적 + 감정 동시 실행
  */
-@Tag(name = "Analysis", description = "주식 분석 API - 기술적 분석, 감정 분석, 통합 분석")
+@Tag(name = "Admin - Analysis", description = "주식 분석 API - 기술적 분석, 감정 분석, 통합 분석 (Admin 전용)")
 @RestController
-@RequestMapping("/api/v1/analyses")
-class AnalysisController(
+@RequestMapping("/api/v1/admin/analyses")
+class AdminAnalysisController(
     private val analysisUseCase: AnalysisUseCase
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
@@ -333,11 +333,11 @@ class AnalysisController(
                         )
                     ),
                     "availableEndpoints" to listOf(
-                        "POST /api/v1/analyses/technical - 기술적 분석만 실행",
-                        "POST /api/v1/analyses/sentiment - 감정 분석만 실행",
-                        "POST /api/v1/analyses/recommendation - 종목 추천 (Composite Score)",
-                        "POST /api/v1/analyses/parallel - 병렬 분석 실행 (동시)",
-                        "GET  /api/v1/analyses/status - 상태 조회"
+                        "POST /api/v1/admin/analyses/technical - 기술적 분석만 실행",
+                        "POST /api/v1/admin/analyses/sentiment - 감정 분석만 실행",
+                        "POST /api/v1/admin/analyses/recommendation - 종목 추천 (Composite Score)",
+                        "POST /api/v1/admin/analyses/parallel - 병렬 분석 실행 (동시)",
+                        "GET  /api/v1/admin/analyses/status - 상태 조회"
                     )
                 )
             )

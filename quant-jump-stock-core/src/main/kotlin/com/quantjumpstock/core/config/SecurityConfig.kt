@@ -37,6 +37,7 @@ class SecurityConfig(
                             .requestMatchers(
                                     "/api/v1/auth/**",
                                     "/api/auth/**",
+                                    "/api/v1/vertex-ai/callback",
                                     "/swagger-ui/**",
                                     "/v3/api-docs/**"
                             )

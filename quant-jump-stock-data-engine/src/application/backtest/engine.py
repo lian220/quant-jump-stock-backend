@@ -35,24 +35,13 @@ import pandas as pd
 from domain.strategy.models import StrategyDefinition, SignalType
 from domain.strategy.interpreter import StrategyInterpreter
 from domain.backtest.models import Portfolio, Position, ExitReason, TradeType
+from domain.backtest.metrics import MetricsCalculator, BenchmarkCalculator
 from domain.backtest.risk_manager import RiskManager
 from domain.backtest.position_sizer import PositionSizer
 from domain.backtest.trading_costs import TradingCostCalculator
 
 from .data_loader import DataLoader
 from .result import BacktestResult, BacktestTrade, EquityCurvePoint
-from .metrics import (
-    calculate_cagr,
-    calculate_mdd,
-    calculate_daily_returns,
-    calculate_volatility,
-    calculate_sharpe_ratio,
-    calculate_sortino_ratio,
-    calculate_trade_metrics,
-    calculate_benchmark_return,
-    calculate_beta,
-    calculate_alpha,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -605,14 +594,8 @@ class BacktestEngine:
             reason = trade.exit_reason or "unknown"
             exit_reason_counts[reason] = exit_reason_counts.get(reason, 0) + 1
 
-        # 성과 지표 계산
-        metrics = self._calculate_metrics(trades)
-
-        # MDD 계산
-        mdd = Decimal("0")
-        for point in self._equity_curve:
-            if point.drawdown_pct < mdd:
-                mdd = point.drawdown_pct
+        # 성과 지표 계산 (domain MetricsCalculator 사용)
+        metrics = self._calculate_metrics()
 
         # 벤치마크 메트릭 계산
         bm_return = None
@@ -620,7 +603,8 @@ class BacktestEngine:
         bm_beta = None
 
         if self._benchmark_values and len(self._benchmark_values) >= 2:
-            # 날짜 정렬: equity_curve와 benchmark_values를 동일 날짜로 매칭
+            bm_calc = BenchmarkCalculator()
+
             bm_date_map = {d: v for d, v in self._benchmark_values}
             aligned_equity = []
             aligned_bm = []
@@ -629,51 +613,30 @@ class BacktestEngine:
                     aligned_equity.append(point.equity)
                     aligned_bm.append(bm_date_map[point.date])
 
-            bm_return = calculate_benchmark_return(
+            bm_return = bm_calc.calculate_benchmark_return(
                 aligned_bm,
                 self.config.start_date,
                 self.config.end_date
             )
 
-            # 벤치마크 일간 수익률 계산 (날짜 정렬된 시계열)
-            strategy_daily = calculate_daily_returns(aligned_equity)
-            benchmark_daily = calculate_daily_returns(aligned_bm)
+            strategy_daily = BenchmarkCalculator.calculate_daily_returns(aligned_equity)
+            benchmark_daily = BenchmarkCalculator.calculate_daily_returns(aligned_bm)
 
             if strategy_daily and benchmark_daily:
-                bm_beta = calculate_beta(strategy_daily, benchmark_daily)
+                bm_beta = BenchmarkCalculator.calculate_beta(strategy_daily, benchmark_daily)
 
-                if bm_beta is not None and bm_return is not None and metrics["cagr"] is not None:
-                    bm_alpha = calculate_alpha(
-                        strategy_cagr=metrics["cagr"],
+                if bm_beta is not None and bm_return is not None and metrics.cagr is not None:
+                    bm_alpha = bm_calc.calculate_alpha(
+                        strategy_cagr=metrics.cagr,
                         benchmark_cagr=bm_return,
                         beta=bm_beta
                     )
 
-        # SCRUM-330: 고급 지표 계산
-        expectancy = metrics.get("expectancy")
-        kelly_percentage = metrics.get("kelly_percentage")
-        risk_reward_ratio = metrics.get("risk_reward_ratio")
-
-        # Calmar Ratio = CAGR / |MDD|
-        calmar_ratio = None
-        if metrics["cagr"] and mdd and mdd != Decimal("0"):
-            calmar_ratio = metrics["cagr"] / abs(mdd)
-
-        # 최대 연속 승/패
-        max_consecutive_wins, max_consecutive_losses = self._calculate_consecutive_streaks(sell_trades)
-
-        # 최고/최저 수익률
-        best_trade = None
-        worst_trade = None
-        if sell_trades:
-            pnl_pcts = [t.realized_pnl_pct for t in sell_trades if t.realized_pnl_pct is not None]
-            if pnl_pcts:
-                best_trade = max(pnl_pcts)
-                worst_trade = min(pnl_pcts)
-
         # 순이익 (비용 차감)
         total_pnl = self._portfolio.total_value - self.config.initial_capital
         net_profit = total_pnl - self._total_commission - self._total_slippage - self._total_tax
+
+        ta = metrics.trade_analysis
 
         result = BacktestResult(
             strategy_id=0,  # 나중에 DB 저장 시 설정
@@ -682,31 +645,30 @@ class BacktestEngine:
             end_date=self.config.end_date,
             initial_capital=self.config.initial_capital,
             final_value=self._portfolio.total_value,
-            total_return=metrics["total_return_pct"],
-            cagr=metrics["cagr"],
-            mdd=mdd,
-            sharpe_ratio=metrics["sharpe_ratio"],
-            sortino_ratio=metrics["sortino_ratio"],
-            volatility=metrics["volatility"],
-            win_rate=metrics["win_rate"],
-            total_trades=metrics["total_trades"],
-            winning_trades=metrics["winning_trades"],
-            losing_trades=metrics["losing_trades"],
-            avg_win=metrics["avg_win"],
-            avg_loss=metrics["avg_loss"],
-            largest_win=metrics["largest_win"],
-            largest_loss=metrics["largest_loss"],
-            profit_factor=metrics["profit_factor"],
-            avg_holding_days=metrics["avg_holding_days"],
-            # SCRUM-330: 고급 지표
-            expectancy=expectancy,
-            kelly_percentage=kelly_percentage,
-            risk_reward_ratio=risk_reward_ratio,
-            calmar_ratio=calmar_ratio,
-            best_trade=best_trade,
-            worst_trade=worst_trade,
-            max_consecutive_wins=max_consecutive_wins,
-            max_consecutive_losses=max_consecutive_losses,
+            total_return=self._portfolio.total_pnl_pct,
+            cagr=metrics.cagr,
+            mdd=metrics.mdd,
+            sharpe_ratio=metrics.sharpe_ratio,
+            sortino_ratio=metrics.sortino_ratio,
+            volatility=metrics.volatility,
+            win_rate=metrics.win_rate,
+            total_trades=ta.total_trades,
+            winning_trades=ta.winning_trades,
+            losing_trades=ta.losing_trades,
+            avg_win=metrics.avg_win,
+            avg_loss=metrics.avg_loss,
+            largest_win=ta.max_winning_trade if ta.max_winning_trade != Decimal("0") else None,
+            largest_loss=ta.max_losing_trade if ta.max_losing_trade != Decimal("0") else None,
+            profit_factor=metrics.profit_factor,
+            avg_holding_days=ta.avg_holding_days,
+            expectancy=metrics.expectancy,
+            kelly_percentage=metrics.kelly_percentage,
+            risk_reward_ratio=metrics.risk_reward_ratio,
+            calmar_ratio=metrics.calmar_ratio,
+            best_trade=metrics.best_trade,
+            worst_trade=metrics.worst_trade,
+            max_consecutive_wins=metrics.max_consecutive_wins,
+            max_consecutive_losses=metrics.max_consecutive_losses,
             stop_loss_count=exit_reason_counts.get("stop_loss", 0),
             take_profit_count=exit_reason_counts.get("take_profit", 0),
             trailing_stop_count=exit_reason_counts.get("trailing_stop", 0),
@@ -734,131 +696,26 @@ class BacktestEngine:
 
         return result
 
-    def _calculate_metrics(
-        self,
-        trades: List[BacktestTrade]
-    ) -> Dict[str, Optional[Decimal]]:
+    def _calculate_metrics(self) -> "PerformanceMetrics":
         """
-        성과 지표 계산
-
-        metrics.py 모듈의 함수들을 사용하여 성과 지표를 계산합니다.
+        domain MetricsCalculator를 사용하여 모든 성과 지표 계산
 
         Returns:
-            성과 지표 딕셔너리
+            PerformanceMetrics 객체
         """
-        # 기본 수익률
-        total_return = self._portfolio.total_pnl
-        total_return_pct = self._portfolio.total_pnl_pct
+        from domain.backtest.metrics import PerformanceMetrics
 
-        # CAGR 계산 (metrics.py 사용)
-        cagr = calculate_cagr(
-            initial_value=self.config.initial_capital,
-            final_value=self._portfolio.total_value,
-            start_date=self.config.start_date,
-            end_date=self.config.end_date
-        )
-
-        # 수익 곡선에서 자산 가치 추출
+        completed_trades = self._portfolio.get_completed_trades()
         equity_values = [p.equity for p in self._equity_curve]
 
-        # 일간 수익률 계산 (metrics.py 사용)
-        daily_returns = calculate_daily_returns(equity_values)
-
-        # 변동성 계산 (metrics.py 사용)
-        volatility = calculate_volatility(daily_returns)
-
-        # Sharpe Ratio 계산 (metrics.py 사용)
-        sharpe_ratio = None
-        if volatility is not None:
-            sharpe_ratio = calculate_sharpe_ratio(cagr, volatility)
-
-        # Sortino Ratio 계산 (metrics.py 사용)
-        sortino_ratio = calculate_sortino_ratio(cagr, daily_returns)
-
-        # 거래 통계 계산 (metrics.py 사용)
-        trades_for_metrics = [
-            {
-                "symbol": t.symbol,
-                "trade_type": t.trade_type,
-                "trade_date": t.trade_date,
-                "price": t.price,
-                "quantity": t.quantity,
-                "commission": t.commission,
-            }
-            for t in trades
-        ]
-        trade_metrics = calculate_trade_metrics(trades_for_metrics)
-
-        # SCRUM-330: 추가 지표 계산
-        win_rate = trade_metrics.win_rate
-        avg_win = trade_metrics.avg_win
-        avg_loss = trade_metrics.avg_loss
-
-        # Expectancy = (승률 × 평균수익) - (패률 × 평균손실)
-        expectancy = None
-        if win_rate is not None and avg_win is not None and avg_loss is not None:
-            wr = win_rate / Decimal("100")
-            lr = Decimal("1") - wr
-            expectancy = (wr * avg_win) - (lr * avg_loss)
-
-        # Kelly % = (승률 × 평균수익 - 패률 × 평균손실) / 평균수익
-        kelly_percentage = None
-        if win_rate is not None and avg_win and avg_win > 0 and avg_loss is not None:
-            wr = win_rate / Decimal("100")
-            lr = Decimal("1") - wr
-            kelly_percentage = ((wr * avg_win - lr * avg_loss) / avg_win) * Decimal("100")
-
-        # Risk/Reward Ratio
-        risk_reward_ratio = None
-        if avg_win is not None and avg_loss is not None and avg_loss > 0:
-            risk_reward_ratio = avg_win / avg_loss
-
-        return {
-            "total_return": total_return,
-            "total_return_pct": total_return_pct,
-            "cagr": cagr,
-            "volatility": volatility,
-            "sharpe_ratio": sharpe_ratio,
-            "sortino_ratio": sortino_ratio,
-            "total_trades": trade_metrics.total_trades,
-            "winning_trades": trade_metrics.winning_trades,
-            "losing_trades": trade_metrics.losing_trades,
-            "win_rate": trade_metrics.win_rate,
-            "avg_win": trade_metrics.avg_win,
-            "avg_loss": trade_metrics.avg_loss,
-            "largest_win": trade_metrics.largest_win,
-            "largest_loss": trade_metrics.largest_loss,
-            "profit_factor": trade_metrics.profit_factor,
-            "avg_holding_days": trade_metrics.avg_holding_days,
-            "expectancy": expectancy,
-            "kelly_percentage": kelly_percentage,
-            "risk_reward_ratio": risk_reward_ratio,
-        }
-
-    @staticmethod
-    def _calculate_consecutive_streaks(
-        sell_trades: List[BacktestTrade],
-    ) -> tuple:
-        """최대 연속 승/패 계산"""
-        max_wins = 0
-        max_losses = 0
-        current_wins = 0
-        current_losses = 0
-
-        for trade in sell_trades:
-            if trade.realized_pnl is not None and trade.realized_pnl > 0:
-                current_wins += 1
-                current_losses = 0
-                max_wins = max(max_wins, current_wins)
-            elif trade.realized_pnl is not None and trade.realized_pnl < 0:
-                current_losses += 1
-                current_wins = 0
-                max_losses = max(max_losses, current_losses)
-            else:
-                current_wins = 0
-                current_losses = 0
-
-        return max_wins, max_losses
+        calculator = MetricsCalculator()
+        return calculator.calculate_all_metrics(
+            trades=completed_trades,
+            equity_curve=equity_values,
+            initial_capital=self.config.initial_capital,
+            start_date=self.config.start_date,
+            end_date=self.config.end_date,
+        )
 
     def _create_error_result(
         self,

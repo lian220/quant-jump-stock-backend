@@ -323,3 +323,45 @@ class Portfolio:
     def get_trades_by_reason(self, reason: ExitReason) -> List[Trade]:
         """특정 사유의 거래만 반환"""
         return [t for t in self.trades if t.exit_reason == reason]
+
+    def get_completed_trades(self) -> list:
+        """
+        BUY/SELL 매칭하여 CompletedTrade 리스트 생성 (FIFO)
+
+        Returns:
+            CompletedTrade 객체 리스트
+        """
+        from domain.backtest.metrics import CompletedTrade
+
+        buy_dates: Dict[str, List[date]] = {}
+        buy_prices: Dict[str, List[Decimal]] = {}
+        completed = []
+
+        for t in self.trades:
+            if t.trade_type == TradeType.BUY:
+                buy_dates.setdefault(t.symbol, []).append(t.trade_date)
+                buy_prices.setdefault(t.symbol, []).append(t.price)
+            elif t.trade_type == TradeType.SELL and t.realized_pnl is not None:
+                entry_date = (
+                    buy_dates[t.symbol].pop(0)
+                    if buy_dates.get(t.symbol)
+                    else t.trade_date
+                )
+                entry_price = (
+                    buy_prices[t.symbol].pop(0)
+                    if buy_prices.get(t.symbol)
+                    else (t.entry_price or t.price)
+                )
+                completed.append(CompletedTrade(
+                    symbol=t.symbol,
+                    entry_date=entry_date,
+                    exit_date=t.trade_date,
+                    entry_price=entry_price,
+                    exit_price=t.price,
+                    quantity=t.quantity,
+                    pnl=t.realized_pnl,
+                    pnl_pct=t.realized_pnl_pct or Decimal("0"),
+                    exit_reason=t.exit_reason.value if t.exit_reason else "signal",
+                ))
+
+        return completed

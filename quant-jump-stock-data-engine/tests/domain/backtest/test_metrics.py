@@ -2,6 +2,7 @@
 Performance Metrics Calculator 테스트
 
 CAGR, MDD, Sharpe Ratio, Profit Factor, Expectancy, Kelly Percentage 검증
++ Volatility, Sortino, Calmar, Consecutive Streaks, Best/Worst Trade, Benchmark
 """
 
 import pytest
@@ -10,6 +11,7 @@ from decimal import Decimal
 
 from src.domain.backtest.metrics import (
     MetricsCalculator,
+    BenchmarkCalculator,
     PerformanceMetrics,
     Trade,
     TradeAnalysis,
@@ -301,10 +303,9 @@ class TestMDD:
     """MDD (최대 낙폭) 테스트"""
 
     def test_mdd_calculation(self):
-        """MDD 계산"""
+        """MDD 계산 — 음수 반환"""
         calculator = MetricsCalculator()
 
-        # 고점 1200 → 저점 1000 = -16.67%
         equity_curve = [
             Decimal("1000"),
             Decimal("1100"),
@@ -316,9 +317,10 @@ class TestMDD:
 
         mdd = calculator._calculate_mdd(equity_curve)
 
-        # MDD = (1200 - 1000) / 1200 = 16.67%
-        expected = (Decimal("1200") - Decimal("1000")) / Decimal("1200") * 100
+        # MDD = (1000 / 1200 - 1) * 100 = -16.67%
+        expected = ((Decimal("1000") / Decimal("1200")) - 1) * 100
         assert abs(mdd - expected) < Decimal("0.01")
+        assert mdd < 0  # 음수
 
     def test_mdd_no_drawdown(self):
         """낙폭 없음 (계속 상승)"""
@@ -378,7 +380,6 @@ class TestSharpeRatio:
 
         sharpe = calculator._calculate_sharpe_ratio(
             equity_curve=sample_equity_curve,
-            initial_capital=Decimal("1000000")
         )
 
         # 수익이 있으므로 양수여야 함
@@ -390,10 +391,154 @@ class TestSharpeRatio:
 
         sharpe = calculator._calculate_sharpe_ratio(
             equity_curve=[Decimal("1000000")],
-            initial_capital=Decimal("1000000")
         )
 
         assert sharpe == Decimal("0")
+
+
+class TestVolatility:
+    """변동성 테스트"""
+
+    def test_zero_volatility(self):
+        """변동이 없는 경우"""
+        calculator = MetricsCalculator()
+        daily_returns = [0.0, 0.0, 0.0, 0.0]
+        volatility = calculator._calculate_volatility(daily_returns)
+        assert volatility == Decimal("0.00")
+
+    def test_positive_volatility(self):
+        """정상적인 변동성"""
+        calculator = MetricsCalculator()
+        daily_returns = [0.01, -0.01, 0.01, -0.01] * 10
+        volatility = calculator._calculate_volatility(daily_returns)
+        assert volatility is not None
+        assert volatility > Decimal("0")
+
+    def test_empty_returns(self):
+        """빈 수익률 리스트"""
+        calculator = MetricsCalculator()
+        volatility = calculator._calculate_volatility([])
+        assert volatility is None
+
+    def test_single_return(self):
+        """단일 수익률"""
+        calculator = MetricsCalculator()
+        volatility = calculator._calculate_volatility([0.01])
+        assert volatility is None
+
+
+class TestSortinoRatio:
+    """Sortino Ratio 테스트"""
+
+    def test_with_negative_returns(self):
+        """음의 수익률이 있는 경우"""
+        calculator = MetricsCalculator()
+        daily_returns = [0.01, -0.02, 0.015, -0.01, 0.02, -0.005]
+        sortino = calculator._calculate_sortino_ratio(
+            cagr=Decimal("10"),
+            daily_returns=daily_returns
+        )
+        assert sortino is not None
+
+    def test_no_negative_returns(self):
+        """음의 수익률이 없는 경우"""
+        calculator = MetricsCalculator()
+        daily_returns = [0.01, 0.02, 0.015, 0.01, 0.02, 0.005]
+        sortino = calculator._calculate_sortino_ratio(
+            cagr=Decimal("10"),
+            daily_returns=daily_returns
+        )
+        assert sortino is None
+
+    def test_empty_returns(self):
+        """빈 수익률 리스트"""
+        calculator = MetricsCalculator()
+        sortino = calculator._calculate_sortino_ratio(
+            cagr=Decimal("10"),
+            daily_returns=[]
+        )
+        assert sortino is None
+
+
+class TestCalmarRatio:
+    """Calmar Ratio 테스트"""
+
+    def test_calmar_positive(self):
+        """양의 CAGR, 음의 MDD"""
+        # CAGR 20%, MDD -10% → Calmar = 20/10 = 2
+        calmar = MetricsCalculator._calculate_calmar_ratio(
+            Decimal("20"), Decimal("-10")
+        )
+        assert calmar == Decimal("2")
+
+    def test_calmar_zero_mdd(self):
+        """MDD가 0인 경우"""
+        calmar = MetricsCalculator._calculate_calmar_ratio(
+            Decimal("20"), Decimal("0")
+        )
+        assert calmar is None
+
+
+class TestConsecutiveStreaks:
+    """연속 승/패 테스트"""
+
+    def test_consecutive_wins(self):
+        """연속 승리"""
+        trades = [
+            Trade("A", date(2024, 1, 1), date(2024, 1, 2), Decimal("100"), Decimal("110"),
+                  10, Decimal("100"), Decimal("10")),
+            Trade("A", date(2024, 1, 3), date(2024, 1, 4), Decimal("100"), Decimal("115"),
+                  10, Decimal("150"), Decimal("15")),
+            Trade("A", date(2024, 1, 5), date(2024, 1, 6), Decimal("100"), Decimal("90"),
+                  10, Decimal("-100"), Decimal("-10")),
+        ]
+        max_wins, max_losses = MetricsCalculator._calculate_consecutive_streaks(trades)
+        assert max_wins == 2
+        assert max_losses == 1
+
+    def test_empty_trades(self):
+        max_wins, max_losses = MetricsCalculator._calculate_consecutive_streaks([])
+        assert max_wins == 0
+        assert max_losses == 0
+
+
+class TestBestWorstTrade:
+    """최고/최저 수익률 거래 테스트"""
+
+    def test_best_worst(self):
+        trades = [
+            Trade("A", date(2024, 1, 1), date(2024, 1, 2), Decimal("100"), Decimal("120"),
+                  10, Decimal("200"), Decimal("20")),
+            Trade("A", date(2024, 1, 3), date(2024, 1, 4), Decimal("100"), Decimal("85"),
+                  10, Decimal("-150"), Decimal("-15")),
+        ]
+        best, worst = MetricsCalculator._calculate_best_worst_trade(trades)
+        assert best == Decimal("20")
+        assert worst == Decimal("-15")
+
+    def test_empty(self):
+        best, worst = MetricsCalculator._calculate_best_worst_trade([])
+        assert best is None
+        assert worst is None
+
+
+class TestDailyReturns:
+    """일간 수익률 계산 테스트"""
+
+    def test_simple_returns(self):
+        equity_values = [
+            Decimal("100"),
+            Decimal("110"),  # +10%
+            Decimal("99"),   # -10%
+        ]
+        returns = MetricsCalculator._calculate_daily_returns(equity_values)
+        assert len(returns) == 2
+        assert abs(returns[0] - 0.10) < 0.001
+        assert abs(returns[1] - (-0.10)) < 0.001
+
+    def test_empty_list(self):
+        returns = MetricsCalculator._calculate_daily_returns([])
+        assert returns == []
 
 
 class TestAllMetrics:
@@ -416,15 +561,71 @@ class TestAllMetrics:
         assert metrics.total_return == Decimal("10")  # 10% 수익
         assert metrics.win_rate > Decimal("60")  # 2승 1패 = 66.67%
         assert metrics.profit_factor > Decimal("1")  # 수익 > 손실
+        assert metrics.mdd <= Decimal("0")  # 음수 (또는 0)
 
         # 추가 지표 검증
         assert metrics.expectancy > Decimal("0")  # 양의 기댓값
         assert metrics.kelly_percentage > Decimal("0")  # 양의 Kelly
 
+        # 새 지표 검증
+        assert metrics.volatility is not None  # 변동성 계산됨
+        assert metrics.max_consecutive_wins == 2
+        assert metrics.max_consecutive_losses == 1
+        assert metrics.best_trade == Decimal("10")
+        assert metrics.worst_trade == Decimal("-5")
+        assert len(metrics.daily_returns) > 0
+
         # 거래 분석 검증
         assert metrics.trade_analysis.total_trades == 3
         assert metrics.trade_analysis.winning_trades == 2
         assert metrics.trade_analysis.losing_trades == 1
+
+
+class TestBenchmarkCalculator:
+    """벤치마크 계산기 테스트"""
+
+    def test_benchmark_return(self):
+        """벤치마크 수익률"""
+        calc = BenchmarkCalculator()
+        values = [Decimal("100"), Decimal("110")]
+        ret = calc.calculate_benchmark_return(
+            values, date(2023, 1, 1), date(2024, 1, 1)
+        )
+        assert ret is not None
+        assert abs(ret - Decimal("10")) < Decimal("0.5")
+
+    def test_benchmark_return_empty(self):
+        """데이터 부족"""
+        calc = BenchmarkCalculator()
+        assert calc.calculate_benchmark_return([], date(2023, 1, 1), date(2024, 1, 1)) is None
+
+    def test_beta_calculation(self):
+        """Beta 계산"""
+        strategy_returns = [0.01, -0.02, 0.015, -0.01, 0.02]
+        benchmark_returns = [0.005, -0.01, 0.01, -0.005, 0.015]
+        beta = BenchmarkCalculator.calculate_beta(strategy_returns, benchmark_returns)
+        assert beta is not None
+
+    def test_beta_empty(self):
+        """데이터 부족"""
+        assert BenchmarkCalculator.calculate_beta([], []) is None
+
+    def test_alpha_calculation(self):
+        """Alpha 계산"""
+        calc = BenchmarkCalculator()
+        alpha = calc.calculate_alpha(
+            strategy_cagr=Decimal("15"),
+            benchmark_cagr=Decimal("10"),
+            beta=Decimal("1.0"),
+        )
+        # Alpha = 15% - (3% + 1.0 * (10% - 3%)) = 15% - 10% = 5%
+        assert alpha == Decimal("5.00")
+
+    def test_daily_returns(self):
+        """일간 수익률 유틸리티"""
+        values = [Decimal("100"), Decimal("110"), Decimal("99")]
+        returns = BenchmarkCalculator.calculate_daily_returns(values)
+        assert len(returns) == 2
 
 
 class TestFromTradeDicts:

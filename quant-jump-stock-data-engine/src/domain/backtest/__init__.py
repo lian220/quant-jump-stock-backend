@@ -13,6 +13,7 @@ from .risk_manager import RiskManager, RiskExitResult, RiskExitType
 from .models import Position, Trade, TradeType, ExitReason, Portfolio
 from .metrics import (
     MetricsCalculator,
+    BenchmarkCalculator,
     CompletedTrade,
     PerformanceMetrics,
     TradeAnalysis,
@@ -33,6 +34,7 @@ __all__ = [
     "Portfolio",
     # Metrics
     "MetricsCalculator",
+    "BenchmarkCalculator",
     "CompletedTrade",
     "PerformanceMetrics",
     "TradeAnalysis",

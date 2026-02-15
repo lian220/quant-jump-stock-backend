@@ -1,4 +1,4 @@
-package com.quantjumpstock.core.adapter.input.rest.economic
+package com.quantjumpstock.core.adapter.input.rest.admin
 
 import com.quantjumpstock.core.domain.economic.port.input.EconomicDataUseCase
 import io.swagger.v3.oas.annotations.Operation
@@ -17,13 +17,13 @@ import org.springframework.web.bind.annotation.RestController
 import java.time.Instant
 
 /**
- * 경제 데이터 수집 Controller (Input Adapter)
+ * 경제 데이터 수집 Controller (Admin 전용 Input Adapter)
  * HTTP 요청을 UseCase로 전달하는 Adapter 역할을 합니다.
  */
-@Tag(name = "Economic Data", description = "경제 데이터 수집 API - FRED, Yahoo Finance")
+@Tag(name = "Admin - Economic Data", description = "경제 데이터 수집 API - FRED, Yahoo Finance (Admin 전용)")
 @RestController
-@RequestMapping("/api/v1/economic-data")
-class EconomicDataController(
+@RequestMapping("/api/v1/admin/economic-data")
+class AdminEconomicDataController(
     private val economicDataUseCase: EconomicDataUseCase
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
