@@ -100,7 +100,7 @@ class PositionSizer:
 
     def _kelly_criterion(self, portfolio_value: Decimal) -> Decimal:
         """켈리 기준: (승률 * 평균수익 - 패률 * 평균손실) / 평균수익"""
-        if not self.win_rate or not self.avg_win or not self.avg_loss:
+        if self.win_rate is None or self.avg_win is None or self.avg_loss is None:
             return self._fixed_percentage(portfolio_value)
 
         win_rate_ratio = self.win_rate / Decimal("100")

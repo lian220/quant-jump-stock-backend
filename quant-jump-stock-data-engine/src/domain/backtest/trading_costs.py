@@ -94,7 +94,7 @@ class TradingCostCalculator:
 
         # 슬리피지
         slippage = self._calculate_slippage(price, quantity, volume)
-        slippage_amount = slippage * quantity  # 주당 슬리피지 × 수량 = 총 슬리피지 금액
+        slippage_amount = slippage * quantity  # 주당 슬리피지 x 수량 = 총 슬리피지 금액
 
         # 슬리피지 반영 체결가
         if side.upper() == "BUY":

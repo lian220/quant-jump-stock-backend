@@ -224,7 +224,13 @@ class BacktestApplicationService:
             tax_val = trading_costs.get("tax")
             if tax_val is not None:
                 tax_rate = Decimal(str(tax_val)) / Decimal("100")
-            slippage_model = trading_costs.get("slippageModel", "fixed")
+            slippage_cfg = trading_costs.get("slippageModel", "fixed")
+            if isinstance(slippage_cfg, dict):
+                slippage_model = slippage_cfg.get("type", "fixed")
+            elif isinstance(slippage_cfg, str):
+                slippage_model = slippage_cfg
+            else:
+                slippage_model = "fixed"
 
         config = BacktestConfig(
             start_date=self._parse_date(start_date),
