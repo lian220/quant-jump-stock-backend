@@ -61,27 +61,43 @@ class AdminVertexAIController(
     @Operation(summary = "Vertex AI Job 상태 조회", description = "실행 중인 Job의 현재 상태 확인. jobId는 URL 인코딩된 전체 리소스 이름")
     @StandardApiResponses
     fun getJobStatus(@RequestParam jobId: String): ResponseEntity<Map<String, Any>> {
-        val info = vertexAIService.getJobStatusInfo(jobId)
+        return try {
+            val info = vertexAIService.getJobStatusInfo(jobId)
 
-        return ResponseEntity.ok(mapOf(
-            "success" to true,
-            "jobId" to info.jobId,
-            "message" to info.message,
-            "dataEngineApi" to info.dataEngineApi
-        ))
+            ResponseEntity.ok(mapOf(
+                "success" to true,
+                "jobId" to info.jobId,
+                "message" to info.message,
+                "dataEngineApi" to info.dataEngineApi
+            ))
+        } catch (e: Exception) {
+            logger.error("❌ Vertex AI Job 상태 조회 실패", e)
+            ResponseEntity.internalServerError().body(mapOf(
+                "success" to false,
+                "message" to "Job 상태 조회 실패: ${e.message}"
+            ))
+        }
     }
 
     @PostMapping("/jobs/{jobId}/cancel")
     @Operation(summary = "Vertex AI Job 취소", description = "실행 중인 Job 강제 취소")
     @StandardApiResponses
     fun cancelJob(@PathVariable jobId: String): ResponseEntity<Map<String, Any>> {
-        val info = vertexAIService.getCancelJobInfo(jobId)
+        return try {
+            val info = vertexAIService.getCancelJobInfo(jobId)
 
-        return ResponseEntity.ok(mapOf(
-            "success" to true,
-            "jobId" to info.jobId,
-            "message" to info.message,
-            "dataEngineApi" to info.dataEngineApi
-        ))
+            ResponseEntity.ok(mapOf(
+                "success" to true,
+                "jobId" to info.jobId,
+                "message" to info.message,
+                "dataEngineApi" to info.dataEngineApi
+            ))
+        } catch (e: Exception) {
+            logger.error("❌ Vertex AI Job 취소 실패", e)
+            ResponseEntity.internalServerError().body(mapOf(
+                "success" to false,
+                "message" to "Job 취소 실패: ${e.message}"
+            ))
+        }
     }
 }

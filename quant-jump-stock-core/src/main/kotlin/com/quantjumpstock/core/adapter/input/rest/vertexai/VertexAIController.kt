@@ -8,10 +8,13 @@ import com.quantjumpstock.core.domain.vertexai.model.JobStatus
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.slf4j.LoggerFactory
+import org.springframework.beans.factory.annotation.Value
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestBody
+import org.springframework.web.bind.annotation.RequestHeader
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RestController
 
@@ -27,7 +30,8 @@ import org.springframework.web.bind.annotation.RestController
 @RequestMapping("/api/v1/vertex-ai")
 @ConditionalOnProperty(name = ["gcp.enabled"], havingValue = "true", matchIfMissing = false)
 class VertexAICallbackController(
-    private val vertexAIService: VertexAIService
+    private val vertexAIService: VertexAIService,
+    @Value("\${vertex-ai.callback-secret:}") private val callbackSecret: String
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
@@ -37,7 +41,18 @@ class VertexAICallbackController(
         description = "predict_optimized.py에서 작업 완료 시 호출하는 콜백 API. Slack 알림 전송."
     )
     @StandardApiResponses
-    fun jobCallback(@RequestBody request: JobCallbackRequest): ResponseEntity<Map<String, Any>> {
+    fun jobCallback(
+        @RequestHeader("X-Callback-Secret", required = false) secret: String?,
+        @RequestBody request: JobCallbackRequest
+    ): ResponseEntity<Map<String, Any>> {
+        if (callbackSecret.isNotBlank() && secret != callbackSecret) {
+            logger.warn("⚠️ 콜백 인증 실패: 잘못된 X-Callback-Secret 헤더")
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(mapOf(
+                "success" to false,
+                "message" to "Invalid callback secret"
+            ))
+        }
+
         return try {
             // DTO → 도메인 모델 변환
             val callback = JobCallback(
