@@ -1,16 +1,16 @@
 package com.quantjumpstock.core.application.news
 
-import com.quantjumpstock.core.adapter.output.persistence.jpa.NewsCategoryEntity
-import com.quantjumpstock.core.adapter.output.persistence.jpa.NewsCategoryJpaRepository
-import com.quantjumpstock.core.adapter.output.persistence.jpa.NewsSourceTagMappingJpaRepository
+import com.quantjumpstock.core.domain.news.model.NewsCategory
+import com.quantjumpstock.core.domain.news.port.output.NewsCategoryRepository
+import com.quantjumpstock.core.domain.news.port.output.TagMappingRepository
 import jakarta.annotation.PostConstruct
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 
 @Service
 class NewsCategoryService(
-    private val categoryRepository: NewsCategoryJpaRepository,
-    private val tagMappingRepository: NewsSourceTagMappingJpaRepository
+    private val categoryRepository: NewsCategoryRepository,
+    private val tagMappingRepository: TagMappingRepository
 ) {
 
     private val logger = LoggerFactory.getLogger(this::class.java)
@@ -29,12 +29,12 @@ class NewsCategoryService(
     }
 
     fun refreshCache() {
-        val categories = categoryRepository.findByIsActiveTrue()
+        val categories = categoryRepository.findActiveCategories()
         categoryWeightCache = categories.associate { it.name to it.weight }
 
         val mappings = tagMappingRepository.findAll()
         tagMappingCache = mappings.associate {
-            "${it.source}:${it.sourceTag}" to it.category.name
+            "${it.source}:${it.sourceTag}" to it.categoryName
         }
         logger.info("뉴스 카테고리 캐시 갱신: ${categories.size}개 카테고리, ${mappings.size}개 태그 매핑")
     }
@@ -61,7 +61,7 @@ class NewsCategoryService(
 
     /** 그룹별 카테고리 목록 (API 응답용) */
     fun getCategoriesGrouped(): List<CategoryGroupDto> {
-        val categories = categoryRepository.findByIsActiveTrueOrderBySortOrder()
+        val categories = categoryRepository.findActiveCategoriesSorted()
         return categories
             .groupBy { it.categoryGroup }
             .map { (group, items) ->
@@ -76,7 +76,7 @@ class NewsCategoryService(
 
     /** 전체 카테고리 flat 목록 */
     fun getAllCategories(): List<CategoryDto> {
-        return categoryRepository.findByIsActiveTrueOrderBySortOrder().map { it.toDto() }
+        return categoryRepository.findActiveCategoriesSorted().map { it.toDto() }
     }
 
     companion object {
@@ -97,7 +97,7 @@ class NewsCategoryService(
     }
 }
 
-private fun NewsCategoryEntity.toDto() = CategoryDto(
+private fun NewsCategory.toDto() = CategoryDto(
     id = id!!,
     name = name,
     nameEn = nameEn,

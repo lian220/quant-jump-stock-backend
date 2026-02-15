@@ -80,14 +80,13 @@ class NewsMongoAdapter(
     }
 
     override fun findBySourceNeedingEnrichment(source: NewsSource, maxContentLength: Int): List<NewsItem> {
-        val query = Query(
-            Criteria.where("source").`is`(source.name)
-                .and("is_headline_only").`is`(false)
-                .orOperator(
-                    Criteria.where("content_ko").`is`(null),
-                    Criteria.where("content_ko").regex("^.{0,$maxContentLength}$")
-                )
+        val baseCriteria = Criteria.where("source").`is`(source.name)
+            .and("is_headline_only").`is`(false)
+        val contentCriteria = Criteria().orOperator(
+            Criteria.where("content_ko").isNull,
+            Criteria.where("content_ko").regex("^.{0,$maxContentLength}$")
         )
+        val query = Query(Criteria().andOperator(baseCriteria, contentCriteria))
         return mongoTemplate.find(query, NewsDocument::class.java).map { it.toDomain() }
     }
 

@@ -1,15 +1,15 @@
 package com.quantjumpstock.core.application.admin
 
-import com.quantjumpstock.core.adapter.output.persistence.jpa.NewsCategoryEntity
-import com.quantjumpstock.core.adapter.output.persistence.jpa.NewsCategoryJpaRepository
 import com.quantjumpstock.core.application.news.NewsCategoryService
+import com.quantjumpstock.core.domain.news.model.NewsCategory
+import com.quantjumpstock.core.domain.news.port.output.NewsCategoryRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
 @Service
 class AdminNewsCategoryService(
-    private val categoryRepository: NewsCategoryJpaRepository,
+    private val categoryRepository: NewsCategoryRepository,
     private val newsCategoryService: NewsCategoryService
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
@@ -17,9 +17,9 @@ class AdminNewsCategoryService(
     /** 전체 카테고리 목록 (비활성 포함) */
     fun getAllCategories(includeInactive: Boolean = true): AdminCategoryListResponse {
         val categories = if (includeInactive) {
-            categoryRepository.findAll().sortedWith(compareBy({ it.categoryGroup }, { it.sortOrder }))
+            categoryRepository.findAllSorted()
         } else {
-            categoryRepository.findByIsActiveTrueOrderBySortOrder()
+            categoryRepository.findActiveCategoriesSorted()
         }
 
         return AdminCategoryListResponse(
@@ -34,7 +34,7 @@ class AdminNewsCategoryService(
         val existing = categoryRepository.findByName(request.name)
         require(existing == null) { "이미 존재하는 카테고리명입니다: ${request.name}" }
 
-        val entity = NewsCategoryEntity(
+        val category = NewsCategory(
             name = request.name,
             nameEn = request.nameEn,
             categoryGroup = request.group,
@@ -43,7 +43,7 @@ class AdminNewsCategoryService(
             weight = request.weight,
             sortOrder = request.sortOrder
         )
-        val saved = categoryRepository.save(entity)
+        val saved = categoryRepository.save(category)
         newsCategoryService.refreshCache()
         logger.info("뉴스 카테고리 생성: {} ({})", saved.name, saved.id)
         return saved.toAdminDto()
@@ -53,10 +53,9 @@ class AdminNewsCategoryService(
     @Transactional
     fun updateCategory(id: Long, request: UpdateCategoryRequest): AdminCategoryDto {
         val existing = categoryRepository.findById(id)
-            .orElseThrow { IllegalArgumentException("카테고리를 찾을 수 없습니다: $id") }
+            ?: throw IllegalArgumentException("카테고리를 찾을 수 없습니다: $id")
 
-        val updated = NewsCategoryEntity(
-            id = existing.id,
+        val updated = existing.copy(
             name = request.name ?: existing.name,
             nameEn = request.nameEn ?: existing.nameEn,
             categoryGroup = request.group ?: existing.categoryGroup,
@@ -76,19 +75,9 @@ class AdminNewsCategoryService(
     @Transactional
     fun toggleCategory(id: Long): AdminCategoryDto {
         val existing = categoryRepository.findById(id)
-            .orElseThrow { IllegalArgumentException("카테고리를 찾을 수 없습니다: $id") }
+            ?: throw IllegalArgumentException("카테고리를 찾을 수 없습니다: $id")
 
-        val toggled = NewsCategoryEntity(
-            id = existing.id,
-            name = existing.name,
-            nameEn = existing.nameEn,
-            categoryGroup = existing.categoryGroup,
-            description = existing.description,
-            icon = existing.icon,
-            weight = existing.weight,
-            isActive = !existing.isActive,
-            sortOrder = existing.sortOrder
-        )
+        val toggled = existing.copy(isActive = !existing.isActive)
         val saved = categoryRepository.save(toggled)
         newsCategoryService.refreshCache()
         logger.info("뉴스 카테고리 토글: {} → isActive={}", saved.name, saved.isActive)
@@ -99,14 +88,14 @@ class AdminNewsCategoryService(
     @Transactional
     fun deleteCategory(id: Long) {
         val existing = categoryRepository.findById(id)
-            .orElseThrow { IllegalArgumentException("카테고리를 찾을 수 없습니다: $id") }
-        categoryRepository.delete(existing)
+            ?: throw IllegalArgumentException("카테고리를 찾을 수 없습니다: $id")
+        categoryRepository.delete(id)
         newsCategoryService.refreshCache()
         logger.info("뉴스 카테고리 삭제: {} ({})", existing.name, id)
     }
 }
 
-private fun NewsCategoryEntity.toAdminDto() = AdminCategoryDto(
+private fun NewsCategory.toAdminDto() = AdminCategoryDto(
     id = id!!,
     name = name,
     nameEn = nameEn,
@@ -116,5 +105,5 @@ private fun NewsCategoryEntity.toAdminDto() = AdminCategoryDto(
     weight = weight,
     isActive = isActive,
     sortOrder = sortOrder,
-    createdAt = createdAt.toString()
+    createdAt = createdAt?.toString() ?: ""
 )

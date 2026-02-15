@@ -29,6 +29,10 @@ class NewsSubscriptionController(
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(SimpleResponse(false, "인증이 필요합니다"))
 
+        if (request.value.isBlank()) {
+            return ResponseEntity.badRequest().body(SimpleResponse(false, "구독 대상 값은 필수입니다"))
+        }
+
         return try {
             val response = subscriptionService.subscribe(userId, request)
             ResponseEntity.status(HttpStatus.CREATED).body(response)
@@ -78,7 +82,8 @@ class NewsSubscriptionController(
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(SimpleResponse(false, "인증이 필요합니다"))
 
-        return ResponseEntity.ok(subscriptionService.getUserNotifications(userId, limit))
+        val safeLimit = limit.coerceIn(1, 100)
+        return ResponseEntity.ok(subscriptionService.getUserNotifications(userId, safeLimit))
     }
 
     @GetMapping("/notifications/unread-count")

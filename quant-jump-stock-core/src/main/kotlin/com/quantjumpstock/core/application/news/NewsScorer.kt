@@ -35,8 +35,8 @@ class NewsScorer(
         if (topCategory != null) reasons += topCategory
 
         val tickerBonus = when {
-            item.tickers.size >= 3 -> 0.05
-            item.tickers.size >= 1 -> 0.15
+            item.tickers.size >= 3 -> 0.15
+            item.tickers.size >= 1 -> 0.05
             else -> 0.0
         }
         if (item.tickers.isNotEmpty()) reasons += item.tickers.joinToString()

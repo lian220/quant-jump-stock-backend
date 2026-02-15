@@ -3,16 +3,12 @@ package com.quantjumpstock.core.application.news
 import com.quantjumpstock.core.domain.news.model.NewsSource
 import com.quantjumpstock.core.domain.news.port.input.NewsCollectionUseCase
 import com.quantjumpstock.core.domain.news.port.output.CollectorStateRepository
+import com.quantjumpstock.core.domain.news.port.output.NewsAlertSender
 import com.quantjumpstock.core.domain.news.port.output.NewsCollector
 import com.quantjumpstock.core.domain.news.port.output.NewsRepository
-import com.quantjumpstock.core.adapter.output.notification.slack.SlackApiClient
-import com.quantjumpstock.core.adapter.output.notification.slack.SlackAttachment
-import com.quantjumpstock.core.adapter.output.notification.slack.SlackField
-import com.quantjumpstock.core.adapter.output.notification.slack.SlackMessage
 import org.slf4j.LoggerFactory
-import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
-import org.springframework.web.reactive.function.client.WebClient
+import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
 
 @Service
@@ -22,8 +18,7 @@ class NewsCollectionService(
     private val collectorStateRepository: CollectorStateRepository,
     private val scorer: NewsScorer,
     private val subscriptionService: NewsSubscriptionService,
-    private val webClient: WebClient,
-    @Value("\${slack.webhook-url:}") private val slackWebhookUrl: String
+    private val newsAlertSender: NewsAlertSender
 ) : NewsCollectionUseCase {
 
     private val logger = LoggerFactory.getLogger(this::class.java)
@@ -45,6 +40,7 @@ class NewsCollectionService(
         collectFrom(collector)
     }
 
+    @Transactional
     private fun collectFrom(collector: NewsCollector) {
         val items = collector.collect()
         if (items.isEmpty()) return
@@ -67,15 +63,15 @@ class NewsCollectionService(
                     sourceUrl = scoredItem.newsItem.sourceUrl
                 )
             } catch (e: Exception) {
-                logger.debug("알림 생성 실패: {}", e.message)
+                logger.warn("알림 생성 실패: newsId={}, error={}", scoredItem.newsItem.externalId, e.message)
             }
         }
 
         // Slack 알림 (중요 뉴스만)
-        scored.filter { it.score >= 0.4 }.forEach { scoredItem ->
-            val emoji = if (scoredItem.score >= 0.7) "🚨" else "📰"
+        scored.filter { it.score >= IMPORTANCE_THRESHOLD }.forEach { scoredItem ->
+            val emoji = if (scoredItem.score >= HIGH_IMPORTANCE_THRESHOLD) "🚨" else "📰"
             val rumorLabel = if (scoredItem.isRumor) " [미확인]" else ""
-            sendSlackNotification(
+            newsAlertSender.sendAlert(
                 "$emoji [${scoredItem.newsItem.source}]$rumorLabel ${scoredItem.newsItem.titleKo}\n" +
                     "점수: ${"%.2f".format(scoredItem.score)} | ${scoredItem.reasons.joinToString(", ")}"
             )
@@ -90,7 +86,7 @@ class NewsCollectionService(
             )
         }
 
-        val importantCount = scored.count { it.score >= 0.4 }
+        val importantCount = scored.count { it.score >= IMPORTANCE_THRESHOLD }
         logger.info("${collector.source}: ${items.size}건 수집, ${importantCount}건 중요")
     }
 
@@ -100,38 +96,27 @@ class NewsCollectionService(
             val articles = newsRepository.findBySourceNeedingEnrichment(collector.source)
             if (articles.isEmpty()) return@forEach
 
+            var collectorEnrichedCount = 0
             logger.info("${collector.source}: ${articles.size}건 기존 기사 본문 보강 시작")
             articles.forEach { article ->
                 try {
                     val fullContent = collector.enrichContent(article.externalId)
                     if (fullContent != null) {
                         newsRepository.saveAll(listOf(article.copy(contentKo = fullContent)))
+                        collectorEnrichedCount++
                         enrichedCount++
-                        logger.debug("기사 본문 보강 완료: externalId={}", article.externalId)
                     }
                 } catch (e: Exception) {
-                    logger.debug("기사 본문 보강 실패: externalId={}, error={}", article.externalId, e.message)
+                    logger.warn("기사 본문 보강 실패: externalId={}, error={}", article.externalId, e.message)
                 }
             }
-            logger.info("${collector.source}: ${enrichedCount}건 기사 본문 보강 완료")
+            logger.info("${collector.source}: ${collectorEnrichedCount}건 기사 본문 보강 완료")
         }
         return enrichedCount
     }
 
-    private fun sendSlackNotification(message: String) {
-        if (slackWebhookUrl.isBlank()) return
-        try {
-            webClient.post()
-                .uri(slackWebhookUrl)
-                .bodyValue(SlackMessage(
-                    text = message,
-                    attachments = emptyList()
-                ))
-                .retrieve()
-                .bodyToMono(String::class.java)
-                .subscribe()
-        } catch (e: Exception) {
-            logger.debug("Slack 알림 발송 실패: {}", e.message)
-        }
+    companion object {
+        private const val IMPORTANCE_THRESHOLD = 0.4
+        private const val HIGH_IMPORTANCE_THRESHOLD = 0.7
     }
 }

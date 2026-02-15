@@ -7,10 +7,13 @@ import com.quantjumpstock.core.domain.news.port.output.NewsCollector
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
+import java.time.Duration
 import java.time.LocalDateTime
 import java.time.LocalTime
 import java.time.ZoneId
 import java.util.concurrent.ThreadLocalRandom
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.math.min
 import kotlin.math.pow
 
@@ -25,28 +28,25 @@ class SaveTickerApiAdapter(
 
     override val source = NewsSource.SAVETICKER
 
-    @Volatile
-    private var consecutiveErrors = 0
-
-    @Volatile
-    private var lastPollTime = 0L
+    private val consecutiveErrors = AtomicInteger(0)
+    private val lastPollTime = AtomicLong(0L)
 
     override fun collect(): List<NewsItem> {
         if (!shouldPoll()) {
             return emptyList()
         }
 
-        if (consecutiveErrors > 0) {
-            val backoffMinutes = min(2.0.pow(consecutiveErrors).toLong(), 60)
+        val currentErrors = consecutiveErrors.get()
+        if (currentErrors > 0) {
+            val backoffMinutes = min(2.0.pow(minOf(currentErrors, 6)).toLong(), 60)
             val backoffMs = backoffMinutes * 60_000
-            if (System.currentTimeMillis() - lastPollTime < backoffMs) {
-                logger.debug("백오프 중 ({}회 연속 에러, {}분 대기)", consecutiveErrors, backoffMinutes)
+            if (System.currentTimeMillis() - lastPollTime.get() < backoffMs) {
+                logger.debug("백오프 중 ({}회 연속 에러, {}분 대기)", currentErrors, backoffMinutes)
                 return emptyList()
             }
         }
 
         val startTime = System.currentTimeMillis()
-        lastPollTime = startTime
 
         return try {
             val lastFetchedId = collectorStateRepository.getLastFetchedId(source)
@@ -67,10 +67,11 @@ class SaveTickerApiAdapter(
                 .header("Accept", "application/json")
                 .retrieve()
                 .bodyToMono(SaveTickerResponse::class.java)
-                .block() ?: return emptyList()
+                .block(API_TIMEOUT) ?: return emptyList()
 
             val elapsed = System.currentTimeMillis() - startTime
-            consecutiveErrors = 0
+            consecutiveErrors.set(0)
+            lastPollTime.set(System.currentTimeMillis())
             collectorStateRepository.recordSuccess(source, elapsed)
 
             val newItems = response.newsList
@@ -95,11 +96,12 @@ class SaveTickerApiAdapter(
 
             newItems
         } catch (e: Exception) {
-            consecutiveErrors++
+            consecutiveErrors.incrementAndGet()
+            lastPollTime.set(System.currentTimeMillis())
             val elapsed = System.currentTimeMillis() - startTime
             logger.warn(
                 "SaveTicker API 호출 실패 ({}회 연속, 응답시간: {}ms): {}",
-                consecutiveErrors, elapsed, e.message
+                consecutiveErrors.get(), elapsed, e.message
             )
             collectorStateRepository.recordError(source, e.message ?: "Unknown error")
             emptyList()
@@ -116,7 +118,7 @@ class SaveTickerApiAdapter(
                 .header("Accept", "application/json")
                 .retrieve()
                 .bodyToMono(SaveTickerDetailResponse::class.java)
-                .block()
+                .block(API_TIMEOUT)
 
             val koContent = response?.news?.translations?.translated?.get("ko_KR")?.content
             val rawContent = response?.news?.content
@@ -124,7 +126,8 @@ class SaveTickerApiAdapter(
             val blocks = koContent?.takeIf { it.isNotEmpty() } ?: rawContent
 
             blocks?.filter { it.content?.isNotBlank() == true && it.content != "\n" }
-                ?.joinToString("\n\n") { it.content!! }
+                ?.mapNotNull { it.content }
+                ?.joinToString("\n\n")
                 ?.takeIf { it.isNotBlank() }
         } catch (e: Exception) {
             logger.debug("SaveTicker 상세 API 호출 실패 (id={}): {}", externalId, e.message)
@@ -135,7 +138,7 @@ class SaveTickerApiAdapter(
     private fun shouldPoll(): Boolean {
         val now = System.currentTimeMillis()
         val interval = getPollingInterval()
-        return (now - lastPollTime) >= interval
+        return (now - lastPollTime.get()) >= interval
     }
 
     private fun getPollingInterval(): Long {
@@ -148,5 +151,9 @@ class SaveTickerApiAdapter(
         }
         val jitter = ThreadLocalRandom.current().nextLong(-10_000, 10_000)
         return base + jitter
+    }
+
+    companion object {
+        private val API_TIMEOUT = Duration.ofSeconds(10)
     }
 }
