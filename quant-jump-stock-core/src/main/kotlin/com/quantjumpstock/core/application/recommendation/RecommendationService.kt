@@ -3,6 +3,7 @@ package com.quantjumpstock.core.application.recommendation
 import com.quantjumpstock.core.domain.model.prediction.PredictionResult
 import com.quantjumpstock.core.domain.prediction.port.output.PredictionResultRepositoryPort
 import org.slf4j.LoggerFactory
+import org.springframework.cache.annotation.Cacheable
 import org.springframework.stereotype.Service
 import java.time.LocalDate
 
@@ -11,6 +12,10 @@ import java.time.LocalDate
  *
  * Composite Score 기반 통합 추천 시스템 비즈니스 로직.
  * PostgreSQL prediction_results 테이블에서 데이터 조회.
+ *
+ * 캐싱: buySignals 캐시 (TTL 6시간)
+ * - 데이터는 스케줄러(00:20 KST)에 의해 1일 1회 생성되어 불변
+ * - 빈 결과(count=0)는 캐싱하지 않음 (스케줄러 실행 전 조회 대응)
  */
 @Service
 class RecommendationService(
@@ -21,28 +26,30 @@ class RecommendationService(
     /**
      * 매수 신호 조회
      *
-     * ⚠️ 중요: 스케줄러가 23:05(KST)에 실행되어 전날 날짜로 데이터를 저장하므로,
+     * ⚠️ 중요: 스케줄러가 00:20(KST)에 실행되어 전날 날짜로 데이터를 저장하므로,
      *         전날 날짜로 조회해야 함. (당일 조회 시 데이터 없음)
      *
-     * @param date 조회 날짜 (null이면 전날 날짜)
+     * @param date 조회 날짜 (Controller에서 기본값 전날 날짜로 해소)
      * @param minConfidence 최소 신뢰도 (기본값 0.7)
      *                     Composite Score 기준으로 변환: minConfidence × 7.5
      *                     예: 0.7 → 5.25점
      * @return 매수 신호 응답
      */
-    fun getBuySignals(date: LocalDate? = null, minConfidence: Double = 0.7): BuySignalsResponse {
-        // 날짜가 지정되지 않으면 전날 날짜 사용
-        val targetDate = date ?: LocalDate.now().minusDays(1)
-
+    @Cacheable(
+        value = ["buySignals"],
+        key = "#date.toString() + '_' + #minConfidence",
+        unless = "#result.count == 0"
+    )
+    fun getBuySignals(date: LocalDate, minConfidence: Double = 0.7): BuySignalsResponse {
         // Composite Score 기준으로 조회 (0.7 → 5.25점)
         // 기존 confidence(0~1)를 Composite Score(0~7.5) 기준으로 변환
         val minCompositeScore = minConfidence * 7.5
 
-        logger.info("Fetching buy signals for date={}, minCompositeScore={}", targetDate, minCompositeScore)
+        logger.info("Fetching buy signals for date={}, minCompositeScore={}", date, minCompositeScore)
 
         // ✅ 부분 점수 시스템: Composite Score 기준으로만 필터링
         val buySignals = predictionResultRepository.findHighConfidenceBuySignals(
-            targetDate,
+            date,
             minCompositeScore
         )  // is_recommended 필터 제거 (부분 점수 허용)
 
@@ -50,7 +57,7 @@ class RecommendationService(
 
         return BuySignalsResponse(
             success = true,
-            date = targetDate,
+            date = date,
             minConfidence = minConfidence,
             count = buySignals.size,
             buySignals = buySignals.map { it.toBuySignalDto() }
