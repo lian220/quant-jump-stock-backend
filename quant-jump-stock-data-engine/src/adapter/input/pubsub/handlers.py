@@ -733,15 +733,9 @@ class BacktestRequestHandler(MessageHandler):
                 start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
                 end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
                 
-                # 각 종목별로 데이터 존재 여부 확인
-                missing_tickers = []
-                for ticker in tickers:
-                    try:
-                        ticker_data = data_loader.load_single(ticker, start_dt, end_dt)
-                        if ticker_data.empty:
-                            missing_tickers.append(ticker)
-                    except Exception:
-                        missing_tickers.append(ticker)
+                # 전체 종목을 한번에 조회하여 데이터 존재 여부 확인 (1회 쿼리)
+                all_data = data_loader.load(tickers, start_dt, end_dt)
+                missing_tickers = [t for t in tickers if t not in all_data or all_data[t].empty]
                 
                 if missing_tickers:
                     error_msg = f"다음 종목의 데이터가 MongoDB에 없습니다: {', '.join(missing_tickers)}"

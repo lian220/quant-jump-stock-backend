@@ -153,8 +153,22 @@ class MongoDataLoader(DataLoader):
             }
         }
 
+        # projection: 필요한 종목의 OHLCV만 가져오기 (네트워크 전송량 대폭 절감)
+        # - yfinance_indicators, fred_indicators 제외
+        # - include_fundamentals=False면 info 서브필드도 제외
+        projection = {"date": 1}
+        ohlcv_fields = ["open", "high", "low", "close", "close_price", "volume"]
+        for symbol in symbols:
+            # OHLCV 필드는 항상 projection
+            for field in ohlcv_fields:
+                projection[f"stocks.{symbol}.{field}"] = 1
+            # 펀더멘탈: info 전체가 아닌 필요한 7개 필드만 projection
+            if include_fundamentals:
+                for info_key in _FUNDAMENTAL_FIELDS.values():
+                    projection[f"stocks.{symbol}.info.{info_key}"] = 1
+
         # 데이터 조회
-        cursor = coll.find(query).sort("date", 1)
+        cursor = coll.find(query, projection).sort("date", 1)
         documents = list(cursor)
 
         if not documents:
@@ -330,7 +344,14 @@ class MongoDataLoader(DataLoader):
             }
         }
 
-        cursor = coll.find(query).sort("date", 1)
+        # projection: 벤치마크에 필요한 필드만 가져오기
+        projection = {
+            "date": 1,
+            f"stocks.{benchmark_ticker}": 1,
+            f"yfinance_indicators.{benchmark_ticker}": 1,
+        }
+
+        cursor = coll.find(query, projection).sort("date", 1)
         documents = list(cursor)
 
         if not documents:
