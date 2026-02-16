@@ -176,6 +176,29 @@ data class EconomicDataSyncFailedPayload(
 )
 
 // ============================================================================
+// News Events
+// ============================================================================
+
+data class NewsCollectionRequestPayload(
+    val requestId: String,
+    val source: String, // SAVETICKER, FINNHUB, etc.
+    val action: String = "collect" // collect | enrich
+)
+
+data class NewsCollectedPayload(
+    val requestId: String,
+    val source: String,
+    val articleIds: List<String>,
+    val collectedCount: Int
+)
+
+data class NewsCollectionFailedPayload(
+    val requestId: String,
+    val source: String,
+    val error: String
+)
+
+// ============================================================================
 // Event Topics (Constants)
 // ============================================================================
 
@@ -207,6 +230,11 @@ object EventTopics {
     const val BACKTEST_REQUEST = "quantiq.backtest.request"
     const val BACKTEST_COMPLETED = "quantiq.backtest.completed"
     const val BACKTEST_FAILED = "quantiq.backtest.failed"
+
+    // News
+    const val NEWS_COLLECTION_REQUEST = "quantiq.news.collection.request"
+    const val NEWS_COLLECTED = "quantiq.news.collected"
+    const val NEWS_COLLECTION_FAILED = "quantiq.news.collection.failed"
 
     // Legacy (backward compatibility)
     @Deprecated("Use ANALYSIS_REQUEST instead")

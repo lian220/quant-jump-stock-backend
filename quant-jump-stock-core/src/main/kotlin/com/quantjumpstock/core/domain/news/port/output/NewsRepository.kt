@@ -10,6 +10,7 @@ interface NewsRepository {
     fun findByTickers(tickers: List<String>, limit: Int): List<NewsItem>
     fun findByTags(tags: List<String>, limit: Int): List<NewsItem>
     fun existsBySourceAndExternalId(source: NewsSource, externalId: String): Boolean
+    fun findBySourceAndExternalId(source: String, externalId: String): NewsItem?
     fun findBySourceNeedingEnrichment(source: NewsSource, maxContentLength: Int = 200): List<NewsItem>
 
     // Admin 기사 관리용

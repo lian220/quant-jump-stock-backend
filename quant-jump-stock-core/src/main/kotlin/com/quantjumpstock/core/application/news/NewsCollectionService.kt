@@ -1,21 +1,26 @@
 package com.quantjumpstock.core.application.news
 
+import com.quantjumpstock.core.domain.economic.port.output.MessagePublisher
 import com.quantjumpstock.core.domain.news.model.NewsSource
 import com.quantjumpstock.core.domain.news.port.input.NewsCollectionUseCase
-import com.quantjumpstock.core.domain.news.port.output.CollectorStateRepository
 import com.quantjumpstock.core.domain.news.port.output.NewsAlertSender
-import com.quantjumpstock.core.domain.news.port.output.NewsCollector
 import com.quantjumpstock.core.domain.news.port.output.NewsRepository
+import com.quantjumpstock.core.events.EventTopics
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
-import java.time.LocalDateTime
+import java.util.UUID
 
+/**
+ * 뉴스 처리 서비스 (스코어링 + 알림)
+ *
+ * 수집 로직은 Data Engine으로 이관됨.
+ * Core에서는 Pub/Sub을 통해 수집 요청을 보내고,
+ * Data Engine이 수집한 뉴스를 받아 스코어링/알림만 처리.
+ */
 @Service
 class NewsCollectionService(
-    private val collectors: List<NewsCollector>,
+    private val messagePublisher: MessagePublisher,
     private val newsRepository: NewsRepository,
-    private val collectorStateRepository: CollectorStateRepository,
     private val scorer: NewsScorer,
     private val subscriptionService: NewsSubscriptionService,
     private val newsAlertSender: NewsAlertSender
@@ -23,30 +28,44 @@ class NewsCollectionService(
 
     private val logger = LoggerFactory.getLogger(this::class.java)
 
-    override fun collectAll() {
-        collectors.forEach { collector ->
+    override fun requestCollection() {
+        val requestId = UUID.randomUUID().toString()
+        logger.info("뉴스 수집 요청 발행: requestId=$requestId")
+        messagePublisher.publishNewsCollectionRequest(
+            topic = EventTopics.NEWS_COLLECTION_REQUEST,
+            requestId = requestId,
+            source = "SAVETICKER"
+        )
+    }
+
+    override fun processCollectedNews(articleIds: List<String>, source: String) {
+        if (articleIds.isEmpty()) {
+            logger.debug("처리할 뉴스 없음 (source=$source)")
+            return
+        }
+
+        logger.info("수집된 뉴스 처리 시작: ${articleIds.size}건 (source=$source)")
+
+        // MongoDB에서 수집된 기사 조회
+        val articles = articleIds.mapNotNull { id ->
             try {
-                processCollector(collector)
+                newsRepository.findById(id)
+                    ?: newsRepository.findBySourceAndExternalId(source, id)
             } catch (e: Exception) {
-                logger.error("${collector.source} 수집 실패", e)
-                collectorStateRepository.recordError(collector.source, e.message ?: "Unknown")
+                logger.warn("기사 조회 실패: id=$id, error=${e.message}")
+                null
             }
         }
-    }
 
-    override fun collectFrom(source: NewsSource) {
-        val collector = collectors.find { it.source == source }
-            ?: throw IllegalArgumentException("Collector not found for source: $source")
-        processCollector(collector)
-    }
+        if (articles.isEmpty()) {
+            logger.warn("MongoDB에서 기사를 찾을 수 없음: articleIds=$articleIds")
+            return
+        }
 
-    @Transactional
-    open fun processCollector(collector: NewsCollector) {
-        val items = collector.collect()
-        if (items.isEmpty()) return
+        // 스코어링
+        val scored = articles.map { scorer.score(it) }
 
-        val scored = items.map { scorer.score(it) }
-
+        // 스코어 업데이트 (MongoDB)
         newsRepository.saveAll(scored.map { it.newsItem })
 
         // 구독자 매칭 → 인앱 알림 생성
@@ -63,7 +82,7 @@ class NewsCollectionService(
                     sourceUrl = scoredItem.newsItem.sourceUrl
                 )
             } catch (e: Exception) {
-                logger.warn("알림 생성 실패: newsId={}, error={}", scoredItem.newsItem.externalId, e.message)
+                logger.warn("알림 생성 실패: newsId=${scoredItem.newsItem.externalId}, error=${e.message}")
             }
         }
 
@@ -77,42 +96,8 @@ class NewsCollectionService(
             )
         }
 
-        val latest = items.maxByOrNull { it.sourceCreatedAt ?: LocalDateTime.MIN }
-        if (latest != null) {
-            collectorStateRepository.updateState(
-                source = collector.source,
-                lastFetchedAt = latest.sourceCreatedAt ?: LocalDateTime.now(),
-                lastFetchedId = latest.externalId
-            )
-        }
-
         val importantCount = scored.count { it.score >= IMPORTANCE_THRESHOLD }
-        logger.info("${collector.source}: ${items.size}건 수집, ${importantCount}건 중요")
-    }
-
-    override fun enrichExistingArticles(): Int {
-        var enrichedCount = 0
-        collectors.forEach { collector ->
-            val articles = newsRepository.findBySourceNeedingEnrichment(collector.source)
-            if (articles.isEmpty()) return@forEach
-
-            var collectorEnrichedCount = 0
-            logger.info("${collector.source}: ${articles.size}건 기존 기사 본문 보강 시작")
-            articles.forEach { article ->
-                try {
-                    val fullContent = collector.enrichContent(article.externalId)
-                    if (fullContent != null) {
-                        newsRepository.saveAll(listOf(article.copy(contentKo = fullContent)))
-                        collectorEnrichedCount++
-                        enrichedCount++
-                    }
-                } catch (e: Exception) {
-                    logger.warn("기사 본문 보강 실패: externalId={}, error={}", article.externalId, e.message)
-                }
-            }
-            logger.info("${collector.source}: ${collectorEnrichedCount}건 기사 본문 보강 완료")
-        }
-        return enrichedCount
+        logger.info("뉴스 처리 완료: ${articles.size}건 스코어링, ${importantCount}건 중요")
     }
 
     companion object {

@@ -274,7 +274,33 @@ class QuartzConfig {
     }
 
     // ========================
-    // 8. 자동 매도 체크 (매 1분)
+    // 8. 뉴스 수집 (매 1분, 시간대별 스킵)
+    // ========================
+    // 장중(09-15시): 매분, 장전/후(06-08,16-21시): 2분, 심야(22-05시): 5분
+    // Job 내부 shouldRun 로직으로 빈도 조절
+    @Bean
+    fun newsCollectionJobDetail(): JobDetail {
+        return JobBuilder.newJob(NewsCollectionJobAdapter::class.java)
+            .withIdentity("newsCollectionJob")
+            .storeDurably()
+            .build()
+    }
+
+    @Bean
+    fun newsCollectionTrigger(): Trigger {
+        return TriggerBuilder.newTrigger()
+            .forJob(newsCollectionJobDetail())
+            .withIdentity("newsCollectionTrigger")
+            .withSchedule(
+                SimpleScheduleBuilder.simpleSchedule()
+                    .withIntervalInMinutes(1)
+                    .repeatForever()
+            )
+            .build()
+    }
+
+    // ========================
+    // 9. 자동 매도 체크 (매 1분)
     // ========================
     @Bean
     fun autoSellJobDetail(): JobDetail {

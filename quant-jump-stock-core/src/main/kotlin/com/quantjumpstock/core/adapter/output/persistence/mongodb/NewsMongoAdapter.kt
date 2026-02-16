@@ -91,6 +91,14 @@ class NewsMongoAdapter(
         return mongoTemplate.find(query, NewsDocument::class.java).map { it.toDomain() }
     }
 
+    override fun findBySourceAndExternalId(source: String, externalId: String): NewsItem? {
+        val query = Query(
+            Criteria.where("source").`is`(source)
+                .and("external_id").`is`(externalId)
+        )
+        return mongoTemplate.findOne(query, NewsDocument::class.java)?.toDomain()
+    }
+
     override fun existsBySourceAndExternalId(source: NewsSource, externalId: String): Boolean {
         val query = Query(
             Criteria.where("source").`is`(source.name)

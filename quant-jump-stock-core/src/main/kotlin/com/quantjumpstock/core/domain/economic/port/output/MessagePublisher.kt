@@ -49,4 +49,16 @@ interface MessagePublisher {
         topic: String,
         request: BacktestRequest
     )
+
+    /**
+     * 뉴스 수집 요청 메시지 발행
+     * @param topic 메시지 토픽
+     * @param requestId 요청 ID
+     * @param source 뉴스 소스 (SAVETICKER 등)
+     */
+    fun publishNewsCollectionRequest(
+        topic: String,
+        requestId: String,
+        source: String
+    )
 }

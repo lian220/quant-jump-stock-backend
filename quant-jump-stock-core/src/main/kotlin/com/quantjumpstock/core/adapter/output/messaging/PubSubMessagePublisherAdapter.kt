@@ -193,6 +193,42 @@ class PubSubMessagePublisherAdapter(
         }
     }
 
+    override fun publishNewsCollectionRequest(
+        topic: String,
+        requestId: String,
+        source: String
+    ) {
+        try {
+            val event = mapOf(
+                "eventId" to UUID.randomUUID().toString(),
+                "eventType" to topic,
+                "version" to "1.0",
+                "timestamp" to java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Seoul")).toString(),
+                "source" to "quantiq-core",
+                "payload" to mapOf(
+                    "requestId" to requestId,
+                    "source" to source,
+                    "action" to "collect"
+                )
+            )
+
+            val eventJson = objectMapper.writeValueAsString(event)
+            val pubsubTopic = toPubSubTopic(topic)
+
+            pubSubTemplate.publish(pubsubTopic, eventJson)
+                .whenComplete { _, ex ->
+                    if (ex == null) {
+                        logger.info("뉴스 수집 요청 발행 성공: topic=$pubsubTopic, requestId=$requestId, source=$source")
+                    } else {
+                        logger.error("뉴스 수집 요청 발행 실패: topic=$pubsubTopic", ex)
+                    }
+                }
+        } catch (e: Exception) {
+            logger.error("뉴스 수집 요청 발행 실패: topic=$topic", e)
+            throw e
+        }
+    }
+
     companion object {
         /**
          * dot 표기법 토픽을 Pub/Sub 토픽명으로 변환
