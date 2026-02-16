@@ -6,7 +6,8 @@ SaveTicker API에서 뉴스를 수집하는 클라이언트.
 """
 
 import logging
-from datetime import datetime
+import time
+from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
 
 import requests
@@ -14,18 +15,32 @@ from dateutil.parser import parse as parse_datetime
 
 from domain.news.models import NewsItem, NewsSource
 
-logger = logging.getLogger(__name__)
+KST = timezone(timedelta(hours=9))
 
-API_BASE_URL = "https://api.saveticker.com/api/news"
-API_TIMEOUT = 10
-HEADERS = {
-    "User-Agent": "AlphaFoundry/1.0 (News Aggregator)",
-    "Accept": "application/json",
-}
+logger = logging.getLogger(__name__)
 
 
 class SaveTickerClient:
     """SaveTicker API HTTP 클라이언트"""
+
+    DEFAULT_BASE_URL = "https://api.saveticker.com/api/news"
+    DEFAULT_TIMEOUT = 10
+    DEFAULT_HEADERS = {
+        "User-Agent": "Quantiq/1.0 (News Aggregator)",
+        "Accept": "application/json",
+    }
+    DETAIL_FETCH_DELAY = 0.2  # 상세 API 호출 간 딜레이 (초)
+
+    def __init__(
+        self,
+        base_url: str = DEFAULT_BASE_URL,
+        timeout: int = DEFAULT_TIMEOUT,
+        headers: Optional[Dict[str, str]] = None,
+    ):
+        self._base_url = base_url
+        self._timeout = timeout
+        self._session = requests.Session()
+        self._session.headers.update(headers or self.DEFAULT_HEADERS)
 
     def collect(
         self,
@@ -34,8 +49,8 @@ class SaveTickerClient:
     ) -> List[NewsItem]:
         """뉴스 목록을 수집하고 도메인 모델로 변환"""
         try:
-            response = requests.get(
-                f"{API_BASE_URL}/list",
+            response = self._session.get(
+                f"{self._base_url}/list",
                 params={
                     "page": 1,
                     "page_size": 10,
@@ -43,8 +58,7 @@ class SaveTickerClient:
                     "label_group": 1,
                     "label_name": 1,
                 },
-                headers=HEADERS,
-                timeout=API_TIMEOUT,
+                timeout=self._timeout,
             )
             response.raise_for_status()
             data = response.json()
@@ -57,6 +71,7 @@ class SaveTickerClient:
             return []
 
         items: List[NewsItem] = []
+        detail_fetched = False
         for raw in news_list:
             item_id = raw.get("id", "")
             # 이전 마지막 ID 도달 시 중단 (desc 정렬이므로 이후는 더 오래된 항목)
@@ -67,13 +82,17 @@ class SaveTickerClient:
             if last_fetched_at and created_at and created_at <= last_fetched_at:
                 continue
 
-            # 헤드라인만 있는 기사는 상세 본문 가져오기
+            # 본문이 없거나 헤드라인만 있는 기사는 상세 API에서 본문 가져오기
             is_headline_only = raw.get("is_headline_only", False)
             content = raw.get("content")
-            if not is_headline_only:
+            if is_headline_only or not content:
+                # rate limiting: 이전 상세 호출 후 딜레이
+                if detail_fetched:
+                    time.sleep(self.DETAIL_FETCH_DELAY)
                 detail_content = self._fetch_detail_content(item_id)
                 if detail_content:
                     content = detail_content
+                detail_fetched = True
 
             items.append(_to_domain(raw, content))
 
@@ -85,10 +104,9 @@ class SaveTickerClient:
     def _fetch_detail_content(self, external_id: str) -> Optional[str]:
         """상세 API에서 본문 추출"""
         try:
-            response = requests.get(
-                f"{API_BASE_URL}/detail/{external_id}",
-                headers=HEADERS,
-                timeout=API_TIMEOUT,
+            response = self._session.get(
+                f"{self._base_url}/detail/{external_id}",
+                timeout=self._timeout,
             )
             response.raise_for_status()
             data = response.json()
@@ -114,6 +132,10 @@ class SaveTickerClient:
         except Exception as e:
             logger.debug(f"SaveTicker 상세 API 호출 실패 (id={external_id}): {e}")
             return None
+
+    def close(self):
+        """HTTP 세션 종료"""
+        self._session.close()
 
 
 def _to_domain(raw: Dict[str, Any], content: Optional[str]) -> NewsItem:
@@ -157,14 +179,14 @@ def _to_domain(raw: Dict[str, Any], content: Optional[str]) -> NewsItem:
 
 
 def _safe_parse_datetime(date_str: Optional[str]) -> Optional[datetime]:
-    """안전한 날짜 파싱 (항상 timezone-naive 반환)"""
+    """안전한 날짜 파싱 (KST 변환 후 timezone-naive 반환)"""
     if not date_str:
         return None
     try:
         dt = parse_datetime(date_str)
-        # PostgreSQL TIMESTAMP(without tz)와 비교 호환을 위해 tz 제거
+        # KST로 변환 후 tz 제거 (PostgreSQL TIMESTAMP without tz 호환)
         if dt.tzinfo is not None:
-            dt = dt.replace(tzinfo=None)
+            dt = dt.astimezone(KST).replace(tzinfo=None)
         return dt
     except (ValueError, TypeError):
         return None

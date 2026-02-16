@@ -5,9 +5,11 @@ Core API의 NewsItem, CollectorState, NewsSource와 동기화된 도메인 모�
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from enum import Enum
 from typing import Optional, Dict, Any, List
+
+KST = timezone(timedelta(hours=9))
 
 
 class NewsSource(str, Enum):
@@ -61,6 +63,7 @@ class NewsItem:
             "view_count": self.view_count,
             "source_url": self.source_url,
             "extra": self.extra,
+            "updated_at": datetime.now(KST),
         }
         if self.source_created_at:
             doc["source_created_at"] = self.source_created_at

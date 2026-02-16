@@ -114,7 +114,14 @@ class PubSubPublisherAdapter:
             "NEWS_COLLECTION_FAILED": "quantiq.news.collection.failed",
         }
 
-        return topic_mapping.get(event_type, "data-engine-events")
+        topic = topic_mapping.get(event_type)
+        if topic is None:
+            logger.warning(
+                f"알 수 없는 event_type '{event_type}', 기본 토픽 사용. "
+                f"등록된 타입: {list(topic_mapping.keys())}"
+            )
+            return "data-engine-events"
+        return topic
 
     def close(self) -> None:
         """Publisher 종료"""

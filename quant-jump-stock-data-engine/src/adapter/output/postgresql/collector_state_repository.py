@@ -25,9 +25,11 @@ class PostgresCollectorStateRepository:
     @contextmanager
     def _get_connection(self):
         conn = None
+        success = False
         try:
             conn = self._pool.getconn()
             yield conn
+            success = True
         except Exception as e:
             if conn:
                 try:
@@ -38,10 +40,11 @@ class PostgresCollectorStateRepository:
             raise
         finally:
             if conn:
-                try:
-                    conn.commit()  # 읽기 쿼리도 implicit transaction 종료 필요
-                except Exception:
-                    pass
+                if success:
+                    try:
+                        conn.commit()
+                    except Exception:
+                        pass
                 self._pool.putconn(conn)
 
     def get_state(self, source: NewsSource) -> Optional[CollectorState]:
@@ -109,7 +112,6 @@ class PostgresCollectorStateRepository:
                     """,
                     (source.value, last_fetched_at, last_fetched_id),
                 )
-            conn.commit()
 
     def record_success(self, source: NewsSource, response_time_ms: int) -> None:
         """성공 기록"""
@@ -126,7 +128,6 @@ class PostgresCollectorStateRepository:
                     """,
                     (source.value, response_time_ms),
                 )
-            conn.commit()
 
     def record_error(self, source: NewsSource, error: str) -> None:
         """에러 기록"""
@@ -145,4 +146,3 @@ class PostgresCollectorStateRepository:
                     """,
                     (source.value, error),
                 )
-            conn.commit()

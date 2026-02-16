@@ -8,10 +8,12 @@ importance_score=0.0으로 원본 저장 → Core가 후속 스코어링.
 
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List
 
 from domain.news.models import NewsSource
+
+KST = timezone(timedelta(hours=9))
 from adapter.output.external.saveticker_client import SaveTickerClient
 from adapter.output.mongodb.news_repository import MongoNewsRepository
 from adapter.output.postgresql.collector_state_repository import PostgresCollectorStateRepository
@@ -32,23 +34,30 @@ class NewsCollectionService:
         self._news_repo = news_repository
         self._state_repo = collector_state_repository
 
-    def collect(self, source: str = "SAVETICKER") -> dict:
+    def collect(self, source: str = NewsSource.SAVETICKER.value) -> dict:
         """뉴스 수집 실행
 
         Returns:
             dict with keys: collected_count, article_ids, source
         """
-        news_source = NewsSource(source)
+        try:
+            news_source = NewsSource(source)
+        except ValueError:
+            raise ValueError(
+                f"지원하지 않는 뉴스 소스: {source}. "
+                f"유효한 소스: {[s.value for s in NewsSource]}"
+            )
+
         start_time = time.time()
 
-        # collector_state에서 마지막 수집 정보 가져오기 (단일 쿼리)
-        state = self._state_repo.get_state(news_source)
-        last_fetched_id = state.last_fetched_id if state else None
-        last_fetched_at = state.last_fetched_at if state else None
-        if last_fetched_at is None:
-            last_fetched_at = datetime.now() - timedelta(hours=1)
-
         try:
+            # collector_state에서 마지막 수집 정보 가져오기 (단일 쿼리)
+            state = self._state_repo.get_state(news_source)
+            last_fetched_id = state.last_fetched_id if state else None
+            last_fetched_at = state.last_fetched_at if state else None
+            if last_fetched_at is None:
+                last_fetched_at = datetime.now(KST).replace(tzinfo=None) - timedelta(hours=1)
+
             # SaveTicker API 호출
             items = self._client.collect(
                 last_fetched_id=last_fetched_id,
@@ -68,7 +77,7 @@ class NewsCollectionService:
             latest = max(items, key=lambda x: x.created_at or datetime.min)
             self._state_repo.update_state(
                 source=news_source,
-                last_fetched_at=latest.created_at or datetime.now(),
+                last_fetched_at=latest.created_at or datetime.now(KST).replace(tzinfo=None),
                 last_fetched_id=latest.external_id,
             )
             self._state_repo.record_success(news_source, elapsed_ms)
@@ -85,6 +94,9 @@ class NewsCollectionService:
             }
 
         except Exception as e:
-            self._state_repo.record_error(news_source, str(e))
-            logger.error(f"{source} 수집 실패: {e}")
+            try:
+                self._state_repo.record_error(news_source, str(e))
+            except Exception as state_err:
+                logger.error(f"에러 상태 기록 실패: {state_err}")
+            logger.exception(f"{source} 수집 실패: {e}")
             raise

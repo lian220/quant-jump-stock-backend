@@ -34,7 +34,7 @@ class NewsCollectionService(
         messagePublisher.publishNewsCollectionRequest(
             topic = EventTopics.NEWS_COLLECTION_REQUEST,
             requestId = requestId,
-            source = "SAVETICKER"
+            source = NewsSource.SAVETICKER.name
         )
     }
 

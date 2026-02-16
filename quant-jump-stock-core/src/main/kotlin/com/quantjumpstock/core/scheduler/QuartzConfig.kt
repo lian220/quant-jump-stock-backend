@@ -295,6 +295,7 @@ class QuartzConfig {
                 SimpleScheduleBuilder.simpleSchedule()
                     .withIntervalInMinutes(1)
                     .repeatForever()
+                    .withMisfireHandlingInstructionNextWithRemainingCount()
             )
             .build()
     }

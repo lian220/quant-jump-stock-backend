@@ -231,6 +231,7 @@ class PubSubEventListenerAdapter(
             val source = payload.get("source")?.asText() ?: "SAVETICKER"
             val collectedCount = payload.get("collectedCount")?.asInt() ?: 0
             val articleIds = payload.get("articleIds")
+                ?.takeIf { it.isArray }
                 ?.map { it.asText() }
                 ?: emptyList()
 

@@ -204,7 +204,7 @@ class PubSubMessagePublisherAdapter(
                 "eventType" to topic,
                 "version" to "1.0",
                 "timestamp" to java.time.ZonedDateTime.now(java.time.ZoneId.of("Asia/Seoul")).toString(),
-                "source" to "quantiq-core",
+                "source" to "quantiq-core", // 이벤트 발행 주체 (payload.source는 뉴스 소스)
                 "payload" to mapOf(
                     "requestId" to requestId,
                     "source" to source,
