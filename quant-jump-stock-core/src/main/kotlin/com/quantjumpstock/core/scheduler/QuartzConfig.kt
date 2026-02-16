@@ -2,6 +2,7 @@ package com.quantjumpstock.core.scheduler
 
 import com.quantjumpstock.core.adapter.input.scheduler.*
 import org.quartz.*
+import org.springframework.context.annotation.ImportRuntimeHints
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -63,6 +64,7 @@ import java.util.*
  */
 @Configuration
 @DependsOn("flywayInitializer")
+@ImportRuntimeHints(QuartzRuntimeHints::class)
 class QuartzConfig {
 
     // ========================
