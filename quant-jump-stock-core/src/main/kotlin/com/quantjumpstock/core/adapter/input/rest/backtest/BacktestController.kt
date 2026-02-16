@@ -112,14 +112,38 @@ class BacktestController(
 
         val effectiveRequest = request.copy(tickers = effectiveTickers)
 
-        // 벤치마크 검증
-        if (!Benchmark.existsByTicker(effectiveRequest.benchmark)) {
+        // SCRUM-337: 다중 벤치마크 검증
+        val effectiveBenchmarks = effectiveRequest.effectiveBenchmarks()
+
+        // 최대 개수 검증
+        if (effectiveBenchmarks.size > Benchmark.MAX_BENCHMARKS) {
             return ResponseEntity.badRequest()
                 .body(mapOf(
-                    "error" to "INVALID_BENCHMARK",
-                    "message" to "지원하지 않는 벤치마크입니다: ${effectiveRequest.benchmark}",
-                    "availableBenchmarks" to "/api/v1/backtest/benchmarks"
+                    "error" to "TOO_MANY_BENCHMARKS",
+                    "message" to "벤치마크는 최대 ${Benchmark.MAX_BENCHMARKS}개까지 설정할 수 있습니다. 현재: ${effectiveBenchmarks.size}개"
                 ))
+        }
+
+        // 각 벤치마크 유효성 검증
+        for (bm in effectiveBenchmarks) {
+            if (!Benchmark.isValidBenchmark(bm)) {
+                return ResponseEntity.badRequest()
+                    .body(mapOf(
+                        "error" to "INVALID_BENCHMARK",
+                        "message" to "지원하지 않는 벤치마크입니다: $bm",
+                        "availableBenchmarks" to "/api/v1/backtest/benchmarks"
+                    ))
+            }
+
+            // STRATEGY:ID 형태인 경우 해당 전략 존재 여부 확인
+            val strategyBmId = Benchmark.parseStrategyId(bm)
+            if (strategyBmId != null && !strategyRepository.existsById(strategyBmId)) {
+                return ResponseEntity.badRequest()
+                    .body(mapOf(
+                        "error" to "STRATEGY_BENCHMARK_NOT_FOUND",
+                        "message" to "벤치마크로 지정한 전략을 찾을 수 없습니다: $bm"
+                    ))
+            }
         }
 
         // Rate Limit 원자적 체크 + 카운트 증가 (TOCTOU 방지)

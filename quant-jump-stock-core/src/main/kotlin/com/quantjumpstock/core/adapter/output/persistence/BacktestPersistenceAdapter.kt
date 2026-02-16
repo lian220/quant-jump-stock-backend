@@ -14,6 +14,9 @@ import com.quantjumpstock.core.domain.model.backtest.BacktestTrade
 import com.quantjumpstock.core.domain.model.backtest.BacktestTradeSide
 import com.quantjumpstock.core.domain.port.output.BacktestResultRepository
 import com.quantjumpstock.core.domain.port.output.BacktestTradeRepository
+import com.quantjumpstock.core.domain.port.output.Benchmark
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
@@ -34,7 +37,8 @@ class BacktestPersistenceAdapter(
     private val backtestResultJpaRepository: BacktestResultJpaRepository,
     private val backtestTradeJpaRepository: BacktestTradeJpaRepository,
     private val strategyJpaRepository: StrategyJpaRepository,
-    private val userJpaRepository: UserJpaRepository
+    private val userJpaRepository: UserJpaRepository,
+    private val objectMapper: ObjectMapper
 ) : BacktestResultRepository, BacktestTradeRepository {
 
     private val logger = LoggerFactory.getLogger(this::class.java)
@@ -117,6 +121,7 @@ class BacktestPersistenceAdapter(
             endDate = entity.endDate,
             initialCapital = entity.initialCapital,
             benchmark = entity.benchmark,
+            benchmarks = parseBenchmarksList(entity.benchmarks),
             finalValue = entity.finalValue,
             totalReturn = entity.totalReturn,
             cagr = entity.cagr,
@@ -174,6 +179,7 @@ class BacktestPersistenceAdapter(
             endDate = entity.endDate,
             initialCapital = entity.initialCapital,
             benchmark = entity.benchmark,
+            benchmarks = parseBenchmarksList(entity.benchmarks),
             finalValue = entity.finalValue,
             totalReturn = entity.totalReturn,
             cagr = entity.cagr,
@@ -237,6 +243,7 @@ class BacktestPersistenceAdapter(
             endDate = domain.endDate,
             initialCapital = domain.initialCapital,
             benchmark = domain.benchmark,
+            benchmarks = objectMapper.writeValueAsString(domain.benchmarks),
             finalValue = domain.finalValue,
             totalReturn = domain.totalReturn,
             cagr = domain.cagr,
@@ -330,6 +337,18 @@ class BacktestPersistenceAdapter(
             executionPrice = domain.executionPrice,
             createdAt = domain.createdAt
         )
+    }
+
+    // ===== JSON Helpers =====
+
+    private fun parseBenchmarksList(json: String?): List<String> {
+        if (json.isNullOrBlank()) return listOf(Benchmark.DEFAULT_TICKER)
+        return try {
+            objectMapper.readValue<List<String>>(json)
+        } catch (e: Exception) {
+            logger.warn("benchmarks JSON 파싱 실패, 기본값 사용: {}", e.message)
+            listOf(Benchmark.DEFAULT_TICKER)
+        }
     }
 
     // ===== Enum Mapping =====

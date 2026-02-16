@@ -112,6 +112,7 @@ class BacktestApplicationService:
             commission_rate=Decimal(str(commission_rate)),
             slippage_rate=Decimal(str(slippage_rate)),
             benchmark_ticker=benchmark,
+            benchmark_tickers=[benchmark],
         )
 
         # 3. 엔진 생성 및 실행
@@ -171,6 +172,7 @@ class BacktestApplicationService:
         checkpoint: Optional[Dict[str, Any]] = None,
         equity_curve_data: Optional[List[Dict[str, Any]]] = None,
         benchmark: str = DEFAULT_BENCHMARK,
+        benchmarks: Optional[List[str]] = None,
         user_id: Optional[int] = None,
         # SCRUM-330: 리스크 관리 파라미터
         risk_settings: Optional[Dict[str, Any]] = None,
@@ -235,6 +237,9 @@ class BacktestApplicationService:
             else:
                 slippage_model = "fixed"
 
+        # SCRUM-337: 다중 벤치마크 리스트 결정
+        effective_benchmarks = benchmarks if benchmarks else [benchmark]
+
         config = BacktestConfig(
             start_date=self._parse_date(start_date),
             end_date=self._parse_date(end_date),
@@ -243,6 +248,7 @@ class BacktestApplicationService:
             commission_rate=Decimal(str(commission_rate)),
             slippage_rate=Decimal(str(slippage_rate)),
             benchmark_ticker=benchmark,
+            benchmark_tickers=effective_benchmarks,
             risk_settings=risk_settings,
             position_sizing_method=position_sizing_method,
             position_size_pct=max_position_pct,

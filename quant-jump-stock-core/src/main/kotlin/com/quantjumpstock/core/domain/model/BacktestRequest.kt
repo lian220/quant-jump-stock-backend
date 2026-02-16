@@ -15,6 +15,8 @@ data class BacktestRequest(
         val userId: String? = null,
         val tickers: List<String> = emptyList(), // 백테스트 대상 종목
         val benchmark: String = Benchmark.DEFAULT_TICKER,
+        // SCRUM-337: 다중 벤치마크 지원
+        val benchmarks: List<String> = listOf(Benchmark.DEFAULT_TICKER),
         val rebalancePeriod: String = "MONTHLY",
 
         // SCRUM-258: 리스크 파라미터

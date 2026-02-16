@@ -15,6 +15,8 @@ data class BacktestRunRequest(
     val endDate: String,                // yyyy-MM-dd
     val initialCapital: BigDecimal,
     val benchmark: String = Benchmark.DEFAULT_TICKER,
+    // SCRUM-337: 다중 벤치마크 (최대 3개). 예: ["^GSPC", "^KS11", "STRATEGY:105"]
+    val benchmarks: List<String>? = null,
     val rebalancePeriod: RebalancePeriod = RebalancePeriod.MONTHLY,
     val tickers: List<String> = emptyList(),
 
@@ -22,7 +24,11 @@ data class BacktestRunRequest(
     val riskSettings: RiskSettings? = null,
     val positionSizing: PositionSizing? = null,
     val tradingCosts: TradingCosts? = null
-)
+) {
+    /** 실제 사용할 벤치마크 리스트 (benchmarks 우선, 없으면 단일 benchmark 사용) */
+    fun effectiveBenchmarks(): List<String> =
+        benchmarks?.takeIf { it.isNotEmpty() } ?: listOf(benchmark)
+}
 
 // ============================================================================
 // SCRUM-258: 리스크 파라미터 DTOs
@@ -156,6 +162,8 @@ data class BacktestResultResponse(
     val metrics: BacktestMetrics?,
     val equityCurve: List<EquityCurvePoint>?,
     val benchmarkCurve: List<EquityCurvePoint>?,
+    // SCRUM-337: 다중 벤치마크 커브 (ticker → curve)
+    val benchmarkCurves: Map<String, List<EquityCurvePoint>>? = null,
     val trades: List<BacktestTradeResponse>?,
     val createdAt: LocalDateTime,
     val completedAt: LocalDateTime?
@@ -219,7 +227,9 @@ data class BacktestMetrics(
 data class EquityCurvePoint(
     val date: String,
     val value: BigDecimal,
-    val benchmark: BigDecimal? = null
+    val benchmark: BigDecimal? = null,
+    // SCRUM-337: 다중 벤치마크 정규화 값 (ticker → value)
+    val benchmarks: Map<String, BigDecimal>? = null
 )
 
 /**

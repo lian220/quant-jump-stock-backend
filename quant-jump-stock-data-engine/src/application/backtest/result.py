@@ -20,7 +20,9 @@ class EquityCurvePoint:
     cash: Decimal    # 현금
     positions_value: Decimal  # 포지션 가치
     drawdown_pct: Decimal  # 고점 대비 낙폭 (%)
-    benchmark: Optional[Decimal] = None  # 초기자본 기준 정규화된 벤치마크 가치
+    benchmark: Optional[Decimal] = None  # 초기자본 기준 정규화된 벤치마크 가치 (하위호환)
+    # SCRUM-337: 다중 벤치마크 정규화 값 {ticker: normalized_value}
+    benchmarks: Optional[Dict[str, Decimal]] = None
 
 
 @dataclass
@@ -206,7 +208,8 @@ class BacktestResult:
                     "date": p.date.isoformat(),
                     "equity": float(p.equity),
                     "drawdown_pct": float(p.drawdown_pct),
-                    "benchmark": float(p.benchmark) if p.benchmark is not None else None
+                    "benchmark": float(p.benchmark) if p.benchmark is not None else None,
+                    "benchmarks": {k: float(v) for k, v in p.benchmarks.items()} if p.benchmarks else None
                 }
                 for p in self.equity_curve
             ],

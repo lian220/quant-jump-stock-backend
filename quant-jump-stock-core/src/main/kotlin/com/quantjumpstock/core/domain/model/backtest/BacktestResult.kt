@@ -23,6 +23,8 @@ data class BacktestResult(
     val endDate: LocalDate,
     val initialCapital: BigDecimal,
     val benchmark: String = Benchmark.DEFAULT_TICKER,
+    // SCRUM-337: 다중 벤치마크 지원 (최대 3개)
+    val benchmarks: List<String> = listOf(Benchmark.DEFAULT_TICKER),
 
     // Performance Metrics
     val finalValue: BigDecimal,

@@ -40,6 +40,8 @@ class BacktestService(
 
         logger.info("백테스트 실행 요청: requestId=$requestId, strategyId=${request.strategyId}")
 
+        val effectiveBenchmarks = request.effectiveBenchmarks()
+
         val backtestRequest = BacktestRequest(
             requestId = requestId,
             strategyId = request.strategyId,
@@ -50,7 +52,8 @@ class BacktestService(
             source = "quantiq-core",
             userId = userId,
             tickers = request.tickers,
-            benchmark = request.benchmark,
+            benchmark = effectiveBenchmarks.first(),
+            benchmarks = effectiveBenchmarks,
             rebalancePeriod = request.rebalancePeriod.name,
             // SCRUM-258: 리스크 파라미터 변환
             riskSettings = request.riskSettings?.let { mapRiskSettings(it) },
@@ -68,7 +71,8 @@ class BacktestService(
                 startDate = java.time.LocalDate.parse(request.startDate),
                 endDate = java.time.LocalDate.parse(request.endDate),
                 initialCapital = request.initialCapital,
-                benchmark = request.benchmark,
+                benchmark = effectiveBenchmarks.first(),
+                benchmarks = effectiveBenchmarks,
                 finalValue = BigDecimal.ZERO,
                 totalReturn = BigDecimal.ZERO,
                 cagr = BigDecimal.ZERO,
@@ -285,6 +289,8 @@ class BacktestService(
             benchmarkCurve = equityCurve?.filter { it.benchmark != null }?.map {
                 EquityCurvePoint(date = it.date, value = it.benchmark!!)
             }?.ifEmpty { null },
+            // SCRUM-337: 다중 벤치마크 커브 생성
+            benchmarkCurves = buildMultiBenchmarkCurves(equityCurve),
             trades = result.trades.map { mapToTradeResponse(it) },
             createdAt = result.createdAt,
             completedAt = result.completedAt
@@ -335,6 +341,7 @@ class BacktestService(
 
     /**
      * JSON 문자열 → EquityCurve 파싱
+     * SCRUM-337: 다중 벤치마크 지원 (benchmarks 맵 파싱)
      */
     private fun parseEquityCurve(json: String): List<EquityCurvePoint>? {
         return try {
@@ -342,17 +349,61 @@ class BacktestService(
                 val date = point["date"]?.toString()
                 // Data Engine은 "equity" 키로 저장, 하위호환을 위해 "value"도 지원
                 val value = (point["equity"] ?: point["value"])?.toString()?.let { BigDecimal(it) }
+                // 하위호환: 단일 benchmark 필드
                 val benchmark = point["benchmark"]?.toString()?.let { BigDecimal(it) }
+                // SCRUM-337: 다중 benchmarks 맵 파싱
+                @Suppress("UNCHECKED_CAST")
+                val benchmarksRaw = point["benchmarks"] as? Map<String, Any>
+                val benchmarks = benchmarksRaw?.mapValues { (_, v) ->
+                    BigDecimal(v.toString())
+                }
                 if (date.isNullOrBlank() || value == null) {
                     null
                 } else {
-                    EquityCurvePoint(date = date, value = value, benchmark = benchmark)
+                    EquityCurvePoint(
+                        date = date,
+                        value = value,
+                        benchmark = benchmark,
+                        benchmarks = benchmarks
+                    )
                 }
             }
         } catch (e: Exception) {
             logger.warn("EquityCurve 파싱 실패: ${e.message}")
             null
         }
+    }
+
+    /**
+     * SCRUM-337: equity_curve의 benchmarks 맵에서 벤치마크별 커브 추출
+     */
+    private fun buildMultiBenchmarkCurves(
+        equityCurve: List<EquityCurvePoint>?
+    ): Map<String, List<EquityCurvePoint>>? {
+        if (equityCurve.isNullOrEmpty()) return null
+
+        // benchmarks 필드가 있는 포인트 수집
+        val hasBenchmarks = equityCurve.any { !it.benchmarks.isNullOrEmpty() }
+        if (!hasBenchmarks) return null
+
+        // 모든 벤치마크 티커 수집
+        val allTickers = equityCurve
+            .flatMap { it.benchmarks?.keys ?: emptySet() }
+            .toSet()
+
+        if (allTickers.isEmpty()) return null
+
+        return allTickers.associateWith { ticker ->
+            equityCurve.filter { point ->
+                point.benchmarks?.containsKey(ticker) == true
+            }.map { point ->
+                EquityCurvePoint(
+                    date = point.date,
+                    value = point.benchmarks!![ticker]!!
+                )
+            }
+        }.filterValues { it.isNotEmpty() }
+            .ifEmpty { null }
     }
 
     // ============================================================================

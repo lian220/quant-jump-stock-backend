@@ -40,6 +40,11 @@ data class BacktestResultEntity(
     @Column(length = 20)
     val benchmark: String = Benchmark.DEFAULT_TICKER,
 
+    // SCRUM-337: 다중 벤치마크 (JSONB 배열)
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "benchmarks", columnDefinition = "jsonb")
+    val benchmarks: String? = null,
+
     // Performance Metrics
     @Column(name = "final_value", nullable = false, precision = 15, scale = 2)
     val finalValue: BigDecimal,

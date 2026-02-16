@@ -502,6 +502,7 @@ class BacktestServiceProtocol(Protocol):
         checkpoint: Optional[object],
         equity_curve_data: Optional[list] = None,
         benchmark: str = DEFAULT_BENCHMARK,
+        benchmarks: Optional[list] = None,
         user_id: Optional[int] = None
     ) -> object:
         """증분 백테스트 실행"""
@@ -689,6 +690,8 @@ class BacktestRequestHandler(MessageHandler):
         slippage_rate = payload.get("slippageRate", 0.0001)
         force_full = payload.get("forceFull", False)  # 강제 전체 실행 옵션
         benchmark = payload.get("benchmark", DEFAULT_BENCHMARK)
+        # SCRUM-337: 다중 벤치마크 지원
+        benchmarks = payload.get("benchmarks", [benchmark])
         # SCRUM-330: 리스크 관리 파라미터 수신
         risk_settings = payload.get("riskSettings")
         position_sizing = payload.get("positionSizing")
@@ -811,6 +814,7 @@ class BacktestRequestHandler(MessageHandler):
                     checkpoint=checkpoint,
                     equity_curve_data=equity_curve_data,
                     benchmark=benchmark,
+                    benchmarks=benchmarks,
                     user_id=user_id,
                     risk_settings=risk_settings,
                     position_sizing=position_sizing,
