@@ -1,0 +1,418 @@
+# GraalVM Native Image 운영 가이드
+
+> **적용일**: 2026-02-15
+> **현재 상태**: 프로덕션 운영 중 (GCE VM e2-small)
+
+---
+
+## 현재 프로덕션 수치
+
+| 항목 | JVM 모드 (이전) | Native Image (현재) |
+|------|----------------|-------------------|
+| 시작 시간 | ~12초 | **~2초** |
+| RSS 메모리 | ~700-900MB | **~170MB** |
+| Docker 메모리 제한 | 1024M | **512M** (실제 RSS ~170MB, OOM 방지용 상한) |
+| 배포 다운타임 | 15-17초 | **~5초** |
+| CI 빌드 시간 | ~3분 | **~12분** |
+| 바이너리 크기 | JRE + JAR (~200MB) | **~330MB (단일 바이너리)** |
+
+---
+
+## Java 코드가 실행되기까지
+
+Native Image를 이해하려면, 먼저 Java/Kotlin 코드가 어떻게 실행되는지 알아야 한다.
+
+### 1단계: 소스 → 바이트코드 (JVM/Native 공통)
+
+```
+UserService.kt  ──컴파일(kotlinc)──→  UserService.class (바이트코드)
+```
+
+`.class` 파일에는 **바이트코드**가 들어있다. 바이트코드는 기계어가 아니다.
+CPU가 직접 실행할 수 없는 중간 언어다. "이 변수를 스택에 올려라", "두 값을 더해라" 같은 명령어의 나열.
+
+```
+// Kotlin 소스
+fun add(a: Int, b: Int): Int = a + b
+
+// 바이트코드 (사람이 읽을 수 있는 형태)
+iload_0        // 첫 번째 인자를 스택에 올림
+iload_1        // 두 번째 인자를 스택에 올림
+iadd           // 스택 위 두 값을 더함
+ireturn        // 결과 반환
+```
+
+여기까지는 JVM 모드든 Native Image든 동일하다. 차이는 **바이트코드를 기계어로 변환하는 시점**이다.
+
+---
+
+### 2단계-A: JVM 모드 — JIT (Just-In-Time) 컴파일
+
+JVM 모드에서는 **프로그램이 실행되는 도중에** 바이트코드를 기계어로 변환한다.
+
+```
+앱 시작
+  │
+  ├─ JVM 로드 (~200MB 메모리 차지)
+  │    ├─ 클래스로더: .class 파일을 하나씩 메모리에 로드
+  │    ├─ 메타스페이스: 클래스 구조 정보 저장 (~100MB)
+  │    └─ JIT 컴파일러: 대기 중
+  │
+  ├─ 인터프리터: 바이트코드를 한 줄씩 해석해서 실행 (느림)
+  │    └─ "이 메서드가 1만번 호출됐네?"
+  │
+  ├─ JIT 컴파일러 작동 (핫 코드 감지)
+  │    ├─ 자주 호출되는 메서드를 기계어로 변환
+  │    ├─ 프로파일링 데이터 수집 (~50MB)
+  │    │    "이 if문은 95%가 true니까 true 경로를 최적화하자"
+  │    └─ 최적화된 기계어 코드 생성 + 캐시 (~100MB)
+  │
+  ├─ 최적화된 코드로 실행 (빠름)
+  │
+  └─ 메모리 사용: JVM + 메타스페이스 + JIT + 프로파일링 + 앱 데이터
+                  = 700~900MB
+```
+
+**핵심**: JIT는 "실행하면서 관찰하고, 자주 쓰는 코드를 최적화"한다.
+
+장점:
+- **런타임 프로파일링**: 실제 사용 패턴을 보고 최적화 → 장시간 실행 시 매우 빠름
+- **동적 기능 자유**: 리플렉션, 동적 프록시, 클래스 로딩 제한 없음
+- **빌드 빠름**: 바이트코드만 만들면 됨 (~30초)
+
+단점:
+- **시작 느림**: 클래스 로드 + 인터프리팅 + JIT 워밍업 = ~12초
+- **메모리 많음**: JVM 런타임 전체가 메모리에 상주 = 700~900MB
+- **피크까지 시간**: JIT가 충분히 최적화하려면 수 분 필요
+
+---
+
+### 2단계-B: Native Image — AOT (Ahead-Of-Time) 컴파일
+
+AOT는 **프로그램을 실행하기 전에, 빌드할 때** 바이트코드를 기계어로 변환한다.
+
+```
+빌드 시 (개발자 PC 또는 CI)
+  │
+  ├─ native-image 컴파일러 실행 (12GB 메모리 사용, 12분 소요)
+  │    │
+  │    ├─ 정적 분석: 모든 .class 파일을 읽고 코드 경로 추적
+  │    │    "main()에서 시작해서 도달 가능한 모든 코드를 찾자"
+  │    │    "도달 불가능한 코드는 버리자" (= Dead Code Elimination)
+  │    │
+  │    ├─ 기계어 변환: 바이트코드 → x86_64 기계어
+  │    │    모든 메서드를 미리 컴파일 (JIT처럼 "나중에"가 아님)
+  │    │
+  │    ├─ 이미지 힙 스냅샷: static 필드, 상수, 설정값을 바이너리에 포함
+  │    │    "Spring Bean 초기화? 빌드 때 미리 해두자"
+  │    │
+  │    └─ 출력: 단일 실행 파일 (330MB)
+  │         └─ SubstrateVM (경량 런타임) 내장
+  │
+  └─ 결과: ./quant-jump-stock-core (JVM 필요 없음)
+
+
+실행 시 (서버)
+  │
+  ├─ OS가 바이너리를 메모리에 로드
+  │    ├─ 이미 기계어 → CPU가 바로 실행 (인터프리터 불필요)
+  │    ├─ 이미지 힙 로드 → Spring Bean 이미 초기화됨 (클래스 로딩 불필요)
+  │    └─ SubstrateVM 시작 → GC, 스레드 관리만 담당
+  │
+  ├─ ~2초 만에 요청 처리 가능
+  │
+  └─ 메모리 사용: SubstrateVM + 앱 데이터만
+                  = ~170MB
+```
+
+**핵심**: AOT는 "빌드할 때 모든 분석과 최적화를 끝내고, 실행 파일을 만들어 놓는다."
+
+장점:
+- **시작 즉시 빠름**: 기계어 로드 → 바로 실행 = ~2초
+- **메모리 적음**: JVM 런타임 오버헤드 없음 = ~170MB
+- **예측 가능한 성능**: 시작부터 끝까지 일정한 속도
+
+단점:
+- **빌드 느림**: 전체 코드 정적 분석 = ~12분
+- **빌드 메모리 많음**: 컴파일러가 12GB+ 필요
+- **동적 기능 제한**: 빌드 시 모든 코드 경로를 알아야 함 (아래 상세 설명)
+- **피크 성능**: JIT의 런타임 최적화가 없어서 장시간 실행 시 JVM이 더 빠를 수 있음
+
+---
+
+### JIT vs AOT 비교 요약
+
+```
+              빌드 시간    시작 시간    메모리     피크 성능    동적 기능
+JIT (JVM)     30초        12초        900MB     ★★★★★     자유
+AOT (Native)  12분        2초         170MB     ★★★☆☆     제한적
+```
+
+| 관점 | JIT이 유리한 경우 | AOT가 유리한 경우 |
+|------|-----------------|-----------------|
+| 워크로드 | 장시간 실행, 높은 처리량 필요 | 빠른 시작, 적은 메모리 필요 |
+| 예시 | 대용량 배치 처리, 고빈도 트레이딩 | API 서버, 마이크로서비스, 서버리스 |
+| **우리 상황** | - | **API 서버 + 2GB VM** → AOT가 적합 |
+
+---
+
+### SubstrateVM: Native Image의 경량 런타임
+
+Native Image에도 런타임이 필요하다. GC, 스레드, 메모리 관리는 누군가 해야 하니까.
+이걸 담당하는 게 **SubstrateVM**이다. 바이너리 안에 내장된다.
+
+**SubstrateVM이 포함하는 것:**
+- **GC** (기본 Serial GC, 선택적 G1 GC) — 메모리 자동 회수
+- 스레드 스케줄링 — `Thread`, `ExecutorService` 등 동작
+- 메모리 관리 — 힙 할당/해제
+- 최소한의 런타임 메타데이터
+
+**JVM에는 있지만 SubstrateVM에서 빠진 것 (= 메모리 절감 원인):**
+
+| 제거된 컴포넌트 | JVM에서의 역할 | 메모리 절감 |
+|---------------|-------------|-----------|
+| JIT 컴파일러 (C2/Graal) | 런타임에 기계어 변환 | ~150MB |
+| 메타스페이스 대부분 | 클래스 구조 정보 동적 저장 | ~100MB |
+| 클래스로더 계층 | .class 파일 동적 로드 | ~50MB |
+| 프로파일링 데이터 | JIT 최적화용 통계 수집 | ~50MB |
+| 바이트코드 검증기 | .class 파일 무결성 검증 | 소량 |
+| **합계** | | **~350-500MB** |
+
+---
+
+## 단점 및 트레이드오프
+
+### 1. 빌드 시간이 매우 김
+
+| 환경 | JVM 빌드 | Native 빌드 |
+|------|---------|------------|
+| 로컬 (M3 Max) | ~30초 | **~5분** |
+| CI (GitHub Actions) | ~3분 | **~12분** |
+
+- native-image 컴파일러가 전체 코드를 정적 분석 + 최적화하므로 시간이 오래 걸림
+- CI에서 12GB 힙 + 10GB Swap 필요 (`-J-Xmx12g`)
+- **대응**: 로컬 개발은 JVM 모드(`./gradlew bootRun`), Native는 CI에서만 빌드
+
+### 2. Closed World Assumption (폐쇄 세계 가정)
+
+AOT 컴파일러는 빌드할 때 `main()`부터 시작해서 **도달 가능한 모든 코드 경로를 추적**한다.
+추적할 수 없는 코드는 바이너리에 포함되지 않는다. 이것이 "폐쇄 세계 가정"이다.
+
+문제가 되는 대표적인 경우 — **리플렉션**:
+
+```kotlin
+// 리플렉션: 문자열로 클래스를 찾아서 인스턴스를 만듦
+val clazz = Class.forName("com.example.UserDto")  // 런타임에 문자열로 클래스 탐색
+val instance = clazz.getDeclaredConstructor().newInstance()
+```
+
+JVM 모드에서는 문제없다. 클래스로더가 런타임에 `UserDto.class`를 찾아서 로드하면 된다.
+
+하지만 AOT에서는 컴파일러가 `"com.example.UserDto"` 라는 **문자열만 봐서는 이게 클래스 참조인지 알 수 없다**.
+→ `UserDto`가 "도달 불가능한 코드"로 판단되어 바이너리에서 빠짐 → 런타임에 `ClassNotFoundException`
+
+**해결**: 빌드 시 "이 클래스는 리플렉션으로 접근할 거야" 라고 미리 알려줘야 한다.
+
+```json
+// reflect-config.json — "이 클래스들은 리플렉션에 사용됩니다"
+[
+  {
+    "name": "com.example.UserDto",
+    "allDeclaredFields": true,
+    "allDeclaredConstructors": true
+  }
+]
+```
+
+같은 문제가 발생하는 다른 동적 기능들:
+- **동적 프록시**: Spring AOP의 `@Transactional` 등이 런타임에 프록시 클래스 생성
+- **리소스 접근**: `getResource("application.yml")` 같은 파일 참조
+- **직렬화**: Jackson이 JSON ↔ 객체 변환 시 리플렉션 사용
+
+**Spring Boot의 AOT 엔진이 이걸 자동으로 해준다:**
+
+```
+Spring Boot AOT Processing (빌드 시 자동 실행)
+  │
+  ├─ 모든 @Component, @Bean, @Entity 스캔
+  ├─ 리플렉션 힌트 자동 생성 (reflect-config.json)
+  ├─ 프록시 힌트 자동 생성 (proxy-config.json)
+  ├─ 리소스 힌트 자동 생성 (resource-config.json)
+  └─ 직렬화 힌트 자동 생성 (serialization-config.json)
+
+→ 개발자가 수동으로 설정할 일이 거의 없음
+```
+
+**우리 프로젝트 현황**: Spring Boot 3.5 + Kotlin 2.1의 AOT 엔진이 잘 동작해서 별도 설정 없이 컴파일 성공.
+단, **새 라이브러리 추가 시** 해당 라이브러리가 리플렉션을 많이 쓰면 수동 힌트가 필요할 수 있다.
+
+### 3. 피크 처리량(throughput)이 JVM보다 낮을 수 있음
+
+위 JIT vs AOT 섹션에서 설명했듯이, JIT는 **실행 중에 "이 코드가 자주 호출되네"를 관찰**해서 최적화한다.
+
+```
+성능 곡선:
+
+처리량
+  ↑              JVM (JIT 워밍업 완료)
+  │              ╭──────────────────── ← "if문 95%가 true" 같은 패턴 학습 후 최적화
+  │            ╱
+  │          ╱     Native Image
+  │  ──────╱────────────────────────── ← 빌드 때 정한 최적화가 전부, 일정한 성능
+  │       ╱
+  │     ╱  ← JIT 워밍업 구간 (수 분)
+  │   ╱
+  │──╱ ← JVM 시작: 인터프리터로 느리게 시작
+  └──────────────────────────────────→ 시간
+  ↑
+  Native가 처음부터 빠름
+```
+
+예를 들어 `if (user.isPremium())` 가 95%의 요청에서 `false`라면:
+- **JIT**: "false 경로를 먼저 실행하고, true는 나중에 체크하자" → 분기 예측 최적화
+- **AOT**: 이런 런타임 통계를 모르므로 일반적인 코드 생성
+
+**우리 상황**: API 서버 + 스케줄러 워크로드, 초당 수십~수백 요청 수준 → 이 차이가 체감되지 않음
+
+### 4. 디버깅/프로파일링이 어려움
+
+- JVM의 JMX, VisualVM, JFR 같은 도구를 **직접 사용할 수 없음**
+- 스택 트레이스가 불완전할 수 있음 (인라인 최적화 때문)
+- **대응**: 로컬 개발은 JVM 모드로 디버깅, 프로덕션 문제는 로그 기반 분석
+
+### 5. 라이브러리 호환성
+
+모든 Java 라이브러리가 Native Image를 지원하는 것은 아님.
+
+| 상태 | 라이브러리 |
+|------|-----------|
+| ✅ 호환 | Spring Boot 3.x, Spring Data JPA/MongoDB, Hibernate, Jackson, Quartz |
+| ✅ 호환 | Kotlin stdlib, coroutines, Spring Cloud GCP |
+| ⚠️ 주의 | 리플렉션 많이 쓰는 라이브러리 (별도 힌트 필요) |
+| ❌ 비호환 | 바이트코드 조작 라이브러리 (일부 mocking 프레임워크) |
+
+**새 라이브러리 추가 시**: `./gradlew nativeCompile` 로컬 확인 후 PR
+
+### 6. 빌드 시 대량의 메모리 필요
+
+- native-image 컴파일러 자체가 12GB+ 힙 필요
+- CI에서 10GB Swap 추가 구성
+- 로컬 빌드 시에도 8GB+ 여유 메모리 권장
+
+---
+
+## 개발 워크플로우
+
+```
+로컬 개발 (JVM)                    프로덕션 (Native)
+─────────────────                  ─────────────────
+./gradlew bootRun                  GitHub Actions
+  → 시작 12초                        → nativeCompile (~12분)
+  → 핫 리로드 가능                    → Dockerfile.native
+  → 디버거 연결 가능                   → Docker push → VM 배포
+  → JMX/VisualVM 사용 가능            → 시작 ~2초, RSS ~170MB
+```
+
+### 로컬에서 Native 빌드 테스트
+
+```bash
+cd quant-jump-stock-core
+
+# Native 컴파일 (5분+ 소요, 메모리 8GB+ 필요)
+./gradlew nativeCompile -x test
+
+# 실행
+./build/native/nativeCompile/quant-jump-stock-core
+
+# 또는 Docker로 빌드
+docker build -f Dockerfile.native -t qjs-core:native .
+```
+
+### 새 라이브러리 추가 체크리스트
+
+1. `build.gradle.kts`에 의존성 추가
+2. `./gradlew build -x test` (JVM 빌드 확인)
+3. `./gradlew nativeCompile -x test` (Native 빌드 확인)
+4. 컴파일 실패 시 → AOT 힌트 또는 reflect-config.json 추가
+5. CI에서 최종 확인
+
+---
+
+## 빌드 설정
+
+### build.gradle.kts
+
+```kotlin
+graalvmNative {
+    binaries {
+        named("main") {
+            mainClass.set("com.quantjumpstock.core.CoreApplicationKt")
+            buildArgs.addAll(
+                "-Ob",                          // 빠른 빌드 (최적화 축소)
+                "--initialize-at-build-time",
+                "-H:+ReportExceptionStackTraces",
+            )
+            // CI에서 추가 메모리 플래그 전달
+            if (project.hasProperty("nativeImageArgs")) {
+                val extraArgs = project.property("nativeImageArgs").toString()
+                buildArgs.addAll(extraArgs.split(","))
+            }
+        }
+    }
+}
+```
+
+### Dockerfile.native
+
+```dockerfile
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+COPY build/native/nativeCompile/quant-jump-stock-core /app/app
+RUN chmod +x /app/app
+USER appuser
+EXPOSE 10010
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -sf http://localhost:10010/actuator/health || exit 1
+ENTRYPOINT ["/app/app"]
+```
+
+### CI 파이프라인 (deploy-core.yml)
+
+```yaml
+# GraalVM 설정
+- uses: graalvm/setup-graalvm@v1
+  with:
+    java-version: '21'
+    distribution: 'graalvm'
+    cache: 'gradle'
+
+# OOM 방지용 Swap
+- run: |
+    sudo swapoff /swapfile 2>/dev/null || true
+    sudo rm -f /swapfile
+    sudo fallocate -l 10G /swapfile
+    sudo chmod 600 /swapfile && sudo mkswap /swapfile && sudo swapon /swapfile
+
+# Native 컴파일
+- run: ./gradlew nativeCompile -x test -Dorg.gradle.jvmargs="-Xmx4g" -PnativeImageArgs="-J-Xmx12g,-Ob"
+```
+
+---
+
+## 롤백 계획
+
+JVM 모드 Dockerfile과 entrypoint.sh는 보존되어 있음. 문제 시:
+
+1. `deploy-core.yml`에서 `Dockerfile.native` → `Dockerfile` 변경
+2. `nativeCompile` → `build` 변경
+3. `graalvm/setup-graalvm` → `actions/setup-java` (Temurin 21) 변경
+4. docker-compose.prod.yml에서 `JAVA_OPTS=-Xmx768m -Xms384m` 환경변수 추가
+
+---
+
+## 관련 문서
+
+- [GCP 배포 가이드](../../../docs/infra/gcp-deployment.md) - 프로덕션 배포 전체
+- [스케일링 계획](../../../docs/infra/scaling-plan.md) - 메모리 예산 계획
+- [배포 운영 가이드](../setup/배포_운영_가이드.md) - 운영 명령어

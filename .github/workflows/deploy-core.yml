@@ -78,61 +78,47 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # ── Sync Config Files to VM ────────────────────────
+      # ── Sync Config Files to VM (IAP tunnel) ───────────
       - name: Upload config files to VM
-        uses: appleboy/scp-action@v0.1.7
-        with:
-          host: ${{ secrets.GCE_HOST }}
-          username: ${{ secrets.GCE_USERNAME }}
-          key: ${{ secrets.GCE_SSH_PRIVATE_KEY }}
-          source: "docker-compose.prod.yml,nginx/nginx.conf,deploy/deploy.sh"
-          target: /opt/quant-jump-stock
-          overwrite: true
+        run: |
+          tar czf /tmp/deploy-config.tar.gz docker-compose.prod.yml nginx/nginx.conf deploy/deploy.sh
+          gcloud compute scp --tunnel-through-iap --zone=${{ env.REGION }}-a --quiet \
+            /tmp/deploy-config.tar.gz \
+            ${{ secrets.GCE_USERNAME }}@qjs-vm:/tmp/deploy-config.tar.gz \
+            --project=${{ secrets.GCP_PROJECT_ID }}
+          gcloud compute ssh --tunnel-through-iap --zone=${{ env.REGION }}-a --quiet \
+            ${{ secrets.GCE_USERNAME }}@qjs-vm \
+            --project=${{ secrets.GCP_PROJECT_ID }} \
+            --command="cd /opt/quant-jump-stock && tar xzf /tmp/deploy-config.tar.gz && rm /tmp/deploy-config.tar.gz"
 
-      # ── Deploy to VM ───────────────────────────────────
+      # ── Deploy to VM (IAP tunnel) ─────────────────────
       - name: Deploy Core API to VM
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.GCE_HOST }}
-          username: ${{ secrets.GCE_USERNAME }}
-          key: ${{ secrets.GCE_SSH_PRIVATE_KEY }}
-          command_timeout: 3m
-          script: |
-            cd /opt/quant-jump-stock
-
-            # deploy.sh 실행 권한
-            chmod +x ./deploy/deploy.sh
-
-            # Secret Manager에서 env 파일 3개 다운로드
-            gcloud secrets versions access latest --secret=qjs-env-common \
-              > ./quant-jump-stock-backend/.env.common
-            gcloud secrets versions access latest --secret=qjs-env-db-prod \
-              > ./quant-jump-stock-backend/.env.db.prod
-            gcloud secrets versions access latest --secret=qjs-env-prod \
-              > ./quant-jump-stock-backend/.env.prod
-
-            # docker-compose ${AR_REPO} 치환용 .env
-            grep '^AR_REPO=' ./quant-jump-stock-backend/.env.prod > .env
-
-            # Pull & restart Core API
-            docker compose -f docker-compose.prod.yml pull core
-            docker compose -f docker-compose.prod.yml up -d --no-deps core
-            docker image prune -f
-
-            # Nginx reload
-            docker compose -f docker-compose.prod.yml up -d --no-deps nginx
-            docker exec qjs-nginx nginx -s reload 2>/dev/null || true
-
-            echo "Core API (native) deployed to VM"
+        run: |
+          gcloud compute ssh --tunnel-through-iap --zone=${{ env.REGION }}-a --quiet \
+            ${{ secrets.GCE_USERNAME }}@qjs-vm \
+            --project=${{ secrets.GCP_PROJECT_ID }} \
+            --command="cd /opt/quant-jump-stock && \
+              chmod +x ./deploy/deploy.sh && \
+              gcloud secrets versions access latest --secret=qjs-env-common > ./quant-jump-stock-backend/.env.common && \
+              gcloud secrets versions access latest --secret=qjs-env-db-prod > ./quant-jump-stock-backend/.env.db.prod && \
+              gcloud secrets versions access latest --secret=qjs-env-prod > ./quant-jump-stock-backend/.env.prod && \
+              grep '^AR_REPO=' ./quant-jump-stock-backend/.env.prod > .env && \
+              docker compose -f docker-compose.prod.yml pull core && \
+              docker compose -f docker-compose.prod.yml up -d --no-deps core && \
+              docker image prune -f && \
+              docker compose -f docker-compose.prod.yml up -d --no-deps nginx && \
+              docker exec qjs-nginx nginx -s reload 2>/dev/null; \
+              echo 'Core API (native) deployed to VM'"
 
       # ── Health Check ───────────────────────────────────
       - name: Verify Deployment
         run: |
           echo "Waiting for Core API startup (native ~2s)..."
+          HEALTH_URL="https://${{ secrets.GCE_HOST }}/api/v1/auth/oauth2/urls"
           for i in $(seq 1 6); do
             sleep 5
             HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" -k \
-              "https://${{ secrets.GCE_HOST }}/api/v1/auth/oauth2/urls" 2>/dev/null || echo "000")
+              "$HEALTH_URL" 2>/dev/null || echo "000")
             if [ "$HTTP_CODE" = "200" ]; then
               echo "Core API is healthy!"
               exit 0

@@ -5,6 +5,7 @@ import org.quartz.Job
 import org.quartz.JobExecutionContext
 import org.quartz.JobExecutionException
 import org.slf4j.LoggerFactory
+import org.springframework.cache.CacheManager
 import org.springframework.stereotype.Component
 import java.util.concurrent.TimeUnit
 
@@ -29,7 +30,8 @@ import java.util.concurrent.TimeUnit
  */
 @Component
 class StockRecommendationJobAdapter(
-    private val analysisUseCase: AnalysisUseCase
+    private val analysisUseCase: AnalysisUseCase,
+    private val cacheManager: CacheManager
 ) : Job {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
@@ -39,6 +41,10 @@ class StockRecommendationJobAdapter(
 
             val result = analysisUseCase.triggerStockRecommendation()
                 .get(3, TimeUnit.MINUTES)
+
+            // 스케줄러 완료 후 캐시 evict → 다음 조회 시 최신 데이터 반영
+            cacheManager.getCache("buySignals")?.clear()
+            logger.info("🗑️ buySignals 캐시 초기화 완료")
 
             logger.info("✅ 종목 추천 완료: $result")
 

@@ -56,7 +56,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 384M
+          memory: 512M
     restart: unless-stopped
 
   # NOTE: Data Engine은 Cloud Run qjs-data-engine으로 분리됨

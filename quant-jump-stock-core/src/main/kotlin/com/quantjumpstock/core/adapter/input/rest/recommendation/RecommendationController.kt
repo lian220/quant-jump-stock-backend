@@ -5,6 +5,7 @@ import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
+import java.time.LocalDate
 
 /**
  * 추천 시스템 API Controller
@@ -27,7 +28,7 @@ class RecommendationController(
         @RequestParam(required = false) date: String?,
         @RequestParam(defaultValue = "0.7") minConfidence: Double
     ) = recommendationService.getBuySignals(
-        date = date?.let { java.time.LocalDate.parse(it) },
+        date = date?.let { LocalDate.parse(it) } ?: LocalDate.now().minusDays(1),
         minConfidence = minConfidence
     )
 }
