@@ -15,10 +15,12 @@ Push 구독은 Pub/Sub이 HTTP POST로 메시지를 전달하는 방식.
 }
 """
 
+import asyncio
 import base64
+import inspect
 import json
 import logging
-from typing import Dict, Callable, Any
+from typing import Dict, Callable, Any, Union
 
 from fastapi import APIRouter, Request, Response
 
@@ -106,7 +108,10 @@ async def handle_push_message(topic_name: str, request: Request) -> Response:
         message_id = message.get("messageId", "unknown")
         logger.info(f"Processing push message: topic={dot_topic}, messageId={message_id}, requestId={parsed.request_id}")
 
-        handler(parsed)
+        if asyncio.iscoroutinefunction(handler):
+            await handler(parsed)
+        else:
+            handler(parsed)
 
         logger.info(f"Push message processed successfully: topic={dot_topic}, messageId={message_id}")
         return Response(status_code=200, content="OK")
