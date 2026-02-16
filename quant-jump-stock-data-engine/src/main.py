@@ -166,25 +166,14 @@ class NewTechnicalAnalysisAdapter:
         self._service = service
         self._report_service = ComprehensiveReportService()
 
-    def run_technical_analysis(self, request_id, thread_ts, start_date=None, end_date=None):
-        import asyncio
-
+    async def run_technical_analysis(self, request_id, thread_ts, start_date=None, end_date=None):
         target_date = end_date or start_date
 
-        async def _run():
-            return await self._service.analyze_stocks(
-                request_id=request_id,
-                thread_ts=thread_ts,
-                target_date=target_date
-            )
-
-        try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        result = loop.run_until_complete(_run())
+        result = await self._service.analyze_stocks(
+            request_id=request_id,
+            thread_ts=thread_ts,
+            target_date=target_date
+        )
 
         # 종합 분석 리포트: 기술적 + AI 예측 + 감정 분석
         if result.get("status") == "success":

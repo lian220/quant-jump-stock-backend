@@ -207,11 +207,11 @@ class TechnicalAnalysisHandler(MessageHandler):
     def topic(self) -> str:
         return "analysis.technical.request"
 
-    def handle(self, message: PubSubMessage) -> None:
+    async def handle(self, message: PubSubMessage) -> None:
         start_time = self._log_start(message, "기술적 분석 요청")
 
         try:
-            result = self.service.run_technical_analysis(
+            result = await self.service.run_technical_analysis(
                 message.request_id,
                 message.thread_ts,
                 start_date=message.start_date,
