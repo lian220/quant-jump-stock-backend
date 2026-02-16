@@ -10,7 +10,7 @@ import org.springframework.web.reactive.function.client.WebClient
 @Component
 class NewsSlackAlertAdapter(
     private val webClient: WebClient,
-    @Value("\${slack.webhook-url:}") private val slackWebhookUrl: String
+    @Value("\${slack.webhook-url-news:}") private val slackWebhookUrl: String
 ) : NewsAlertSender {
 
     private val logger = LoggerFactory.getLogger(this::class.java)

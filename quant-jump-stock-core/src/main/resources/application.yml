@@ -139,6 +139,7 @@ springdoc:
 slack:
   webhook-url: ${SLACK_WEBHOOK_URL:}
   webhook-url-error: ${SLACK_WEBHOOK_URL_ERROR:}
+  webhook-url-news: ${SLACK_WEBHOOK_URL_NEWS:}
   bot-token: ${SLACK_BOT_TOKEN:}
   channel: ${SLACK_CHANNEL:#trading-alerts}
 
