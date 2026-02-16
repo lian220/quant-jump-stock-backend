@@ -13,6 +13,7 @@ from typing import List, Optional, Dict, Any
 import requests
 from dateutil.parser import parse as parse_datetime
 
+from adapter.output.external.translator import translate_if_english
 from domain.news.models import NewsItem, NewsSource
 
 KST = timezone(timedelta(hours=9))
@@ -82,17 +83,12 @@ class SaveTickerClient:
             if last_fetched_at and created_at and created_at <= last_fetched_at:
                 continue
 
-            # 본문이 없거나 헤드라인만 있는 기사는 상세 API에서 본문 가져오기
-            is_headline_only = raw.get("is_headline_only", False)
-            content = raw.get("content")
-            if is_headline_only or not content:
-                # rate limiting: 이전 상세 호출 후 딜레이
-                if detail_fetched:
-                    time.sleep(self.DETAIL_FETCH_DELAY)
-                detail_content = self._fetch_detail_content(item_id)
-                if detail_content:
-                    content = detail_content
-                detail_fetched = True
+            # 항상 상세 API 호출 (list API의 content는 83자 미리보기만 반환)
+            if detail_fetched:
+                time.sleep(self.DETAIL_FETCH_DELAY)
+            detail_content = self._fetch_detail_content(item_id)
+            content = detail_content if detail_content else raw.get("content")
+            detail_fetched = True
 
             items.append(_to_domain(raw, content))
 
@@ -158,13 +154,26 @@ def _to_domain(raw: Dict[str, Any], content: Optional[str]) -> NewsItem:
 
     extra = raw.get("extra", {}) or {}
 
+    # 제목 번역: 영어 원본 보존 + 한글 번역
+    raw_title = raw.get("title", "")
+    title_en = en_translation.get("title") if en_translation else None
+    title_ko = translate_if_english(raw_title)
+    # 원본이 영어였고 title_en이 없으면 원본을 title_en에 보존
+    if title_ko != raw_title and not title_en:
+        title_en = raw_title
+
+    # 본문 번역
+    content_ko = content if content and content.strip() else None
+    if content_ko:
+        content_ko = translate_if_english(content_ko)
+
     return NewsItem(
         external_id=raw.get("id", ""),
         source=NewsSource.SAVETICKER,
         original_source=raw.get("source"),
-        title_ko=raw.get("title", ""),
-        title_en=en_translation.get("title") if en_translation else None,
-        content_ko=content if content and content.strip() else None,
+        title_ko=title_ko,
+        title_en=title_en,
+        content_ko=content_ko,
         summary_ko=summary_ko,
         tags=tags,
         tickers=tickers,
