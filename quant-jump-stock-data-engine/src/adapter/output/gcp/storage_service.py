@@ -65,18 +65,13 @@ class GcsStorageService:
         Returns:
             UploadResult
         """
-        logger.info("=" * 60)
-        logger.info("📦 GCS ML 패키지 업로드 시작")
-        logger.info(f"버킷: {self.bucket_name}")
-        logger.info(f"기본 경로: {self.package_base_path}")
-        logger.info(f"스크립트: {script_path}")
-        logger.info("=" * 60)
+        logger.debug(f"GCS 업로드 시작: 버킷={self.bucket_name}, 스크립트={script_path}")
 
         try:
             current_version = self.get_current_version()
             new_version = current_version + 1
 
-            logger.info(f"현재 버전: v{current_version} → 새 버전: v{new_version}")
+            logger.debug(f"버전: v{current_version} → v{new_version}")
 
             # 스크립트 로드
             python_script = script_path.read_text(encoding="utf-8")
@@ -92,12 +87,7 @@ class GcsStorageService:
 
             gcs_uri = f"gs://{self.bucket_name}/{blob_path}"
 
-            logger.info("=" * 60)
-            logger.info("✅ GCS 패키지 업로드 완료")
-            logger.info(f"GCS URI: {gcs_uri}")
-            logger.info(f"버전: v{new_version}")
-            logger.info(f"크기: {len(package_bytes)} bytes")
-            logger.info("=" * 60)
+            logger.info(f"GCS 패키지 업로드 완료: v{new_version}, {len(package_bytes)} bytes")
 
             return UploadResult(
                 success=True,
@@ -146,8 +136,7 @@ class GcsStorageService:
         package_path = f"{self.package_base_path}/{self.PACKAGE_PREFIX}-v{current_version}.tar.gz"
         gcs_uri = f"gs://{self.bucket_name}/{package_path}"
 
-        logger.info(f"✅ 최신 버전 패키지: v{current_version}")
-        logger.info(f"   URI: {gcs_uri}")
+        logger.debug(f"최신 패키지: v{current_version}, {gcs_uri}")
 
         return gcs_uri
 

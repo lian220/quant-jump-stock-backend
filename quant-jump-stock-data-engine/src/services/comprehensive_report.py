@@ -39,7 +39,7 @@ class ComprehensiveReportService:
             if ticker and score is not None:
                 scores[ticker] = float(score)
 
-        logger.info(f"감정 분석 로드: {analysis_date} → {len(scores)}개 종목")
+        logger.debug(f"감정 분석 로드: {analysis_date} → {len(scores)}개 종목")
         return scores
 
     def load_ai_predictions(self, analysis_date: str) -> Dict[str, Dict[str, float]]:
@@ -113,7 +113,7 @@ class ComprehensiveReportService:
                 "rise_probability": round(rise_prob, 2),
             }
 
-        logger.info(f"AI 예측 로드: pred_date={pred_date} → {len(result)}개 종목")
+        logger.debug(f"AI 예측 로드: pred_date={pred_date} → {len(result)}개 종목")
         return result
 
     def generate_report(

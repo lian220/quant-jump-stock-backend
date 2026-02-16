@@ -90,13 +90,7 @@ class VertexAIService:
         """
         request_id = str(uuid.uuid4())
 
-        logger.info("=" * 60)
-        logger.info("🚀 Vertex AI 주가 예측 작업 시작")
-        logger.info(f"Request ID: {request_id}")
-        logger.info(f"Project: {self.project_id}")
-        logger.info(f"Region: {self.region}")
-        logger.info(f"Package URI: {package_uri}")
-        logger.info("=" * 60)
+        logger.debug(f"Vertex AI Job 시작: request={request_id}, package={package_uri}")
 
         try:
             # 환경 변수에 request_id 추가
@@ -132,11 +126,7 @@ class VertexAIService:
             # Job 실행 (비동기)
             job.submit()
 
-            logger.info("=" * 60)
-            logger.info("✅ Vertex AI CustomJob 제출 완료")
-            logger.info(f"Job Name: {job.resource_name}")
-            logger.info(f"Request ID: {request_id}")
-            logger.info("=" * 60)
+            logger.info(f"Vertex AI Job 제출 완료: {job.resource_name}")
 
             return JobResult(
                 success=True,
@@ -219,9 +209,9 @@ class VertexAIService:
     def _log_env_vars_safely(self, env_vars: Dict[str, str]):
         """민감 정보 마스킹하여 로깅"""
         sensitive_keys = {"PASSWORD", "SECRET", "TOKEN", "KEY"}
-        logger.info(f"📋 환경 변수 {len(env_vars)}개 설정:")
+        logger.debug(f"환경 변수 {len(env_vars)}개 설정")
         for key, value in env_vars.items():
             if any(s in key.upper() for s in sensitive_keys):
-                logger.info(f"  {key}: ***")
+                logger.debug(f"  {key}: ***")
             else:
-                logger.info(f"  {key}: {value}")
+                logger.debug(f"  {key}: {value}")

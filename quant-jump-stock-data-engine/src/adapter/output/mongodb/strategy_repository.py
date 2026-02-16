@@ -53,7 +53,7 @@ class MongoStrategyRepository(StrategyRepositoryPort):
         doc["created_at"] = datetime.utcnow()
         doc["updated_at"] = datetime.utcnow()
         self.collection.insert_one(doc)
-        logger.info(f"Strategy saved: {strategy.strategy_id}")
+        logger.debug(f"Strategy saved: {strategy.strategy_id}")
 
     async def update(self, strategy: StrategyDefinition) -> None:
         """전략 업데이트"""
@@ -63,7 +63,7 @@ class MongoStrategyRepository(StrategyRepositoryPort):
             {"strategy_id": strategy.strategy_id},
             {"$set": doc}
         )
-        logger.info(f"Strategy updated: {strategy.strategy_id}")
+        logger.debug(f"Strategy updated: {strategy.strategy_id}")
 
     def _to_document(self, strategy: StrategyDefinition) -> dict:
         """도메인 모델 → MongoDB 문서"""

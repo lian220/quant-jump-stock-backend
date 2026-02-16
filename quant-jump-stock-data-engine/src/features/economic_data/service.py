@@ -57,15 +57,15 @@ class EconomicDataService:
             if latest_date:
                 next_date = datetime.strptime(latest_date, "%Y-%m-%d") + timedelta(days=1)
                 resolved_start = next_date.strftime("%Y-%m-%d")
-                logger.info(f"마지막 수집일: {latest_date} → 시작일: {resolved_start}")
+                logger.debug(f"마지막 수집일: {latest_date} → 시작일: {resolved_start}")
             else:
                 # 데이터가 없으면 오늘만 수집
                 resolved_start = today_str
-                logger.info("MongoDB에 기존 데이터 없음 → 오늘만 수집")
+                logger.debug("MongoDB에 기존 데이터 없음 → 오늘만 수집")
 
         # 시작일이 종료일보다 뒤면 이미 최신 상태
         if resolved_start > resolved_end:
-            logger.info(f"이미 최신 상태: 시작일({resolved_start}) > 종료일({resolved_end})")
+            logger.debug(f"이미 최신 상태: 시작일({resolved_start}) > 종료일({resolved_end})")
             resolved_start = resolved_end
 
         return resolved_start, resolved_end
@@ -115,7 +115,7 @@ class EconomicDataService:
             for date_str, data in daily_data.items():
                 if self.repository.upsert_daily_data(date_str, data):
                     saved_dates += 1
-                    logger.info(f"✅ daily_stock_data 저장: {date_str} (FRED: {len(data['fred_indicators'])}, Yahoo: {len(data['yfinance_indicators'])}, Stocks: {len(data['stocks'])})")
+                    logger.debug(f"daily_stock_data 저장: {date_str} (FRED: {len(data['fred_indicators'])}, Yahoo: {len(data['yfinance_indicators'])}, Stocks: {len(data['stocks'])})")
 
             logger.info(f"경제 데이터 수집 완료: FRED={fred_count}개 지표, Yahoo={yahoo_count}개 지표, Stocks={stocks_count}개 종목, {saved_dates}일치 저장")
 
@@ -198,7 +198,7 @@ class EconomicDataService:
                             }
 
                     success_count += 1
-                    logger.info(f"✅ FRED 데이터 수집 완료: {code} ({name})")
+                    logger.debug(f"FRED 데이터 수집 완료: {code} ({name})")
 
             except Exception as e:
                 logger.error(f"❌ FRED 데이터 수집 실패: {code} - {e}")
@@ -248,7 +248,7 @@ class EconomicDataService:
                             }
 
                     success_count += 1
-                    logger.info(f"✅ Yahoo Finance 데이터 수집 완료: {ticker} ({name})")
+                    logger.debug(f"Yahoo Finance 데이터 수집 완료: {ticker} ({name})")
 
             except Exception as e:
                 logger.error(f"❌ Yahoo Finance 데이터 수집 실패: {ticker} - {e}")
@@ -368,7 +368,7 @@ class EconomicDataService:
                             daily_data[date_str]["stocks"][ticker] = stock_data
 
                     success_count += 1
-                    logger.info(f"✅ 종목 데이터 수집 완료: {ticker} ({len(df)}일, info={'있음' if info_data else '없음'})")
+                    logger.debug(f"종목 데이터 수집 완료: {ticker} ({len(df)}일, info={'있음' if info_data else '없음'})")
 
             except Exception as e:
                 logger.error(f"❌ 종목 데이터 수집 실패: {ticker} - {e}")

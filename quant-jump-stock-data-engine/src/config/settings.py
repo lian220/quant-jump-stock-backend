@@ -73,6 +73,7 @@ class SlackSettings(BaseSettings):
 
     webhook_url: str = Field(default="", alias="SLACK_WEBHOOK_URL")
     webhook_url_analysis: str = Field(default="", alias="SLACK_WEBHOOK_URL_ANALYSIS")
+    webhook_url_news: str = Field(default="", alias="SLACK_WEBHOOK_URL_NEWS")
     bot_token: str = Field(default="", alias="SLACK_BOT_TOKEN")
     channel: str = Field(default="#trading-alerts", alias="SLACK_CHANNEL")
     enabled: bool = Field(default=True, alias="SLACK_ENABLED")
@@ -148,6 +149,10 @@ class Settings(BaseSettings):
     @property
     def SLACK_WEBHOOK_URL_ANALYSIS(self) -> str:
         return self.slack.webhook_url_analysis
+
+    @property
+    def SLACK_WEBHOOK_URL_NEWS(self) -> str:
+        return self.slack.webhook_url_news
 
     @property
     def SLACK_ENABLED(self) -> bool:

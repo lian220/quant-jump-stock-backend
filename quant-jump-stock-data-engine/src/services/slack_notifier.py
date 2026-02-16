@@ -77,9 +77,9 @@ class SlackNotifier:
             if data.get("ok"):
                 message_ts = data.get("ts")
                 if thread_ts:
-                    logger.info(f"✅ Slack 스레드 답글 발송: thread_ts={thread_ts}, ts={message_ts}")
+                    logger.debug(f"Slack 스레드 답글 발송: thread_ts={thread_ts}, ts={message_ts}")
                 else:
-                    logger.info(f"✅ Slack 메시지 발송: ts={message_ts}")
+                    logger.debug(f"Slack 메시지 발송: ts={message_ts}")
                 return message_ts
             else:
                 error_msg = data.get("error", "Unknown error")
@@ -108,7 +108,7 @@ class SlackNotifier:
             )
             response.raise_for_status()
 
-            logger.info("✅ Slack 메시지 발송 (Webhook)")
+            logger.debug("Slack 메시지 발송 (Webhook)")
             return None
 
         except Exception as e:
@@ -131,7 +131,7 @@ class SlackNotifier:
         # Kotlin에서 전달받은 parent_thread_ts가 있으면 저장
         if parent_thread_ts:
             SlackNotifier._thread_timestamps[request_id] = parent_thread_ts
-            logger.info(f"📌 Kotlin 루트 스레드 연결: request_id={request_id}, thread_ts={parent_thread_ts}")
+            logger.debug(f"Kotlin 루트 스레드 연결: request_id={request_id}, thread_ts={parent_thread_ts}")
 
         text = "🔄 경제 데이터 수집 시작"
         attachments = [
@@ -342,7 +342,7 @@ class SlackNotifier:
 
             response = requests.post(url, json=payload, timeout=10)
             response.raise_for_status()
-            logger.info("✅ Slack Webhook 알림 발송 완료")
+            logger.debug("Slack Webhook 알림 발송 완료")
         except Exception as e:
             logger.error(f"❌ Slack Webhook 알림 발송 실패: {e}")
 
@@ -509,6 +509,52 @@ class SlackNotifier:
         SlackNotifier._post_to_webhook(webhook_url, fallback_text, blocks)
 
     @staticmethod
+    def notify_news_collection(result: Dict):
+        """
+        뉴스 수집 결과를 뉴스 전용 Slack 채널로 전송
+
+        Args:
+            result: NewsCollectionService.collect() 결과
+                    {"collected_count": N, "article_ids": [...], "source": "..."}
+        """
+        webhook_url = getattr(settings, 'SLACK_WEBHOOK_URL_NEWS', '')
+        if not webhook_url:
+            logger.debug("SLACK_WEBHOOK_URL_NEWS 미설정, 뉴스 알림 생략")
+            return
+
+        source = result.get("source", "unknown")
+        count = result.get("collected_count", 0)
+
+        if count == 0:
+            return
+
+        current_time = SlackNotifier._get_current_time()
+
+        blocks = [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": f"📰 뉴스 수집 완료 ({source})", "emoji": True}
+            },
+            {
+                "type": "section",
+                "fields": [
+                    {"type": "mrkdwn", "text": f"*수집 건수*\n{count}건"},
+                    {"type": "mrkdwn", "text": f"*소스*\n{source}"},
+                ]
+            },
+            {"type": "divider"},
+            {
+                "type": "context",
+                "elements": [
+                    {"type": "mrkdwn", "text": f"⏰ {current_time} | Quantiq Data Engine"}
+                ]
+            }
+        ]
+
+        fallback_text = f"📰 뉴스 수집 완료: {source}에서 {count}건 저장"
+        SlackNotifier._post_to_webhook(webhook_url, fallback_text, blocks)
+
+    @staticmethod
     def notify_buy_candidates(total_analyzed: int, buy_candidates: List, buy_criteria):
         """
         매수 후보 알림 (Tech-only 분석용)
@@ -522,7 +568,7 @@ class SlackNotifier:
             buy_criteria: BuyCriteria 객체
         """
         # 현재는 종합 리포트로 통합되므로 로그만 남김
-        logger.info(
+        logger.debug(
             f"매수 후보 분석 완료: {total_analyzed}개 분석, "
             f"{len(buy_candidates)}개 후보 (notify_comprehensive_report에서 전송됨)"
         )

@@ -37,7 +37,7 @@ _handlers: Dict[str, Callable[[PubSubMessage], None]] = {}
 def register_push_handler(topic: str, handler: Callable[[PubSubMessage], None]) -> None:
     """Push 핸들러 등록"""
     _handlers[topic] = handler
-    logger.info(f"Push handler registered for topic: {topic}")
+    logger.debug(f"Push handler registered: {topic}")
 
 
 def _pubsub_topic_to_dot_notation(pubsub_topic: str) -> str:
@@ -106,14 +106,14 @@ async def handle_push_message(topic_name: str, request: Request) -> Response:
     try:
         parsed = _parse_push_message(dot_topic, payload)
         message_id = message.get("messageId", "unknown")
-        logger.info(f"Processing push message: topic={dot_topic}, messageId={message_id}, requestId={parsed.request_id}")
+        logger.debug(f"Push message: topic={dot_topic}, messageId={message_id}, requestId={parsed.request_id}")
 
         if asyncio.iscoroutinefunction(handler):
             await handler(parsed)
         else:
             handler(parsed)
 
-        logger.info(f"Push message processed successfully: topic={dot_topic}, messageId={message_id}")
+        logger.debug(f"Push message done: topic={dot_topic}, messageId={message_id}")
         return Response(status_code=200, content="OK")
 
     except Exception as e:

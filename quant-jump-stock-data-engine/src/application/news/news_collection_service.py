@@ -75,7 +75,7 @@ class NewsCollectionService:
             new_items = [r for r in raw_items if r.get("id", "") not in existing_ids]
 
             if existing_ids:
-                logger.info(f"{source}: {len(existing_ids)}건 중복 스킵, {len(new_items)}건 신규")
+                logger.debug(f"{source}: {len(existing_ids)}건 중복 스킵, {len(new_items)}건 신규")
 
             if not new_items:
                 elapsed_ms = int((time.time() - start_time) * 1000)

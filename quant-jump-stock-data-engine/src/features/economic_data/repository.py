@@ -134,7 +134,7 @@ class EconomicDataRepository:
             )
 
             if doc and "date" in doc:
-                logger.info(f"MongoDB 최신 수집일: {doc['date']}")
+                logger.debug(f"MongoDB 최신 수집일: {doc['date']}")
                 return doc["date"]
 
             return None

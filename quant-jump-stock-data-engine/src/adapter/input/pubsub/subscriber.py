@@ -74,7 +74,7 @@ class PubSubSubscriberAdapter:
     ) -> None:
         """토픽에 핸들러 등록"""
         self._handlers[topic] = handler
-        logger.info(f"Handler registered for topic: {topic}")
+        logger.debug(f"Handler registered: {topic}")
 
     def _parse_message(self, topic: str, data: bytes) -> Optional[PubSubMessage]:
         """메시지 파싱"""
@@ -113,7 +113,7 @@ class PubSubSubscriberAdapter:
                 return
 
             try:
-                logger.info(f"Processing message from {topic}, requestId={parsed.request_id}")
+                logger.debug(f"Processing message: {topic}, requestId={parsed.request_id}")
                 handler(parsed)
                 message.ack()
             except NonRetryableError as e:

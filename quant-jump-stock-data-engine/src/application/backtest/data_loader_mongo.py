@@ -140,7 +140,7 @@ class MongoDataLoader(DataLoader):
         # 지표 계산을 위한 버퍼 추가 (이동평균 등)
         buffered_start = start_date - timedelta(days=self.add_buffer_days)
 
-        logger.info(
+        logger.debug(
             f"Loading {len(symbols)} symbols from MongoDB: "
             f"{buffered_start} to {end_date} (buffer: {self.add_buffer_days} days)"
         )
@@ -175,7 +175,7 @@ class MongoDataLoader(DataLoader):
             logger.warning(f"No data found for {start_date} ~ {end_date}")
             return {}
 
-        logger.info(f"Loaded {len(documents)} days from MongoDB")
+        logger.debug(f"Loaded {len(documents)} days from MongoDB")
 
         # 감성 분석 / 추천 데이터 로드 (옵션)
         sentiment_data = {}
@@ -196,7 +196,7 @@ class MongoDataLoader(DataLoader):
                 for doc in sentiment_docs:
                     key = (doc.get("ticker"), doc.get("date"))
                     sentiment_data[key] = doc
-                logger.info(f"Loaded {len(sentiment_docs)} sentiment records")
+                logger.debug(f"Loaded {len(sentiment_docs)} sentiment records")
                 if sentiment_docs:
                     logger.debug(f"Sample sentiment keys: {list(sentiment_data.keys())[:5]}")
 
@@ -212,7 +212,7 @@ class MongoDataLoader(DataLoader):
                 for doc in rec_docs:
                     key = (doc.get("ticker"), doc.get("date"))
                     recommendation_data[key] = doc
-                logger.info(f"Loaded {len(rec_docs)} recommendation records")
+                logger.debug(f"Loaded {len(rec_docs)} recommendation records")
 
         # 종목별 데이터 변환 (Left Join 적용)
         result: Dict[str, pd.DataFrame] = {}
@@ -394,7 +394,7 @@ class MongoDataLoader(DataLoader):
         df.set_index("date", inplace=True)
         df.sort_index(inplace=True)
 
-        logger.info(f"Loaded {len(df)} days of benchmark data for {benchmark_ticker}")
+        logger.debug(f"Loaded {len(df)} days of benchmark data for {benchmark_ticker}")
         return df
 
     def get_available_symbols(self) -> List[str]:

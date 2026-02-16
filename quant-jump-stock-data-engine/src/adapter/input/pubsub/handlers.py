@@ -15,6 +15,7 @@ from pytz import timezone
 
 from adapter.output.postgresql.backtest_repository import BacktestCheckpoint
 from application.backtest.service import DEFAULT_BENCHMARK
+from services.slack_notifier import SlackNotifier
 from .subscriber import PubSubMessage, NonRetryableError
 
 KST = timezone('Asia/Seoul')
@@ -38,12 +39,7 @@ class MessageHandler(ABC):
     def _log_start(self, message: PubSubMessage, description: str) -> float:
         """처리 시작 로깅"""
         date_info = self._format_date_range(message.start_date, message.end_date)
-        logger.info("=" * 80)
-        logger.info(f"{description} Pub/Sub 메시지 수신")
-        logger.info(f"Request ID: {message.request_id}")
-        logger.info(f"Date Range: {date_info}")
-        logger.info(f"Thread TS: {message.thread_ts}")
-        logger.info("=" * 80)
+        logger.debug(f"{description} 수신 (request={message.request_id}, date={date_info})")
         return time.time()
 
     @staticmethod
@@ -452,6 +448,9 @@ class NewsCollectionHandler(MessageHandler):
             result = self.service.collect(source=source)
 
             self._log_success("뉴스 수집", start_time)
+
+            # Slack 뉴스 채널 알림
+            SlackNotifier.notify_news_collection(result)
 
             if self.publisher:
                 self.publisher.publish("NEWS_COLLECTED", {

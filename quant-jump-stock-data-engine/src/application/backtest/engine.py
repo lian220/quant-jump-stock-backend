@@ -279,7 +279,7 @@ class BacktestEngine:
         if strategy is not None:
             extra_kwargs = self._detect_extra_data_needs(strategy)
             if extra_kwargs:
-                logger.info(f"Extra data needs detected: {extra_kwargs}")
+                logger.debug(f"Extra data needs detected: {extra_kwargs}")
 
         self._data = self.data_loader.load(
             symbols=symbols,
@@ -288,7 +288,7 @@ class BacktestEngine:
             **extra_kwargs
         )
 
-        logger.info(f"Loaded data for {len(self._data)} symbols")
+        logger.debug(f"Loaded data for {len(self._data)} symbols")
 
         # 벤치마크 데이터 로드
         if self.config.benchmark_ticker and hasattr(self.data_loader, 'load_benchmark'):
@@ -299,7 +299,7 @@ class BacktestEngine:
                     end_date=self.config.end_date,
                 )
                 if self._benchmark_data is not None:
-                    logger.info(f"Loaded benchmark data: {self.config.benchmark_ticker}")
+                    logger.debug(f"Loaded benchmark data: {self.config.benchmark_ticker}")
                 else:
                     logger.warning(f"No benchmark data for: {self.config.benchmark_ticker}")
             except Exception as e:

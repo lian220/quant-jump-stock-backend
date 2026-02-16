@@ -45,7 +45,7 @@ class PubSubPublisherAdapter:
         """Publisher 인스턴스 반환 (Lazy init)"""
         if self._publisher is None:
             self._publisher = pubsub_v1.PublisherClient()
-            logger.info(f"Pub/Sub publisher created for project: {self._project_id}")
+            logger.debug(f"Pub/Sub publisher created: {self._project_id}")
         return self._publisher
 
     def publish(self, event_type: str, data: Dict[str, Any]) -> None:
@@ -74,7 +74,7 @@ class PubSubPublisherAdapter:
             future = publisher.publish(topic_path, message)
             future.result(timeout=30)  # 발행 완료 대기 (30초 타임아웃)
 
-            logger.info(f"Event published: {event_type} -> {pubsub_topic}")
+            logger.debug(f"Event published: {event_type} -> {pubsub_topic}")
 
         except Exception as e:
             logger.error(f"Failed to publish event {event_type}: {e}")

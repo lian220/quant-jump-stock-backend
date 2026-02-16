@@ -24,7 +24,7 @@ class PubSubEventPublisher:
 
         try:
             PubSubEventPublisher._publisher_adapter.publish(event_type, data)
-            logger.info(f"Pub/Sub 이벤트 발행 성공: {event_type}")
+            logger.debug(f"Pub/Sub 이벤트 발행: {event_type}")
         except Exception as e:
             logger.error(f"Pub/Sub 이벤트 발행 실패: {event_type} - {e}")
             raise

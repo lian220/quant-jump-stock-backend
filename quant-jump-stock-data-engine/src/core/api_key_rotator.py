@@ -140,7 +140,7 @@ class AlphaVantageKeyRotator:
                 )
                 time.sleep(self.BACKOFF_DELAY)
             else:
-                logger.info(f"다음 키로 전환 (대기 없음)")
+                logger.debug(f"다음 키로 전환 (대기 없음)")
         else:
             # 정상 호출 간 기본 딜레이 (5 calls/min 준수)
             time.sleep(self.RATE_LIMIT_DELAY)

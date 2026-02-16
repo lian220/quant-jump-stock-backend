@@ -50,8 +50,8 @@ class RecommendationSyncService:
             # stock_analysis_results 데이터를 ai_predictions에 병합 (analysis_results 우선)
             ai_predictions = self._merge_ai_sources(ai_predictions, ai_analysis_results)
 
-            logger.info(
-                f"📊 [Sync] 조회 완료: AI={len(ai_predictions)}, "
+            logger.debug(
+                f"[Sync] 조회 완료: AI={len(ai_predictions)}, "
                 f"AnalysisResults={len(ai_analysis_results)}, "
                 f"Sentiment={len(sentiment_analysis)}, Tech={len(technical_analysis)}, "
                 f"Prices={len(current_prices)}"

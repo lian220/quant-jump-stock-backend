@@ -317,7 +317,7 @@ class StrategyService(StrategyExecutionUseCase, SignalGenerationUseCase):
             await self.signal_output.publish(signal)
             await self.signal_output.save_to_history(signal)
 
-            logger.info(
+            logger.debug(
                 f"Signal published: {signal.strategy_id} → {signal.symbol} "
                 f"({signal.signal_type.value}, weight={signal.weight:.2f})"
             )

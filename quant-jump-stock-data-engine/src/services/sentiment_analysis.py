@@ -49,7 +49,7 @@ class SentimentAnalysisService:
         results = []
 
         for ticker in tickers:
-            logger.info(f"Fetching sentiment for {ticker}...")
+            logger.debug(f"Fetching sentiment for {ticker}...")
 
             # 🆕 최대 3번 재시도 (키 로테이션)
             max_retries = min(3, len(self.key_rotator.keys))
@@ -189,7 +189,7 @@ class SentimentAnalysisService:
                     )
 
                     results.append(doc)
-                    logger.info(f"Saved sentiment for {ticker}: Score={avg_score:.2f}, Articles={article_count}")
+                    logger.debug(f"Saved sentiment for {ticker}: Score={avg_score:.2f}, Articles={article_count}")
 
                 # 🆕 Rate Limit 준수 (5 calls/min → 12초 대기)
                 self.key_rotator.wait_if_needed(current_key, is_rate_limited=False)

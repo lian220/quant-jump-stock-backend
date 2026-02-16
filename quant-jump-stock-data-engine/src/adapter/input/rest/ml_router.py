@@ -48,7 +48,7 @@ async def upload_package(service=Depends(get_prediction_service)):
 
     predict_optimized.py를 tar.gz로 패키징하여 GCS에 업로드합니다.
     """
-    logger.info("📦 ML 패키지 업로드 요청")
+    logger.debug("ML 패키지 업로드 요청")
 
     result = service.upload_package()
 
@@ -71,7 +71,7 @@ async def get_package_status(service=Depends(get_prediction_service)):
 
     GCS에 업로드된 패키지 정보를 조회합니다.
     """
-    logger.info("📋 패키지 상태 조회 요청")
+    logger.debug("패키지 상태 조회 요청")
     return service.get_package_status()
 
 
@@ -88,7 +88,7 @@ async def get_job_status(
     """
     Vertex AI Job 상태 조회
     """
-    logger.info(f"📋 Job 상태 조회: {job_name}")
+    logger.debug(f"Job 상태 조회: {job_name}")
     return service.get_job_status(job_name)
 
 
@@ -100,7 +100,7 @@ async def cancel_job(
     """
     Vertex AI Job 취소
     """
-    logger.info(f"🛑 Job 취소 요청: {request.job_name}")
+    logger.debug(f"Job 취소 요청: {request.job_name}")
     return service.cancel_job(request.job_name)
 
 
@@ -118,12 +118,7 @@ async def job_callback(
 
     predict_optimized.py에서 Job 완료 시 호출합니다.
     """
-    logger.info("=" * 60)
-    logger.info("📬 Vertex AI Job 콜백 수신")
-    logger.info(f"Request ID: {request_id}")
-    logger.info(f"Status: {status}")
-    logger.info(f"Thread TS: {thread_ts}")
-    logger.info("=" * 60)
+    logger.debug(f"Vertex AI Job 콜백: request_id={request_id}, status={status}")
 
     # TODO: Slack 알림 전송
     # TODO: 결과 저장

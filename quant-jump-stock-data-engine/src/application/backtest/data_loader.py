@@ -139,7 +139,7 @@ class YFinanceDataLoader(DataLoader):
         # 지표 계산을 위한 버퍼 추가
         buffered_start = start_date - timedelta(days=self.add_buffer_days)
 
-        logger.info(f"Loading {yahoo_symbol} from {buffered_start} to {end_date}")
+        logger.debug(f"Loading {yahoo_symbol} from {buffered_start} to {end_date}")
 
         try:
             ticker = yf.Ticker(yahoo_symbol)
@@ -170,7 +170,7 @@ class YFinanceDataLoader(DataLoader):
             df.index = pd.to_datetime(df.index).date
             df.index = pd.DatetimeIndex(df.index)
 
-            logger.info(f"Loaded {len(df)} rows for {symbol}")
+            logger.debug(f"Loaded {len(df)} rows for {symbol}")
 
             return df
 

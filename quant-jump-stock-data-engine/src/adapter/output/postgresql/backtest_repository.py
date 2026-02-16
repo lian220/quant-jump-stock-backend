@@ -399,7 +399,7 @@ class PostgresBacktestRepository:
                     )
                     conn.commit()
 
-            logger.info(f"Updated backtest result {result_id} status to {status}")
+            logger.debug(f"Updated backtest result {result_id} status to {status}")
 
         except Exception as e:
             logger.error(f"Failed to update backtest result status: {e}")
@@ -729,7 +729,7 @@ class PostgresBacktestRepository:
                     checkpoint_id = cursor.fetchone()[0]
                     conn.commit()
 
-                    logger.info(
+                    logger.debug(
                         f"Saved checkpoint: backtest_id={checkpoint.backtest_id}, "
                         f"date={checkpoint.checkpoint_date}"
                     )
