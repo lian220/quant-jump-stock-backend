@@ -38,6 +38,10 @@ class PostgresCollectorStateRepository:
             raise
         finally:
             if conn:
+                try:
+                    conn.commit()  # 읽기 쿼리도 implicit transaction 종료 필요
+                except Exception:
+                    pass
                 self._pool.putconn(conn)
 
     def get_state(self, source: NewsSource) -> Optional[CollectorState]:

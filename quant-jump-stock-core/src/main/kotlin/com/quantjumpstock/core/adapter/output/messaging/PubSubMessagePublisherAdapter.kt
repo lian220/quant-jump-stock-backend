@@ -215,14 +215,9 @@ class PubSubMessagePublisherAdapter(
             val eventJson = objectMapper.writeValueAsString(event)
             val pubsubTopic = toPubSubTopic(topic)
 
-            pubSubTemplate.publish(pubsubTopic, eventJson)
-                .whenComplete { _, ex ->
-                    if (ex == null) {
-                        logger.info("뉴스 수집 요청 발행 성공: topic=$pubsubTopic, requestId=$requestId, source=$source")
-                    } else {
-                        logger.error("뉴스 수집 요청 발행 실패: topic=$pubsubTopic", ex)
-                    }
-                }
+            val future = pubSubTemplate.publish(pubsubTopic, eventJson)
+            future.get(10, java.util.concurrent.TimeUnit.SECONDS)
+            logger.info("뉴스 수집 요청 발행 성공: topic=$pubsubTopic, requestId=$requestId, source=$source")
         } catch (e: Exception) {
             logger.error("뉴스 수집 요청 발행 실패: topic=$topic", e)
             throw e

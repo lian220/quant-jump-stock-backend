@@ -1,11 +1,10 @@
 package com.quantjumpstock.core.application.admin
 
 import com.quantjumpstock.core.domain.news.model.NewsItem
+import com.quantjumpstock.core.domain.news.model.NewsPageRequest
 import com.quantjumpstock.core.domain.news.model.NewsSource
 import com.quantjumpstock.core.domain.news.port.output.NewsRepository
 import org.slf4j.LoggerFactory
-import org.springframework.data.domain.PageRequest
-import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 import kotlin.math.ceil
@@ -29,14 +28,14 @@ class AdminNewsArticleService(
         sortBy: String,
         sortDirection: String
     ): AdminNewsArticleListResponse {
-        val direction = if (sortDirection.equals("asc", ignoreCase = true)) Sort.Direction.ASC else Sort.Direction.DESC
+        val direction = if (sortDirection.equals("asc", ignoreCase = true)) NewsPageRequest.SortDir.ASC else NewsPageRequest.SortDir.DESC
         val sortField = when (sortBy) {
             "importanceScore" -> "importance_score"
             "viewCount" -> "view_count"
             "createdAt" -> "created_at"
             else -> "created_at"
         }
-        val pageable = PageRequest.of(page, size, Sort.by(direction, sortField))
+        val pageRequest = NewsPageRequest(page = page, size = size, sortField = sortField, sortDirection = direction)
 
         val (items, total) = newsRepository.findAllPaginated(
             source = source,
@@ -45,7 +44,7 @@ class AdminNewsArticleService(
             dateFrom = dateFrom,
             dateTo = dateTo,
             includeHidden = includeHidden,
-            pageable = pageable
+            pageRequest = pageRequest
         )
 
         return AdminNewsArticleListResponse(

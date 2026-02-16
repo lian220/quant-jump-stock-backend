@@ -57,7 +57,7 @@ data class NewsDocument(
     fun toDomain(): NewsItem = NewsItem(
         id = id,
         externalId = externalId,
-        source = NewsSource.valueOf(source),
+        source = try { NewsSource.valueOf(source) } catch (_: IllegalArgumentException) { NewsSource.MANUAL },
         originalSource = originalSource,
         titleKo = titleKo,
         titleEn = titleEn,

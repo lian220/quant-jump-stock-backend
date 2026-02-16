@@ -59,9 +59,9 @@ class SaveTickerClient:
         items: List[NewsItem] = []
         for raw in news_list:
             item_id = raw.get("id", "")
-            # 이전 마지막 ID 이후 필터
+            # 이전 마지막 ID 도달 시 중단 (desc 정렬이므로 이후는 더 오래된 항목)
             if last_fetched_id and item_id == last_fetched_id:
-                continue
+                break
 
             created_at = _safe_parse_datetime(raw.get("created_at", ""))
             if last_fetched_at and created_at and created_at <= last_fetched_at:

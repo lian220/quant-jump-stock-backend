@@ -1,10 +1,10 @@
 package com.quantjumpstock.core.adapter.output.persistence.mongodb
 
 import com.quantjumpstock.core.domain.news.model.NewsItem
+import com.quantjumpstock.core.domain.news.model.NewsPageRequest
 import com.quantjumpstock.core.domain.news.model.NewsSource
 import com.quantjumpstock.core.domain.news.port.output.NewsRepository
 import org.slf4j.LoggerFactory
-import org.springframework.data.domain.Pageable
 import org.springframework.data.domain.Sort
 import org.springframework.data.mongodb.core.MongoTemplate
 import org.springframework.data.mongodb.core.aggregation.Aggregation
@@ -116,7 +116,7 @@ class NewsMongoAdapter(
         dateFrom: LocalDateTime?,
         dateTo: LocalDateTime?,
         includeHidden: Boolean,
-        pageable: Pageable
+        pageRequest: NewsPageRequest
     ): Pair<List<NewsItem>, Long> {
         val criteria = mutableListOf<Criteria>()
 
@@ -142,10 +142,15 @@ class NewsMongoAdapter(
 
         val total = mongoTemplate.count(query, NewsDocument::class.java)
 
-        query.with(pageable)
-        if (pageable.sort.isUnsorted) {
-            query.with(Sort.by(Sort.Direction.DESC, "created_at"))
+        // 도메인 NewsPageRequest → Spring Pageable 변환 (어댑터 책임)
+        val direction = when (pageRequest.sortDirection) {
+            NewsPageRequest.SortDir.ASC -> Sort.Direction.ASC
+            NewsPageRequest.SortDir.DESC -> Sort.Direction.DESC
         }
+        val pageable = org.springframework.data.domain.PageRequest.of(
+            pageRequest.page, pageRequest.size, Sort.by(direction, pageRequest.sortField)
+        )
+        query.with(pageable)
 
         val items = mongoTemplate.find(query, NewsDocument::class.java).map { it.toDomain() }
         return Pair(items, total)

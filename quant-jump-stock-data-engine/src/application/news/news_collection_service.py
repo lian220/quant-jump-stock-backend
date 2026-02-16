@@ -41,9 +41,10 @@ class NewsCollectionService:
         news_source = NewsSource(source)
         start_time = time.time()
 
-        # collector_state에서 마지막 수집 정보 가져오기
-        last_fetched_id = self._state_repo.get_last_fetched_id(news_source)
-        last_fetched_at = self._state_repo.get_last_fetched_at(news_source)
+        # collector_state에서 마지막 수집 정보 가져오기 (단일 쿼리)
+        state = self._state_repo.get_state(news_source)
+        last_fetched_id = state.last_fetched_id if state else None
+        last_fetched_at = state.last_fetched_at if state else None
         if last_fetched_at is None:
             last_fetched_at = datetime.now() - timedelta(hours=1)
 
@@ -63,11 +64,11 @@ class NewsCollectionService:
             # MongoDB에 원본 저장 (importance_score=0.0)
             saved_count = self._news_repo.save_all(items)
 
-            # collector_state 업데이트
-            latest = max(items, key=lambda x: x.source_created_at or datetime.min)
+            # collector_state 업데이트 (created_at 기준 — source_created_at은 None일 수 있음)
+            latest = max(items, key=lambda x: x.created_at or datetime.min)
             self._state_repo.update_state(
                 source=news_source,
-                last_fetched_at=latest.source_created_at or datetime.now(),
+                last_fetched_at=latest.created_at or datetime.now(),
                 last_fetched_id=latest.external_id,
             )
             self._state_repo.record_success(news_source, elapsed_ms)
