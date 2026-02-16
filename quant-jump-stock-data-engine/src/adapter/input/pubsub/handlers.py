@@ -428,6 +428,62 @@ class StrategyExecutionHandler(MessageHandler):
             raise
 
 
+class NewsCollectionServiceProtocol(Protocol):
+    """뉴스 수집 서비스 프로토콜"""
+    def collect(self, source: str = "SAVETICKER") -> dict:
+        ...
+
+
+class NewsCollectionHandler(MessageHandler):
+    """뉴스 수집 핸들러 (Data Engine에서 수집 실행)"""
+
+    def __init__(
+        self,
+        service: NewsCollectionServiceProtocol,
+        publisher: Optional[EventPublisherProtocol] = None,
+    ):
+        self.service = service
+        self.publisher = publisher
+
+    @property
+    def topic(self) -> str:
+        return "quantiq.news.collection.request"
+
+    def handle(self, message: PubSubMessage) -> None:
+        start_time = self._log_start(message, "뉴스 수집 요청")
+
+        source = message.payload.get("source", "SAVETICKER")
+
+        try:
+            result = self.service.collect(source=source)
+
+            self._log_success("뉴스 수집", start_time)
+
+            if self.publisher:
+                self.publisher.publish("NEWS_COLLECTED", {
+                    "status": "success",
+                    "timestamp": datetime.now(KST).isoformat(),
+                    "requestId": message.request_id,
+                    "source": source,
+                    "articleIds": result.get("article_ids", []),
+                    "collectedCount": result.get("collected_count", 0),
+                    "duration": time.time() - start_time,
+                })
+
+        except Exception as e:
+            self._log_error("뉴스 수집", e)
+
+            if self.publisher:
+                self.publisher.publish("NEWS_COLLECTION_FAILED", {
+                    "status": "failed",
+                    "timestamp": datetime.now(KST).isoformat(),
+                    "requestId": message.request_id,
+                    "source": source,
+                    "error": str(e),
+                })
+            raise
+
+
 class BacktestServiceProtocol(Protocol):
     """백테스트 서비스 프로토콜"""
     async def run_backtest(

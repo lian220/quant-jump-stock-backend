@@ -46,6 +46,7 @@ from adapter.input.pubsub.handlers import (
     StrategyExecutionHandler,
     VertexAIHandler,
     BacktestRequestHandler,
+    NewsCollectionHandler,
 )
 from adapter.input.rest import ml_router
 from adapter.input.rest import analysis_router
@@ -104,6 +105,7 @@ def read_root():
             "strategy.execution.request",
             "vertex.ai.run.request",
             "quantiq.backtest.request",
+            "quantiq.news.collection.request",
         ],
         "timestamp": datetime.now(KST).isoformat()
     }
@@ -334,6 +336,25 @@ def _init_services():
     else:
         logger.info("GCP disabled - Vertex AI services not available")
 
+    # 뉴스 수집 서비스 초기화
+    from adapter.output.external.saveticker_client import SaveTickerClient
+    from adapter.output.mongodb.news_repository import MongoNewsRepository
+    from adapter.output.postgresql.collector_state_repository import PostgresCollectorStateRepository
+    from application.news.news_collection_service import NewsCollectionService
+
+    saveticker_client = SaveTickerClient()
+    news_mongo_repository = MongoNewsRepository(db)
+    collector_state_repository = PostgresCollectorStateRepository(pool=pg_pool)
+    news_collection_service = NewsCollectionService(
+        saveticker_client=saveticker_client,
+        news_repository=news_mongo_repository,
+        collector_state_repository=collector_state_repository,
+    )
+    news_collection_handler = NewsCollectionHandler(
+        service=news_collection_service,
+        publisher=pubsub_publisher,
+    )
+
     # 핸들러 맵 구성
     handlers_map = {
         economic_handler.topic: economic_handler.handle,
@@ -341,6 +362,7 @@ def _init_services():
         sentiment_handler.topic: sentiment_handler.handle,
         recommendation_handler.topic: recommendation_handler.handle,
         backtest_handler.topic: backtest_handler.handle,
+        news_collection_handler.topic: news_collection_handler.handle,
     }
     if vertexai_handler:
         handlers_map[vertexai_handler.topic] = vertexai_handler.handle

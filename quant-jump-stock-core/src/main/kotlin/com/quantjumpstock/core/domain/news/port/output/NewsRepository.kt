@@ -1,8 +1,8 @@
 package com.quantjumpstock.core.domain.news.port.output
 
 import com.quantjumpstock.core.domain.news.model.NewsItem
+import com.quantjumpstock.core.domain.news.model.NewsPageRequest
 import com.quantjumpstock.core.domain.news.model.NewsSource
-import org.springframework.data.domain.Pageable
 
 interface NewsRepository {
     fun saveAll(items: List<NewsItem>): List<NewsItem>
@@ -10,6 +10,7 @@ interface NewsRepository {
     fun findByTickers(tickers: List<String>, limit: Int): List<NewsItem>
     fun findByTags(tags: List<String>, limit: Int): List<NewsItem>
     fun existsBySourceAndExternalId(source: NewsSource, externalId: String): Boolean
+    fun findBySourceAndExternalId(source: String, externalId: String): NewsItem?
     fun findBySourceNeedingEnrichment(source: NewsSource, maxContentLength: Int = 200): List<NewsItem>
 
     // Admin 기사 관리용
@@ -20,7 +21,7 @@ interface NewsRepository {
         dateFrom: java.time.LocalDateTime?,
         dateTo: java.time.LocalDateTime?,
         includeHidden: Boolean,
-        pageable: Pageable
+        pageRequest: NewsPageRequest
     ): Pair<List<NewsItem>, Long>
     fun findById(id: String): NewsItem?
     fun save(item: NewsItem): NewsItem
