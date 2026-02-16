@@ -14,6 +14,7 @@ import io.swagger.v3.oas.annotations.media.Schema
 import io.swagger.v3.oas.annotations.responses.ApiResponse
 import io.swagger.v3.oas.annotations.responses.ApiResponses
 import io.swagger.v3.oas.annotations.tags.Tag
+import org.springframework.context.annotation.ImportRuntimeHints
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -28,6 +29,7 @@ import java.time.temporal.ChronoUnit
 @RestController
 @RequestMapping("/api/v1/backtest")
 @Tag(name = "Backtest", description = "백테스트 API")
+@ImportRuntimeHints(BacktestRuntimeHints::class)
 class BacktestController(
     private val backtestService: BacktestService,
     private val authService: AuthService,
