@@ -4,21 +4,26 @@ import com.quantjumpstock.core.domain.news.model.CollectorState
 import com.quantjumpstock.core.domain.news.model.NewsSource
 import com.quantjumpstock.core.domain.news.port.output.CollectorStateRepository
 import org.springframework.stereotype.Component
+import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
 
 @Component
+@Transactional
 class CollectorStateJpaAdapter(
     private val repository: CollectorStateJpaRepository
 ) : CollectorStateRepository {
 
+    @Transactional(readOnly = true)
     override fun getState(source: NewsSource): CollectorState? {
         return repository.findBySource(source.name)?.toDomain()
     }
 
+    @Transactional(readOnly = true)
     override fun getLastFetchedAt(source: NewsSource): LocalDateTime? {
         return repository.findBySource(source.name)?.lastFetchedAt
     }
 
+    @Transactional(readOnly = true)
     override fun getLastFetchedId(source: NewsSource): String? {
         return repository.findBySource(source.name)?.lastFetchedId
     }

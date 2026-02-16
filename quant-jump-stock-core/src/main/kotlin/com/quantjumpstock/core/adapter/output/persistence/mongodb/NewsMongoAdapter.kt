@@ -42,7 +42,7 @@ class NewsMongoAdapter(
                     .set("view_count", doc.viewCount)
                     .set("source_url", doc.sourceUrl)
                     .set("source_created_at", doc.sourceCreatedAt)
-                    .set("created_at", doc.createdAt)
+                    .setOnInsert("created_at", doc.createdAt)
                     .set("extra", doc.extra)
 
                 val result = mongoTemplate.upsert(query, update, NewsDocument::class.java)

@@ -77,6 +77,17 @@ class AuthService(
     }
 
     /**
+     * Bearer 토큰에서 사용자 PK(Long)를 추출
+     */
+    fun resolveUserPk(authorization: String): Long? {
+        if (!authorization.startsWith("Bearer ")) return null
+        val token = authorization.removePrefix("Bearer ")
+        val loginResponse = validateToken(token) ?: return null
+        val userId = loginResponse.user?.userId ?: return null
+        return userRepository.findByUserId(userId)?.id
+    }
+
+    /**
      * 로그아웃 (JWT는 stateless - 클라이언트에서 토큰 삭제)
      */
     fun logout(token: String) {

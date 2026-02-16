@@ -1,6 +1,7 @@
 package com.quantjumpstock.core.application.admin
 
-import java.time.LocalDateTime
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Size
 
 data class AdminNewsArticle(
     val id: String,
@@ -38,21 +39,46 @@ data class AdminNewsArticleStatsResponse(
 )
 
 data class CreateNewsArticleRequest(
+    @field:NotBlank(message = "제목은 필수입니다")
+    @field:Size(max = 500, message = "제목은 500자 이하여야 합니다")
     val titleKo: String,
+
+    @field:Size(max = 500, message = "영문 제목은 500자 이하여야 합니다")
     val titleEn: String? = null,
+
+    @field:Size(max = 10000, message = "본문은 10000자 이하여야 합니다")
     val contentKo: String? = null,
+
+    @field:Size(max = 1000, message = "요약은 1000자 이하여야 합니다")
     val summaryKo: String? = null,
+
+    @field:Size(max = 20, message = "태그는 최대 20개까지 가능합니다")
     val tags: List<String> = emptyList(),
+
+    @field:Size(max = 20, message = "티커는 최대 20개까지 가능합니다")
     val tickers: List<String> = emptyList(),
+
     val importanceScore: Double = 0.5,
+
+    @field:Size(max = 2000, message = "URL은 2000자 이하여야 합니다")
     val sourceUrl: String? = null
 )
 
 data class UpdateNewsArticleRequest(
+    @field:Size(max = 500, message = "제목은 500자 이하여야 합니다")
     val titleKo: String? = null,
+
+    @field:Size(max = 500, message = "영문 제목은 500자 이하여야 합니다")
     val titleEn: String? = null,
+
+    @field:Size(max = 1000, message = "요약은 1000자 이하여야 합니다")
     val summaryKo: String? = null,
+
+    @field:Size(max = 20, message = "태그는 최대 20개까지 가능합니다")
     val tags: List<String>? = null,
+
+    @field:Size(max = 20, message = "티커는 최대 20개까지 가능합니다")
     val tickers: List<String>? = null,
+
     val importanceScore: Double? = null
 )

@@ -2,7 +2,6 @@ package com.quantjumpstock.core.adapter.input.rest.news
 
 import com.quantjumpstock.core.application.auth.AuthService
 import com.quantjumpstock.core.application.news.*
-import com.quantjumpstock.core.domain.port.output.UserRepository
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
@@ -15,8 +14,7 @@ import org.springframework.web.bind.annotation.*
 @Tag(name = "News Subscriptions", description = "뉴스 구독 및 알림 API")
 class NewsSubscriptionController(
     private val subscriptionService: NewsSubscriptionService,
-    private val authService: AuthService,
-    private val userRepository: UserRepository
+    private val authService: AuthService
 ) {
 
     @PostMapping
@@ -25,7 +23,7 @@ class NewsSubscriptionController(
         @RequestHeader("Authorization") authorization: String,
         @RequestBody request: SubscribeRequest
     ): ResponseEntity<Any> {
-        val userId = extractUserIdAsLong(authorization)
+        val userId = authService.resolveUserPk(authorization)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(SimpleResponse(false, "인증이 필요합니다"))
 
@@ -47,7 +45,7 @@ class NewsSubscriptionController(
         @RequestHeader("Authorization") authorization: String,
         @Parameter(description = "구독 ID") @PathVariable id: Long
     ): ResponseEntity<SimpleResponse> {
-        val userId = extractUserIdAsLong(authorization)
+        val userId = authService.resolveUserPk(authorization)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(SimpleResponse(false, "인증이 필요합니다"))
 
@@ -65,7 +63,7 @@ class NewsSubscriptionController(
     fun getSubscriptions(
         @RequestHeader("Authorization") authorization: String
     ): ResponseEntity<Any> {
-        val userId = extractUserIdAsLong(authorization)
+        val userId = authService.resolveUserPk(authorization)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(SimpleResponse(false, "인증이 필요합니다"))
 
@@ -78,7 +76,7 @@ class NewsSubscriptionController(
         @RequestHeader("Authorization") authorization: String,
         @RequestParam(defaultValue = "30") limit: Int
     ): ResponseEntity<Any> {
-        val userId = extractUserIdAsLong(authorization)
+        val userId = authService.resolveUserPk(authorization)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(SimpleResponse(false, "인증이 필요합니다"))
 
@@ -91,7 +89,7 @@ class NewsSubscriptionController(
     fun getUnreadCount(
         @RequestHeader("Authorization") authorization: String
     ): ResponseEntity<Any> {
-        val userId = extractUserIdAsLong(authorization)
+        val userId = authService.resolveUserPk(authorization)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(SimpleResponse(false, "인증이 필요합니다"))
 
@@ -104,7 +102,7 @@ class NewsSubscriptionController(
         @RequestHeader("Authorization") authorization: String,
         @Parameter(description = "알림 ID") @PathVariable id: Long
     ): ResponseEntity<SimpleResponse> {
-        val userId = extractUserIdAsLong(authorization)
+        val userId = authService.resolveUserPk(authorization)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(SimpleResponse(false, "인증이 필요합니다"))
 
@@ -117,24 +115,11 @@ class NewsSubscriptionController(
     fun markAllAsRead(
         @RequestHeader("Authorization") authorization: String
     ): ResponseEntity<SimpleResponse> {
-        val userId = extractUserIdAsLong(authorization)
+        val userId = authService.resolveUserPk(authorization)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(SimpleResponse(false, "인증이 필요합니다"))
 
         val count = subscriptionService.markAllAsRead(userId)
         return ResponseEntity.ok(SimpleResponse(true, "${count}개 알림을 읽음 처리했습니다"))
-    }
-
-    private fun extractUserId(authorization: String): String? {
-        if (!authorization.startsWith("Bearer ")) return null
-        val token = authorization.removePrefix("Bearer ")
-        val loginResponse = authService.validateToken(token) ?: return null
-        return loginResponse.user?.userId
-    }
-
-    private fun extractUserIdAsLong(authorization: String): Long? {
-        val userId = extractUserId(authorization) ?: return null
-        val user = userRepository.findByUserId(userId) ?: return null
-        return user.id
     }
 }

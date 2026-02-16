@@ -4,6 +4,7 @@ import com.quantjumpstock.core.application.admin.*
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
+import jakarta.validation.Valid
 import org.springframework.format.annotation.DateTimeFormat
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
@@ -71,7 +72,7 @@ class AdminNewsArticleController(
     @PostMapping
     @Operation(summary = "수동 기사 생성", description = "관리자가 수동으로 뉴스 기사를 생성합니다.")
     fun createArticle(
-        @RequestBody request: CreateNewsArticleRequest
+        @Valid @RequestBody request: CreateNewsArticleRequest
     ): ResponseEntity<AdminNewsArticle> {
         return ResponseEntity.ok(adminNewsArticleService.createArticle(request))
     }
@@ -80,7 +81,7 @@ class AdminNewsArticleController(
     @Operation(summary = "기사 수정", description = "기사의 메타데이터를 수정합니다.")
     fun updateArticle(
         @Parameter(description = "기사 ID") @PathVariable id: String,
-        @RequestBody request: UpdateNewsArticleRequest
+        @Valid @RequestBody request: UpdateNewsArticleRequest
     ): ResponseEntity<AdminNewsArticle> {
         return ResponseEntity.ok(adminNewsArticleService.updateArticle(id, request))
     }

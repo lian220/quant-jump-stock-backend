@@ -26,7 +26,7 @@ class NewsCollectionService(
     override fun collectAll() {
         collectors.forEach { collector ->
             try {
-                collectFrom(collector)
+                processCollector(collector)
             } catch (e: Exception) {
                 logger.error("${collector.source} 수집 실패", e)
                 collectorStateRepository.recordError(collector.source, e.message ?: "Unknown")
@@ -37,11 +37,11 @@ class NewsCollectionService(
     override fun collectFrom(source: NewsSource) {
         val collector = collectors.find { it.source == source }
             ?: throw IllegalArgumentException("Collector not found for source: $source")
-        collectFrom(collector)
+        processCollector(collector)
     }
 
     @Transactional
-    private fun collectFrom(collector: NewsCollector) {
+    open fun processCollector(collector: NewsCollector) {
         val items = collector.collect()
         if (items.isEmpty()) return
 

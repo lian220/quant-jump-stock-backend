@@ -123,7 +123,8 @@ class AdminNewsArticleService(
             logger.info("뉴스 기사 수정: {}", id)
         }
 
-        return newsRepository.findById(id)!!.toAdminDto()
+        return (newsRepository.findById(id)
+            ?: throw IllegalArgumentException("기사를 찾을 수 없습니다: $id")).toAdminDto()
     }
 
     /** 기사 숨김 (soft delete) */

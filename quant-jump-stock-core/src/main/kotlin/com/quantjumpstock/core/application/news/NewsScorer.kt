@@ -11,10 +11,10 @@ class NewsScorer(
 
     private val sourceWeights = mapOf(
         "reuters" to 0.15,
+        "로이터" to 0.15,
         "블룸버그" to 0.15,
         "파이낸셜타임즈" to 0.15,
-        "financial-juice" to 0.10,
-        "로이터" to 0.10
+        "financial-juice" to 0.10
     )
     private val defaultSourceWeight = 0.05
 

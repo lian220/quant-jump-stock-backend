@@ -144,10 +144,10 @@ class SaveTickerApiAdapter(
     private fun getPollingInterval(): Long {
         val hour = LocalTime.now(kst).hour
         val base = when {
-            hour in 22..23 || hour in 0..5 -> 60_000L
-            hour in 6..8 -> 120_000L
-            hour in 9..15 -> 120_000L
-            else -> 180_000L
+            hour in 9..15 -> 60_000L   // 장중: 가장 빈번하게
+            hour in 16..21 -> 120_000L // 장후: 보통
+            hour in 6..8 -> 120_000L   // 장전: 보통
+            else -> 300_000L           // 야간(22~05): 저빈도
         }
         val jitter = ThreadLocalRandom.current().nextLong(-10_000, 10_000)
         return base + jitter
