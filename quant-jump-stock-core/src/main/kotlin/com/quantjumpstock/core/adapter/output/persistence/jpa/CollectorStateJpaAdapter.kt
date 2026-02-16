@@ -49,7 +49,7 @@ class CollectorStateJpaAdapter(
     override fun recordSuccess(source: NewsSource, responseTimeMs: Long) {
         val entity = getOrCreate(source)
         entity.consecutiveErrors = 0
-        entity.avgResponseTimeMs = responseTimeMs
+        entity.lastResponseTimeMs = responseTimeMs
         repository.save(entity)
     }
 

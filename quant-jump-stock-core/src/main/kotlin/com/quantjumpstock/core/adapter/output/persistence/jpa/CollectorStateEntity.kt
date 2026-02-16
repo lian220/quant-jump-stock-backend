@@ -33,7 +33,7 @@ class CollectorStateEntity(
     var totalErrors: Long = 0,
 
     @Column(name = "avg_response_time_ms", nullable = false)
-    var avgResponseTimeMs: Long = 0,
+    var lastResponseTimeMs: Long = 0,
 
     @Column(name = "last_error", columnDefinition = "TEXT")
     var lastError: String? = null,
@@ -56,7 +56,7 @@ class CollectorStateEntity(
         fetchCount = fetchCount,
         consecutiveErrors = consecutiveErrors,
         totalErrors = totalErrors,
-        avgResponseTimeMs = avgResponseTimeMs,
+        lastResponseTimeMs = lastResponseTimeMs,
         lastError = lastError,
         lastErrorAt = lastErrorAt,
         updatedAt = updatedAt

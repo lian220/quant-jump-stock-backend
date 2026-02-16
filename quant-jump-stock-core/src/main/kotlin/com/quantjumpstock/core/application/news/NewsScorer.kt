@@ -23,7 +23,7 @@ class NewsScorer(
         val categoryWeights = categoryService.getAllCategoryWeights()
 
         val sourceScore = sourceWeights[item.originalSource] ?: defaultSourceWeight
-        if (sourceScore >= 0.15) reasons += "${item.originalSource ?: "SAVE"} (고신뢰)"
+        if (sourceScore >= 0.15) reasons += "${item.originalSource ?: item.source.name} (고신뢰)"
 
         // raw 태그를 정규화 카테고리로 변환 후 가중치 조회
         val resolvedTags = categoryService.resolveTags(item.source.name, item.tags)

@@ -53,7 +53,7 @@ class AdminNewsArticleService(
             total = total,
             page = page,
             size = size,
-            totalPages = ceil(total.toDouble() / size).toInt()
+            totalPages = if (size > 0) ceil(total.toDouble() / size).toInt() else 0
         )
     }
 
@@ -145,7 +145,7 @@ class AdminNewsArticleService(
 }
 
 private fun NewsItem.toAdminDto() = AdminNewsArticle(
-    id = id ?: "",
+    id = id ?: error("NewsItem.id가 null입니다. 저장되지 않은 항목은 변환할 수 없습니다."),
     externalId = externalId,
     source = source.name,
     originalSource = originalSource,

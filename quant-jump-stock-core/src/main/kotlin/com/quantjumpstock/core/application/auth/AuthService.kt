@@ -82,9 +82,8 @@ class AuthService(
     fun resolveUserPk(authorization: String): Long? {
         if (!authorization.startsWith("Bearer ")) return null
         val token = authorization.removePrefix("Bearer ")
-        val loginResponse = validateToken(token) ?: return null
-        val userId = loginResponse.user?.userId ?: return null
-        return userRepository.findByUserId(userId)?.id
+        val claims = jwtService.validateToken(token) ?: return null
+        return claims.dbId
     }
 
     /**

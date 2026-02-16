@@ -113,7 +113,7 @@ class SaveTickerApiAdapter(
     private fun fetchDetailContent(externalId: String): String? {
         return try {
             val response = webClient.get()
-                .uri("https://api.saveticker.com/api/news/detail/$externalId")
+                .uri("https://api.saveticker.com/api/news/detail/{id}", externalId)
                 .header("User-Agent", "AlphaFoundry/1.0 (News Aggregator)")
                 .header("Accept", "application/json")
                 .retrieve()

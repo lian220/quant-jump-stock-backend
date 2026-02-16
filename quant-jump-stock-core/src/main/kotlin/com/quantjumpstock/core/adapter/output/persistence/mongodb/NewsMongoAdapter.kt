@@ -46,8 +46,9 @@ class NewsMongoAdapter(
                     .set("extra", doc.extra)
 
                 val result = mongoTemplate.upsert(query, update, NewsDocument::class.java)
-                if (result.upsertedId != null) {
-                    item.copy(id = result.upsertedId.toString())
+                val newId = result.upsertedId?.asObjectId()?.value?.toHexString()
+                if (newId != null) {
+                    item.copy(id = newId)
                 } else {
                     item
                 }
@@ -186,7 +187,7 @@ class NewsMongoAdapter(
         val aggregation = Aggregation.newAggregation(
             Aggregation.group().avg("importance_score").`as`("avgImportance")
         )
-        val result = mongoTemplate.aggregate(aggregation, "news", Map::class.java)
+        val result = mongoTemplate.aggregate(aggregation, NewsDocument::class.java, Map::class.java)
         val mapped = result.mappedResults.firstOrNull()
         return (mapped?.get("avgImportance") as? Number)?.toDouble() ?: 0.0
     }

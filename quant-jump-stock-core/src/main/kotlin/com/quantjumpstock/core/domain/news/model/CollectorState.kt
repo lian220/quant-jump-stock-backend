@@ -9,7 +9,7 @@ data class CollectorState(
     val fetchCount: Long,
     val consecutiveErrors: Int,
     val totalErrors: Long,
-    val avgResponseTimeMs: Long,
+    val lastResponseTimeMs: Long,
     val lastError: String?,
     val lastErrorAt: LocalDateTime?,
     val updatedAt: LocalDateTime
