@@ -1,0 +1,61 @@
+# MongoDB Atlas 콘솔에서 인덱스 생성하기
+
+## 1. MongoDB Atlas 콘솔 접속
+https://cloud.mongodb.com
+
+## 2. 클러스터 선택
+- Clusters → 해당 클러스터 클릭
+
+## 3. Collections 탭
+- Browse Collections 클릭
+- stock_trading 데이터베이스 선택
+- daily_stock_data 컬렉션 선택
+
+## 4. Indexes 탭
+- "Indexes" 탭 클릭
+- "CREATE INDEX" 버튼 클릭
+
+## 5. 인덱스 생성
+
+### 인덱스 1: date 필드 (필수)
+{
+  "date": 1
+}
+Options:
+- Name: idx_date
+- Background: true
+
+### 인덱스 2: date + 종목 복합 인덱스 (선택, 성능 향상)
+자주 사용하는 종목마다 생성:
+
+{
+  "date": 1,
+  "stocks.AAPL": 1
+}
+Options:
+- Name: idx_date_stocks_AAPL
+- Background: true
+- Sparse: true
+
+반복 생성 (NVDA, MSFT, GOOGL, AMZN, META, TSLA 등)
+
+### 인덱스 3: 벤치마크 인덱스 (SPY, ^GSPC)
+{
+  "date": 1,
+  "yfinance_indicators.SPY": 1
+}
+Options:
+- Name: idx_date_yfinance_SPY
+- Background: true
+- Sparse: true
+
+## 6. 인덱스 빌드 완료 대기
+- Background 옵션으로 생성하면 백그라운드에서 빌드됨
+- 상태가 "Building" → "Ready"로 변경되면 완료
+
+## 예상 시간
+- 인덱스 1-3개: 약 5-10분
+- 전체 인덱스(15개): 약 20-30분
+
+## 확인
+인덱스가 생성되면 백테스트 속도가 즉시 개선됩니다.

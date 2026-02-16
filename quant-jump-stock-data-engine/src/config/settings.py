@@ -68,14 +68,15 @@ class ApiSettings(BaseSettings):
 
 
 class SlackSettings(BaseSettings):
-    """Slack 설정"""
+    """Slack 설정 - Webhook 기반 (Bot Token 불필요)"""
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 
     webhook_url: str = Field(default="", alias="SLACK_WEBHOOK_URL")
+    webhook_url_trading: str = Field(default="", alias="SLACK_WEBHOOK_URL_TRADING")
     webhook_url_analysis: str = Field(default="", alias="SLACK_WEBHOOK_URL_ANALYSIS")
     webhook_url_news: str = Field(default="", alias="SLACK_WEBHOOK_URL_NEWS")
-    bot_token: str = Field(default="", alias="SLACK_BOT_TOKEN")
-    channel: str = Field(default="#trading-alerts", alias="SLACK_CHANNEL")
+    webhook_url_scheduler: str = Field(default="", alias="SLACK_WEBHOOK_URL_SCHEDULER")
+    webhook_url_error: str = Field(default="", alias="SLACK_WEBHOOK_URL_ERROR")
     enabled: bool = Field(default=True, alias="SLACK_ENABLED")
 
 
@@ -139,12 +140,8 @@ class Settings(BaseSettings):
         return self.slack.webhook_url
 
     @property
-    def SLACK_BOT_TOKEN(self) -> str:
-        return self.slack.bot_token
-
-    @property
-    def SLACK_CHANNEL(self) -> str:
-        return self.slack.channel
+    def SLACK_WEBHOOK_URL_TRADING(self) -> str:
+        return self.slack.webhook_url_trading
 
     @property
     def SLACK_WEBHOOK_URL_ANALYSIS(self) -> str:
@@ -153,6 +150,14 @@ class Settings(BaseSettings):
     @property
     def SLACK_WEBHOOK_URL_NEWS(self) -> str:
         return self.slack.webhook_url_news
+
+    @property
+    def SLACK_WEBHOOK_URL_SCHEDULER(self) -> str:
+        return self.slack.webhook_url_scheduler
+
+    @property
+    def SLACK_WEBHOOK_URL_ERROR(self) -> str:
+        return self.slack.webhook_url_error
 
     @property
     def SLACK_ENABLED(self) -> bool:

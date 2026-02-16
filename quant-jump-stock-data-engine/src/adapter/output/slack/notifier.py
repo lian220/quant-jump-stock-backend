@@ -1,7 +1,7 @@
 """
 Slack Notifier Adapter
 
-Slack 알림을 전송하는 어댑터.
+Slack 알림을 전송하는 어댑터 (Webhook 기반, Bot Token 불필요).
 NotificationPort 인터페이스 구현.
 """
 
@@ -20,105 +20,50 @@ logger = logging.getLogger(__name__)
 
 class SlackNotifierAdapter(NotificationPort):
     """
-    Slack 알림 어댑터
+    Slack 알림 어댑터 (Webhook 전용)
 
-    Slack API 또는 Webhook을 통해 알림 전송.
-    스레드 답글 지원.
+    각 알림 유형에 맞는 Webhook URL로 직접 전송합니다.
     """
-
-    SLACK_API_URL = "https://slack.com/api/chat.postMessage"
 
     def __init__(self, settings: Settings):
         self.settings = settings
-        self._thread_cache: Dict[str, str] = {}
 
-    def _can_send(self) -> bool:
-        """Slack 설정 확인"""
-        return bool(self.settings.SLACK_BOT_TOKEN or self.settings.SLACK_WEBHOOK_URL)
+    def _post_to_webhook(self, url: str, text: str, attachments: list = None) -> None:
+        """지정 Webhook URL로 메시지 POST"""
+        if not url:
+            logger.debug("Webhook URL이 비어있어 메시지를 보내지 않습니다")
+            return
 
-    def _post_message(
-        self,
-        text: str,
-        attachments: list = None,
-        thread_ts: Optional[str] = None
-    ) -> Optional[str]:
-        """메시지 전송"""
-        if not self._can_send():
-            logger.warning("Slack configuration not found")
-            return None
+        if not self.settings.SLACK_ENABLED:
+            logger.info("Slack 비활성화 상태 (SLACK_ENABLED=false)")
+            return
 
-        if self.settings.SLACK_BOT_TOKEN:
-            return self._post_via_api(text, attachments, thread_ts)
-        else:
-            return self._post_via_webhook(text, attachments)
-
-    def _post_via_api(
-        self,
-        text: str,
-        attachments: list = None,
-        thread_ts: Optional[str] = None
-    ) -> Optional[str]:
-        """Slack API 사용"""
-        try:
-            headers = {
-                "Authorization": f"Bearer {self.settings.SLACK_BOT_TOKEN}",
-                "Content-Type": "application/json"
-            }
-
-            payload = {
-                "channel": self.settings.SLACK_CHANNEL,
-                "text": text,
-            }
-
-            if attachments:
-                payload["attachments"] = attachments
-            if thread_ts:
-                payload["thread_ts"] = thread_ts
-
-            response = requests.post(
-                self.SLACK_API_URL,
-                headers=headers,
-                json=payload,
-                timeout=5
-            )
-            response.raise_for_status()
-
-            data = response.json()
-            if data.get("ok"):
-                return data.get("ts")
-            else:
-                logger.error(f"Slack API error: {data.get('error')}")
-                return None
-
-        except Exception as e:
-            logger.error(f"Slack message failed: {e}")
-            return None
-
-    def _post_via_webhook(self, text: str, attachments: list = None) -> Optional[str]:
-        """Slack Webhook 사용"""
         try:
             payload = {"text": text}
             if attachments:
                 payload["attachments"] = attachments
 
-            response = requests.post(
-                self.settings.SLACK_WEBHOOK_URL,
-                json=payload,
-                timeout=5
-            )
+            response = requests.post(url, json=payload, timeout=10)
             response.raise_for_status()
-            return None
-
+            logger.debug("Slack Webhook 알림 발송 완료")
         except Exception as e:
-            logger.error(f"Slack webhook failed: {e}")
-            return None
+            logger.error(f"Slack Webhook 알림 발송 실패: {e}")
+
+    def _get_trading_webhook(self) -> str:
+        return self.settings.slack.webhook_url_trading or self.settings.slack.webhook_url
+
+    def _get_error_webhook(self) -> str:
+        return self.settings.slack.webhook_url_error or self.settings.slack.webhook_url
+
+    def _get_scheduler_webhook(self) -> str:
+        return self.settings.slack.webhook_url_scheduler or self.settings.slack.webhook_url
 
     async def send_signal_alert(
         self,
         signal: TradingSignal,
         channel: Optional[str] = None
     ) -> None:
-        """매매 신호 알림"""
+        """매매 신호 알림 → 트레이딩 채널"""
         color = "28a745" if signal.signal_type.value == "buy" else "dc3545"
         emoji = "📈" if signal.signal_type.value == "buy" else "📉"
 
@@ -138,7 +83,7 @@ class SlackNotifierAdapter(NotificationPort):
             }
         ]
 
-        self._post_message(text, attachments)
+        self._post_to_webhook(self._get_trading_webhook(), text, attachments)
 
     async def send_error_alert(
         self,
@@ -146,7 +91,7 @@ class SlackNotifierAdapter(NotificationPort):
         message: str,
         details: Optional[Dict[str, Any]] = None
     ) -> None:
-        """에러 알림"""
+        """에러 알림 → 에러 채널"""
         text = f"⚠️ {error_type}"
 
         fields = [
@@ -168,7 +113,7 @@ class SlackNotifierAdapter(NotificationPort):
             }
         ]
 
-        self._post_message(text, attachments)
+        self._post_to_webhook(self._get_error_webhook(), text, attachments)
 
     async def send_daily_summary(
         self,
@@ -177,7 +122,7 @@ class SlackNotifierAdapter(NotificationPort):
         strategies_executed: int,
         errors_count: int
     ) -> None:
-        """일일 요약"""
+        """일일 요약 → 스케줄러 채널"""
         status_color = "28a745" if errors_count == 0 else "ffc107"
 
         text = "📊 일일 요약 리포트"
@@ -196,4 +141,4 @@ class SlackNotifierAdapter(NotificationPort):
             }
         ]
 
-        self._post_message(text, attachments)
+        self._post_to_webhook(self._get_scheduler_webhook(), text, attachments)

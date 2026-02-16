@@ -92,6 +92,9 @@ jobs:
             ALPHA_VANTAGE_API_KEY_2=${{ env.ALPHA_VANTAGE_API_KEY_2 }}
             SLACK_ENABLED=${{ env.SLACK_ENABLED }}
             SLACK_WEBHOOK_URL_TRADING=${{ env.SLACK_WEBHOOK_URL_TRADING }}
+            SLACK_WEBHOOK_URL_NEWS=${{ env.SLACK_WEBHOOK_URL_NEWS }}
+            SLACK_WEBHOOK_URL_ANALYSIS=${{ env.SLACK_WEBHOOK_URL_ANALYSIS }}
+            SLACK_WEBHOOK_URL_SCHEDULER=${{ env.SLACK_WEBHOOK_URL_SCHEDULER }}
             SLACK_WEBHOOK_URL_ERROR=${{ env.SLACK_WEBHOOK_URL_ERROR }}
 
       # ── Health Check ───────────────────────────────

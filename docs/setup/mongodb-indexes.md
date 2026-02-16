@@ -1,5 +1,166 @@
 # MongoDB 인덱스 설정 가이드
 
+## 📋 목차
+
+1. [daily_stock_data 컬렉션 인덱스](#daily_stock_data-컬렉션-인덱스) ⭐ 백테스트 성능 최적화
+2. [news_sentiment 컬렉션 인덱스](#news_sentiment-컬렉션-인덱스)
+
+---
+
+## daily_stock_data 컬렉션 인덱스
+
+백테스트 성능 최적화를 위한 필수 인덱스.
+
+**성능 개선 효과:**
+- MongoDB 쿼리 속도: 20-30초 → 3-5초 (약 85% 개선)
+- 백테스트 전체 시간: 56초 → 42초 (약 25% 개선)
+
+### 자동 생성 스크립트 (권장)
+
+```bash
+cd quant-jump-stock-backend/quant-jump-stock-data-engine
+
+# 로컬 MongoDB
+python scripts/create_mongo_indexes.py "mongodb://quantiq_user:password@localhost:27017/stock_trading?authSource=admin"
+
+# 프로덕션 MongoDB Atlas
+python scripts/create_mongo_indexes.py "mongodb+srv://user:password@cluster.mongodb.net/stock_trading"
+```
+
+### 필수 인덱스 목록
+
+#### 1. date 필드 인덱스 (기본)
+```javascript
+db.daily_stock_data.createIndex(
+  { date: 1 },
+  { name: "idx_date", background: true }
+)
+```
+**용도:** 날짜 범위 쿼리 최적화 (백테스트 기간 조회)
+
+#### 2. date + 종목별 복합 인덱스
+```javascript
+// 주요 종목 (자주 백테스트하는 종목)
+db.daily_stock_data.createIndex(
+  { date: 1, "stocks.AAPL": 1 },
+  { name: "idx_date_stocks_AAPL", background: true, sparse: true }
+)
+
+db.daily_stock_data.createIndex(
+  { date: 1, "stocks.NVDA": 1 },
+  { name: "idx_date_stocks_NVDA", background: true, sparse: true }
+)
+
+db.daily_stock_data.createIndex(
+  { date: 1, "stocks.MSFT": 1 },
+  { name: "idx_date_stocks_MSFT", background: true, sparse: true }
+)
+
+db.daily_stock_data.createIndex(
+  { date: 1, "stocks.GOOGL": 1 },
+  { name: "idx_date_stocks_GOOGL", background: true, sparse: true }
+)
+
+db.daily_stock_data.createIndex(
+  { date: 1, "stocks.AMZN": 1 },
+  { name: "idx_date_stocks_AMZN", background: true, sparse: true }
+)
+
+db.daily_stock_data.createIndex(
+  { date: 1, "stocks.META": 1 },
+  { name: "idx_date_stocks_META", background: true, sparse: true }
+)
+
+db.daily_stock_data.createIndex(
+  { date: 1, "stocks.TSLA": 1 },
+  { name: "idx_date_stocks_TSLA", background: true, sparse: true }
+)
+
+db.daily_stock_data.createIndex(
+  { date: 1, "stocks.AMD": 1 },
+  { name: "idx_date_stocks_AMD", background: true, sparse: true }
+)
+
+db.daily_stock_data.createIndex(
+  { date: 1, "stocks.NFLX": 1 },
+  { name: "idx_date_stocks_NFLX", background: true, sparse: true }
+)
+
+db.daily_stock_data.createIndex(
+  { date: 1, "stocks.AVGO": 1 },
+  { name: "idx_date_stocks_AVGO", background: true, sparse: true }
+)
+```
+**용도:** 특정 종목 + 날짜 범위 쿼리 최적화
+
+#### 3. 벤치마크 인덱스
+```javascript
+db.daily_stock_data.createIndex(
+  { date: 1, "yfinance_indicators.^GSPC": 1 },
+  { name: "idx_date_yfinance_caret_GSPC", background: true, sparse: true }
+)
+
+db.daily_stock_data.createIndex(
+  { date: 1, "yfinance_indicators.^IXIC": 1 },
+  { name: "idx_date_yfinance_caret_IXIC", background: true, sparse: true }
+)
+
+db.daily_stock_data.createIndex(
+  { date: 1, "yfinance_indicators.^DJI": 1 },
+  { name: "idx_date_yfinance_caret_DJI", background: true, sparse: true }
+)
+
+db.daily_stock_data.createIndex(
+  { date: 1, "yfinance_indicators.SPY": 1 },
+  { name: "idx_date_yfinance_SPY", background: true, sparse: true }
+)
+
+db.daily_stock_data.createIndex(
+  { date: 1, "yfinance_indicators.QQQ": 1 },
+  { name: "idx_date_yfinance_QQQ", background: true, sparse: true }
+)
+```
+**용도:** 백테스트 벤치마크 비교 (SPY, S&P 500 등)
+
+### 인덱스 확인
+
+```javascript
+// 생성된 인덱스 목록
+db.daily_stock_data.getIndexes()
+
+// 인덱스 통계
+db.daily_stock_data.stats()
+
+// 컬렉션 통계
+db.daily_stock_data.aggregate([
+  { $indexStats: {} }
+])
+```
+
+### 성능 모니터링
+
+```javascript
+// 쿼리 실행 계획 확인
+db.daily_stock_data.find({
+  "date": { "$gte": "2025-02-16", "$lte": "2026-02-16" }
+}).explain("executionStats")
+
+// 인덱스 사용 여부 확인
+db.daily_stock_data.find({
+  "date": { "$gte": "2025-02-16", "$lte": "2026-02-16" }
+}).explain("queryPlanner").queryPlanner.winningPlan
+```
+
+### 프로덕션 적용 상태
+
+**✅ 적용 완료 (2026-02-16)**
+- 환경: MongoDB Atlas (cluster-test.2dkjwjs.mongodb.net)
+- 총 인덱스: 28개
+- 인덱스 크기: 147 MB
+- 문서 수: 7,348개
+
+---
+
 ## news_sentiment 컬렉션 인덱스
 
 뉴스 감정 분석 데이터 조회 성능을 위한 인덱스 설정.

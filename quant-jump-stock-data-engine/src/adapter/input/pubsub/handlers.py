@@ -449,9 +449,6 @@ class NewsCollectionHandler(MessageHandler):
 
             self._log_success("뉴스 수집", start_time)
 
-            # Slack 뉴스 채널 알림
-            SlackNotifier.notify_news_collection(result)
-
             if self.publisher:
                 self.publisher.publish("NEWS_COLLECTED", {
                     "status": "success",

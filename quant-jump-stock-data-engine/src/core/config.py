@@ -52,12 +52,13 @@ class Settings:
     FRED_API_KEY = os.getenv("FRED_API_KEY", "aedfbcd8ba091c740281c0bd8ca93b46")
     ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY", "")
 
-    # Slack Settings
+    # Slack Settings (Webhook 기반 - Bot Token 불필요)
     SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL", "")
+    SLACK_WEBHOOK_URL_TRADING = os.getenv("SLACK_WEBHOOK_URL_TRADING", "")
     SLACK_WEBHOOK_URL_ANALYSIS = os.getenv("SLACK_WEBHOOK_URL_ANALYSIS", "")
     SLACK_WEBHOOK_URL_NEWS = os.getenv("SLACK_WEBHOOK_URL_NEWS", "")
-    SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "")
-    SLACK_CHANNEL = os.getenv("SLACK_CHANNEL", "#trading-alerts")
+    SLACK_WEBHOOK_URL_SCHEDULER = os.getenv("SLACK_WEBHOOK_URL_SCHEDULER", "")
+    SLACK_WEBHOOK_URL_ERROR = os.getenv("SLACK_WEBHOOK_URL_ERROR", "")
     SLACK_ENABLED = os.getenv("SLACK_ENABLED", "true").lower() == "true"
 
 settings = Settings()

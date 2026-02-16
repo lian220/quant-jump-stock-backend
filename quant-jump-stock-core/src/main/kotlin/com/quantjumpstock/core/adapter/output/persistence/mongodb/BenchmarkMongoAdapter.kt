@@ -15,11 +15,19 @@ import java.time.format.DateTimeFormatter
 
 @Component
 class BenchmarkMongoAdapter(
-    private val mongoTemplate: MongoTemplate
+    private val mongoTemplate: MongoTemplate,
+    private val jdbcTemplate: org.springframework.jdbc.core.JdbcTemplate
 ) : BenchmarkDataPort {
 
     private val log = LoggerFactory.getLogger(javaClass)
     private val dateFormatter = DateTimeFormatter.ISO_LOCAL_DATE
+
+    // ticker → 한글명 매핑 캐시 (애플리케이션 시작 시 한 번만 로드)
+    private val tickerToNameMap: Map<String, String> by lazy {
+        jdbcTemplate.query("SELECT ticker, name FROM yfinance_indicators WHERE is_active = true") { rs, _ ->
+            rs.getString("ticker") to rs.getString("name")
+        }.toMap()
+    }
 
     override fun loadBenchmarkSeries(
         ticker: String,
@@ -37,15 +45,11 @@ class BenchmarkMongoAdapter(
 
         // projection: date + 필요한 필드만
         query.fields().include("date")
-        when (type) {
-            BenchmarkType.ETF -> {
-                query.fields().include("stocks.$ticker.close")
-                query.fields().include("stocks.$ticker.close_price")
-            }
-            BenchmarkType.INDEX, BenchmarkType.COMMODITY, BenchmarkType.CURRENCY -> {
-                query.fields().include("yfinance_indicators")
-            }
-        }
+        // ETF도 yfinance_indicators에 저장되어 있을 수 있으므로 모두 yfinance_indicators 조회
+        query.fields().include("yfinance_indicators")
+        // stocks에도 있을 수 있으므로 함께 조회
+        query.fields().include("stocks.$ticker.close")
+        query.fields().include("stocks.$ticker.close_price")
 
         val docs = mongoTemplate.find(query, Map::class.java, "daily_stock_data")
 
@@ -68,20 +72,48 @@ class BenchmarkMongoAdapter(
 
     @Suppress("UNCHECKED_CAST")
     private fun extractCloseValue(doc: Map<*, *>, ticker: String, type: BenchmarkType): BigDecimal? {
-        return when (type) {
-            BenchmarkType.ETF -> {
-                val stocks = doc["stocks"] as? Map<String, Any> ?: return null
-                val stockData = stocks[ticker] as? Map<String, Any> ?: return null
-                val close = stockData["close"] ?: stockData["close_price"]
-                close?.let { toBigDecimal(it) }
+        // 1. yfinance_indicators에서 먼저 검색 (ticker 또는 한글 이름)
+        val yf = doc["yfinance_indicators"] as? Map<String, Any>
+        if (yf != null) {
+            // ticker로 검색
+            val valueByTicker = yf[ticker]
+            if (valueByTicker != null) {
+                val result = extractNumericValue(valueByTicker)
+                if (result != null) return result
             }
-            BenchmarkType.INDEX, BenchmarkType.COMMODITY, BenchmarkType.CURRENCY -> {
-                val yf = doc["yfinance_indicators"] as? Map<String, Any> ?: return null
-                // yfinance_indicators 키는 ticker (e.g., "^GSPC")
-                val value = yf[ticker] ?: return null
-                extractNumericValue(value)
+
+            // 한글 이름으로 검색 (데이터에 한글로 저장된 경우)
+            val displayName = getDisplayName(ticker)
+            if (displayName != null) {
+                val valueByName = yf[displayName]
+                if (valueByName != null) {
+                    val result = extractNumericValue(valueByName)
+                    if (result != null) return result
+                }
             }
         }
+
+        // 2. ETF의 경우 stocks 컬렉션에서도 검색
+        if (type == BenchmarkType.ETF) {
+            val stocks = doc["stocks"] as? Map<String, Any>
+            if (stocks != null) {
+                val stockData = stocks[ticker] as? Map<String, Any>
+                if (stockData != null) {
+                    val close = stockData["close"] ?: stockData["close_price"]
+                    val result = close?.let { toBigDecimal(it) }
+                    if (result != null) return result
+                }
+            }
+        }
+
+        return null
+    }
+
+    /**
+     * ticker에 대응하는 한글 표시명 반환 (PostgreSQL yfinance_indicators 테이블 조회)
+     */
+    private fun getDisplayName(ticker: String): String? {
+        return tickerToNameMap[ticker]
     }
 
     @Suppress("UNCHECKED_CAST")

@@ -6,6 +6,7 @@ Google Cloud Pub/Sub 메시지를 수신하여 핸들러로 라우팅하는 어�
 
 import logging
 import json
+import asyncio
 from typing import Dict, List, Optional, Callable, Any
 from dataclasses import dataclass
 from google.cloud import pubsub_v1
@@ -114,7 +115,12 @@ class PubSubSubscriberAdapter:
 
             try:
                 logger.debug(f"Processing message: {topic}, requestId={parsed.request_id}")
-                handler(parsed)
+                # async handler 실행
+                if asyncio.iscoroutinefunction(handler):
+                    asyncio.run(handler(parsed))
+                else:
+                    # 동기 handler
+                    handler(parsed)
                 message.ack()
             except NonRetryableError as e:
                 logger.error(f"Non-retryable error for {topic} (ACK처리, 재시도 안함): {e}")
