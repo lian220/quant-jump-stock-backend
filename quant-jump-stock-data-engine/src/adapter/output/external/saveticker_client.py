@@ -7,8 +7,9 @@ SaveTicker API에서 뉴스를 수집하는 클라이언트.
 
 import logging
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone, timedelta
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Tuple
 
 import requests
 from dateutil.parser import parse as parse_datetime
@@ -31,6 +32,8 @@ class SaveTickerClient:
         "Accept": "application/json",
     }
     DETAIL_FETCH_DELAY = 0.2  # 상세 API 호출 간 딜레이 (초)
+    MAX_ITEMS_PER_COLLECTION = 10  # 1회 수집 최대 기사 수 (Cloud Run 타임아웃 방지)
+    TRANSLATION_WORKERS = 4  # 번역 병렬 스레드 수
 
     def __init__(
         self,
@@ -54,7 +57,7 @@ class SaveTickerClient:
                 f"{self._base_url}/list",
                 params={
                     "page": 1,
-                    "page_size": 10,
+                    "page_size": self.MAX_ITEMS_PER_COLLECTION,
                     "sort": "created_at_desc",
                     "label_group": 1,
                     "label_name": 1,
@@ -71,11 +74,15 @@ class SaveTickerClient:
         if not news_list:
             return []
 
-        items: List[NewsItem] = []
+        # Phase 1: 원본 데이터 수집 (순차 — API rate limit 존중)
+        raw_with_content: List[Tuple[Dict[str, Any], Optional[str]]] = []
         detail_fetched = False
         for raw in news_list:
+            if len(raw_with_content) >= self.MAX_ITEMS_PER_COLLECTION:
+                logger.info(f"최대 수집 제한 도달 ({self.MAX_ITEMS_PER_COLLECTION}건), 수집 중단")
+                break
+
             item_id = raw.get("id", "")
-            # 이전 마지막 ID 도달 시 중단 (desc 정렬이므로 이후는 더 오래된 항목)
             if last_fetched_id and item_id == last_fetched_id:
                 break
 
@@ -83,18 +90,22 @@ class SaveTickerClient:
             if last_fetched_at and created_at and created_at <= last_fetched_at:
                 continue
 
-            # 항상 상세 API 호출 (list API의 content는 83자 미리보기만 반환)
             if detail_fetched:
                 time.sleep(self.DETAIL_FETCH_DELAY)
             detail_content = self._fetch_detail_content(item_id)
             content = detail_content if detail_content else raw.get("content")
             detail_fetched = True
 
-            items.append(_to_domain(raw, content))
+            raw_with_content.append((raw, content))
 
-        if items:
-            logger.info(f"SaveTicker: {len(items)}건 신규 뉴스 수집")
+        if not raw_with_content:
+            return []
 
+        # Phase 2: 도메인 변환 + 번역 (병렬 — 영어 기사만 Google Translate 호출)
+        with ThreadPoolExecutor(max_workers=self.TRANSLATION_WORKERS) as executor:
+            items = list(executor.map(lambda args: _to_domain(*args), raw_with_content))
+
+        logger.info(f"SaveTicker: {len(items)}건 신규 뉴스 수집")
         return items
 
     def _fetch_detail_content(self, external_id: str) -> Optional[str]:
