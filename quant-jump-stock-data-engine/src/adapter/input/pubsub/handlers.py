@@ -375,7 +375,7 @@ class StrategyExecutionHandler(MessageHandler):
     def topic(self) -> str:
         return "strategy.execution.request"
 
-    def handle(self, message: PubSubMessage) -> None:
+    async def handle(self, message: PubSubMessage) -> None:
         start_time = self._log_start(message, "전략 실행 요청")
 
         try:
@@ -386,19 +386,13 @@ class StrategyExecutionHandler(MessageHandler):
             if not symbols:
                 raise ValueError("symbols 필드가 필요합니다")
 
-            # 비동기 실행을 동기로 래핑 (Pub/Sub 핸들러는 동기)
-            import asyncio
-
-            async def _execute():
-                from application.ports.input_ports import ExecutionRequest
-                request = ExecutionRequest(
-                    symbols=symbols,
-                    strategy_ids=strategy_ids,
-                    parallel=True
-                )
-                return await self.service.execute_batch(request)
-
-            result = asyncio.run(_execute())
+            from application.ports.input_ports import ExecutionRequest
+            request = ExecutionRequest(
+                symbols=symbols,
+                strategy_ids=strategy_ids,
+                parallel=True
+            )
+            result = await self.service.execute_batch(request)
 
             self._log_success("전략 실행", start_time)
 
@@ -685,7 +679,7 @@ class BacktestRequestHandler(MessageHandler):
     def topic(self) -> str:
         return "quantiq.backtest.request"
 
-    def handle(self, message: PubSubMessage) -> None:
+    async def handle(self, message: PubSubMessage) -> None:
         start_time = self._log_start(message, "백테스트 실행 요청")
 
         # 페이로드에서 파라미터 추출
@@ -764,9 +758,6 @@ class BacktestRequestHandler(MessageHandler):
                 # 데이터 체크 실패 시에도 백테스트는 진행 (기존 동작 유지)
                 logger.warning("데이터 체크를 건너뛰고 백테스트를 진행합니다")
             
-            # 비동기 실행을 동기로 래핑
-            import asyncio
-
             async def _execute():
                 existing_backtest = None
                 checkpoint = None
@@ -871,7 +862,7 @@ class BacktestRequestHandler(MessageHandler):
 
                 return result, result_id, incremental_result.is_incremental
 
-            result, result_id, is_incremental = asyncio.run(_execute())
+            result, result_id, is_incremental = await _execute()
 
             elapsed = time.time() - start_time
             execution_type = "증분" if is_incremental else "전체"
