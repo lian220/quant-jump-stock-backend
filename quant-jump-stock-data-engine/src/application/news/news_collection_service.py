@@ -58,11 +58,32 @@ class NewsCollectionService:
             if last_fetched_at is None:
                 last_fetched_at = datetime.now(KST).replace(tzinfo=None) - timedelta(hours=1)
 
-            # SaveTicker API 호출
-            items = self._client.collect(
+            # 1) 목록 조회 (가벼운 메타데이터만)
+            raw_items = self._client.fetch_list(
                 last_fetched_id=last_fetched_id,
                 last_fetched_at=last_fetched_at,
             )
+
+            if not raw_items:
+                elapsed_ms = int((time.time() - start_time) * 1000)
+                self._state_repo.record_success(news_source, elapsed_ms)
+                return {"collected_count": 0, "article_ids": [], "source": source}
+
+            # 2) MongoDB 중복 체크 — 이미 저장된 기사 제외
+            candidate_ids = [r.get("id", "") for r in raw_items]
+            existing_ids = set(self._news_repo.get_saved_ids(source, candidate_ids))
+            new_items = [r for r in raw_items if r.get("id", "") not in existing_ids]
+
+            if existing_ids:
+                logger.info(f"{source}: {len(existing_ids)}건 중복 스킵, {len(new_items)}건 신규")
+
+            if not new_items:
+                elapsed_ms = int((time.time() - start_time) * 1000)
+                self._state_repo.record_success(news_source, elapsed_ms)
+                return {"collected_count": 0, "article_ids": [], "source": source}
+
+            # 3) 신규 기사만 상세 조회 + 번역 (병렬)
+            items = self._client.fetch_details_and_translate(new_items)
 
             elapsed_ms = int((time.time() - start_time) * 1000)
 

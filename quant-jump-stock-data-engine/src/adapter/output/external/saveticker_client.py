@@ -46,12 +46,12 @@ class SaveTickerClient:
         self._session = requests.Session()
         self._session.headers.update(headers or self.DEFAULT_HEADERS)
 
-    def collect(
+    def fetch_list(
         self,
         last_fetched_id: Optional[str] = None,
         last_fetched_at: Optional[datetime] = None,
-    ) -> List[NewsItem]:
-        """뉴스 목록을 수집하고 도메인 모델로 변환"""
+    ) -> List[Dict[str, Any]]:
+        """SaveTicker 목록 API 호출 후 시간/ID 필터링된 raw 항목 반환 (가벼운 메타데이터만)"""
         try:
             response = self._session.get(
                 f"{self._base_url}/list",
@@ -74,12 +74,9 @@ class SaveTickerClient:
         if not news_list:
             return []
 
-        # Phase 1: 원본 데이터 수집 (순차 — API rate limit 존중)
-        raw_with_content: List[Tuple[Dict[str, Any], Optional[str]]] = []
-        detail_fetched = False
+        filtered: List[Dict[str, Any]] = []
         for raw in news_list:
-            if len(raw_with_content) >= self.MAX_ITEMS_PER_COLLECTION:
-                logger.info(f"최대 수집 제한 도달 ({self.MAX_ITEMS_PER_COLLECTION}건), 수집 중단")
+            if len(filtered) >= self.MAX_ITEMS_PER_COLLECTION:
                 break
 
             item_id = raw.get("id", "")
@@ -90,18 +87,28 @@ class SaveTickerClient:
             if last_fetched_at and created_at and created_at <= last_fetched_at:
                 continue
 
-            if detail_fetched:
-                time.sleep(self.DETAIL_FETCH_DELAY)
-            detail_content = self._fetch_detail_content(item_id)
-            content = detail_content if detail_content else raw.get("content")
-            detail_fetched = True
+            filtered.append(raw)
 
-            raw_with_content.append((raw, content))
+        return filtered
 
-        if not raw_with_content:
+    def fetch_details_and_translate(
+        self,
+        raw_items: List[Dict[str, Any]],
+    ) -> List[NewsItem]:
+        """raw 항목들의 상세 본문 조회 + 번역 (병렬) 후 도메인 모델 반환"""
+        if not raw_items:
             return []
 
-        # Phase 2: 도메인 변환 + 번역 (병렬 — 영어 기사만 Google Translate 호출)
+        # 상세 본문 조회 (순차 — API rate limit 존중)
+        raw_with_content: List[Tuple[Dict[str, Any], Optional[str]]] = []
+        for i, raw in enumerate(raw_items):
+            if i > 0:
+                time.sleep(self.DETAIL_FETCH_DELAY)
+            detail_content = self._fetch_detail_content(raw.get("id", ""))
+            content = detail_content if detail_content else raw.get("content")
+            raw_with_content.append((raw, content))
+
+        # 도메인 변환 + 번역 (병렬 — 영어 기사만 Google Translate 호출)
         with ThreadPoolExecutor(max_workers=self.TRANSLATION_WORKERS) as executor:
             items = list(executor.map(lambda args: _to_domain(*args), raw_with_content))
 
