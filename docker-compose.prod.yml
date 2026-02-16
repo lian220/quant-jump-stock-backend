@@ -51,6 +51,8 @@ services:
       - SPRING_QUARTZ_JOB_STORE_TYPE=memory
       - SPRING_FLYWAY_BASELINE_ON_MIGRATE=true
       - SPRING_FLYWAY_VALIDATE_ON_MIGRATE=false
+      # Pub/Sub: 에뮬레이터 비활성화 → 실제 GCP gRPC 연결
+      - PUBSUB_EMULATOR_HOST=
     expose:
       - "10010"
     deploy:

@@ -55,9 +55,12 @@ jobs:
 
       - name: Build Native Image
         working-directory: quant-jump-stock-core
+        env:
+          SPRING_PROFILES_ACTIVE: prod
         run: |
           chmod +x ./gradlew
           ./gradlew nativeCompile -x test \
+            -Dspring.profiles.active=prod \
             -Dorg.gradle.jvmargs="-Xmx4g" \
             -PnativeImageArgs="-J-Xmx12g,-Ob"
 
