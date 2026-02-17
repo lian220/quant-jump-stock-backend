@@ -713,41 +713,61 @@ class BacktestRequestHandler(MessageHandler):
             raise ValueError("startDate and endDate are required")
 
         try:
-            # [개선] 백테스트 실행 전 데이터 존재 여부 확인
+            # [개선] 백테스트 실행 전 데이터 존재 여부 확인 + 데이터 로드 (중복 방지)
             # MongoDB에서 요청된 종목의 데이터가 있는지 검증
             from application.backtest.data_loader_mongo import MongoDataLoader
             import os
-            
+
+            # 사전 로드된 데이터 저장 변수
+            preloaded_data = None
+            preloaded_benchmark = None
+
             try:
                 data_loader = MongoDataLoader(
                     uri=os.environ.get("MONGODB_URI"),
                     database=os.environ.get("MONGODB_DB_NAME", "stock_trading")
                 )
-                
+
                 # 시작일과 종료일 사이에 데이터가 있는지 확인
                 from datetime import datetime
                 start_dt = datetime.strptime(start_date, "%Y-%m-%d").date()
                 end_dt = datetime.strptime(end_date, "%Y-%m-%d").date()
-                
+
                 # 전체 종목을 한번에 조회하여 데이터 존재 여부 확인 (1회 쿼리)
                 all_data = data_loader.load(tickers, start_dt, end_dt)
                 missing_tickers = [t for t in tickers if t not in all_data or all_data[t].empty]
-                
+
                 if missing_tickers:
                     error_msg = f"다음 종목의 데이터가 MongoDB에 없습니다: {', '.join(missing_tickers)}"
                     logger.error(error_msg)
                     self._publish_failure(message, error_msg, start_time)
                     raise ValueError(error_msg)
-                    
+
                 logger.info(f"모든 종목({len(tickers)}개)의 데이터 존재 확인 완료")
-                
+
+                # 🆕 로드한 데이터 저장 (재사용)
+                preloaded_data = all_data
+
+                # 🆕 벤치마크 데이터도 미리 로드
+                if benchmark:
+                    try:
+                        preloaded_benchmark = data_loader.load_benchmark(
+                            benchmark_ticker=benchmark,
+                            start_date=start_dt,
+                            end_date=end_dt
+                        )
+                        if preloaded_benchmark is not None:
+                            logger.info(f"벤치마크 데이터 사전 로드 완료: {benchmark}")
+                    except Exception as bench_err:
+                        logger.warning(f"벤치마크 로드 실패 (계속 진행): {bench_err}")
+
             except ValueError:
                 raise  # missing tickers → propagate to caller
             except Exception as data_check_error:
                 logger.error(f"데이터 존재 여부 확인 중 오류: {data_check_error}")
                 # 데이터 체크 실패 시에도 백테스트는 진행 (기존 동작 유지)
                 logger.warning("데이터 체크를 건너뛰고 백테스트를 진행합니다")
-            
+
             async def _execute():
                 existing_backtest = None
                 checkpoint = None
@@ -778,6 +798,7 @@ class BacktestRequestHandler(MessageHandler):
                         )
 
                 # 증분 백테스트 실행 (equity_curve는 backtest_results에서 조회한 데이터 전달)
+                # 🆕 사전 로드된 데이터 전달 (중복 로드 방지)
                 incremental_result = await self.backtest_service.run_backtest_incremental(
                     strategy_id=strategy_id,
                     tickers=tickers,
@@ -794,6 +815,8 @@ class BacktestRequestHandler(MessageHandler):
                     risk_settings=risk_settings,
                     position_sizing=position_sizing,
                     trading_costs=trading_costs,
+                    preloaded_data=preloaded_data,
+                    preloaded_benchmark=preloaded_benchmark,
                 )
 
                 result = incremental_result.result

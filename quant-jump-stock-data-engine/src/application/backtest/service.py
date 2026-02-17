@@ -176,6 +176,9 @@ class BacktestApplicationService:
         risk_settings: Optional[Dict[str, Any]] = None,
         position_sizing: Optional[Dict[str, Any]] = None,
         trading_costs: Optional[Dict[str, Any]] = None,
+        # 중복 로드 방지
+        preloaded_data: Optional[Dict[str, Any]] = None,
+        preloaded_benchmark: Optional[Any] = None,
     ) -> IncrementalBacktestResult:
         """
         증분 백테스트 실행
@@ -252,6 +255,14 @@ class BacktestApplicationService:
             data_loader=self._data_loader,
             config=config
         )
+
+        # 4. 사전 로드된 데이터 주입 (중복 로드 방지)
+        if preloaded_data is not None:
+            engine.set_preloaded_data(
+                data=preloaded_data,
+                benchmark_data=preloaded_benchmark
+            )
+            logger.info(f"Pre-loaded data injected to engine: {len(preloaded_data)} symbols")
 
         # 5. 증분 실행 또는 전체 실행
         if existing_backtest and checkpoint:

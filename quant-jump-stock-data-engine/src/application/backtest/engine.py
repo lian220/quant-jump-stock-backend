@@ -126,6 +126,9 @@ class BacktestEngine:
         self._benchmark_values: List[Decimal] = []
         self._benchmark_first_close: Optional[Decimal] = None
 
+        # 지표 사전 계산 캐시 (O(n²) → O(n) 최적화)
+        self._precomputed_indicators: Dict[str, Dict[str, pd.Series]] = {}
+
     def run(self, strategy: StrategyDefinition) -> BacktestResult:
         """
         백테스트 실행
@@ -164,11 +167,14 @@ class BacktestEngine:
                 f"{len(self.config.tickers)} symbols"
             )
 
-            # 4. 일별 시뮬레이션
+            # 4. 지표 사전 계산 (O(n²) → O(n) 최적화)
+            self._precompute_indicators(strategy)
+
+            # 5. 일별 시뮬레이션
             for current_date in trading_dates:
                 self._process_day(strategy, current_date)
 
-            # 5. 결과 생성
+            # 6. 결과 생성
             execution_time = time.time() - start_time
             result = self._create_result(strategy, execution_time)
 
@@ -221,6 +227,7 @@ class BacktestEngine:
         self._total_slippage = Decimal("0")
         self._total_tax = Decimal("0")
         self._data = {}
+        self._precomputed_indicators = {}
         self._benchmark_data = None
         self._benchmark_values = []  # List of (date, Decimal) tuples for date-alignment
         self._benchmark_first_close = None
@@ -266,8 +273,30 @@ class BacktestEngine:
 
         return kwargs
 
+    def set_preloaded_data(
+        self,
+        data: Dict[str, pd.DataFrame],
+        benchmark_data: Optional[pd.DataFrame] = None
+    ) -> None:
+        """
+        사전 로드된 데이터를 주입 (중복 로드 방지)
+
+        Args:
+            data: {symbol: DataFrame} 딕셔너리
+            benchmark_data: 벤치마크 DataFrame (옵션)
+        """
+        self._data = data
+        if benchmark_data is not None:
+            self._benchmark_data = benchmark_data
+        logger.info(f"Pre-loaded data injected: {len(self._data)} symbols")
+
     def _load_data(self, strategy: Optional[StrategyDefinition] = None) -> None:
-        """데이터 로드"""
+        """데이터 로드 (이미 주입된 경우 스킵)"""
+        # 이미 데이터가 주입된 경우 스킵
+        if self._data:
+            logger.info(f"Using pre-loaded data: {len(self._data)} symbols")
+            return
+
         symbols = self.config.tickers
 
         if not symbols:
@@ -383,33 +412,62 @@ class BacktestEngine:
 
         return prices
 
+    def _precompute_indicators(self, strategy: StrategyDefinition) -> None:
+        """
+        모든 심볼에 대해 지표를 사전 계산 (중복 계산 방지)
+
+        기존: 매일 × 매 심볼마다 전체 지표 재계산 → O(n² × symbols)
+        개선: 심볼당 1회만 전체 기간 지표 계산 → O(n × symbols)
+        """
+        self._precomputed_indicators = {}
+        for symbol in self.config.tickers:
+            if symbol in self._data:
+                df = self._data[symbol]
+                if not df.empty:
+                    self._precomputed_indicators[symbol] = \
+                        self.interpreter.pre_compute_indicators(strategy, df)
+        logger.info(f"Pre-computed indicators for {len(self._precomputed_indicators)} symbols")
+
     def _process_signals(
         self,
         strategy: StrategyDefinition,
         current_date: date,
         prices: Dict[str, Decimal]
     ) -> None:
-        """전략 시그널 처리"""
+        """전략 시그널 처리 (사전 계산된 지표 사용)"""
         for symbol in self.config.tickers:
             if symbol not in self._data:
                 continue
 
             df = self._data[symbol]
-
-            # 해당 날짜까지의 데이터만 사용 (미래 데이터 방지)
             target_dt = pd.Timestamp(current_date)
-            historical_data = df[df.index <= target_dt]
 
-            if historical_data.empty or len(historical_data) < self.config.min_historical_bars:
+            # 최소 과거 데이터 수 체크 (O(log n) searchsorted 사용)
+            bars_available = df.index.searchsorted(target_dt, side='right')
+            if bars_available < self.config.min_historical_bars:
                 continue
 
             # 전략 실행
             try:
-                result = self.interpreter.execute(
-                    strategy,
-                    historical_data,
-                    str(current_date)
-                )
+                precomputed = self._precomputed_indicators.get(symbol)
+                if precomputed:
+                    # 사전 계산된 지표 사용 (O(1) per day)
+                    result = self.interpreter.execute_with_precomputed(
+                        strategy,
+                        precomputed,
+                        df,
+                        str(current_date)
+                    )
+                else:
+                    # fallback: 사전 계산 없는 경우
+                    historical_data = df[df.index <= target_dt]
+                    if historical_data.empty:
+                        continue
+                    result = self.interpreter.execute(
+                        strategy,
+                        historical_data,
+                        str(current_date)
+                    )
 
                 signals = result.get("signals", [])
 
@@ -908,7 +966,10 @@ class BacktestEngine:
                 f"{len(trading_dates)} new trading days"
             )
 
-            # 3. 일별 시뮬레이션 (새 거래일만)
+            # 3. 지표 사전 계산
+            self._precompute_indicators(strategy)
+
+            # 4. 일별 시뮬레이션 (새 거래일만)
             for current_date in trading_dates:
                 self._process_day(strategy, current_date)
 

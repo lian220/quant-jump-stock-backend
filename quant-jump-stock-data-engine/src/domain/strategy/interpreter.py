@@ -131,6 +131,88 @@ class StrategyInterpreter:
             logger.error(f"Strategy execution failed: {strategy.strategy_id} - {e}")
             raise StrategyError(f"Execution failed: {e}", strategy.strategy_id)
 
+    def pre_compute_indicators(
+        self,
+        strategy: StrategyDefinition,
+        data: pd.DataFrame
+    ) -> Dict[str, pd.Series]:
+        """
+        전체 기간 지표 사전 계산 (백테스트 최적화용)
+
+        전체 데이터에 대해 지표를 한 번만 계산하여 일별 루프에서
+        중복 계산을 방지합니다. O(n²) → O(n) 최적화.
+
+        Args:
+            strategy: 전략 정의
+            data: 전체 기간 OHLCV 데이터
+
+        Returns:
+            {indicator_key: pd.Series} 딕셔너리
+        """
+        return self._calculate_all_indicators(strategy.rules, data)
+
+    def execute_with_precomputed(
+        self,
+        strategy: StrategyDefinition,
+        precomputed_indicators: Dict[str, pd.Series],
+        market_data: pd.DataFrame,
+        target_date: str
+    ) -> Dict[str, Any]:
+        """
+        사전 계산된 지표를 사용하여 전략 실행
+
+        _calculate_all_indicators() 호출을 건너뛰고 사전 계산된 지표를
+        직접 사용하여 규칙을 평가합니다.
+
+        Args:
+            strategy: 전략 정의
+            precomputed_indicators: pre_compute_indicators()의 결과
+            market_data: OHLCV 데이터 (analysis_idx 결정용)
+            target_date: 분석 기준일
+
+        Returns:
+            실행 결과 딕셔너리
+        """
+        if market_data.empty:
+            return self._empty_result(strategy.strategy_id)
+
+        try:
+            # 분석 기준일 결정
+            analysis_idx = pd.to_datetime(target_date)
+            if analysis_idx not in market_data.index:
+                closest_idx = market_data.index[
+                    market_data.index.get_indexer([analysis_idx], method='nearest')[0]
+                ]
+                analysis_idx = closest_idx
+
+            # 각 규칙 평가 (사전 계산된 지표 사용)
+            signals = []
+            for rule in strategy.rules:
+                signal = self._evaluate_rule(rule, precomputed_indicators, market_data, analysis_idx)
+                if signal:
+                    signals.append(signal)
+
+            # 리스크 체크
+            risk_checks = self._check_risk_management(
+                strategy.risk_management,
+                market_data,
+                signals
+            )
+
+            return {
+                "strategy_id": strategy.strategy_id,
+                "strategy_name": strategy.name,
+                "analysis_date": str(analysis_idx.date()) if hasattr(analysis_idx, 'date') else str(analysis_idx),
+                "signals": signals,
+                "indicators": {},
+                "risk_checks": risk_checks,
+                "executed_at": datetime.utcnow().isoformat()
+            }
+
+        except Exception as e:
+            logger.error(f"Strategy execution failed: {strategy.strategy_id} - {e}")
+            raise StrategyError(f"Execution failed: {e}", strategy.strategy_id)
+
     def _calculate_all_indicators(
         self,
         rules: List[Rule],

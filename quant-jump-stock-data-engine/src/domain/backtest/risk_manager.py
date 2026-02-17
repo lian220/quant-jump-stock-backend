@@ -181,7 +181,7 @@ class RiskManager:
 
         # 손절 조건: pnl_pct <= -stop_loss_pct
         if pnl_pct <= -self.stop_loss_pct:
-            logger.info(
+            logger.debug(
                 f"[STOP_LOSS] {position.symbol}: "
                 f"진입가 {position.entry_price} → 현재가 {current_price} "
                 f"(손익률: {pnl_pct * 100:.2f}%)"
@@ -211,7 +211,7 @@ class RiskManager:
 
         # 익절 조건: pnl_pct >= take_profit_pct
         if pnl_pct >= self.take_profit_pct:
-            logger.info(
+            logger.debug(
                 f"[TAKE_PROFIT] {position.symbol}: "
                 f"진입가 {position.entry_price} → 현재가 {current_price} "
                 f"(손익률: {pnl_pct * 100:.2f}%)"
@@ -248,7 +248,7 @@ class RiskManager:
         # 트레일링 스탑 조건: 고점 대비 하락률 >= trailing_stop_pct
         if drawdown_from_high <= -self.trailing_stop_pct:
             pnl_pct = position.pnl_pct / 100
-            logger.info(
+            logger.debug(
                 f"[TRAILING_STOP] {position.symbol}: "
                 f"고점 {position.highest_price} → 현재가 {current_price} "
                 f"(고점 대비: {drawdown_from_high * 100:.2f}%)"
