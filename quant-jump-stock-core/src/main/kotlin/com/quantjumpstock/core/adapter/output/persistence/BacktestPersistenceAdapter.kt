@@ -12,8 +12,13 @@ import com.quantjumpstock.core.domain.model.backtest.BacktestResult
 import com.quantjumpstock.core.domain.model.backtest.BacktestStatus
 import com.quantjumpstock.core.domain.model.backtest.BacktestTrade
 import com.quantjumpstock.core.domain.model.backtest.BacktestTradeSide
+import com.quantjumpstock.core.domain.model.backtest.BacktestType
+import com.quantjumpstock.core.domain.model.backtest.UniverseType
 import com.quantjumpstock.core.domain.port.output.BacktestResultRepository
 import com.quantjumpstock.core.domain.port.output.BacktestTradeRepository
+import com.quantjumpstock.core.domain.port.output.Benchmark
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
@@ -34,7 +39,8 @@ class BacktestPersistenceAdapter(
     private val backtestResultJpaRepository: BacktestResultJpaRepository,
     private val backtestTradeJpaRepository: BacktestTradeJpaRepository,
     private val strategyJpaRepository: StrategyJpaRepository,
-    private val userJpaRepository: UserJpaRepository
+    private val userJpaRepository: UserJpaRepository,
+    private val objectMapper: ObjectMapper
 ) : BacktestResultRepository, BacktestTradeRepository {
 
     private val logger = LoggerFactory.getLogger(this::class.java)
@@ -75,9 +81,51 @@ class BacktestPersistenceAdapter(
             .map { toDomain(it) }
     }
 
+    override fun findByStrategyIdAndUserIdOrderByCreatedAtDesc(strategyId: Long, userId: Long, pageable: Pageable): Page<BacktestResult> {
+        logger.debug("전략+사용자별 백테스트 결과 조회: strategyId={}, userId={}", strategyId, userId)
+        return backtestResultJpaRepository.findByStrategyIdAndUserIdOrderByCreatedAtDesc(strategyId, userId, pageable)
+            .map { toDomain(it) }
+    }
+
     override fun findAll(pageable: Pageable): Page<BacktestResult> {
         logger.debug("전체 백테스트 결과 조회")
         return backtestResultJpaRepository.findAll(pageable).map { toDomain(it) }
+    }
+
+    // ===== SCRUM-344: Canonical & Universe Queries =====
+
+    override fun findCanonicalByStrategyId(strategyId: Long): BacktestResult? {
+        logger.debug("Canonical 백테스트 조회: strategyId={}", strategyId)
+        val results = backtestResultJpaRepository.findCanonicalByStrategyId(
+            strategyId, org.springframework.data.domain.PageRequest.of(0, 1)
+        )
+        return results.firstOrNull()?.let { toDomain(it) }
+    }
+
+    override fun countUserCustomByUserIdAndStrategyId(userId: Long, strategyId: Long): Long {
+        return backtestResultJpaRepository.countUserCustomByUserIdAndStrategyId(userId, strategyId)
+    }
+
+    override fun findByStrategyIdAndBacktestType(
+        strategyId: Long, backtestType: BacktestType, pageable: org.springframework.data.domain.Pageable
+    ): Page<BacktestResult> {
+        return backtestResultJpaRepository.findByStrategyIdAndBacktestTypeOrderByCreatedAtDesc(
+            strategyId, backtestType.name, pageable
+        ).map { toDomain(it) }
+    }
+
+    override fun deleteById(id: Long) {
+        logger.debug("백테스트 결과 삭제: id={}", id)
+        backtestResultJpaRepository.deleteById(id)
+    }
+
+    override fun findUserCustomBySettings(
+        userId: Long, strategyId: Long,
+        benchmark: String, initialCapital: java.math.BigDecimal
+    ): List<BacktestResult> {
+        logger.debug("동일 설정 USER_CUSTOM 조회: userId={}, strategyId={}, benchmark={}, capital={}", userId, strategyId, benchmark, initialCapital)
+        return backtestResultJpaRepository.findUserCustomBySettings(userId, strategyId, benchmark, initialCapital)
+            .map { toDomain(it) }
     }
 
     // ===== BacktestTradeRepository =====
@@ -117,6 +165,7 @@ class BacktestPersistenceAdapter(
             endDate = entity.endDate,
             initialCapital = entity.initialCapital,
             benchmark = entity.benchmark,
+            benchmarks = parseBenchmarksList(entity.benchmarks),
             finalValue = entity.finalValue,
             totalReturn = entity.totalReturn,
             cagr = entity.cagr,
@@ -155,6 +204,9 @@ class BacktestPersistenceAdapter(
             alpha = entity.alpha,
             beta = entity.beta,
             equityCurve = entity.equityCurve,
+            // SCRUM-344: 유니버스 타입 + 백테스트 분류
+            universeType = parseUniverseType(entity.universeType),
+            backtestType = parseBacktestType(entity.backtestType),
             status = mapStatus(entity.status),
             errorMessage = entity.errorMessage,
             trades = emptyList(),
@@ -174,6 +226,7 @@ class BacktestPersistenceAdapter(
             endDate = entity.endDate,
             initialCapital = entity.initialCapital,
             benchmark = entity.benchmark,
+            benchmarks = parseBenchmarksList(entity.benchmarks),
             finalValue = entity.finalValue,
             totalReturn = entity.totalReturn,
             cagr = entity.cagr,
@@ -212,6 +265,9 @@ class BacktestPersistenceAdapter(
             alpha = entity.alpha,
             beta = entity.beta,
             equityCurve = entity.equityCurve,
+            // SCRUM-344: 유니버스 타입 + 백테스트 분류
+            universeType = parseUniverseType(entity.universeType),
+            backtestType = parseBacktestType(entity.backtestType),
             status = mapStatus(entity.status),
             errorMessage = entity.errorMessage,
             trades = entity.trades.map { toDomain(it) },
@@ -237,6 +293,7 @@ class BacktestPersistenceAdapter(
             endDate = domain.endDate,
             initialCapital = domain.initialCapital,
             benchmark = domain.benchmark,
+            benchmarks = objectMapper.writeValueAsString(domain.benchmarks),
             finalValue = domain.finalValue,
             totalReturn = domain.totalReturn,
             cagr = domain.cagr,
@@ -275,6 +332,9 @@ class BacktestPersistenceAdapter(
             alpha = domain.alpha,
             beta = domain.beta,
             equityCurve = domain.equityCurve,
+            // SCRUM-344: 유니버스 타입 + 백테스트 분류
+            universeType = domain.universeType.name,
+            backtestType = domain.backtestType.name,
             status = mapStatus(domain.status),
             errorMessage = domain.errorMessage,
             createdAt = domain.createdAt,
@@ -332,6 +392,18 @@ class BacktestPersistenceAdapter(
         )
     }
 
+    // ===== JSON Helpers =====
+
+    private fun parseBenchmarksList(json: String?): List<String> {
+        if (json.isNullOrBlank()) return listOf(Benchmark.DEFAULT_TICKER)
+        return try {
+            objectMapper.readValue<List<String>>(json)
+        } catch (e: Exception) {
+            logger.warn("benchmarks JSON 파싱 실패, 기본값 사용", e)
+            listOf(Benchmark.DEFAULT_TICKER)
+        }
+    }
+
     // ===== Enum Mapping =====
 
     private fun mapStatus(jpaStatus: JpaBacktestStatus): BacktestStatus = when (jpaStatus) {
@@ -354,5 +426,22 @@ class BacktestPersistenceAdapter(
     private fun mapTradeSide(domainSide: BacktestTradeSide): JpaBacktestTradeSide = when (domainSide) {
         BacktestTradeSide.BUY -> JpaBacktestTradeSide.BUY
         BacktestTradeSide.SELL -> JpaBacktestTradeSide.SELL
+    }
+
+    // ===== SCRUM-344: Universe/Backtest Type Parsing =====
+
+    private fun parseUniverseType(value: String): UniverseType {
+        val result = UniverseType.fromStringOrDefault(value)
+        if (result == UniverseType.MARKET && value != "MARKET") {
+            logger.warn("Unknown universeType: {}, defaulting to MARKET", value)
+        }
+        return result
+    }
+
+    private fun parseBacktestType(value: String): BacktestType = try {
+        BacktestType.valueOf(value)
+    } catch (e: Exception) {
+        logger.warn("Unknown backtestType: {}, defaulting to USER_CUSTOM", value, e)
+        BacktestType.USER_CUSTOM
     }
 }

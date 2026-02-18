@@ -326,4 +326,52 @@ class QuartzConfig {
             .build()
     }
 
+    // ========================
+    // 10. SCRUM-344: Canonical 백테스트 갱신 (매주 일요일 02:00)
+    // ========================
+    // PUBLISHED 전략 대상 대표 백테스트 자동 실행
+    @Bean
+    fun canonicalBacktestJobDetail(): JobDetail {
+        return JobBuilder.newJob(CanonicalBacktestJobAdapter::class.java)
+            .withIdentity("canonicalBacktestJob")
+            .storeDurably()
+            .build()
+    }
+
+    @Bean
+    fun canonicalBacktestTrigger(): Trigger {
+        return TriggerBuilder.newTrigger()
+            .forJob(canonicalBacktestJobDetail())
+            .withIdentity("canonicalBacktestTrigger")
+            .withSchedule(
+                CronScheduleBuilder.cronSchedule("0 0 2 ? * SUN")
+                    .inTimeZone(TimeZone.getTimeZone("Asia/Seoul"))
+            )
+            .build()
+    }
+
+    // ========================
+    // 11. SCRUM-344: 백테스트 데이터 정리 (매일 03:00)
+    // ========================
+    // RUNNING 타임아웃, 초과 USER_CUSTOM 아카이브, 오래된 CANONICAL 정리
+    @Bean
+    fun backtestCleanupJobDetail(): JobDetail {
+        return JobBuilder.newJob(BacktestCleanupJobAdapter::class.java)
+            .withIdentity("backtestCleanupJob")
+            .storeDurably()
+            .build()
+    }
+
+    @Bean
+    fun backtestCleanupTrigger(): Trigger {
+        return TriggerBuilder.newTrigger()
+            .forJob(backtestCleanupJobDetail())
+            .withIdentity("backtestCleanupTrigger")
+            .withSchedule(
+                CronScheduleBuilder.cronSchedule("0 0 3 * * ?")
+                    .inTimeZone(TimeZone.getTimeZone("Asia/Seoul"))
+            )
+            .build()
+    }
+
 }

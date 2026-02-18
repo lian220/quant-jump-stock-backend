@@ -57,7 +57,50 @@ data class StrategyDetailResponse(
     val trades: List<BacktestTradeDto> = emptyList(),
 
     @Schema(description = "생성일")
-    val createdAt: LocalDateTime
+    val createdAt: LocalDateTime,
+
+    // SCRUM-344: 유니버스 + 대표 백테스트
+    @Schema(description = "권장 유니버스 타입")
+    val recommendedUniverseType: String? = null,
+
+    @Schema(description = "지원하는 유니버스 타입 목록")
+    val supportedUniverseTypes: List<String>? = null,
+
+    @Schema(description = "대표 백테스트 요약")
+    val canonicalBacktest: CanonicalBacktestDto? = null
+)
+
+/**
+ * 대표(Canonical) 백테스트 요약
+ */
+@Schema(description = "대표 백테스트 요약 정보")
+data class CanonicalBacktestDto(
+    @Schema(description = "백테스트 ID")
+    val backtestId: Long,
+    @Schema(description = "CAGR (%)")
+    val cagr: BigDecimal,
+    @Schema(description = "MDD (%)")
+    val mdd: BigDecimal,
+    @Schema(description = "샤프 비율")
+    val sharpeRatio: BigDecimal?,
+    @Schema(description = "총 수익률 (%)")
+    val totalReturn: BigDecimal,
+    @Schema(description = "변동성 (%)")
+    val volatility: BigDecimal?,
+    @Schema(description = "승률 (%)")
+    val winRate: BigDecimal?,
+    @Schema(description = "총 거래 수")
+    val totalTrades: Int,
+    @Schema(description = "시작일")
+    val startDate: String,
+    @Schema(description = "종료일")
+    val endDate: String,
+    @Schema(description = "초기 자본")
+    val initialCapital: BigDecimal,
+    @Schema(description = "최종 자산")
+    val finalValue: BigDecimal,
+    @Schema(description = "수익 곡선")
+    val equityCurve: List<EquityCurvePointDto> = emptyList()
 )
 
 /**

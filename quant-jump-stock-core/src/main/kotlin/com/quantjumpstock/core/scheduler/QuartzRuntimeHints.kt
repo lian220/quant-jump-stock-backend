@@ -25,6 +25,8 @@ class QuartzRuntimeHints : RuntimeHintsRegistrar {
             StockRecommendationJobAdapter::class.java,
             VertexAIPredictionJobAdapter::class.java,
             ParallelAnalysisJob::class.java,
+            CanonicalBacktestJobAdapter::class.java,
+            BacktestCleanupJobAdapter::class.java,
         )
 
         jobClasses.forEach { jobClass ->

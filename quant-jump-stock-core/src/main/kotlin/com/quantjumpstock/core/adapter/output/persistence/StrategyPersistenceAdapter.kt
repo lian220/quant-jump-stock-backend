@@ -7,11 +7,14 @@ import com.quantjumpstock.core.adapter.output.persistence.jpa.UserJpaRepository
 import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyStatus as JpaStrategyStatus
 import com.quantjumpstock.core.adapter.output.persistence.jpa.StockSelectionType as JpaStockSelectionType
 import com.quantjumpstock.core.adapter.output.persistence.jpa.RebalanceFrequency as JpaRebalanceFrequency
+import com.quantjumpstock.core.domain.model.backtest.UniverseType
 import com.quantjumpstock.core.domain.model.strategy.Strategy
 import com.quantjumpstock.core.domain.model.strategy.StockSelectionType
 import com.quantjumpstock.core.domain.model.strategy.StrategyStatus
 import com.quantjumpstock.core.domain.model.strategy.RebalanceFrequency
 import com.quantjumpstock.core.domain.port.output.StrategyRepository
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.readValue
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
@@ -29,7 +32,8 @@ import org.springframework.stereotype.Component
 class StrategyPersistenceAdapter(
     private val strategyJpaRepository: StrategyJpaRepository,
     private val categoryJpaRepository: StrategyCategoryJpaRepository,
-    private val userJpaRepository: UserJpaRepository
+    private val userJpaRepository: UserJpaRepository,
+    private val objectMapper: ObjectMapper
 ) : StrategyRepository {
 
     private val logger = LoggerFactory.getLogger(this::class.java)
@@ -125,6 +129,10 @@ class StrategyPersistenceAdapter(
             status = mapStatus(entity.status),
             stockSelectionType = mapStockSelectionType(entity.stockSelectionType),
             investmentPhilosophy = entity.investmentPhilosophy,
+            // SCRUM-344: 유니버스 설정 + 대표 백테스트
+            recommendedUniverseType = parseUniverseType(entity.recommendedUniverseType),
+            supportedUniverseTypes = parseSupportedUniverseTypes(entity.supportedUniverseTypes),
+            canonicalBacktestId = entity.canonicalBacktestId,
             conditions = entity.conditions,
             riskSettings = entity.riskSettings,
             positionSizing = entity.positionSizing,
@@ -167,6 +175,10 @@ class StrategyPersistenceAdapter(
             status = mapStatus(domain.status),
             stockSelectionType = mapStockSelectionType(domain.stockSelectionType),
             investmentPhilosophy = domain.investmentPhilosophy,
+            // SCRUM-344: 유니버스 설정 + 대표 백테스트
+            recommendedUniverseType = domain.recommendedUniverseType.name,
+            supportedUniverseTypes = objectMapper.writeValueAsString(domain.supportedUniverseTypes.map { it.name }),
+            canonicalBacktestId = domain.canonicalBacktestId,
             conditions = domain.conditions,
             riskSettings = domain.riskSettings,
             positionSizing = domain.positionSizing,
@@ -225,5 +237,24 @@ class StrategyPersistenceAdapter(
         RebalanceFrequency.QUARTERLY -> JpaRebalanceFrequency.QUARTERLY
         RebalanceFrequency.YEARLY -> JpaRebalanceFrequency.YEARLY
         RebalanceFrequency.NONE -> JpaRebalanceFrequency.NONE
+    }
+
+    // ===== SCRUM-344: Universe Type Parsing =====
+
+    private fun parseUniverseType(value: String): UniverseType {
+        val result = UniverseType.fromStringOrDefault(value)
+        if (result == UniverseType.MARKET && value != "MARKET") {
+            logger.warn("Unknown universeType: {}, defaulting to MARKET", value)
+        }
+        return result
+    }
+
+    private fun parseSupportedUniverseTypes(json: String): List<UniverseType> = try {
+        objectMapper.readValue<List<String>>(json).mapNotNull { name ->
+            try { UniverseType.valueOf(name) } catch (e: Exception) { null }
+        }
+    } catch (e: Exception) {
+        logger.warn("supportedUniverseTypes JSON 파싱 실패, 기본값 사용", e)
+        listOf(UniverseType.MARKET, UniverseType.PORTFOLIO, UniverseType.FIXED)
     }
 }

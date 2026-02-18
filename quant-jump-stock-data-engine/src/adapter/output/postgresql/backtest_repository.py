@@ -129,7 +129,12 @@ class PostgresBacktestRepository:
     def _insert_result(self, cursor, result: BacktestResult, request_id: Optional[str] = None) -> int:
         """backtest_results 테이블에 삽입 (Core에서 RUNNING placeholder를 미리 생성하므로 upsert)"""
         now = get_kst_now()
-        equity_curve_json = json.dumps([{"date": str(p.date), "equity": float(p.equity), "benchmark": float(p.benchmark) if p.benchmark is not None else None} for p in result.equity_curve]) if result.equity_curve else None
+        equity_curve_json = json.dumps([{
+            "date": str(p.date),
+            "equity": float(p.equity),
+            "benchmark": float(p.benchmark) if p.benchmark is not None else None,
+            "benchmarks": {k: float(v) for k, v in p.benchmarks.items()} if p.benchmarks else None
+        } for p in result.equity_curve]) if result.equity_curve else None
 
         cursor.execute(
             """
@@ -179,13 +184,16 @@ class PostgresBacktestRepository:
                 trailing_stop_count,
                 risk_settings,
                 position_sizing,
-                trading_costs
+                trading_costs,
+                benchmarks,
+                universe_type,
+                backtest_type
             ) VALUES (
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             ON CONFLICT (request_id) WHERE request_id IS NOT NULL DO UPDATE SET
                 final_value = EXCLUDED.final_value,
@@ -226,7 +234,10 @@ class PostgresBacktestRepository:
                 trailing_stop_count = EXCLUDED.trailing_stop_count,
                 risk_settings = EXCLUDED.risk_settings,
                 position_sizing = EXCLUDED.position_sizing,
-                trading_costs = EXCLUDED.trading_costs
+                trading_costs = EXCLUDED.trading_costs,
+                benchmarks = EXCLUDED.benchmarks,
+                universe_type = EXCLUDED.universe_type,
+                backtest_type = EXCLUDED.backtest_type
             RETURNING id
             """,
             (
@@ -276,6 +287,9 @@ class PostgresBacktestRepository:
                 json.dumps(result.risk_settings) if result.risk_settings else '{}',
                 json.dumps(result.position_sizing) if result.position_sizing else '{}',
                 json.dumps(result.trading_costs_config) if result.trading_costs_config else '{}',
+                json.dumps(result.metadata.get("benchmark_tickers", ["SPY"])) if result.metadata else '["SPY"]',
+                result.metadata.get("universe_type", "MARKET") if result.metadata else "MARKET",
+                result.metadata.get("backtest_type", "USER_CUSTOM") if result.metadata else "USER_CUSTOM",
             )
         )
         return cursor.fetchone()[0]
@@ -348,7 +362,8 @@ class PostgresBacktestRepository:
                 "cash": float(point.cash),
                 "positions_value": float(point.positions_value),
                 "drawdown_pct": float(point.drawdown_pct),
-                "benchmark": float(point.benchmark) if point.benchmark is not None else None
+                "benchmark": float(point.benchmark) if point.benchmark is not None else None,
+                "benchmarks": {k: float(v) for k, v in point.benchmarks.items()} if point.benchmarks else None
             }
             for point in equity_curve
         ]
@@ -478,7 +493,8 @@ class PostgresBacktestRepository:
                     cash=Decimal(str(p.get("cash", 0))),
                     positions_value=Decimal(str(p.get("positions_value", 0))),
                     drawdown_pct=Decimal(str(p.get("drawdown_pct", 0))),
-                    benchmark=Decimal(str(p["benchmark"])) if p.get("benchmark") is not None else None
+                    benchmark=Decimal(str(p["benchmark"])) if p.get("benchmark") is not None else None,
+                    benchmarks={k: Decimal(str(v)) for k, v in p["benchmarks"].items()} if p.get("benchmarks") else None
                 )
                 for p in curve_data
             ]
@@ -818,7 +834,8 @@ class PostgresBacktestRepository:
                                     "cash": float(p.cash),
                                     "positions_value": float(p.positions_value),
                                     "drawdown_pct": float(p.drawdown_pct),
-                                    "benchmark": float(p.benchmark) if p.benchmark is not None else None
+                                    "benchmark": float(p.benchmark) if p.benchmark is not None else None,
+                                    "benchmarks": {k: float(v) for k, v in p.benchmarks.items()} if p.benchmarks else None
                                 }
                                 for p in result.equity_curve
                             ]) if result.equity_curve else None,

@@ -15,4 +15,7 @@ interface StrategyDefaultStockRepository {
     fun deleteById(id: Long)
 
     fun deleteByStrategyId(strategyId: Long)
+
+    /** SCRUM-349: 전략 기본 종목 티커 목록 조회 (활성 종목만) */
+    fun findTickersByStrategyId(strategyId: Long): List<String>
 }

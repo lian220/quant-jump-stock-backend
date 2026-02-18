@@ -5,6 +5,7 @@ import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.stereotype.Repository
+import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.util.Optional
@@ -22,6 +23,9 @@ interface BacktestResultJpaRepository : JpaRepository<BacktestResultEntity, Long
     fun findByStrategyIdOrderByCreatedAtDesc(strategyId: Long, pageable: Pageable): Page<BacktestResultEntity>
 
     fun findByUserIdOrderByCreatedAtDesc(userId: Long, pageable: Pageable): Page<BacktestResultEntity>
+
+    // 전략 + 유저 필터링 (유저 격리)
+    fun findByStrategyIdAndUserIdOrderByCreatedAtDesc(strategyId: Long, userId: Long, pageable: Pageable): Page<BacktestResultEntity>
 
     // 전략의 최신 완료된 백테스트
     @Query("""
@@ -91,4 +95,44 @@ interface BacktestResultJpaRepository : JpaRepository<BacktestResultEntity, Long
         ORDER BY br.cagr DESC
     """)
     fun findBestPerformingByStrategyId(strategyId: Long, pageable: Pageable): List<BacktestResultEntity>
+
+    // SCRUM-344: Canonical 백테스트 조회
+    @Query("""
+        SELECT br FROM BacktestResultEntity br
+        WHERE br.strategy.id = :strategyId
+        AND br.backtestType = 'CANONICAL'
+        AND br.status = 'COMPLETED'
+        ORDER BY br.createdAt DESC
+    """)
+    fun findCanonicalByStrategyId(strategyId: Long, pageable: Pageable): List<BacktestResultEntity>
+
+    // SCRUM-344: 사용자 커스텀 백테스트 수 조회
+    @Query("""
+        SELECT COUNT(br) FROM BacktestResultEntity br
+        WHERE br.user.id = :userId
+        AND br.strategy.id = :strategyId
+        AND br.backtestType = 'USER_CUSTOM'
+    """)
+    fun countUserCustomByUserIdAndStrategyId(userId: Long, strategyId: Long): Long
+
+    // SCRUM-344: 전략별 백테스트 타입 필터 조회
+    fun findByStrategyIdAndBacktestTypeOrderByCreatedAtDesc(
+        strategyId: Long, backtestType: String, pageable: Pageable
+    ): Page<BacktestResultEntity>
+
+    // 중복 실행 방지: 동일 설정의 USER_CUSTOM 백테스트 조회
+    @Query("""
+        SELECT br FROM BacktestResultEntity br
+        WHERE br.user.id = :userId
+        AND br.strategy.id = :strategyId
+        AND br.benchmark = :benchmark
+        AND br.initialCapital = :initialCapital
+        AND br.backtestType = 'USER_CUSTOM'
+        AND br.status IN ('COMPLETED', 'RUNNING')
+        ORDER BY br.createdAt DESC
+    """)
+    fun findUserCustomBySettings(
+        userId: Long, strategyId: Long,
+        benchmark: String, initialCapital: BigDecimal
+    ): List<BacktestResultEntity>
 }

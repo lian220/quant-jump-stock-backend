@@ -43,11 +43,31 @@ enum class Benchmark(
         val DEFAULT = SPY
         val DEFAULT_TICKER: String = DEFAULT.ticker
 
+        /** STRATEGY 벤치마크 접두사 (예: "STRATEGY:105") */
+        const val STRATEGY_PREFIX = "STRATEGY:"
+
+        /** 다중 벤치마크 최대 개수 */
+        const val MAX_BENCHMARKS = 3
+
         fun findByTicker(ticker: String): Benchmark? =
             entries.find { it.ticker == ticker }
 
         fun existsByTicker(ticker: String): Boolean =
             entries.any { it.ticker == ticker }
+
+        /** 전략 벤치마크 여부 확인 (STRATEGY:ID 형태) */
+        fun isStrategyBenchmark(ticker: String): Boolean =
+            ticker.startsWith(STRATEGY_PREFIX)
+
+        /** 전략 벤치마크에서 전략 ID 추출 */
+        fun parseStrategyId(ticker: String): Long? =
+            if (isStrategyBenchmark(ticker)) {
+                ticker.removePrefix(STRATEGY_PREFIX).toLongOrNull()
+            } else null
+
+        /** 벤치마크 유효성 검증 (일반 + STRATEGY 모두 지원) */
+        fun isValidBenchmark(ticker: String): Boolean =
+            existsByTicker(ticker) || (isStrategyBenchmark(ticker) && parseStrategyId(ticker) != null)
 
         fun getAll(): List<BenchmarkInfo> =
             entries.map { BenchmarkInfo(it.ticker, it.displayName, it.type.value) }
@@ -58,7 +78,8 @@ enum class BenchmarkType(val value: String) {
     ETF("etf"),
     INDEX("index"),
     COMMODITY("commodity"),
-    CURRENCY("currency")
+    CURRENCY("currency"),
+    STRATEGY("strategy")   // SCRUM-337: 타 전략 간 비교
 }
 
 /**

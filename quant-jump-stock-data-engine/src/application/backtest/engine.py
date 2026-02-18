@@ -72,6 +72,8 @@ class BacktestConfig:
     position_size_pct: Decimal = Decimal("0.1")    # 10%
     rebalance_frequency: str = "daily"
     benchmark_ticker: Optional[str] = None
+    # SCRUM-337: 다중 벤치마크 지원 (최대 3개)
+    benchmark_tickers: List[str] = field(default_factory=list)
     min_historical_bars: int = 50  # 전략 실행에 필요한 최소 과거 데이터 수
 
     # SCRUM-330: 리스크 관리 파라미터
@@ -121,13 +123,18 @@ class BacktestEngine:
         self._total_slippage: Decimal = Decimal("0")
         self._total_tax: Decimal = Decimal("0")
 
-        # 벤치마크 데이터
+        # 벤치마크 데이터 (단일 - 하위호환)
         self._benchmark_data: Optional[pd.DataFrame] = None
         self._benchmark_values: List[Decimal] = []
         self._benchmark_first_close: Optional[Decimal] = None
 
         # 지표 사전 계산 캐시 (O(n²) → O(n) 최적화)
         self._precomputed_indicators: Dict[str, Dict[str, pd.Series]] = {}
+
+        # SCRUM-337: 다중 벤치마크 데이터
+        self._multi_benchmark_data: Dict[str, pd.DataFrame] = {}
+        self._multi_benchmark_values: Dict[str, list] = {}  # ticker → [(date, Decimal)]
+        self._multi_benchmark_first_close: Dict[str, Decimal] = {}
 
     def run(self, strategy: StrategyDefinition) -> BacktestResult:
         """
@@ -231,6 +238,10 @@ class BacktestEngine:
         self._benchmark_data = None
         self._benchmark_values = []  # List of (date, Decimal) tuples for date-alignment
         self._benchmark_first_close = None
+        # SCRUM-337: 다중 벤치마크 리셋
+        self._multi_benchmark_data = {}
+        self._multi_benchmark_values = {}
+        self._multi_benchmark_first_close = {}
 
     def _detect_extra_data_needs(self, strategy: StrategyDefinition) -> Dict[str, bool]:
         """전략에서 사용하는 지표를 분석하여 추가 데이터 로드 필요 여부 결정"""
@@ -320,20 +331,36 @@ class BacktestEngine:
         logger.debug(f"Loaded data for {len(self._data)} symbols")
 
         # 벤치마크 데이터 로드
-        if self.config.benchmark_ticker and hasattr(self.data_loader, 'load_benchmark'):
-            try:
-                self._benchmark_data = self.data_loader.load_benchmark(
-                    benchmark_ticker=self.config.benchmark_ticker,
-                    start_date=self.config.start_date,
-                    end_date=self.config.end_date,
-                )
-                if self._benchmark_data is not None:
-                    logger.debug(f"Loaded benchmark data: {self.config.benchmark_ticker}")
-                else:
-                    logger.warning(f"No benchmark data for: {self.config.benchmark_ticker}")
-            except Exception as e:
-                logger.warning(f"Failed to load benchmark data: {e}")
-                self._benchmark_data = None
+        # SCRUM-337: benchmark_tickers (다중) 우선, 없으면 benchmark_ticker (단일) 사용
+        effective_bm_tickers = self.config.benchmark_tickers or (
+            [self.config.benchmark_ticker] if self.config.benchmark_ticker else []
+        )
+
+        if effective_bm_tickers and hasattr(self.data_loader, 'load_benchmark'):
+            for bm_ticker in effective_bm_tickers:
+                # STRATEGY:ID 형태는 스킵 (별도 로직 필요)
+                if bm_ticker.startswith("STRATEGY:"):
+                    continue
+                try:
+                    bm_data = self.data_loader.load_benchmark(
+                        benchmark_ticker=bm_ticker,
+                        start_date=self.config.start_date,
+                        end_date=self.config.end_date,
+                    )
+                    if bm_data is not None:
+                        self._multi_benchmark_data[bm_ticker] = bm_data
+                        if bm_ticker not in self._multi_benchmark_values:
+                            self._multi_benchmark_values[bm_ticker] = []
+                        logger.info(f"Loaded benchmark data: {bm_ticker}")
+                    else:
+                        logger.warning(f"No benchmark data for: {bm_ticker}")
+                except Exception as e:
+                    logger.warning(f"Failed to load benchmark data for {bm_ticker}: {e}")
+
+            # 하위호환: 첫 번째 벤치마크를 단일 벤치마크로도 설정
+            first_ticker = effective_bm_tickers[0] if effective_bm_tickers else None
+            if first_ticker and first_ticker in self._multi_benchmark_data:
+                self._benchmark_data = self._multi_benchmark_data[first_ticker]
 
     def _get_trading_dates(self) -> List[date]:
         """거래일 목록 생성"""
@@ -609,13 +636,31 @@ class BacktestEngine:
                     if self._benchmark_first_close and self._benchmark_first_close > 0:
                         benchmark_normalized = self.config.initial_capital * bm_close_dec / self._benchmark_first_close
 
+        # SCRUM-337: 다중 벤치마크 정규화 값 계산
+        multi_benchmarks_normalized: Dict[str, Decimal] = {}
+        for bm_ticker, bm_df in self._multi_benchmark_data.items():
+            target_dt = pd.Timestamp(current_date)
+            if target_dt in bm_df.index:
+                bm_close = bm_df.loc[target_dt, "close"]
+                if pd.notna(bm_close):
+                    bm_close_dec = Decimal(str(bm_close))
+                    self._multi_benchmark_values[bm_ticker].append((current_date, bm_close_dec))
+                    if bm_ticker not in self._multi_benchmark_first_close:
+                        self._multi_benchmark_first_close[bm_ticker] = bm_close_dec
+                    first_close = self._multi_benchmark_first_close[bm_ticker]
+                    if first_close and first_close > 0:
+                        multi_benchmarks_normalized[bm_ticker] = (
+                            self.config.initial_capital * bm_close_dec / first_close
+                        )
+
         point = EquityCurvePoint(
             date=current_date,
             equity=total_value,
             cash=self._portfolio.cash,
             positions_value=positions_value,
             drawdown_pct=drawdown_pct,
-            benchmark=benchmark_normalized
+            benchmark=benchmark_normalized,
+            benchmarks=multi_benchmarks_normalized if multi_benchmarks_normalized else None
         )
 
         self._equity_curve.append(point)
@@ -749,6 +794,7 @@ class BacktestEngine:
                 "commission_rate": float(self.config.commission_rate),
                 "slippage_rate": float(self.config.slippage_rate),
                 "benchmark_ticker": self.config.benchmark_ticker,
+                "benchmark_tickers": self.config.benchmark_tickers,
             }
         )
 
@@ -834,6 +880,10 @@ class BacktestEngine:
             "positions": positions,
             "trade_count": len(self._portfolio.trades),
             "benchmark_first_close": float(self._benchmark_first_close) if self._benchmark_first_close else None,
+            # SCRUM-337: 다중 벤치마크 첫 번째 종가 저장
+            "multi_benchmark_first_close": {
+                k: float(v) for k, v in self._multi_benchmark_first_close.items()
+            } if self._multi_benchmark_first_close else {},
         }
 
     def resume_from_checkpoint(
@@ -909,6 +959,17 @@ class BacktestEngine:
                 if point.benchmark is not None:
                     raw_close = point.benchmark * self._benchmark_first_close / self.config.initial_capital
                     self._benchmark_values.append((point.date, raw_close))
+
+        # SCRUM-337: 다중 벤치마크 첫 번째 종가 복원
+        multi_bm_first = checkpoint_data.get("multi_benchmark_first_close", {})
+        for bm_ticker, first_val in multi_bm_first.items():
+            self._multi_benchmark_first_close[bm_ticker] = Decimal(str(first_val))
+            self._multi_benchmark_values[bm_ticker] = []
+            # equity_curve에서 정규화된 값 역산
+            for point in self._equity_curve:
+                if point.benchmarks and bm_ticker in point.benchmarks:
+                    raw_close = point.benchmarks[bm_ticker] * self._multi_benchmark_first_close[bm_ticker] / self.config.initial_capital
+                    self._multi_benchmark_values[bm_ticker].append((point.date, raw_close))
 
         # 리스크 매니저 초기화
         self._risk_manager = RiskManager.from_risk_management(

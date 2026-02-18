@@ -44,6 +44,10 @@ class StrategyDefaultStockPersistenceAdapter(
         jpaRepository.deleteByStrategyId(strategyId)
     }
 
+    override fun findTickersByStrategyId(strategyId: Long): List<String> {
+        return jpaRepository.findTickersByStrategyId(strategyId)
+    }
+
     private fun toDomain(entity: StrategyDefaultStockEntity): StrategyDefaultStock {
         return StrategyDefaultStock(
             id = entity.id,

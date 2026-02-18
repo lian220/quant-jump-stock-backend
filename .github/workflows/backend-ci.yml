@@ -147,6 +147,8 @@ jobs:
           GCP_PROJECT_ID: quantiq-local
           VERTEX_AI_ENABLED: false
           MESSAGING_PROVIDER: pubsub
+          # Flyway
+          FLYWAY_ENABLED: true
           # Security
           APP_ENCRYPTION_KEY: CHANGE_THIS_TO_32_CHARACTERS_KEY
           # Test keys (not real)

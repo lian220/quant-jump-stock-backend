@@ -158,7 +158,11 @@ class PubSubMessagePublisherAdapter(
                 "userId" to request.userId,
                 "tickers" to request.tickers,
                 "benchmark" to request.benchmark,
-                "rebalancePeriod" to request.rebalancePeriod
+                "benchmarks" to request.benchmarks,
+                "rebalancePeriod" to request.rebalancePeriod,
+                "universeType" to request.universeType,
+                "backtestType" to request.backtestType,
+                "forceFull" to request.forceFull
             )
 
             request.riskSettings?.let { payload["riskSettings"] = it }

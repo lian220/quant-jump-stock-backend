@@ -3,10 +3,14 @@ package com.quantjumpstock.core.adapter.input.rest.backtest
 import com.quantjumpstock.core.application.auth.AuthService
 import com.quantjumpstock.core.application.backtest.*
 import com.quantjumpstock.core.application.portfolio.StrategyDefaultStockService
+import com.quantjumpstock.core.domain.model.backtest.BacktestStatus
+import com.quantjumpstock.core.domain.model.backtest.UniverseType
+import com.quantjumpstock.core.domain.port.output.BacktestResultRepository
 import com.quantjumpstock.core.domain.port.output.UserRepository
 import com.quantjumpstock.core.domain.port.output.Benchmark
 import com.quantjumpstock.core.domain.port.output.StockRepository
 import com.quantjumpstock.core.domain.port.output.StrategyRepository
+import org.slf4j.LoggerFactory
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -37,8 +41,10 @@ class BacktestController(
     private val userRepository: UserRepository,
     private val defaultStockService: StrategyDefaultStockService,
     private val stockRepository: StockRepository,
-    private val strategyRepository: StrategyRepository
+    private val strategyRepository: StrategyRepository,
+    private val backtestResultRepository: BacktestResultRepository
 ) {
+    private val logger = LoggerFactory.getLogger(this::class.java)
 
     /**
      * 백테스트 실행
@@ -70,37 +76,47 @@ class BacktestController(
             return ResponseEntity.badRequest().body(periodValidation)
         }
 
-        // 전략 존재 여부 검증
-        if (!strategyRepository.existsById(request.strategyId)) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+        // 전략 존재 여부 검증 (단일 조회로 TOCTOU 방지)
+        val strategy = strategyRepository.findById(request.strategyId)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(mapOf(
                     "error" to "STRATEGY_NOT_FOUND",
                     "message" to "전략을 찾을 수 없습니다: ${request.strategyId}"
                 ))
-        }
 
         // 문자열 userId → DB PK(Long) 변환하여 Kafka에 숫자 ID로 전달
         val userDbId = userRepository.findByUserId(userLoginId)?.id
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(mapOf("error" to "USER_NOT_FOUND", "message" to "사용자를 찾을 수 없습니다."))
         val userId = userDbId.toString()
-
-        // tickers가 비어있으면 전략 기본 종목 → stocks 테이블 전체 순서로 fallback
-        val effectiveTickers = if (request.tickers.isEmpty()) {
-            val fromDefault = try {
-                val defaultStocks = defaultStockService.getDefaultStocks(request.strategyId)
-                defaultStocks.stocks.mapNotNull { it.ticker }
-            } catch (e: Exception) {
-                emptyList()
+        val universeType = request.universeType?.let {
+            try { UniverseType.valueOf(it) } catch (e: Exception) {
+                logger.warn("Invalid universeType '{}', falling back to strategy default: {}", it, strategy.recommendedUniverseType, e)
+                strategy.recommendedUniverseType
             }
+        } ?: strategy.recommendedUniverseType
 
-            fromDefault.ifEmpty {
-                // 기본 종목 없으면 stocks 테이블 전체 종목 사용
-                stockRepository.findAll().mapNotNull { it.ticker }
+        // SCRUM-344: 티어별 백테스트 보관 제한 (무료 5개/전략, 프리미엄 무제한)
+        // NOTE: TOCTOU race condition exists here - two concurrent requests can both pass the count check.
+        // A proper fix requires a DB-level unique constraint or SELECT FOR UPDATE. Acceptable for now as
+        // the worst case is one extra backtest stored beyond the limit.
+        val tierInfo = userTierService.checkBacktestLimit(userLoginId)
+        if (tierInfo.tier == "FREE") {
+            val customCount = backtestResultRepository.countUserCustomByUserIdAndStrategyId(userDbId, request.strategyId)
+            if (customCount >= FREE_BACKTEST_LIMIT_PER_STRATEGY) {
+                return ResponseEntity.badRequest()
+                    .body(mapOf(
+                        "error" to "BACKTEST_LIMIT_EXCEEDED",
+                        "message" to "무료 사용자는 전략당 최대 ${FREE_BACKTEST_LIMIT_PER_STRATEGY}개의 커스텀 백테스트만 보관할 수 있습니다. 현재: ${customCount}개",
+                        "currentCount" to customCount,
+                        "limit" to FREE_BACKTEST_LIMIT_PER_STRATEGY,
+                        "tier" to "FREE"
+                    ))
             }
-        } else {
-            request.tickers
         }
+
+        // SCRUM-344: 유니버스 타입에 따른 종목 결정
+        val effectiveTickers = resolveTickersByUniverse(universeType, request.strategyId, request.tickers)
 
         if (effectiveTickers.isEmpty()) {
             return ResponseEntity.badRequest()
@@ -110,16 +126,93 @@ class BacktestController(
                 ))
         }
 
-        val effectiveRequest = request.copy(tickers = effectiveTickers)
+        val effectiveRequest = request.copy(tickers = effectiveTickers, universeType = universeType.name)
 
-        // 벤치마크 검증
-        if (!Benchmark.existsByTicker(effectiveRequest.benchmark)) {
+        // SCRUM-337: 다중 벤치마크 검증
+        val effectiveBenchmarks = effectiveRequest.effectiveBenchmarks()
+
+        // 최대 개수 검증
+        if (effectiveBenchmarks.size > Benchmark.MAX_BENCHMARKS) {
             return ResponseEntity.badRequest()
                 .body(mapOf(
-                    "error" to "INVALID_BENCHMARK",
-                    "message" to "지원하지 않는 벤치마크입니다: ${effectiveRequest.benchmark}",
-                    "availableBenchmarks" to "/api/v1/backtest/benchmarks"
+                    "error" to "TOO_MANY_BENCHMARKS",
+                    "message" to "벤치마크는 최대 ${Benchmark.MAX_BENCHMARKS}개까지 설정할 수 있습니다. 현재: ${effectiveBenchmarks.size}개"
                 ))
+        }
+
+        // 각 벤치마크 유효성 검증
+        for (bm in effectiveBenchmarks) {
+            if (!Benchmark.isValidBenchmark(bm)) {
+                return ResponseEntity.badRequest()
+                    .body(mapOf(
+                        "error" to "INVALID_BENCHMARK",
+                        "message" to "지원하지 않는 벤치마크입니다: $bm",
+                        "availableBenchmarks" to "/api/v1/backtest/benchmarks"
+                    ))
+            }
+
+            // STRATEGY:ID 형태인 경우 해당 전략 존재 여부 확인
+            val strategyBmId = Benchmark.parseStrategyId(bm)
+            if (strategyBmId != null && !strategyRepository.existsById(strategyBmId)) {
+                return ResponseEntity.badRequest()
+                    .body(mapOf(
+                        "error" to "STRATEGY_BENCHMARK_NOT_FOUND",
+                        "message" to "벤치마크로 지정한 전략을 찾을 수 없습니다: $bm"
+                    ))
+            }
+        }
+
+        // 중복 실행 방지: 동일 설정(벤치마크+자본금)의 기존 백테스트 확인
+        val effectiveBenchmark = effectiveBenchmarks.first()
+        val existingList = backtestResultRepository.findUserCustomBySettings(
+            userDbId, request.strategyId, effectiveBenchmark, request.initialCapital
+        )
+        val existing = existingList.firstOrNull()
+
+        if (existing != null) {
+            val reqStart = LocalDate.parse(request.startDate)
+            val reqEnd = LocalDate.parse(request.endDate)
+
+            when {
+                // RUNNING 상태 → 이미 실행 중
+                existing.status == BacktestStatus.RUNNING -> {
+                    logger.info("중복 방지: RUNNING 상태 백테스트 존재. userId={}, strategyId={}, existingId={}", userDbId, request.strategyId, existing.id)
+                    return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body(mapOf(
+                            "error" to "BACKTEST_ALREADY_RUNNING",
+                            "message" to "동일한 설정으로 이미 실행 중인 백테스트가 있습니다.",
+                            "existingBacktestId" to existing.id,
+                            "existingRequestId" to existing.requestId
+                        ))
+                }
+
+                // 기존 기간이 요청 기간을 포함 (완전 동일 포함)
+                existing.startDate <= reqStart && existing.endDate >= reqEnd -> {
+                    logger.info("중복 방지: 기존 결과 반환. userId={}, strategyId={}, existingId={}", userDbId, request.strategyId, existing.id)
+                    return ResponseEntity.ok(BacktestRunResponse(
+                        backtestId = existing.requestId ?: existing.id.toString(),
+                        status = "COMPLETED",
+                        estimatedTime = 0,
+                        message = "동일한 설정의 기존 백테스트 결과가 있습니다."
+                    ))
+                }
+
+                // 과거 확장 (startDate가 앞당겨짐) → 기존 삭제 후 재실행
+                reqStart < existing.startDate -> {
+                    logger.info("중복 방지: 과거 확장 → 기존 삭제 후 재실행. existingId={}, existing={}~{}, req={}~{}",
+                        existing.id, existing.startDate, existing.endDate, reqStart, reqEnd)
+                    existing.id?.let { backtestResultRepository.deleteById(it) }
+                    // 아래 신규 실행 로직으로 진행
+                }
+
+                // 미래 확장 (endDate만 늘어남, startDate 동일) → 기존 삭제 후 재실행
+                reqEnd > existing.endDate && reqStart == existing.startDate -> {
+                    logger.info("중복 방지: 미래 확장 → 기존 삭제 후 재실행. existingId={}, existing={}~{}, req={}~{}",
+                        existing.id, existing.startDate, existing.endDate, reqStart, reqEnd)
+                    existing.id?.let { backtestResultRepository.deleteById(it) }
+                    // 아래 신규 실행 로직으로 진행
+                }
+            }
         }
 
         // Rate Limit 원자적 체크 + 카운트 증가 (TOCTOU 방지)
@@ -284,50 +377,15 @@ class BacktestController(
         @Parameter(description = "페이지 크기 (최대 100)") @RequestParam(defaultValue = "20") size: Int,
         @RequestHeader("Authorization", required = false) authorization: String?
     ): ResponseEntity<PagedResponse<BacktestListItemResponse>> {
-        val userId = authorization?.let { extractUserIdAsLong(it) }
+        // 문자열 loginId → DB PK(Long) 변환하여 유저 격리 필터링
+        val userLoginId = authorization?.let { extractUserId(it) }
+        val userId = userLoginId?.let { userRepository.findByUserId(it)?.id }
         val safePage = page.coerceAtLeast(0)
         val safeSize = size.coerceIn(1, 100)
 
         val response = backtestService.getBacktestList(strategyId, userId, safePage, safeSize)
 
         return ResponseEntity.ok(response)
-    }
-
-    // ============================================================================
-    // Legacy Endpoint (하위 호환성)
-    // ============================================================================
-
-    /**
-     * 백테스트 요청 (Legacy)
-     * POST /api/v1/backtest/request
-     * @deprecated Use POST /api/v1/backtest/run instead
-     */
-    @Deprecated("Use POST /api/v1/backtest/run instead")
-    @PostMapping("/request")
-    @Operation(
-        summary = "백테스트 요청 (Legacy)",
-        description = "전략에 대한 백테스트를 요청합니다. 이 엔드포인트는 deprecated 되었습니다. /run을 사용하세요."
-    )
-    fun requestBacktest(
-        @RequestHeader("Authorization", required = false) authorization: String?,
-        @RequestBody request: BacktestRequestDto
-    ): ResponseEntity<*> {
-        // 백테스트 기간 검증 (최대 1년)
-        val periodValidation = validateBacktestPeriod(request.startDate, request.endDate)
-        if (periodValidation != null) {
-            return ResponseEntity.badRequest().body(periodValidation)
-        }
-
-        val userId = authorization?.let { extractUserId(it) }
-
-        @Suppress("DEPRECATION")
-        val response = backtestService.requestBacktest(request, userId)
-
-        return if (response.success) {
-            ResponseEntity.accepted().body(response)
-        } else {
-            ResponseEntity.badRequest().body(response)
-        }
     }
 
     // ============================================================================
@@ -391,7 +449,45 @@ class BacktestController(
         return null
     }
 
+    /**
+     * SCRUM-344: 유니버스 타입에 따른 종목 결정
+     */
+    private fun resolveTickersByUniverse(
+        universeType: UniverseType,
+        strategyId: Long,
+        requestTickers: List<String>
+    ): List<String> {
+        return when (universeType) {
+            // WARNING: stockRepository.findAll() is unbounded. Consider adding a limit or
+            // pagination if the stock universe grows significantly.
+            UniverseType.MARKET -> stockRepository.findAll().mapNotNull { it.ticker }
+            UniverseType.PORTFOLIO -> {
+                val fromDefault = try {
+                    defaultStockService.getDefaultStocks(strategyId).stocks.mapNotNull { it.ticker }
+                } catch (e: Exception) {
+                    emptyList()
+                }
+                fromDefault.ifEmpty { stockRepository.findAll().mapNotNull { it.ticker } }
+            }
+            UniverseType.FIXED -> {
+                requestTickers.ifEmpty {
+                    val fromDefault = try {
+                        defaultStockService.getDefaultStocks(strategyId).stocks.mapNotNull { it.ticker }
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+                    fromDefault.ifEmpty { stockRepository.findAll().mapNotNull { it.ticker } }
+                }
+            }
+            UniverseType.SECTOR -> {
+                logger.warn("SECTOR universe type is not yet implemented. strategyId={}", strategyId)
+                emptyList()
+            }
+        }
+    }
+
     companion object {
         private const val MAX_BACKTEST_DAYS = 365L
+        private const val FREE_BACKTEST_LIMIT_PER_STRATEGY = 5L
     }
 }

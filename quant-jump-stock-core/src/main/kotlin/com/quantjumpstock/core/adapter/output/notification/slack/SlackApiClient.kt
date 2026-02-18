@@ -19,6 +19,9 @@ class SlackApiClient(
     private val logger = LoggerFactory.getLogger(this::class.java)
     private val kst = ZoneId.of("Asia/Seoul")
 
+    @Value("\${slack.enabled:true}")
+    private var slackEnabled: Boolean = true
+
     @Value("\${slack.bot-token:}")
     private lateinit var slackBotToken: String
 
@@ -31,6 +34,14 @@ class SlackApiClient(
     @Value("\${slack.webhook-url-error:}")
     private lateinit var slackWebhookUrlError: String
 
+    private fun isDisabled(): Boolean {
+        if (!slackEnabled) {
+            logger.debug("Slack 비활성화 상태 (slack.enabled=false), 알림 건너뜀")
+            return true
+        }
+        return false
+    }
+
     private fun getCurrentTimeKST(): String = ZonedDateTime.now(kst).toString()
 
     /**
@@ -42,6 +53,7 @@ class SlackApiClient(
      * @return Slack 스레드 타임스탬프 (답글용)
      */
     fun notifyEconomicDataUpdateRequest(requestId: String, startDate: String? = null, endDate: String? = null): String? {
+        if (isDisabled()) return null
         val dateInfo = formatDateRange(startDate, endDate)
 
         if (slackBotToken.isBlank()) {
@@ -125,6 +137,7 @@ class SlackApiClient(
      * 경제 데이터 수집 오류 알림
      */
     fun notifyEconomicDataCollectionError(requestId: String, error: String) {
+        if (isDisabled()) return
         if (slackWebhookUrl.isBlank()) return
 
         try {
@@ -156,6 +169,7 @@ class SlackApiClient(
      * 스케줄러 상태 알림
      */
     fun notifySchedulerStatus(status: String, details: Map<String, Any>) {
+        if (isDisabled()) return
         if (slackWebhookUrl.isBlank()) return
 
         try {
@@ -216,6 +230,7 @@ class SlackApiClient(
      * @return Slack 스레드 타임스탬프 (답글용)
      */
     fun notifyTechnicalAnalysisRequest(requestId: String, startDate: String? = null, endDate: String? = null): String? {
+        if (isDisabled()) return null
         val dateInfo = formatDateRange(startDate, endDate)
 
         if (slackBotToken.isBlank()) {
@@ -269,6 +284,7 @@ class SlackApiClient(
      * @return Slack 스레드 타임스탬프 (답글용)
      */
     fun notifySentimentAnalysisRequest(requestId: String, startDate: String? = null, endDate: String? = null): String? {
+        if (isDisabled()) return null
         val dateInfo = formatDateRange(startDate, endDate)
 
         if (slackBotToken.isBlank()) {
@@ -322,6 +338,7 @@ class SlackApiClient(
      * @return Slack 스레드 타임스탬프 (답글용)
      */
     fun notifyStockRecommendationRequest(requestId: String, startDate: String? = null, endDate: String? = null): String? {
+        if (isDisabled()) return null
         val dateInfo = formatDateRange(startDate, endDate)
 
         if (slackBotToken.isBlank()) {
@@ -370,6 +387,7 @@ class SlackApiClient(
      * 분석 오류 알림
      */
     fun notifyAnalysisError(requestId: String, analysisType: String, error: String) {
+        if (isDisabled()) return
         if (slackWebhookUrl.isBlank()) return
 
         try {
@@ -445,6 +463,7 @@ class SlackApiClient(
      * @return Slack 스레드 타임스탬프 (답글용)
      */
     fun notifyVertexAIJobStarted(requestId: String, jobName: String): String? {
+        if (isDisabled()) return null
         if (slackBotToken.isBlank()) {
             logger.warn("⚠️ Slack Bot Token 없음 - 알림 발송 불가")
             return null
@@ -489,6 +508,7 @@ class SlackApiClient(
      * Vertex AI Job 완료 알림 (스레드 답글)
      */
     fun notifyVertexAIJobCompleted(requestId: String, jobName: String, duration: String, status: String, threadTs: String?) {
+        if (isDisabled()) return
         if (slackBotToken.isBlank()) {
             logger.warn("⚠️ Slack Bot Token 없음 - 알림 발송 불가")
             return
@@ -526,6 +546,7 @@ class SlackApiClient(
      * Vertex AI Job 실패 알림 (Error Webhook으로 전송)
      */
     fun notifyVertexAIJobFailed(requestId: String, jobName: String, error: String, threadTs: String?) {
+        if (isDisabled()) return
         // 1. Error Webhook으로 에러 알림 전송
         if (slackWebhookUrlError.isNotBlank()) {
             try {
@@ -593,6 +614,7 @@ class SlackApiClient(
         requestPath: String?,
         stackTrace: String?
     ) {
+        if (isDisabled()) return
         if (slackWebhookUrlError.isBlank()) {
             logger.debug("Slack error webhook URL not configured, skipping error notification")
             return

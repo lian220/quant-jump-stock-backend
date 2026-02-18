@@ -23,6 +23,8 @@ data class BacktestResult(
     val endDate: LocalDate,
     val initialCapital: BigDecimal,
     val benchmark: String = Benchmark.DEFAULT_TICKER,
+    // SCRUM-337: 다중 벤치마크 지원 (최대 3개)
+    val benchmarks: List<String> = listOf(Benchmark.DEFAULT_TICKER),
 
     // Performance Metrics
     val finalValue: BigDecimal,
@@ -70,6 +72,10 @@ data class BacktestResult(
 
     // Equity Curve (JSON)
     val equityCurve: String? = null,
+
+    // SCRUM-344: 유니버스 타입 + 백테스트 분류
+    val universeType: UniverseType = UniverseType.MARKET,
+    val backtestType: BacktestType = BacktestType.USER_CUSTOM,
 
     // Status
     val status: BacktestStatus = BacktestStatus.COMPLETED,

@@ -1,5 +1,6 @@
 package com.quantjumpstock.core.domain.model.strategy
 
+import com.quantjumpstock.core.domain.model.backtest.UniverseType
 import java.math.BigDecimal
 import java.time.LocalDateTime
 
@@ -32,6 +33,10 @@ data class Strategy(
         val status: StrategyStatus = StrategyStatus.DRAFT,
         val stockSelectionType: StockSelectionType = StockSelectionType.SCREENING,
         val investmentPhilosophy: String? = null,
+        // SCRUM-344: 유니버스 설정 + 대표 백테스트
+        val recommendedUniverseType: UniverseType = UniverseType.MARKET,
+        val supportedUniverseTypes: List<UniverseType> = listOf(UniverseType.MARKET, UniverseType.PORTFOLIO, UniverseType.FIXED),
+        val canonicalBacktestId: Long? = null,
         val conditions: String = "{}",
         val riskSettings: String = "{}",
         val positionSizing: String = "{}",
@@ -48,6 +53,9 @@ data class Strategy(
         require(subscriberCount >= 0) { "Subscriber count must be non-negative" }
         require(averageRating >= BigDecimal.ZERO && averageRating <= BigDecimal.valueOf(5)) {
             "Average rating must be between 0 and 5"
+        }
+        require(recommendedUniverseType in supportedUniverseTypes) {
+            "recommendedUniverseType=$recommendedUniverseType must be one of supportedUniverseTypes=$supportedUniverseTypes"
         }
     }
 

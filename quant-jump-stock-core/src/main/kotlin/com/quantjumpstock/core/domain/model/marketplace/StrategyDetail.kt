@@ -26,7 +26,11 @@ data class StrategyDetail(
     val latestBacktest: BacktestDetailSummary?,
     val currentHoldings: List<CurrentHolding>,
     val conditions: String = "{}",
-    val createdAt: LocalDateTime
+    val createdAt: LocalDateTime,
+    // SCRUM-344: 유니버스 + 대표 백테스트
+    val recommendedUniverseType: String = "MARKET",
+    val supportedUniverseTypes: List<String> = listOf("MARKET", "PORTFOLIO", "FIXED"),
+    val canonicalBacktestId: Long? = null
 )
 
 /**

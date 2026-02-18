@@ -10,12 +10,14 @@ import org.springframework.web.reactive.function.client.WebClient
 @Component
 class NewsSlackAlertAdapter(
     private val webClient: WebClient,
+    @Value("\${slack.enabled:true}") private val slackEnabled: Boolean,
     @Value("\${slack.webhook-url-news:}") private val slackWebhookUrl: String
 ) : NewsAlertSender {
 
     private val logger = LoggerFactory.getLogger(this::class.java)
 
     override fun sendAlert(message: String) {
+        if (!slackEnabled) return
         if (slackWebhookUrl.isBlank()) return
         try {
             webClient.post()

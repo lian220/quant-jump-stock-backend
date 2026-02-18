@@ -5,6 +5,8 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import com.quantjumpstock.core.domain.model.backtest.BacktestGradeCalculator
 import com.quantjumpstock.core.domain.model.backtest.BacktestResult
 import com.quantjumpstock.core.domain.model.backtest.BacktestTrade
+import com.quantjumpstock.core.domain.model.backtest.BacktestType
+import com.quantjumpstock.core.domain.model.backtest.UniverseType
 import com.quantjumpstock.core.domain.economic.port.output.MessagePublisher
 import com.quantjumpstock.core.domain.model.*
 import com.quantjumpstock.core.domain.port.output.BacktestResultRepository
@@ -40,6 +42,8 @@ class BacktestService(
 
         logger.info("백테스트 실행 요청: requestId=$requestId, strategyId=${request.strategyId}")
 
+        val effectiveBenchmarks = request.effectiveBenchmarks()
+
         val backtestRequest = BacktestRequest(
             requestId = requestId,
             strategyId = request.strategyId,
@@ -50,12 +54,16 @@ class BacktestService(
             source = "quantiq-core",
             userId = userId,
             tickers = request.tickers,
-            benchmark = request.benchmark,
+            benchmark = effectiveBenchmarks.first(),
+            benchmarks = effectiveBenchmarks,
             rebalancePeriod = request.rebalancePeriod.name,
             // SCRUM-258: 리스크 파라미터 변환
             riskSettings = request.riskSettings?.let { mapRiskSettings(it) },
             positionSizing = request.positionSizing?.let { mapPositionSizing(it) },
-            tradingCosts = request.tradingCosts?.let { mapTradingCosts(it) }
+            tradingCosts = request.tradingCosts?.let { mapTradingCosts(it) },
+            // SCRUM-344: 유니버스 + 백테스트 분류
+            universeType = request.universeType ?: UniverseType.MARKET.name,
+            backtestType = BacktestType.USER_CUSTOM.name
         )
 
         try {
@@ -68,11 +76,22 @@ class BacktestService(
                 startDate = java.time.LocalDate.parse(request.startDate),
                 endDate = java.time.LocalDate.parse(request.endDate),
                 initialCapital = request.initialCapital,
-                benchmark = request.benchmark,
+                benchmark = effectiveBenchmarks.first(),
+                benchmarks = effectiveBenchmarks,
                 finalValue = BigDecimal.ZERO,
                 totalReturn = BigDecimal.ZERO,
                 cagr = BigDecimal.ZERO,
                 mdd = BigDecimal.ZERO,
+                // SCRUM-344: 유니버스 + 백테스트 분류
+                universeType = request.universeType?.let {
+                    try {
+                        UniverseType.valueOf(it)
+                    } catch (e: IllegalArgumentException) {
+                        logger.warn("Unknown universeType: {}, defaulting to MARKET", it, e)
+                        UniverseType.MARKET
+                    }
+                } ?: UniverseType.MARKET,
+                backtestType = BacktestType.USER_CUSTOM,
                 status = com.quantjumpstock.core.domain.model.backtest.BacktestStatus.RUNNING,
                 errorMessage = null
             )
@@ -128,6 +147,7 @@ class BacktestService(
         val pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"))
 
         val pageResult = when {
+            strategyId != null && userId != null -> backtestResultRepository.findByStrategyIdAndUserIdOrderByCreatedAtDesc(strategyId, userId, pageable)
             strategyId != null -> backtestResultRepository.findByStrategyIdOrderByCreatedAtDesc(strategyId, pageable)
             userId != null -> backtestResultRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable)
             else -> backtestResultRepository.findAll(pageable)
@@ -246,6 +266,8 @@ class BacktestService(
             strategyId = result.strategyId,
             strategyName = result.strategyName,
             status = result.status.name,
+            universeType = result.universeType,
+            backtestType = result.backtestType,
             metrics = BacktestMetrics(
                 cagr = result.cagr,
                 mdd = result.mdd,
@@ -285,6 +307,8 @@ class BacktestService(
             benchmarkCurve = equityCurve?.filter { it.benchmark != null }?.map {
                 EquityCurvePoint(date = it.date, value = it.benchmark!!)
             }?.ifEmpty { null },
+            // SCRUM-337: 다중 벤치마크 커브 생성
+            benchmarkCurves = buildMultiBenchmarkCurves(equityCurve),
             trades = result.trades.map { mapToTradeResponse(it) },
             createdAt = result.createdAt,
             completedAt = result.completedAt
@@ -308,6 +332,9 @@ class BacktestService(
             cagr = result.cagr,
             mdd = result.mdd,
             sharpeRatio = result.sharpeRatio,
+            // SCRUM-344: 유니버스 + 백테스트 분류
+            universeType = result.universeType,
+            backtestType = result.backtestType,
             createdAt = result.createdAt,
             completedAt = result.completedAt
         )
@@ -335,6 +362,7 @@ class BacktestService(
 
     /**
      * JSON 문자열 → EquityCurve 파싱
+     * SCRUM-337: 다중 벤치마크 지원 (benchmarks 맵 파싱)
      */
     private fun parseEquityCurve(json: String): List<EquityCurvePoint>? {
         return try {
@@ -342,17 +370,60 @@ class BacktestService(
                 val date = point["date"]?.toString()
                 // Data Engine은 "equity" 키로 저장, 하위호환을 위해 "value"도 지원
                 val value = (point["equity"] ?: point["value"])?.toString()?.let { BigDecimal(it) }
+                // 하위호환: 단일 benchmark 필드
                 val benchmark = point["benchmark"]?.toString()?.let { BigDecimal(it) }
+                // SCRUM-337: 다중 benchmarks 맵 파싱
+                @Suppress("UNCHECKED_CAST")
+                val benchmarksRaw = point["benchmarks"] as? Map<String, Any?>
+                val benchmarks = benchmarksRaw?.mapNotNull { (k, v) ->
+                    v?.let { k to BigDecimal(it.toString()) }
+                }?.toMap()
                 if (date.isNullOrBlank() || value == null) {
                     null
                 } else {
-                    EquityCurvePoint(date = date, value = value, benchmark = benchmark)
+                    EquityCurvePoint(
+                        date = date,
+                        value = value,
+                        benchmark = benchmark,
+                        benchmarks = benchmarks
+                    )
                 }
             }
         } catch (e: Exception) {
             logger.warn("EquityCurve 파싱 실패: ${e.message}")
             null
         }
+    }
+
+    /**
+     * SCRUM-337: equity_curve의 benchmarks 맵에서 벤치마크별 커브 추출
+     */
+    private fun buildMultiBenchmarkCurves(
+        equityCurve: List<EquityCurvePoint>?
+    ): Map<String, List<EquityCurvePoint>>? {
+        if (equityCurve.isNullOrEmpty()) return null
+
+        // benchmarks 필드가 있는 포인트 수집
+        val hasBenchmarks = equityCurve.any { !it.benchmarks.isNullOrEmpty() }
+        if (!hasBenchmarks) return null
+
+        // 모든 벤치마크 티커 수집
+        val allTickers = equityCurve
+            .flatMap { it.benchmarks?.keys ?: emptySet() }
+            .toSet()
+
+        if (allTickers.isEmpty()) return null
+
+        return allTickers.associateWith { ticker ->
+            equityCurve.filter { point ->
+                point.benchmarks?.containsKey(ticker) == true
+            }.mapNotNull { point ->
+                point.benchmarks?.get(ticker)?.let { value ->
+                    EquityCurvePoint(date = point.date, value = value)
+                }
+            }
+        }.filterValues { it.isNotEmpty() }
+            .ifEmpty { null }
     }
 
     // ============================================================================
@@ -409,56 +480,6 @@ class BacktestService(
         )
     }
 
-    // ============================================================================
-    // Legacy 메서드 (하위 호환성)
-    // ============================================================================
-
-    /**
-     * 백테스트 요청 (Legacy)
-     * @deprecated Use runBacktest instead
-     */
-    @Deprecated("Use runBacktest instead", ReplaceWith("runBacktest(request, userId)"))
-    fun requestBacktest(request: BacktestRequestDto, userId: String?): BacktestResponse {
-        val requestId = UUID.randomUUID().toString()
-        val timestamp = ZonedDateTime.now(ZoneId.of("Asia/Seoul")).toString()
-
-        logger.info("백테스트 요청 시작: requestId=$requestId, strategyId=${request.strategyId}")
-
-        val backtestRequest = BacktestRequest(
-            requestId = requestId,
-            strategyId = request.strategyId,
-            startDate = request.startDate,
-            endDate = request.endDate,
-            initialCapital = request.initialCapital,
-            timestamp = timestamp,
-            source = "quantiq-core",
-            userId = userId,
-            tickers = request.tickers
-        )
-
-        try {
-            messagePublisher.publishBacktestRequest(
-                topic = EventTopics.BACKTEST_REQUEST,
-                request = backtestRequest
-            )
-
-            logger.info("백테스트 요청 성공: requestId=$requestId")
-
-            return BacktestResponse(
-                success = true,
-                requestId = requestId,
-                message = "백테스트 요청이 성공적으로 접수되었습니다."
-            )
-        } catch (e: Exception) {
-            logger.error("백테스트 요청 실패: requestId=$requestId", e)
-
-            return BacktestResponse(
-                success = false,
-                requestId = requestId,
-                message = "백테스트 요청에 실패했습니다: ${e.message}"
-            )
-        }
-    }
 }
 
 /**
@@ -471,30 +492,3 @@ class BacktestException(message: String, cause: Throwable? = null) : RuntimeExce
  */
 class BacktestNotFoundException(message: String) : RuntimeException(message)
 
-// ============================================================================
-// Legacy DTOs (하위 호환성)
-// ============================================================================
-
-/**
- * 백테스트 요청 DTO (Legacy)
- * @deprecated Use BacktestRunRequest instead
- */
-@Deprecated("Use BacktestRunRequest instead")
-data class BacktestRequestDto(
-    val strategyId: Long,
-    val startDate: String,          // yyyy-MM-dd
-    val endDate: String,            // yyyy-MM-dd
-    val initialCapital: BigDecimal,
-    val tickers: List<String> = emptyList()  // 백테스트 대상 종목
-)
-
-/**
- * 백테스트 응답 DTO (Legacy)
- * @deprecated Use BacktestRunResponse instead
- */
-@Deprecated("Use BacktestRunResponse instead")
-data class BacktestResponse(
-    val success: Boolean,
-    val requestId: String,
-    val message: String? = null
-)

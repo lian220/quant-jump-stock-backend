@@ -502,7 +502,13 @@ class BacktestServiceProtocol(Protocol):
         checkpoint: Optional[object],
         equity_curve_data: Optional[list] = None,
         benchmark: str = DEFAULT_BENCHMARK,
-        user_id: Optional[int] = None
+        benchmarks: Optional[list] = None,
+        user_id: Optional[int] = None,
+        risk_settings: Optional[dict] = None,
+        position_sizing: Optional[dict] = None,
+        trading_costs: Optional[dict] = None,
+        preloaded_data: Optional[dict] = None,
+        preloaded_benchmark: Optional[dict] = None
     ) -> object:
         """증분 백테스트 실행"""
         ...
@@ -689,10 +695,15 @@ class BacktestRequestHandler(MessageHandler):
         slippage_rate = payload.get("slippageRate", 0.0001)
         force_full = payload.get("forceFull", False)  # 강제 전체 실행 옵션
         benchmark = payload.get("benchmark", DEFAULT_BENCHMARK)
+        # SCRUM-337: 다중 벤치마크 지원
+        benchmarks = payload.get("benchmarks", [benchmark])
         # SCRUM-330: 리스크 관리 파라미터 수신
         risk_settings = payload.get("riskSettings")
         position_sizing = payload.get("positionSizing")
         trading_costs = payload.get("tradingCosts")
+        # SCRUM-344: 유니버스 타입 + 백테스트 분류
+        universe_type = payload.get("universeType", "MARKET")
+        backtest_type = payload.get("backtestType", "USER_CUSTOM")
         user_id = payload.get("userId")
         if user_id is not None:
             try:
@@ -736,14 +747,23 @@ class BacktestRequestHandler(MessageHandler):
                 # 전체 종목을 한번에 조회하여 데이터 존재 여부 확인 (1회 쿼리)
                 all_data = data_loader.load(tickers, start_dt, end_dt)
                 missing_tickers = [t for t in tickers if t not in all_data or all_data[t].empty]
+                available_tickers = [t for t in tickers if t not in missing_tickers]
 
                 if missing_tickers:
-                    error_msg = f"다음 종목의 데이터가 MongoDB에 없습니다: {', '.join(missing_tickers)}"
+                    logger.warning(
+                        f"데이터 없는 종목 {len(missing_tickers)}개 제외하고 진행: "
+                        f"{', '.join(missing_tickers)}"
+                    )
+
+                if not available_tickers:
+                    error_msg = f"백테스트 가능한 종목이 없습니다 (요청 종목 전부 데이터 없음: {', '.join(tickers)})"
                     logger.error(error_msg)
                     self._publish_failure(message, error_msg, start_time)
                     raise ValueError(error_msg)
 
-                logger.info(f"모든 종목({len(tickers)}개)의 데이터 존재 확인 완료")
+                # 데이터 있는 종목만으로 계속 진행
+                tickers = available_tickers
+                logger.info(f"백테스트 진행 종목: {len(tickers)}개 {tickers}")
 
                 # 🆕 로드한 데이터 저장 (재사용)
                 preloaded_data = all_data
@@ -774,7 +794,10 @@ class BacktestRequestHandler(MessageHandler):
                 equity_curve_data = None
 
                 # 강제 전체 실행이 아닌 경우, 기존 백테스트 및 체크포인트 조회
-                if not force_full:
+                # USER_CUSTOM은 항상 새 레코드 생성 (회차별 저장 보장)
+                # CANONICAL만 증분 업데이트 허용 (전략당 1개 유지)
+                is_canonical = backtest_type == "CANONICAL"
+                if not force_full and is_canonical:
                     existing_backtest = await self.backtest_repository.find_active_backtest(
                         strategy_id=strategy_id,
                         tickers=tickers,
@@ -811,6 +834,7 @@ class BacktestRequestHandler(MessageHandler):
                     checkpoint=checkpoint,
                     equity_curve_data=equity_curve_data,
                     benchmark=benchmark,
+                    benchmarks=benchmarks,
                     user_id=user_id,
                     risk_settings=risk_settings,
                     position_sizing=position_sizing,
@@ -833,8 +857,10 @@ class BacktestRequestHandler(MessageHandler):
                     result_id = incremental_result.backtest_id
                     logger.info(f"증분 백테스트 결과 업데이트: id={result_id}")
                 else:
-                    # 전체: 새 결과 저장 (user_id 포함)
+                    # 전체: 새 결과 저장 (user_id + SCRUM-344 메타데이터 포함)
                     result.user_id = user_id
+                    result.metadata["universe_type"] = universe_type
+                    result.metadata["backtest_type"] = backtest_type
                     result_id = await self.backtest_repository.save_result(
                         result,
                         request_id=message.request_id

@@ -23,5 +23,8 @@ data class MarketplaceStrategy(
     val averageRating: BigDecimal,
     val rebalanceFrequency: RebalanceFrequency,
     val latestBacktest: BacktestSummary?,
-    val createdAt: LocalDateTime
+    val createdAt: LocalDateTime,
+    // SCRUM-344: 유니버스 설정
+    val recommendedUniverseType: String = "MARKET",
+    val supportedUniverseTypes: List<String> = listOf("MARKET", "PORTFOLIO", "FIXED")
 )

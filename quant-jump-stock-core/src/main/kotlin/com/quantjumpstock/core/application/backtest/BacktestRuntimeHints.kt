@@ -1,5 +1,7 @@
 package com.quantjumpstock.core.application.backtest
 
+import com.quantjumpstock.core.domain.model.backtest.BacktestType
+import com.quantjumpstock.core.domain.model.backtest.UniverseType
 import org.springframework.aot.hint.MemberCategory
 import org.springframework.aot.hint.RuntimeHints
 import org.springframework.aot.hint.RuntimeHintsRegistrar
@@ -52,6 +54,8 @@ class BacktestRuntimeHints : RuntimeHintsRegistrar {
             SlippageType::class.java,
             RebalancePeriod::class.java,
             ExitReason::class.java,
+            UniverseType::class.java,
+            BacktestType::class.java,
 
             // 목록/페이징 응답
             BacktestListItemResponse::class.java,

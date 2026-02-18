@@ -4,6 +4,7 @@ import com.quantjumpstock.core.domain.model.strategy.Strategy
 import com.quantjumpstock.core.domain.model.strategy.StockSelectionType
 import com.quantjumpstock.core.domain.model.strategy.StrategyStatus
 import com.quantjumpstock.core.domain.model.strategy.RebalanceFrequency
+import com.quantjumpstock.core.domain.port.output.BacktestResultRepository
 import com.quantjumpstock.core.domain.port.output.StrategyRepository
 import com.quantjumpstock.core.domain.port.output.StrategyCategoryRepository
 import com.quantjumpstock.core.domain.port.output.UserRepository
@@ -26,7 +27,8 @@ class StrategyService(
     @Qualifier("strategyPersistenceAdapterV2")
     private val strategyRepository: StrategyRepository,
     private val userRepository: UserRepository,
-    private val categoryRepository: StrategyCategoryRepository
+    private val categoryRepository: StrategyCategoryRepository,
+    private val backtestResultRepository: BacktestResultRepository
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -226,11 +228,38 @@ class StrategyService(
             positionSizing = this.positionSizing,
             tradingCosts = this.tradingCosts,
             rebalanceFrequency = this.rebalanceFrequency,
+            // SCRUM-344: 유니버스 설정
+            recommendedUniverseType = this.recommendedUniverseType,
+            supportedUniverseTypes = this.supportedUniverseTypes,
+            // SCRUM-344: 대표 백테스트
+            canonicalBacktest = loadCanonicalBacktest(this.id!!),
             subscriberCount = this.subscriberCount,
             averageRating = this.averageRating,
             backtestResults = emptyList(), // 백테스트 결과는 별도 조회 필요
             createdAt = this.createdAt,
             updatedAt = this.updatedAt
+        )
+    }
+
+    /**
+     * SCRUM-344: Canonical 백테스트 로딩
+     */
+    private fun loadCanonicalBacktest(strategyId: Long): CanonicalBacktestSummary? {
+        val canonical = backtestResultRepository.findCanonicalByStrategyId(strategyId) ?: return null
+        return CanonicalBacktestSummary(
+            id = canonical.id!!,
+            cagr = canonical.cagr,
+            mdd = canonical.mdd,
+            sharpeRatio = canonical.sharpeRatio,
+            sortinoRatio = canonical.sortinoRatio,
+            totalReturn = canonical.totalReturn,
+            volatility = canonical.volatility,
+            winRate = canonical.winRate,
+            benchmarkReturn = canonical.benchmarkReturn,
+            alpha = canonical.alpha,
+            startDate = canonical.startDate,
+            endDate = canonical.endDate,
+            equityCurve = canonical.equityCurve
         )
     }
 

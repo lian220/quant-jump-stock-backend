@@ -22,6 +22,7 @@ import com.quantjumpstock.core.domain.model.strategy.RebalanceFrequency
 import com.quantjumpstock.core.domain.model.strategy.StockSelectionType
 import com.quantjumpstock.core.adapter.output.persistence.jpa.StockSelectionType as JpaStockSelectionType
 import com.quantjumpstock.core.domain.port.output.MarketplaceRepository
+import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Component
@@ -38,6 +39,8 @@ class MarketplacePersistenceAdapter(
     private val strategySignalJpaRepository: StrategySignalJpaRepository,
     private val objectMapper: ObjectMapper
 ) : MarketplaceRepository {
+
+    private val logger = LoggerFactory.getLogger(this::class.java)
 
     override fun findMarketplaceStrategies(
         categoryCode: String?,
@@ -100,6 +103,14 @@ class MarketplacePersistenceAdapter(
             .maxByOrNull { it.createdAt }
             ?: completedBacktests.maxByOrNull { it.createdAt }
 
+        // SCRUM-344: supportedUniverseTypes JSONB → List<String>
+        val supportedTypes = try {
+            objectMapper.readValue<List<String>>(entity.supportedUniverseTypes)
+        } catch (e: Exception) {
+            logger.warn("supportedUniverseTypes JSON 파싱 실패, 기본값 사용", e)
+            listOf("MARKET", "PORTFOLIO", "FIXED")
+        }
+
         return MarketplaceStrategy(
             id = entity.id!!,
             name = entity.name,
@@ -113,7 +124,9 @@ class MarketplacePersistenceAdapter(
             averageRating = entity.averageRating,
             rebalanceFrequency = mapRebalanceFrequency(entity.rebalanceFrequency),
             latestBacktest = latestBacktest?.let { toBacktestSummary(it) },
-            createdAt = entity.createdAt
+            createdAt = entity.createdAt,
+            recommendedUniverseType = entity.recommendedUniverseType,
+            supportedUniverseTypes = supportedTypes
         )
     }
 
@@ -161,6 +174,14 @@ class MarketplacePersistenceAdapter(
             .maxByOrNull { it.createdAt }
             ?: completedBacktests.maxByOrNull { it.createdAt }
 
+        // SCRUM-344: supportedUniverseTypes JSONB → List<String>
+        val supportedTypes = try {
+            objectMapper.readValue<List<String>>(entity.supportedUniverseTypes)
+        } catch (e: Exception) {
+            logger.warn("supportedUniverseTypes JSON 파싱 실패, 기본값 사용", e)
+            listOf("MARKET", "PORTFOLIO", "FIXED")
+        }
+
         return StrategyDetail(
             id = entity.id!!,
             name = entity.name,
@@ -176,7 +197,10 @@ class MarketplacePersistenceAdapter(
             latestBacktest = latestBacktest?.let { toBacktestDetailSummary(it) },
             currentHoldings = currentHoldings,
             conditions = entity.conditions,
-            createdAt = entity.createdAt
+            createdAt = entity.createdAt,
+            recommendedUniverseType = entity.recommendedUniverseType,
+            supportedUniverseTypes = supportedTypes,
+            canonicalBacktestId = entity.canonicalBacktestId
         )
     }
 

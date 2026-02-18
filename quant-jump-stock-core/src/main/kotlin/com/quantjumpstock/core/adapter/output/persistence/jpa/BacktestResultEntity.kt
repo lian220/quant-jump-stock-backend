@@ -40,6 +40,11 @@ data class BacktestResultEntity(
     @Column(length = 20)
     val benchmark: String = Benchmark.DEFAULT_TICKER,
 
+    // SCRUM-337: 다중 벤치마크 (JSONB 배열)
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "benchmarks", columnDefinition = "jsonb")
+    val benchmarks: String? = null,
+
     // Performance Metrics
     @Column(name = "final_value", nullable = false, precision = 15, scale = 2)
     val finalValue: BigDecimal,
@@ -162,6 +167,13 @@ data class BacktestResultEntity(
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "trading_costs", columnDefinition = "jsonb")
     val tradingCosts: String? = null,
+
+    // SCRUM-344: 유니버스 타입 + 백테스트 분류
+    @Column(name = "universe_type", length = 20)
+    val universeType: String = "MARKET",
+
+    @Column(name = "backtest_type", length = 20)
+    val backtestType: String = "USER_CUSTOM",
 
     // Status
     @Enumerated(EnumType.STRING)

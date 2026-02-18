@@ -1,5 +1,6 @@
 package com.quantjumpstock.core.adapter.output.persistence.jpa
 
+import com.quantjumpstock.core.domain.model.backtest.UniverseType
 import jakarta.persistence.*
 import java.time.LocalDateTime
 import org.hibernate.annotations.CreationTimestamp
@@ -36,6 +37,10 @@ data class StrategySubscriptionEntity(
 
     @Column(name = "notify_rebalance")
     var notifyRebalance: Boolean = true,
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "preferred_universe_type", length = 20, nullable = false)
+    var preferredUniverseType: UniverseType = UniverseType.MARKET,
 
     @Column(name = "subscribed_at")
     val subscribedAt: LocalDateTime = LocalDateTime.now(),

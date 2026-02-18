@@ -45,11 +45,22 @@ class BenchmarkMongoAdapter(
 
         // projection: date + 필요한 필드만
         query.fields().include("date")
-        // ETF도 yfinance_indicators에 저장되어 있을 수 있으므로 모두 yfinance_indicators 조회
-        query.fields().include("yfinance_indicators")
-        // stocks에도 있을 수 있으므로 함께 조회
-        query.fields().include("stocks.$ticker.close")
-        query.fields().include("stocks.$ticker.close_price")
+        when (type) {
+            BenchmarkType.ETF -> {
+                // ETF는 stocks에 주로 저장, yfinance_indicators에도 있을 수 있음
+                query.fields().include("stocks.$ticker.close")
+                query.fields().include("stocks.$ticker.close_price")
+                query.fields().include("yfinance_indicators")
+            }
+            BenchmarkType.INDEX, BenchmarkType.COMMODITY, BenchmarkType.CURRENCY -> {
+                query.fields().include("yfinance_indicators")
+            }
+            BenchmarkType.STRATEGY -> {
+                // STRATEGY 타입은 MongoDB에서 조회하지 않음 (별도 처리)
+                log.debug("STRATEGY type does not use MongoDB. Returning empty list.")
+                return emptyList()
+            }
+        }
 
         val docs = mongoTemplate.find(query, Map::class.java, "daily_stock_data")
 
