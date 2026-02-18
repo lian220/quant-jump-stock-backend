@@ -151,7 +151,8 @@ class AdminBacktestService(
         benchmark: String = DEFAULT_BENCHMARK,
         initialCapital: BigDecimal = DEFAULT_INITIAL_CAPITAL
     ): AdminBacktestRunAllResult {
-        val publishedStrategies = strategyRepository.findByStatus(StrategyStatus.PUBLISHED)
+        val publishedStrategies = strategyRepository.findByStatus(StrategyStatus.PUBLISHED) +
+            strategyRepository.findByStatus(StrategyStatus.ACTIVE)
         logger.info("Admin 백테스트 일괄 실행 시작: {}개 전략, period={}일", publishedStrategies.size, periodDays)
 
         val triggeredIds = mutableListOf<Long>()
