@@ -9,7 +9,7 @@ services:
     ports:
       - "8681:8681"
     healthcheck:
-      test: ["CMD-SHELL", "nc -z localhost 8681 || exit 1"]
+      test: [ "CMD-SHELL", "nc -z localhost 8681 || exit 1" ]
       interval: 5s
       timeout: 3s
       retries: 10
@@ -194,6 +194,8 @@ services:
       TZ: "Asia/Seoul"
       # Server Port (Core API)
       SERVER_PORT: ${CORE_API_PORT:-10010}
+      # Spring Profile (로컬 기본값)
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
       # PostgreSQL - env var 우선, 미설정시 로컬 Docker
       SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://${DB_HOST:-postgresql}:${DB_PORT:-5432}/${DB_NAME:-quantiq}}
       SPRING_DATASOURCE_USERNAME: ${DB_USER:-quantiq_user}
@@ -211,18 +213,20 @@ services:
       PUBSUB_EMULATOR_HOST: ${PUBSUB_EMULATOR_HOST:-pubsub-emulator:8681}
       SPRING_CLOUD_GCP_PUBSUB_EMULATORHOST: ${PUBSUB_EMULATOR_HOST:-pubsub-emulator:8681}
       PUBSUB_PROJECT_ID: ${PUBSUB_PROJECT_ID:-quantiq-local}
-      # Slack (SLACK_BOT_TOKEN은 .env.common에서 로드)
-      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL_TRADING}
-      SLACK_CHANNEL: "C0A1XASTLH2"
+      # Slack - 기본값 비활성화, .env.prod에서 활성화
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL_TRADING:-}
+      SLACK_CHANNEL: ${SLACK_CHANNEL:-}
+      SLACK_ENABLED: ${SLACK_ENABLED:-false}
+      # GCP / Vertex AI - 기본값 비활성화, .env.prod에서 활성화
+      GCP_ENABLED: ${GCP_ENABLED:-false}
+      VERTEX_AI_ENABLED: ${VERTEX_AI_ENABLED:-true}
+      VERTEX_AI_CREDENTIALS_PATH: "/app/credentials/vertex-ai-key.json"
       # KIS (Korean Investment & Securities) - Temporary
       KIS_APP_KEY: "test_app_key"
       KIS_APP_SECRET: "test_app_secret"
       # Migration
       DB_DUAL_WRITE: "true"
       DB_READ_SOURCE: "rdb"
-      # Vertex AI (VERTEX_AI_ENABLED는 env_file에서 로드)
-      # 컨테이너 내부 크레덴셜 경로만 고정 설정
-      VERTEX_AI_CREDENTIALS_PATH: "/app/credentials/vertex-ai-key.json"
       # Data Engine (컨테이너 네트워크용)
       DATA_ENGINE_BASE_URL: "http://quant-jump-stock-data-engine:${DATA_ENGINE_PORT:-10020}"
       # JVM Heap Settings

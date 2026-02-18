@@ -13,9 +13,16 @@ spring:
         emulator-host: ${PUBSUB_EMULATOR_HOST:localhost:8681}
 
 # ============================================
+# Vertex AI / GCP 비활성화 (로컬 개발 환경)
+# ============================================
+gcp:
+  enabled: false
+
+# ============================================
 # Slack 비활성화 (로컬 개발 환경)
 # ============================================
 slack:
+  enabled: false
   webhook-url: ""
   webhook-url-error: ""
   webhook-url-news: ""
