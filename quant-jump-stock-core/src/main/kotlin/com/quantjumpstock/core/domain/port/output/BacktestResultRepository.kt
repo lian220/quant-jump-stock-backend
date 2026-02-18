@@ -3,6 +3,7 @@ package com.quantjumpstock.core.domain.port.output
 import com.quantjumpstock.core.domain.model.backtest.BacktestResult
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
+import java.math.BigDecimal
 
 /**
  * BacktestResult Repository Port - 도메인 포트
@@ -73,4 +74,12 @@ interface BacktestResultRepository {
      * ID로 백테스트 결과 삭제
      */
     fun deleteById(id: Long)
+
+    /**
+     * 중복 실행 방지: 동일 설정(벤치마크+자본금)의 USER_CUSTOM 백테스트 조회
+     */
+    fun findUserCustomBySettings(
+        userId: Long, strategyId: Long,
+        benchmark: String, initialCapital: BigDecimal
+    ): List<BacktestResult>
 }

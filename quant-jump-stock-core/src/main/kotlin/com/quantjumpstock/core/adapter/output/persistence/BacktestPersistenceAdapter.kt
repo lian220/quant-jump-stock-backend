@@ -119,6 +119,15 @@ class BacktestPersistenceAdapter(
         backtestResultJpaRepository.deleteById(id)
     }
 
+    override fun findUserCustomBySettings(
+        userId: Long, strategyId: Long,
+        benchmark: String, initialCapital: java.math.BigDecimal
+    ): List<BacktestResult> {
+        logger.debug("동일 설정 USER_CUSTOM 조회: userId={}, strategyId={}, benchmark={}, capital={}", userId, strategyId, benchmark, initialCapital)
+        return backtestResultJpaRepository.findUserCustomBySettings(userId, strategyId, benchmark, initialCapital)
+            .map { toDomain(it) }
+    }
+
     // ===== BacktestTradeRepository =====
 
     override fun saveAll(trades: List<BacktestTrade>): List<BacktestTrade> {

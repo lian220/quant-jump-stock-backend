@@ -3,12 +3,14 @@ package com.quantjumpstock.core.adapter.input.rest.backtest
 import com.quantjumpstock.core.application.auth.AuthService
 import com.quantjumpstock.core.application.backtest.*
 import com.quantjumpstock.core.application.portfolio.StrategyDefaultStockService
+import com.quantjumpstock.core.domain.model.backtest.BacktestStatus
 import com.quantjumpstock.core.domain.model.backtest.UniverseType
 import com.quantjumpstock.core.domain.port.output.BacktestResultRepository
 import com.quantjumpstock.core.domain.port.output.UserRepository
 import com.quantjumpstock.core.domain.port.output.Benchmark
 import com.quantjumpstock.core.domain.port.output.StockRepository
 import com.quantjumpstock.core.domain.port.output.StrategyRepository
+import org.slf4j.LoggerFactory
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.media.Content
@@ -42,6 +44,7 @@ class BacktestController(
     private val strategyRepository: StrategyRepository,
     private val backtestResultRepository: BacktestResultRepository
 ) {
+    private val logger = LoggerFactory.getLogger(this::class.java)
 
     /**
      * 백테스트 실행
@@ -150,6 +153,59 @@ class BacktestController(
                         "error" to "STRATEGY_BENCHMARK_NOT_FOUND",
                         "message" to "벤치마크로 지정한 전략을 찾을 수 없습니다: $bm"
                     ))
+            }
+        }
+
+        // 중복 실행 방지: 동일 설정(벤치마크+자본금)의 기존 백테스트 확인
+        val effectiveBenchmark = effectiveBenchmarks.first()
+        val existingList = backtestResultRepository.findUserCustomBySettings(
+            userDbId, request.strategyId, effectiveBenchmark, request.initialCapital
+        )
+        val existing = existingList.firstOrNull()
+
+        if (existing != null) {
+            val reqStart = LocalDate.parse(request.startDate)
+            val reqEnd = LocalDate.parse(request.endDate)
+
+            when {
+                // RUNNING 상태 → 이미 실행 중
+                existing.status == BacktestStatus.RUNNING -> {
+                    logger.info("중복 방지: RUNNING 상태 백테스트 존재. userId={}, strategyId={}, existingId={}", userDbId, request.strategyId, existing.id)
+                    return ResponseEntity.status(HttpStatus.CONFLICT)
+                        .body(mapOf(
+                            "error" to "BACKTEST_ALREADY_RUNNING",
+                            "message" to "동일한 설정으로 이미 실행 중인 백테스트가 있습니다.",
+                            "existingBacktestId" to existing.id,
+                            "existingRequestId" to existing.requestId
+                        ))
+                }
+
+                // 기존 기간이 요청 기간을 포함 (완전 동일 포함)
+                existing.startDate <= reqStart && existing.endDate >= reqEnd -> {
+                    logger.info("중복 방지: 기존 결과 반환. userId={}, strategyId={}, existingId={}", userDbId, request.strategyId, existing.id)
+                    return ResponseEntity.ok(BacktestRunResponse(
+                        backtestId = existing.requestId ?: existing.id.toString(),
+                        status = "COMPLETED",
+                        estimatedTime = 0,
+                        message = "동일한 설정의 기존 백테스트 결과가 있습니다."
+                    ))
+                }
+
+                // 과거 확장 (startDate가 앞당겨짐) → 기존 삭제 후 재실행
+                reqStart < existing.startDate -> {
+                    logger.info("중복 방지: 과거 확장 → 기존 삭제 후 재실행. existingId={}, existing={}~{}, req={}~{}",
+                        existing.id, existing.startDate, existing.endDate, reqStart, reqEnd)
+                    existing.id?.let { backtestResultRepository.deleteById(it) }
+                    // 아래 신규 실행 로직으로 진행
+                }
+
+                // 미래 확장 (endDate만 늘어남, startDate 동일) → 기존 삭제 후 재실행
+                reqEnd > existing.endDate && reqStart == existing.startDate -> {
+                    logger.info("중복 방지: 미래 확장 → 기존 삭제 후 재실행. existingId={}, existing={}~{}, req={}~{}",
+                        existing.id, existing.startDate, existing.endDate, reqStart, reqEnd)
+                    existing.id?.let { backtestResultRepository.deleteById(it) }
+                    // 아래 신규 실행 로직으로 진행
+                }
             }
         }
 

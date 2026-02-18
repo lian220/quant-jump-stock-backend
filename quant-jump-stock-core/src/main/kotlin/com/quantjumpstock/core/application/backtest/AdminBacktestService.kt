@@ -71,6 +71,35 @@ class AdminBacktestService(
             throw IllegalStateException("백테스트 대상 종목이 없습니다. stocks 테이블에 종목을 등록해주세요.")
         }
 
+        // 기존 CANONICAL 백테스트 확인 (전략당 1개만 유지)
+        val existing = backtestResultRepository.findCanonicalByStrategyId(strategyId)
+        if (existing != null) {
+            // RUNNING 상태면 스킵
+            if (existing.status == BacktestStatus.RUNNING) {
+                logger.info("CANONICAL 이미 실행 중: strategyId={}, backtestId={}", strategyId, existing.id)
+                return AdminBacktestRunResult(
+                    strategyId = strategyId,
+                    requestId = existing.requestId ?: "",
+                    startDate = existing.startDate.toString(),
+                    endDate = existing.endDate.toString()
+                )
+            }
+            // 동일 설정+기간이면 스킵 (이미 완료된 결과 재사용)
+            if (existing.startDate == startDate && existing.endDate == endDate
+                && existing.benchmark == benchmark && existing.initialCapital.compareTo(initialCapital) == 0) {
+                logger.info("CANONICAL 동일 설정 스킵: strategyId={}, backtestId={}", strategyId, existing.id)
+                return AdminBacktestRunResult(
+                    strategyId = strategyId,
+                    requestId = existing.requestId ?: "",
+                    startDate = existing.startDate.toString(),
+                    endDate = existing.endDate.toString()
+                )
+            }
+            // 설정이 다르면 삭제 후 재실행
+            logger.info("기존 CANONICAL 삭제: strategyId={}, backtestId={}", strategyId, existing.id)
+            existing.id?.let { backtestResultRepository.deleteById(it) }
+        }
+
         logger.info(
             "Admin 백테스트 실행: strategyId={}, requestId={}, period={}일, tickers={}",
             strategyId, requestId, effectivePeriod, tickers.size

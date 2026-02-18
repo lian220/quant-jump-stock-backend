@@ -5,6 +5,7 @@ import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
 import org.springframework.stereotype.Repository
+import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.util.Optional
@@ -118,4 +119,20 @@ interface BacktestResultJpaRepository : JpaRepository<BacktestResultEntity, Long
     fun findByStrategyIdAndBacktestTypeOrderByCreatedAtDesc(
         strategyId: Long, backtestType: String, pageable: Pageable
     ): Page<BacktestResultEntity>
+
+    // 중복 실행 방지: 동일 설정의 USER_CUSTOM 백테스트 조회
+    @Query("""
+        SELECT br FROM BacktestResultEntity br
+        WHERE br.user.id = :userId
+        AND br.strategy.id = :strategyId
+        AND br.benchmark = :benchmark
+        AND br.initialCapital = :initialCapital
+        AND br.backtestType = 'USER_CUSTOM'
+        AND br.status IN ('COMPLETED', 'RUNNING')
+        ORDER BY br.createdAt DESC
+    """)
+    fun findUserCustomBySettings(
+        userId: Long, strategyId: Long,
+        benchmark: String, initialCapital: BigDecimal
+    ): List<BacktestResultEntity>
 }
