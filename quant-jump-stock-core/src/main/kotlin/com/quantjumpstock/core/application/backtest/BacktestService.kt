@@ -142,6 +142,7 @@ class BacktestService(
         val pageable = PageRequest.of(safePage, safeSize, Sort.by(Sort.Direction.DESC, "createdAt"))
 
         val pageResult = when {
+            strategyId != null && userId != null -> backtestResultRepository.findByStrategyIdAndUserIdOrderByCreatedAtDesc(strategyId, userId, pageable)
             strategyId != null -> backtestResultRepository.findByStrategyIdOrderByCreatedAtDesc(strategyId, pageable)
             userId != null -> backtestResultRepository.findByUserIdOrderByCreatedAtDesc(userId, pageable)
             else -> backtestResultRepository.findAll(pageable)

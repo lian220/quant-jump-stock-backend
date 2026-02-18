@@ -315,7 +315,9 @@ class BacktestController(
         @Parameter(description = "페이지 크기 (최대 100)") @RequestParam(defaultValue = "20") size: Int,
         @RequestHeader("Authorization", required = false) authorization: String?
     ): ResponseEntity<PagedResponse<BacktestListItemResponse>> {
-        val userId = authorization?.let { extractUserIdAsLong(it) }
+        // 문자열 loginId → DB PK(Long) 변환하여 유저 격리 필터링
+        val userLoginId = authorization?.let { extractUserId(it) }
+        val userId = userLoginId?.let { userRepository.findByUserId(it)?.id }
         val safePage = page.coerceAtLeast(0)
         val safeSize = size.coerceIn(1, 100)
 

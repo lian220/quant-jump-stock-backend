@@ -81,6 +81,12 @@ class BacktestPersistenceAdapter(
             .map { toDomain(it) }
     }
 
+    override fun findByStrategyIdAndUserIdOrderByCreatedAtDesc(strategyId: Long, userId: Long, pageable: Pageable): Page<BacktestResult> {
+        logger.debug("전략+사용자별 백테스트 결과 조회: strategyId={}, userId={}", strategyId, userId)
+        return backtestResultJpaRepository.findByStrategyIdAndUserIdOrderByCreatedAtDesc(strategyId, userId, pageable)
+            .map { toDomain(it) }
+    }
+
     override fun findAll(pageable: Pageable): Page<BacktestResult> {
         logger.debug("전체 백테스트 결과 조회")
         return backtestResultJpaRepository.findAll(pageable).map { toDomain(it) }

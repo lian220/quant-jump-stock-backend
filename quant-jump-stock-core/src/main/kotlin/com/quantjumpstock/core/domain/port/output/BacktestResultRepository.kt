@@ -45,6 +45,11 @@ interface BacktestResultRepository {
     fun findByUserIdOrderByCreatedAtDesc(userId: Long, pageable: Pageable): Page<BacktestResult>
 
     /**
+     * 전략 ID + 사용자 ID로 백테스트 결과 목록 조회 (유저 격리)
+     */
+    fun findByStrategyIdAndUserIdOrderByCreatedAtDesc(strategyId: Long, userId: Long, pageable: Pageable): Page<BacktestResult>
+
+    /**
      * 전체 백테스트 결과 페이징 조회
      */
     fun findAll(pageable: Pageable): Page<BacktestResult>

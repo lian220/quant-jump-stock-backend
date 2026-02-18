@@ -23,6 +23,9 @@ interface BacktestResultJpaRepository : JpaRepository<BacktestResultEntity, Long
 
     fun findByUserIdOrderByCreatedAtDesc(userId: Long, pageable: Pageable): Page<BacktestResultEntity>
 
+    // 전략 + 유저 필터링 (유저 격리)
+    fun findByStrategyIdAndUserIdOrderByCreatedAtDesc(strategyId: Long, userId: Long, pageable: Pageable): Page<BacktestResultEntity>
+
     // 전략의 최신 완료된 백테스트
     @Query("""
         SELECT br FROM BacktestResultEntity br
