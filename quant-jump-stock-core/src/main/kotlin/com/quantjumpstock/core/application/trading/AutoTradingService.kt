@@ -266,7 +266,16 @@ class AutoTradingService(
                 }
             }
 
-            if (hasPortfolioOrFixed && portfolioTickers.isNotEmpty()) portfolioTickers else null
+            when {
+                hasPortfolioOrFixed && portfolioTickers.isNotEmpty() -> portfolioTickers
+                hasPortfolioOrFixed -> {
+                    // PORTFOLIO/FIXED subscriptions exist but no default stocks configured.
+                    // Return empty set (deny all) instead of null (allow all) to prevent fail-open.
+                    logger.warn("PORTFOLIO/FIXED subscriptions found for user $userId but no default stocks configured. Denying all tickers.")
+                    emptySet()
+                }
+                else -> null
+            }
         } catch (e: Exception) {
             logger.warn("Failed to resolve universe ticker filter for user $userId, defaulting to MARKET", e)
             null

@@ -39,7 +39,7 @@ data class StrategySubscriptionEntity(
     var notifyRebalance: Boolean = true,
 
     @Enumerated(EnumType.STRING)
-    @Column(name = "preferred_universe_type", length = 20)
+    @Column(name = "preferred_universe_type", length = 20, nullable = false)
     var preferredUniverseType: UniverseType = UniverseType.MARKET,
 
     @Column(name = "subscribed_at")

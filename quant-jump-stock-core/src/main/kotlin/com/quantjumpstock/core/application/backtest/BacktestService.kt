@@ -84,7 +84,12 @@ class BacktestService(
                 mdd = BigDecimal.ZERO,
                 // SCRUM-344: 유니버스 + 백테스트 분류
                 universeType = request.universeType?.let {
-                    try { UniverseType.valueOf(it) } catch (e: Exception) { UniverseType.MARKET }
+                    try {
+                        UniverseType.valueOf(it)
+                    } catch (e: IllegalArgumentException) {
+                        logger.warn("Unknown universeType: {}, defaulting to MARKET", it, e)
+                        UniverseType.MARKET
+                    }
                 } ?: UniverseType.MARKET,
                 backtestType = BacktestType.USER_CUSTOM,
                 status = com.quantjumpstock.core.domain.model.backtest.BacktestStatus.RUNNING,
@@ -369,10 +374,10 @@ class BacktestService(
                 val benchmark = point["benchmark"]?.toString()?.let { BigDecimal(it) }
                 // SCRUM-337: 다중 benchmarks 맵 파싱
                 @Suppress("UNCHECKED_CAST")
-                val benchmarksRaw = point["benchmarks"] as? Map<String, Any>
-                val benchmarks = benchmarksRaw?.mapValues { (_, v) ->
-                    BigDecimal(v.toString())
-                }
+                val benchmarksRaw = point["benchmarks"] as? Map<String, Any?>
+                val benchmarks = benchmarksRaw?.mapNotNull { (k, v) ->
+                    v?.let { k to BigDecimal(it.toString()) }
+                }?.toMap()
                 if (date.isNullOrBlank() || value == null) {
                     null
                 } else {

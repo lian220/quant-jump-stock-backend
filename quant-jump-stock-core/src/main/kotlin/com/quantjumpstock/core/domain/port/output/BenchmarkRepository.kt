@@ -67,7 +67,7 @@ enum class Benchmark(
 
         /** 벤치마크 유효성 검증 (일반 + STRATEGY 모두 지원) */
         fun isValidBenchmark(ticker: String): Boolean =
-            existsByTicker(ticker) || isStrategyBenchmark(ticker)
+            existsByTicker(ticker) || (isStrategyBenchmark(ticker) && parseStrategyId(ticker) != null)
 
         fun getAll(): List<BenchmarkInfo> =
             entries.map { BenchmarkInfo(it.ticker, it.displayName, it.type.value) }

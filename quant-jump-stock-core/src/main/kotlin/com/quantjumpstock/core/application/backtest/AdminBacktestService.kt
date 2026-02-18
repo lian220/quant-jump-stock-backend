@@ -14,7 +14,6 @@ import com.quantjumpstock.core.events.EventTopics
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.ZoneId
@@ -49,7 +48,6 @@ class AdminBacktestService(
      *
      * @return 실행 정보 (requestId, startDate, endDate)
      */
-    @Transactional
     fun runBacktest(
         strategyId: Long,
         periodDays: Long = DEFAULT_PERIOD_DAYS,
@@ -159,7 +157,12 @@ class AdminBacktestService(
                     )
                 )
             }
-            throw e
+            return AdminBacktestRunResult(
+                strategyId = strategyId,
+                requestId = requestId,
+                startDate = startDate.toString(),
+                endDate = endDate.toString()
+            )
         }
 
         return AdminBacktestRunResult(

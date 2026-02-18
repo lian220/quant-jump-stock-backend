@@ -1,4 +1,4 @@
-/* V51__Enable_RLS_All_Tables.sql */
+/* V50__Secure_Flyway_History.sql */
 
 -- 1. 사용자 및 보안 관련 테이블 잠금
 ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;

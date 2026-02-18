@@ -90,10 +90,16 @@ class BacktestController(
                 .body(mapOf("error" to "USER_NOT_FOUND", "message" to "사용자를 찾을 수 없습니다."))
         val userId = userDbId.toString()
         val universeType = request.universeType?.let {
-            try { UniverseType.valueOf(it) } catch (e: Exception) { strategy.recommendedUniverseType }
+            try { UniverseType.valueOf(it) } catch (e: Exception) {
+                logger.warn("Invalid universeType '{}', falling back to strategy default: {}", it, strategy.recommendedUniverseType, e)
+                strategy.recommendedUniverseType
+            }
         } ?: strategy.recommendedUniverseType
 
         // SCRUM-344: 티어별 백테스트 보관 제한 (무료 5개/전략, 프리미엄 무제한)
+        // NOTE: TOCTOU race condition exists here - two concurrent requests can both pass the count check.
+        // A proper fix requires a DB-level unique constraint or SELECT FOR UPDATE. Acceptable for now as
+        // the worst case is one extra backtest stored beyond the limit.
         val tierInfo = userTierService.checkBacktestLimit(userLoginId)
         if (tierInfo.tier == "FREE") {
             val customCount = backtestResultRepository.countUserCustomByUserIdAndStrategyId(userDbId, request.strategyId)
@@ -452,6 +458,8 @@ class BacktestController(
         requestTickers: List<String>
     ): List<String> {
         return when (universeType) {
+            // WARNING: stockRepository.findAll() is unbounded. Consider adding a limit or
+            // pagination if the stock universe grows significantly.
             UniverseType.MARKET -> stockRepository.findAll().mapNotNull { it.ticker }
             UniverseType.PORTFOLIO -> {
                 val fromDefault = try {
@@ -471,7 +479,10 @@ class BacktestController(
                     fromDefault.ifEmpty { stockRepository.findAll().mapNotNull { it.ticker } }
                 }
             }
-            UniverseType.SECTOR -> stockRepository.findAll().mapNotNull { it.ticker }
+            UniverseType.SECTOR -> {
+                logger.warn("SECTOR universe type is not yet implemented. strategyId={}", strategyId)
+                emptyList()
+            }
         }
     }
 

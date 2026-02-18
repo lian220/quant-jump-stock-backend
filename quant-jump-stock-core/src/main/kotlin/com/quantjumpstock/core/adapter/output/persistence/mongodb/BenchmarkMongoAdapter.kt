@@ -57,6 +57,8 @@ class BenchmarkMongoAdapter(
             }
             BenchmarkType.STRATEGY -> {
                 // STRATEGY 타입은 MongoDB에서 조회하지 않음 (별도 처리)
+                log.debug("STRATEGY type does not use MongoDB. Returning empty list.")
+                return emptyList()
             }
         }
 

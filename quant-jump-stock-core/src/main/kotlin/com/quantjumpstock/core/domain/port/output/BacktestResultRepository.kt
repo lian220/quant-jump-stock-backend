@@ -1,6 +1,7 @@
 package com.quantjumpstock.core.domain.port.output
 
 import com.quantjumpstock.core.domain.model.backtest.BacktestResult
+import com.quantjumpstock.core.domain.model.backtest.BacktestType
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.Pageable
 import java.math.BigDecimal
@@ -68,7 +69,7 @@ interface BacktestResultRepository {
     /**
      * SCRUM-344: 전략의 COMPLETED 백테스트 목록 조회 (특정 타입)
      */
-    fun findByStrategyIdAndBacktestType(strategyId: Long, backtestType: String, pageable: Pageable): Page<BacktestResult>
+    fun findByStrategyIdAndBacktestType(strategyId: Long, backtestType: BacktestType, pageable: Pageable): Page<BacktestResult>
 
     /**
      * ID로 백테스트 결과 삭제

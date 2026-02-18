@@ -107,10 +107,10 @@ class BacktestPersistenceAdapter(
     }
 
     override fun findByStrategyIdAndBacktestType(
-        strategyId: Long, backtestType: String, pageable: org.springframework.data.domain.Pageable
+        strategyId: Long, backtestType: BacktestType, pageable: org.springframework.data.domain.Pageable
     ): Page<BacktestResult> {
         return backtestResultJpaRepository.findByStrategyIdAndBacktestTypeOrderByCreatedAtDesc(
-            strategyId, backtestType, pageable
+            strategyId, backtestType.name, pageable
         ).map { toDomain(it) }
     }
 
@@ -441,7 +441,7 @@ class BacktestPersistenceAdapter(
     private fun parseBacktestType(value: String): BacktestType = try {
         BacktestType.valueOf(value)
     } catch (e: Exception) {
-        logger.warn("Unknown backtestType: {}, defaulting to USER_CUSTOM", value)
+        logger.warn("Unknown backtestType: {}, defaulting to USER_CUSTOM", value, e)
         BacktestType.USER_CUSTOM
     }
 }

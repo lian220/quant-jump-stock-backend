@@ -238,7 +238,7 @@ class BacktestApplicationService:
                 slippage_model = "fixed"
 
         # SCRUM-337: 다중 벤치마크 리스트 결정
-        effective_benchmarks = benchmarks if benchmarks else [benchmark]
+        effective_benchmarks = benchmarks if benchmarks is not None else [benchmark]
 
         config = BacktestConfig(
             start_date=self._parse_date(start_date),

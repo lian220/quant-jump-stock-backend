@@ -349,7 +349,8 @@ class BacktestEngine:
                     )
                     if bm_data is not None:
                         self._multi_benchmark_data[bm_ticker] = bm_data
-                        self._multi_benchmark_values[bm_ticker] = []
+                        if bm_ticker not in self._multi_benchmark_values:
+                            self._multi_benchmark_values[bm_ticker] = []
                         logger.info(f"Loaded benchmark data: {bm_ticker}")
                     else:
                         logger.warning(f"No benchmark data for: {bm_ticker}")

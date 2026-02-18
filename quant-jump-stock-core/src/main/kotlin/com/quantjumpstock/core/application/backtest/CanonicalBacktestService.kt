@@ -26,7 +26,7 @@ import java.util.UUID
  * SCRUM-344: Canonical Backtest Service
  *
  * 전략별 대표(Canonical) 백테스트를 관리합니다.
- * - 표준 파라미터(1년, 1천만원, SPY)로 자동 실행
+ * - 표준 파라미터(1년, 1천만원, ^GSPC)로 자동 실행
  * - PUBLISHED 전략 대상 일괄 갱신
  * - 완료 시 strategies.canonical_backtest_id 업데이트
  */
@@ -49,7 +49,6 @@ class CanonicalBacktestService(
     /**
      * 특정 전략의 Canonical 백테스트 실행
      */
-    @Transactional
     fun runCanonicalBacktest(strategyId: Long) {
         val strategy = strategyRepository.findById(strategyId)
             ?: run {
@@ -62,7 +61,9 @@ class CanonicalBacktestService(
         val startDate = endDate.minusDays(CANONICAL_PERIOD_DAYS)
         val timestamp = ZonedDateTime.now(ZoneId.of("Asia/Seoul")).toString()
 
-        // 전략의 추천 유니버스 타입에 따라 종목 결정
+        // TODO: 전략의 추천 유니버스 타입(strategy.universeType)에 따라 종목을 필터링해야 함
+        //  현재는 모든 종목을 사용하므로 전략별 유니버스 최적화가 안 됨
+        logger.warn("전략의 유니버스 타입을 무시하고 전체 종목 사용 중: strategyId={}", strategyId)
         val tickers = stockRepository.findAll().mapNotNull { it.ticker }
         if (tickers.isEmpty()) {
             logger.warn("Canonical 백테스트 대상 종목 없음: strategyId={}", strategyId)
@@ -124,7 +125,6 @@ class CanonicalBacktestService(
                     )
                 )
             }
-            throw e
         }
     }
 
