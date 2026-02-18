@@ -5,6 +5,8 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import com.quantjumpstock.core.domain.model.backtest.BacktestGradeCalculator
 import com.quantjumpstock.core.domain.model.backtest.BacktestResult
 import com.quantjumpstock.core.domain.model.backtest.BacktestTrade
+import com.quantjumpstock.core.domain.model.backtest.BacktestType
+import com.quantjumpstock.core.domain.model.backtest.UniverseType
 import com.quantjumpstock.core.domain.economic.port.output.MessagePublisher
 import com.quantjumpstock.core.domain.model.*
 import com.quantjumpstock.core.domain.port.output.BacktestResultRepository
@@ -58,7 +60,10 @@ class BacktestService(
             // SCRUM-258: 리스크 파라미터 변환
             riskSettings = request.riskSettings?.let { mapRiskSettings(it) },
             positionSizing = request.positionSizing?.let { mapPositionSizing(it) },
-            tradingCosts = request.tradingCosts?.let { mapTradingCosts(it) }
+            tradingCosts = request.tradingCosts?.let { mapTradingCosts(it) },
+            // SCRUM-344: 유니버스 + 백테스트 분류
+            universeType = request.universeType ?: UniverseType.MARKET.name,
+            backtestType = BacktestType.USER_CUSTOM.name
         )
 
         try {
@@ -77,6 +82,11 @@ class BacktestService(
                 totalReturn = BigDecimal.ZERO,
                 cagr = BigDecimal.ZERO,
                 mdd = BigDecimal.ZERO,
+                // SCRUM-344: 유니버스 + 백테스트 분류
+                universeType = request.universeType?.let {
+                    try { UniverseType.valueOf(it) } catch (e: Exception) { UniverseType.MARKET }
+                } ?: UniverseType.MARKET,
+                backtestType = BacktestType.USER_CUSTOM,
                 status = com.quantjumpstock.core.domain.model.backtest.BacktestStatus.RUNNING,
                 errorMessage = null
             )
@@ -314,6 +324,9 @@ class BacktestService(
             cagr = result.cagr,
             mdd = result.mdd,
             sharpeRatio = result.sharpeRatio,
+            // SCRUM-344: 유니버스 + 백테스트 분류
+            universeType = result.universeType.name,
+            backtestType = result.backtestType.name,
             createdAt = result.createdAt,
             completedAt = result.completedAt
         )

@@ -48,4 +48,19 @@ interface BacktestResultRepository {
      * 전체 백테스트 결과 페이징 조회
      */
     fun findAll(pageable: Pageable): Page<BacktestResult>
+
+    /**
+     * SCRUM-344: 전략의 Canonical 백테스트 조회
+     */
+    fun findCanonicalByStrategyId(strategyId: Long): BacktestResult?
+
+    /**
+     * SCRUM-344: 사용자의 전략별 커스텀 백테스트 수 조회
+     */
+    fun countUserCustomByUserIdAndStrategyId(userId: Long, strategyId: Long): Long
+
+    /**
+     * SCRUM-344: 전략의 COMPLETED 백테스트 목록 조회 (특정 타입)
+     */
+    fun findByStrategyIdAndBacktestType(strategyId: Long, backtestType: String, pageable: Pageable): Page<BacktestResult>
 }

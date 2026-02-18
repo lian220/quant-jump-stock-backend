@@ -54,6 +54,17 @@ data class StrategyEntity(
     @Column(name = "investment_philosophy", columnDefinition = "TEXT")
     val investmentPhilosophy: String? = null,
 
+    // SCRUM-344: 유니버스 설정 + 대표 백테스트
+    @Column(name = "recommended_universe_type", length = 20)
+    val recommendedUniverseType: String = "MARKET",
+
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "supported_universe_types", columnDefinition = "jsonb")
+    val supportedUniverseTypes: String = "[\"MARKET\",\"PORTFOLIO\",\"FIXED\"]",
+
+    @Column(name = "canonical_backtest_id")
+    val canonicalBacktestId: Long? = null,
+
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb", nullable = false)
     val conditions: String = "{}",

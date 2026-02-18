@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.quantjumpstock.core.domain.model.backtest.BacktestResult
 import com.quantjumpstock.core.domain.model.backtest.BacktestStatus
+import com.quantjumpstock.core.domain.model.backtest.BacktestType
 import com.quantjumpstock.core.domain.model.backtest.BacktestTrade
 import com.quantjumpstock.core.domain.model.backtest.BacktestTradeSide
 import com.quantjumpstock.core.domain.port.output.Benchmark
@@ -26,7 +27,8 @@ class BacktestResultSaveService(
     private val backtestResultRepository: BacktestResultRepository,
     private val backtestTradeRepository: BacktestTradeRepository,
     private val userRepository: UserRepository,
-    private val objectMapper: ObjectMapper
+    private val objectMapper: ObjectMapper,
+    private val canonicalBacktestService: CanonicalBacktestService
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
@@ -99,6 +101,9 @@ class BacktestResultSaveService(
                 val saved = backtestResultRepository.save(updated)
                 logger.info("백테스트 RUNNING → COMPLETED (증분 결과 복사): requestId=$requestId, placeholder=${placeholder.id}, source=${actualResult.id}")
 
+                // SCRUM-344: Canonical 백테스트 완료 시 전략 업데이트
+                notifyCanonicalIfNeeded(saved)
+
                 // 거래 내역도 복사
                 if (actualResult.trades.isNotEmpty()) {
                     val copiedTrades = actualResult.trades.map { trade ->
@@ -156,8 +161,11 @@ class BacktestResultSaveService(
                 status = BacktestStatus.COMPLETED,
                 completedAt = LocalDateTime.now()
             )
-            backtestResultRepository.save(updated)
+            val saved2 = backtestResultRepository.save(updated)
             logger.info("백테스트 RUNNING → COMPLETED 업데이트: requestId=$requestId, id=${placeholder.id}")
+
+            // SCRUM-344: Canonical 백테스트 완료 시 전략 업데이트
+            notifyCanonicalIfNeeded(saved2)
 
             // 이벤트에 trades가 있으면 저장
             val trades = payload.get("trades")
@@ -330,6 +338,20 @@ class BacktestResultSaveService(
 
         backtestTradeRepository.saveAll(tradeEntities)
         logger.info("거래 내역 저장 완료: ${tradeEntities.size} 건")
+    }
+
+    // ============================================================================
+    // SCRUM-344: Canonical Backtest Hook
+    // ============================================================================
+
+    private fun notifyCanonicalIfNeeded(result: BacktestResult) {
+        if (result.backtestType == BacktestType.CANONICAL && result.status == BacktestStatus.COMPLETED) {
+            try {
+                canonicalBacktestService.onCanonicalBacktestCompleted(result.strategyId, result.id!!)
+            } catch (e: Exception) {
+                logger.warn("Canonical 백테스트 완료 처리 실패: strategyId={}, backtestId={}", result.strategyId, result.id, e)
+            }
+        }
     }
 
     // ============================================================================

@@ -52,6 +52,8 @@ class BacktestRuntimeHints : RuntimeHintsRegistrar {
             SlippageType::class.java,
             RebalancePeriod::class.java,
             ExitReason::class.java,
+            com.quantjumpstock.core.domain.model.backtest.UniverseType::class.java,
+            com.quantjumpstock.core.domain.model.backtest.BacktestType::class.java,
 
             // 목록/페이징 응답
             BacktestListItemResponse::class.java,

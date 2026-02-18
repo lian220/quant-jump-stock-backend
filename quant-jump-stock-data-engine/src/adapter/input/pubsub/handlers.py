@@ -696,6 +696,9 @@ class BacktestRequestHandler(MessageHandler):
         risk_settings = payload.get("riskSettings")
         position_sizing = payload.get("positionSizing")
         trading_costs = payload.get("tradingCosts")
+        # SCRUM-344: 유니버스 타입 + 백테스트 분류
+        universe_type = payload.get("universeType", "MARKET")
+        backtest_type = payload.get("backtestType", "USER_CUSTOM")
         user_id = payload.get("userId")
         if user_id is not None:
             try:
@@ -837,8 +840,10 @@ class BacktestRequestHandler(MessageHandler):
                     result_id = incremental_result.backtest_id
                     logger.info(f"증분 백테스트 결과 업데이트: id={result_id}")
                 else:
-                    # 전체: 새 결과 저장 (user_id 포함)
+                    # 전체: 새 결과 저장 (user_id + SCRUM-344 메타데이터 포함)
                     result.user_id = user_id
+                    result.metadata["universe_type"] = universe_type
+                    result.metadata["backtest_type"] = backtest_type
                     result_id = await self.backtest_repository.save_result(
                         result,
                         request_id=message.request_id

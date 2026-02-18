@@ -22,7 +22,11 @@ data class BacktestRequest(
         // SCRUM-258: 리스크 파라미터
         val riskSettings: RiskSettingsModel? = null,
         val positionSizing: PositionSizingModel? = null,
-        val tradingCosts: TradingCostsModel? = null
+        val tradingCosts: TradingCostsModel? = null,
+
+        // SCRUM-344: 유니버스 타입 + 백테스트 분류
+        val universeType: String = "MARKET",
+        val backtestType: String = "USER_CUSTOM"
 )
 
 /** 리스크 설정 Domain Model */

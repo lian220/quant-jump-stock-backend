@@ -168,6 +168,13 @@ data class BacktestResultEntity(
     @Column(name = "trading_costs", columnDefinition = "jsonb")
     val tradingCosts: String? = null,
 
+    // SCRUM-344: 유니버스 타입 + 백테스트 분류
+    @Column(name = "universe_type", length = 20)
+    val universeType: String = "MARKET",
+
+    @Column(name = "backtest_type", length = 20)
+    val backtestType: String = "USER_CUSTOM",
+
     // Status
     @Enumerated(EnumType.STRING)
     @Column(length = 20)

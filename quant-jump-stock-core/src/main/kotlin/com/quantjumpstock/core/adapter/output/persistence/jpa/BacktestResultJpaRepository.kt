@@ -91,4 +91,28 @@ interface BacktestResultJpaRepository : JpaRepository<BacktestResultEntity, Long
         ORDER BY br.cagr DESC
     """)
     fun findBestPerformingByStrategyId(strategyId: Long, pageable: Pageable): List<BacktestResultEntity>
+
+    // SCRUM-344: Canonical 백테스트 조회
+    @Query("""
+        SELECT br FROM BacktestResultEntity br
+        WHERE br.strategy.id = :strategyId
+        AND br.backtestType = 'CANONICAL'
+        AND br.status = 'COMPLETED'
+        ORDER BY br.createdAt DESC
+    """)
+    fun findCanonicalByStrategyId(strategyId: Long, pageable: Pageable): List<BacktestResultEntity>
+
+    // SCRUM-344: 사용자 커스텀 백테스트 수 조회
+    @Query("""
+        SELECT COUNT(br) FROM BacktestResultEntity br
+        WHERE br.user.id = :userId
+        AND br.strategy.id = :strategyId
+        AND br.backtestType = 'USER_CUSTOM'
+    """)
+    fun countUserCustomByUserIdAndStrategyId(userId: Long, strategyId: Long): Long
+
+    // SCRUM-344: 전략별 백테스트 타입 필터 조회
+    fun findByStrategyIdAndBacktestTypeOrderByCreatedAtDesc(
+        strategyId: Long, backtestType: String, pageable: Pageable
+    ): Page<BacktestResultEntity>
 }

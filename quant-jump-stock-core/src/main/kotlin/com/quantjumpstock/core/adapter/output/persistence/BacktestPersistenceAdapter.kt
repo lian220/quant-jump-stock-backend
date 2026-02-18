@@ -12,6 +12,8 @@ import com.quantjumpstock.core.domain.model.backtest.BacktestResult
 import com.quantjumpstock.core.domain.model.backtest.BacktestStatus
 import com.quantjumpstock.core.domain.model.backtest.BacktestTrade
 import com.quantjumpstock.core.domain.model.backtest.BacktestTradeSide
+import com.quantjumpstock.core.domain.model.backtest.BacktestType
+import com.quantjumpstock.core.domain.model.backtest.UniverseType
 import com.quantjumpstock.core.domain.port.output.BacktestResultRepository
 import com.quantjumpstock.core.domain.port.output.BacktestTradeRepository
 import com.quantjumpstock.core.domain.port.output.Benchmark
@@ -82,6 +84,28 @@ class BacktestPersistenceAdapter(
     override fun findAll(pageable: Pageable): Page<BacktestResult> {
         logger.debug("전체 백테스트 결과 조회")
         return backtestResultJpaRepository.findAll(pageable).map { toDomain(it) }
+    }
+
+    // ===== SCRUM-344: Canonical & Universe Queries =====
+
+    override fun findCanonicalByStrategyId(strategyId: Long): BacktestResult? {
+        logger.debug("Canonical 백테스트 조회: strategyId={}", strategyId)
+        val results = backtestResultJpaRepository.findCanonicalByStrategyId(
+            strategyId, org.springframework.data.domain.PageRequest.of(0, 1)
+        )
+        return results.firstOrNull()?.let { toDomain(it) }
+    }
+
+    override fun countUserCustomByUserIdAndStrategyId(userId: Long, strategyId: Long): Long {
+        return backtestResultJpaRepository.countUserCustomByUserIdAndStrategyId(userId, strategyId)
+    }
+
+    override fun findByStrategyIdAndBacktestType(
+        strategyId: Long, backtestType: String, pageable: org.springframework.data.domain.Pageable
+    ): Page<BacktestResult> {
+        return backtestResultJpaRepository.findByStrategyIdAndBacktestTypeOrderByCreatedAtDesc(
+            strategyId, backtestType, pageable
+        ).map { toDomain(it) }
     }
 
     // ===== BacktestTradeRepository =====
@@ -160,6 +184,9 @@ class BacktestPersistenceAdapter(
             alpha = entity.alpha,
             beta = entity.beta,
             equityCurve = entity.equityCurve,
+            // SCRUM-344: 유니버스 타입 + 백테스트 분류
+            universeType = parseUniverseType(entity.universeType),
+            backtestType = parseBacktestType(entity.backtestType),
             status = mapStatus(entity.status),
             errorMessage = entity.errorMessage,
             trades = emptyList(),
@@ -218,6 +245,9 @@ class BacktestPersistenceAdapter(
             alpha = entity.alpha,
             beta = entity.beta,
             equityCurve = entity.equityCurve,
+            // SCRUM-344: 유니버스 타입 + 백테스트 분류
+            universeType = parseUniverseType(entity.universeType),
+            backtestType = parseBacktestType(entity.backtestType),
             status = mapStatus(entity.status),
             errorMessage = entity.errorMessage,
             trades = entity.trades.map { toDomain(it) },
@@ -282,6 +312,9 @@ class BacktestPersistenceAdapter(
             alpha = domain.alpha,
             beta = domain.beta,
             equityCurve = domain.equityCurve,
+            // SCRUM-344: 유니버스 타입 + 백테스트 분류
+            universeType = domain.universeType.name,
+            backtestType = domain.backtestType.name,
             status = mapStatus(domain.status),
             errorMessage = domain.errorMessage,
             createdAt = domain.createdAt,
@@ -373,5 +406,21 @@ class BacktestPersistenceAdapter(
     private fun mapTradeSide(domainSide: BacktestTradeSide): JpaBacktestTradeSide = when (domainSide) {
         BacktestTradeSide.BUY -> JpaBacktestTradeSide.BUY
         BacktestTradeSide.SELL -> JpaBacktestTradeSide.SELL
+    }
+
+    // ===== SCRUM-344: Universe/Backtest Type Parsing =====
+
+    private fun parseUniverseType(value: String): UniverseType = try {
+        UniverseType.valueOf(value)
+    } catch (e: Exception) {
+        logger.warn("Unknown universeType: {}, defaulting to MARKET", value)
+        UniverseType.MARKET
+    }
+
+    private fun parseBacktestType(value: String): BacktestType = try {
+        BacktestType.valueOf(value)
+    } catch (e: Exception) {
+        logger.warn("Unknown backtestType: {}, defaulting to USER_CUSTOM", value)
+        BacktestType.USER_CUSTOM
     }
 }

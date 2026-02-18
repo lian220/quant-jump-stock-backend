@@ -149,7 +149,10 @@ class MarketplaceService(
                     signalReason = it.signalReason
                 )
             } ?: emptyList(),
-            createdAt = this.createdAt
+            createdAt = this.createdAt,
+            // SCRUM-344: 유니버스 + 대표 백테스트
+            recommendedUniverseType = this.recommendedUniverseType,
+            supportedUniverseTypes = this.supportedUniverseTypes
         )
     }
 

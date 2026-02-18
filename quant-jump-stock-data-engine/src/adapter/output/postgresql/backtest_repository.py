@@ -185,13 +185,15 @@ class PostgresBacktestRepository:
                 risk_settings,
                 position_sizing,
                 trading_costs,
-                benchmarks
+                benchmarks,
+                universe_type,
+                backtest_type
             ) VALUES (
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                 %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                %s, %s, %s, %s, %s, %s, %s
+                %s, %s, %s, %s, %s, %s, %s, %s, %s
             )
             ON CONFLICT (request_id) WHERE request_id IS NOT NULL DO UPDATE SET
                 final_value = EXCLUDED.final_value,
@@ -233,7 +235,9 @@ class PostgresBacktestRepository:
                 risk_settings = EXCLUDED.risk_settings,
                 position_sizing = EXCLUDED.position_sizing,
                 trading_costs = EXCLUDED.trading_costs,
-                benchmarks = EXCLUDED.benchmarks
+                benchmarks = EXCLUDED.benchmarks,
+                universe_type = EXCLUDED.universe_type,
+                backtest_type = EXCLUDED.backtest_type
             RETURNING id
             """,
             (
@@ -284,6 +288,8 @@ class PostgresBacktestRepository:
                 json.dumps(result.position_sizing) if result.position_sizing else '{}',
                 json.dumps(result.trading_costs_config) if result.trading_costs_config else '{}',
                 json.dumps(result.metadata.get("benchmark_tickers", ["SPY"])) if result.metadata else '["SPY"]',
+                result.metadata.get("universe_type", "MARKET") if result.metadata else "MARKET",
+                result.metadata.get("backtest_type", "USER_CUSTOM") if result.metadata else "USER_CUSTOM",
             )
         )
         return cursor.fetchone()[0]

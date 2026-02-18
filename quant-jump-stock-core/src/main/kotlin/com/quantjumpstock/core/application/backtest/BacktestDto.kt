@@ -20,6 +20,9 @@ data class BacktestRunRequest(
     val rebalancePeriod: RebalancePeriod = RebalancePeriod.MONTHLY,
     val tickers: List<String> = emptyList(),
 
+    // SCRUM-344: 유니버스 타입 (null이면 전략의 recommended 사용)
+    val universeType: String? = null,
+
     // SCRUM-258: 리스크 파라미터
     val riskSettings: RiskSettings? = null,
     val positionSizing: PositionSizing? = null,
@@ -288,6 +291,9 @@ data class BacktestListItemResponse(
     val cagr: BigDecimal?,
     val mdd: BigDecimal?,
     val sharpeRatio: BigDecimal?,
+    // SCRUM-344: 유니버스 + 백테스트 분류
+    val universeType: String? = null,
+    val backtestType: String? = null,
     val createdAt: LocalDateTime,
     val completedAt: LocalDateTime?
 )

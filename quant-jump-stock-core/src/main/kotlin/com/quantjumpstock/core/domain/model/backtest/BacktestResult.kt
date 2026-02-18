@@ -73,6 +73,10 @@ data class BacktestResult(
     // Equity Curve (JSON)
     val equityCurve: String? = null,
 
+    // SCRUM-344: 유니버스 타입 + 백테스트 분류
+    val universeType: UniverseType = UniverseType.MARKET,
+    val backtestType: BacktestType = BacktestType.USER_CUSTOM,
+
     // Status
     val status: BacktestStatus = BacktestStatus.COMPLETED,
     val errorMessage: String? = null,
