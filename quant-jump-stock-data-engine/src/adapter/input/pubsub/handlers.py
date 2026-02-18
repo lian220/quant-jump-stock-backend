@@ -794,7 +794,10 @@ class BacktestRequestHandler(MessageHandler):
                 equity_curve_data = None
 
                 # 강제 전체 실행이 아닌 경우, 기존 백테스트 및 체크포인트 조회
-                if not force_full:
+                # USER_CUSTOM은 항상 새 레코드 생성 (회차별 저장 보장)
+                # CANONICAL만 증분 업데이트 허용 (전략당 1개 유지)
+                is_canonical = backtest_type == "CANONICAL"
+                if not force_full and is_canonical:
                     existing_backtest = await self.backtest_repository.find_active_backtest(
                         strategy_id=strategy_id,
                         tickers=tickers,

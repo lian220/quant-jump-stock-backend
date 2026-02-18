@@ -46,14 +46,14 @@ class PredictionResultRepositoryAdapter(
     /**
      * 특정 날짜, Composite Score 이상의 매수 신호 조회
      *
-     * ⚠️ minConfidence는 이제 Composite Score 기준 (0~7.5)
-     *    예: minConfidence=5.25 → 5.25점 이상
+     * ⚠️ minCompositeScore: Composite Score 기준 (0~7.5)
+     *    예: minCompositeScore=5.25 → 5.25점 이상
      */
     override fun findHighConfidenceBuySignals(
         date: LocalDate,
-        minConfidence: Double
+        minCompositeScore: Double
     ): List<PredictionResult> {
-        val minScore = BigDecimal.valueOf(minConfidence)
+        val minScore = BigDecimal.valueOf(minCompositeScore)
 
         return jpaRepository.findByAnalysisDateAndCompositeScoreGreaterThanEqualOrderByCompositeScoreDesc(
             date,

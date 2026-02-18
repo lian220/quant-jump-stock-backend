@@ -220,7 +220,6 @@ services:
       # Migration
       DB_DUAL_WRITE: "true"
       DB_READ_SOURCE: "rdb"
-      RUN_MIGRATION: "true"
       # Vertex AI (VERTEX_AI_ENABLED는 env_file에서 로드)
       # 컨테이너 내부 크레덴셜 경로만 고정 설정
       VERTEX_AI_CREDENTIALS_PATH: "/app/credentials/vertex-ai-key.json"

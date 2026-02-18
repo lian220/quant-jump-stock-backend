@@ -11,3 +11,13 @@ spring:
         enabled: false
       pubsub:
         emulator-host: ${PUBSUB_EMULATOR_HOST:localhost:8681}
+
+# ============================================
+# Slack 비활성화 (로컬 개발 환경)
+# ============================================
+slack:
+  webhook-url: ""
+  webhook-url-error: ""
+  webhook-url-news: ""
+  bot-token: ""
+  channel: ""

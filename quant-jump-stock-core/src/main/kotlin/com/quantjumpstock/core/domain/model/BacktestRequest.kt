@@ -26,7 +26,10 @@ data class BacktestRequest(
 
         // SCRUM-344: 유니버스 타입 + 백테스트 분류
         val universeType: String = "MARKET",
-        val backtestType: String = "USER_CUSTOM"
+        val backtestType: String = "USER_CUSTOM",
+
+        // Admin 일괄 실행 시 체크포인트 무시하고 전체 재실행
+        val forceFull: Boolean = false
 )
 
 /** 리스크 설정 Domain Model */
