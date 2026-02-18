@@ -747,14 +747,23 @@ class BacktestRequestHandler(MessageHandler):
                 # 전체 종목을 한번에 조회하여 데이터 존재 여부 확인 (1회 쿼리)
                 all_data = data_loader.load(tickers, start_dt, end_dt)
                 missing_tickers = [t for t in tickers if t not in all_data or all_data[t].empty]
+                available_tickers = [t for t in tickers if t not in missing_tickers]
 
                 if missing_tickers:
-                    error_msg = f"다음 종목의 데이터가 MongoDB에 없습니다: {', '.join(missing_tickers)}"
+                    logger.warning(
+                        f"데이터 없는 종목 {len(missing_tickers)}개 제외하고 진행: "
+                        f"{', '.join(missing_tickers)}"
+                    )
+
+                if not available_tickers:
+                    error_msg = f"백테스트 가능한 종목이 없습니다 (요청 종목 전부 데이터 없음: {', '.join(tickers)})"
                     logger.error(error_msg)
                     self._publish_failure(message, error_msg, start_time)
                     raise ValueError(error_msg)
 
-                logger.info(f"모든 종목({len(tickers)}개)의 데이터 존재 확인 완료")
+                # 데이터 있는 종목만으로 계속 진행
+                tickers = available_tickers
+                logger.info(f"백테스트 진행 종목: {len(tickers)}개 {tickers}")
 
                 # 🆕 로드한 데이터 저장 (재사용)
                 preloaded_data = all_data
