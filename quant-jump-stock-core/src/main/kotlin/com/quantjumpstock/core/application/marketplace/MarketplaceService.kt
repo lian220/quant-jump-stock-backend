@@ -186,7 +186,9 @@ class MarketplaceService(
                     endDate = it.endDate.toString()
                 )
             },
-            createdAt = this.createdAt
+            createdAt = this.createdAt,
+            recommendedUniverseType = this.recommendedUniverseType,
+            supportedUniverseTypes = this.supportedUniverseTypes
         )
     }
 

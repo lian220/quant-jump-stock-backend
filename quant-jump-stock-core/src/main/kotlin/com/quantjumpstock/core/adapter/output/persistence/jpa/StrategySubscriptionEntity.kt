@@ -37,6 +37,9 @@ data class StrategySubscriptionEntity(
     @Column(name = "notify_rebalance")
     var notifyRebalance: Boolean = true,
 
+    @Column(name = "preferred_universe_type")
+    var preferredUniverseType: String = "MARKET",
+
     @Column(name = "subscribed_at")
     val subscribedAt: LocalDateTime = LocalDateTime.now(),
 

@@ -473,56 +473,6 @@ class BacktestService(
         )
     }
 
-    // ============================================================================
-    // Legacy 메서드 (하위 호환성)
-    // ============================================================================
-
-    /**
-     * 백테스트 요청 (Legacy)
-     * @deprecated Use runBacktest instead
-     */
-    @Deprecated("Use runBacktest instead", ReplaceWith("runBacktest(request, userId)"))
-    fun requestBacktest(request: BacktestRequestDto, userId: String?): BacktestResponse {
-        val requestId = UUID.randomUUID().toString()
-        val timestamp = ZonedDateTime.now(ZoneId.of("Asia/Seoul")).toString()
-
-        logger.info("백테스트 요청 시작: requestId=$requestId, strategyId=${request.strategyId}")
-
-        val backtestRequest = BacktestRequest(
-            requestId = requestId,
-            strategyId = request.strategyId,
-            startDate = request.startDate,
-            endDate = request.endDate,
-            initialCapital = request.initialCapital,
-            timestamp = timestamp,
-            source = "quantiq-core",
-            userId = userId,
-            tickers = request.tickers
-        )
-
-        try {
-            messagePublisher.publishBacktestRequest(
-                topic = EventTopics.BACKTEST_REQUEST,
-                request = backtestRequest
-            )
-
-            logger.info("백테스트 요청 성공: requestId=$requestId")
-
-            return BacktestResponse(
-                success = true,
-                requestId = requestId,
-                message = "백테스트 요청이 성공적으로 접수되었습니다."
-            )
-        } catch (e: Exception) {
-            logger.error("백테스트 요청 실패: requestId=$requestId", e)
-
-            return BacktestResponse(
-                success = false,
-                requestId = requestId,
-                message = "백테스트 요청에 실패했습니다: ${e.message}"
-            )
-        }
-    }
 }
 
 /**
@@ -535,30 +485,3 @@ class BacktestException(message: String, cause: Throwable? = null) : RuntimeExce
  */
 class BacktestNotFoundException(message: String) : RuntimeException(message)
 
-// ============================================================================
-// Legacy DTOs (하위 호환성)
-// ============================================================================
-
-/**
- * 백테스트 요청 DTO (Legacy)
- * @deprecated Use BacktestRunRequest instead
- */
-@Deprecated("Use BacktestRunRequest instead")
-data class BacktestRequestDto(
-    val strategyId: Long,
-    val startDate: String,          // yyyy-MM-dd
-    val endDate: String,            // yyyy-MM-dd
-    val initialCapital: BigDecimal,
-    val tickers: List<String> = emptyList()  // 백테스트 대상 종목
-)
-
-/**
- * 백테스트 응답 DTO (Legacy)
- * @deprecated Use BacktestRunResponse instead
- */
-@Deprecated("Use BacktestRunResponse instead")
-data class BacktestResponse(
-    val success: Boolean,
-    val requestId: String,
-    val message: String? = null
-)

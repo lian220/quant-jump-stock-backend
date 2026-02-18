@@ -329,43 +329,6 @@ class BacktestController(
     }
 
     // ============================================================================
-    // Legacy Endpoint (하위 호환성)
-    // ============================================================================
-
-    /**
-     * 백테스트 요청 (Legacy)
-     * POST /api/v1/backtest/request
-     * @deprecated Use POST /api/v1/backtest/run instead
-     */
-    @Deprecated("Use POST /api/v1/backtest/run instead")
-    @PostMapping("/request")
-    @Operation(
-        summary = "백테스트 요청 (Legacy)",
-        description = "전략에 대한 백테스트를 요청합니다. 이 엔드포인트는 deprecated 되었습니다. /run을 사용하세요."
-    )
-    fun requestBacktest(
-        @RequestHeader("Authorization", required = false) authorization: String?,
-        @RequestBody request: BacktestRequestDto
-    ): ResponseEntity<*> {
-        // 백테스트 기간 검증 (최대 1년)
-        val periodValidation = validateBacktestPeriod(request.startDate, request.endDate)
-        if (periodValidation != null) {
-            return ResponseEntity.badRequest().body(periodValidation)
-        }
-
-        val userId = authorization?.let { extractUserId(it) }
-
-        @Suppress("DEPRECATION")
-        val response = backtestService.requestBacktest(request, userId)
-
-        return if (response.success) {
-            ResponseEntity.accepted().body(response)
-        } else {
-            ResponseEntity.badRequest().body(response)
-        }
-    }
-
-    // ============================================================================
     // Private Methods
     // ============================================================================
 

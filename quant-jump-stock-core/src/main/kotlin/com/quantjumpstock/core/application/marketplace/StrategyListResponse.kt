@@ -49,7 +49,14 @@ data class StrategyDto(
     val backtestResult: BacktestResultDto?,
 
     @Schema(description = "생성일")
-    val createdAt: LocalDateTime
+    val createdAt: LocalDateTime,
+
+    // SCRUM-344: 유니버스 설정
+    @Schema(description = "권장 유니버스 타입")
+    val recommendedUniverseType: String? = null,
+
+    @Schema(description = "지원하는 유니버스 타입 목록")
+    val supportedUniverseTypes: List<String>? = null
 )
 
 data class BacktestResultDto(

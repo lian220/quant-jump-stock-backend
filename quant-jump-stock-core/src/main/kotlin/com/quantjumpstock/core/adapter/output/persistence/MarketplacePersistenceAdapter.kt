@@ -100,6 +100,13 @@ class MarketplacePersistenceAdapter(
             .maxByOrNull { it.createdAt }
             ?: completedBacktests.maxByOrNull { it.createdAt }
 
+        // SCRUM-344: supportedUniverseTypes JSONB → List<String>
+        val supportedTypes = try {
+            objectMapper.readValue<List<String>>(entity.supportedUniverseTypes)
+        } catch (_: Exception) {
+            listOf("MARKET", "PORTFOLIO", "FIXED")
+        }
+
         return MarketplaceStrategy(
             id = entity.id!!,
             name = entity.name,
@@ -113,7 +120,9 @@ class MarketplacePersistenceAdapter(
             averageRating = entity.averageRating,
             rebalanceFrequency = mapRebalanceFrequency(entity.rebalanceFrequency),
             latestBacktest = latestBacktest?.let { toBacktestSummary(it) },
-            createdAt = entity.createdAt
+            createdAt = entity.createdAt,
+            recommendedUniverseType = entity.recommendedUniverseType,
+            supportedUniverseTypes = supportedTypes
         )
     }
 
