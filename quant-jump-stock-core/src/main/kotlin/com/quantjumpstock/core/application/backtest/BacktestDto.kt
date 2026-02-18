@@ -1,5 +1,7 @@
 package com.quantjumpstock.core.application.backtest
 
+import com.quantjumpstock.core.domain.model.backtest.BacktestType
+import com.quantjumpstock.core.domain.model.backtest.UniverseType
 import com.quantjumpstock.core.domain.port.output.Benchmark
 import java.math.BigDecimal
 import java.time.LocalDate
@@ -162,6 +164,9 @@ data class BacktestResultResponse(
     val strategyId: Long,
     val strategyName: String?,
     val status: String,
+    // SCRUM-344: 유니버스 타입 + 백테스트 분류
+    val universeType: UniverseType = UniverseType.MARKET,
+    val backtestType: BacktestType = BacktestType.USER_CUSTOM,
     val metrics: BacktestMetrics?,
     val equityCurve: List<EquityCurvePoint>?,
     val benchmarkCurve: List<EquityCurvePoint>?,
@@ -292,8 +297,8 @@ data class BacktestListItemResponse(
     val mdd: BigDecimal?,
     val sharpeRatio: BigDecimal?,
     // SCRUM-344: 유니버스 + 백테스트 분류
-    val universeType: String? = null,
-    val backtestType: String? = null,
+    val universeType: UniverseType = UniverseType.MARKET,
+    val backtestType: BacktestType = BacktestType.USER_CUSTOM,
     val createdAt: LocalDateTime,
     val completedAt: LocalDateTime?
 )

@@ -108,6 +108,11 @@ class BacktestPersistenceAdapter(
         ).map { toDomain(it) }
     }
 
+    override fun deleteById(id: Long) {
+        logger.debug("백테스트 결과 삭제: id={}", id)
+        backtestResultJpaRepository.deleteById(id)
+    }
+
     // ===== BacktestTradeRepository =====
 
     override fun saveAll(trades: List<BacktestTrade>): List<BacktestTrade> {
@@ -379,7 +384,7 @@ class BacktestPersistenceAdapter(
         return try {
             objectMapper.readValue<List<String>>(json)
         } catch (e: Exception) {
-            logger.warn("benchmarks JSON 파싱 실패, 기본값 사용: {}", e.message)
+            logger.warn("benchmarks JSON 파싱 실패, 기본값 사용", e)
             listOf(Benchmark.DEFAULT_TICKER)
         }
     }
@@ -410,11 +415,12 @@ class BacktestPersistenceAdapter(
 
     // ===== SCRUM-344: Universe/Backtest Type Parsing =====
 
-    private fun parseUniverseType(value: String): UniverseType = try {
-        UniverseType.valueOf(value)
-    } catch (e: Exception) {
-        logger.warn("Unknown universeType: {}, defaulting to MARKET", value)
-        UniverseType.MARKET
+    private fun parseUniverseType(value: String): UniverseType {
+        val result = UniverseType.fromStringOrDefault(value)
+        if (result == UniverseType.MARKET && value != "MARKET") {
+            logger.warn("Unknown universeType: {}, defaulting to MARKET", value)
+        }
+        return result
     }
 
     private fun parseBacktestType(value: String): BacktestType = try {

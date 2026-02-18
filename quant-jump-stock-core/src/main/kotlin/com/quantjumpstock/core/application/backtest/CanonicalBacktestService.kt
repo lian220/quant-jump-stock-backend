@@ -88,7 +88,7 @@ class CanonicalBacktestService(
             backtestType = BacktestType.CANONICAL,
             status = BacktestStatus.RUNNING
         )
-        backtestResultRepository.save(placeholder)
+        val savedPlaceholder = backtestResultRepository.save(placeholder)
 
         // Pub/Sub으로 백테스트 요청 발행
         val backtestRequest = BacktestRequest(
@@ -107,12 +107,25 @@ class CanonicalBacktestService(
             backtestType = BacktestType.CANONICAL.name
         )
 
-        messagePublisher.publishBacktestRequest(
-            topic = EventTopics.BACKTEST_REQUEST,
-            request = backtestRequest
-        )
-
-        logger.info("Canonical 백테스트 요청 발행: strategyId={}, requestId={}", strategyId, requestId)
+        try {
+            messagePublisher.publishBacktestRequest(
+                topic = EventTopics.BACKTEST_REQUEST,
+                request = backtestRequest
+            )
+            logger.info("Canonical 백테스트 요청 발행: strategyId={}, requestId={}", strategyId, requestId)
+        } catch (e: Exception) {
+            logger.error("Canonical 백테스트 발행 실패, RUNNING → FAILED 처리: strategyId={}, requestId={}", strategyId, requestId, e)
+            savedPlaceholder.id?.let { id ->
+                backtestResultRepository.save(
+                    savedPlaceholder.copy(
+                        status = BacktestStatus.FAILED,
+                        errorMessage = "Pub/Sub 발행 실패: ${e.message}",
+                        completedAt = java.time.LocalDateTime.now()
+                    )
+                )
+            }
+            throw e
+        }
     }
 
     /**
@@ -123,10 +136,14 @@ class CanonicalBacktestService(
         logger.info("Canonical 백테스트 일괄 갱신 시작: {} 개 전략", publishedStrategies.size)
 
         publishedStrategies.forEach { strategy ->
+            val strategyId = strategy.id ?: run {
+                logger.warn("ID가 없는 전략은 Canonical 백테스트를 실행할 수 없습니다: strategyName={}", strategy.name)
+                return@forEach
+            }
             try {
-                runCanonicalBacktest(strategy.id!!)
+                runCanonicalBacktest(strategyId)
             } catch (e: Exception) {
-                logger.error("Canonical 백테스트 실행 실패: strategyId={}", strategy.id, e)
+                logger.error("Canonical 백테스트 실행 실패: strategyId={}", strategyId, e)
             }
         }
 

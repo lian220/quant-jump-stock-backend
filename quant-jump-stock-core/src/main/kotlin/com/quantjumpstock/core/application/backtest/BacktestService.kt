@@ -260,6 +260,8 @@ class BacktestService(
             strategyId = result.strategyId,
             strategyName = result.strategyName,
             status = result.status.name,
+            universeType = result.universeType,
+            backtestType = result.backtestType,
             metrics = BacktestMetrics(
                 cagr = result.cagr,
                 mdd = result.mdd,
@@ -325,8 +327,8 @@ class BacktestService(
             mdd = result.mdd,
             sharpeRatio = result.sharpeRatio,
             // SCRUM-344: 유니버스 + 백테스트 분류
-            universeType = result.universeType.name,
-            backtestType = result.backtestType.name,
+            universeType = result.universeType,
+            backtestType = result.backtestType,
             createdAt = result.createdAt,
             completedAt = result.completedAt
         )
@@ -409,11 +411,10 @@ class BacktestService(
         return allTickers.associateWith { ticker ->
             equityCurve.filter { point ->
                 point.benchmarks?.containsKey(ticker) == true
-            }.map { point ->
-                EquityCurvePoint(
-                    date = point.date,
-                    value = point.benchmarks!![ticker]!!
-                )
+            }.mapNotNull { point ->
+                point.benchmarks?.get(ticker)?.let { value ->
+                    EquityCurvePoint(date = point.date, value = value)
+                }
             }
         }.filterValues { it.isNotEmpty() }
             .ifEmpty { null }

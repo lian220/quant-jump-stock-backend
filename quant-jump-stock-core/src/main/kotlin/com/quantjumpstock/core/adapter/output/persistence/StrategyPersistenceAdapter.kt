@@ -241,11 +241,12 @@ class StrategyPersistenceAdapter(
 
     // ===== SCRUM-344: Universe Type Parsing =====
 
-    private fun parseUniverseType(value: String): UniverseType = try {
-        UniverseType.valueOf(value)
-    } catch (e: Exception) {
-        logger.warn("Unknown universeType: {}, defaulting to MARKET", value)
-        UniverseType.MARKET
+    private fun parseUniverseType(value: String): UniverseType {
+        val result = UniverseType.fromStringOrDefault(value)
+        if (result == UniverseType.MARKET && value != "MARKET") {
+            logger.warn("Unknown universeType: {}, defaulting to MARKET", value)
+        }
+        return result
     }
 
     private fun parseSupportedUniverseTypes(json: String): List<UniverseType> = try {
@@ -253,7 +254,7 @@ class StrategyPersistenceAdapter(
             try { UniverseType.valueOf(name) } catch (e: Exception) { null }
         }
     } catch (e: Exception) {
-        logger.warn("supportedUniverseTypes JSON 파싱 실패, 기본값 사용: {}", e.message)
+        logger.warn("supportedUniverseTypes JSON 파싱 실패, 기본값 사용", e)
         listOf(UniverseType.MARKET, UniverseType.PORTFOLIO, UniverseType.FIXED)
     }
 }

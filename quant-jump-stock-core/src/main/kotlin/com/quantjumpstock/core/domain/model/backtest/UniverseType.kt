@@ -12,5 +12,16 @@ enum class UniverseType {
     /** 섹터별 종목 (향후 확장) */
     SECTOR,
     /** 사용자 지정 종목 */
-    FIXED
+    FIXED;
+
+    companion object {
+        /**
+         * 문자열을 UniverseType으로 변환. 알 수 없는 값은 MARKET으로 기본 처리.
+         */
+        fun fromStringOrDefault(value: String): UniverseType = try {
+            valueOf(value)
+        } catch (e: IllegalArgumentException) {
+            MARKET
+        }
+    }
 }

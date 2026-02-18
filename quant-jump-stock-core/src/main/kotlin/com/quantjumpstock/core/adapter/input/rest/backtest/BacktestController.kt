@@ -73,23 +73,19 @@ class BacktestController(
             return ResponseEntity.badRequest().body(periodValidation)
         }
 
-        // 전략 존재 여부 검증
-        if (!strategyRepository.existsById(request.strategyId)) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+        // 전략 존재 여부 검증 (단일 조회로 TOCTOU 방지)
+        val strategy = strategyRepository.findById(request.strategyId)
+            ?: return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(mapOf(
                     "error" to "STRATEGY_NOT_FOUND",
                     "message" to "전략을 찾을 수 없습니다: ${request.strategyId}"
                 ))
-        }
 
         // 문자열 userId → DB PK(Long) 변환하여 Kafka에 숫자 ID로 전달
         val userDbId = userRepository.findByUserId(userLoginId)?.id
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(mapOf("error" to "USER_NOT_FOUND", "message" to "사용자를 찾을 수 없습니다."))
         val userId = userDbId.toString()
-
-        // SCRUM-344: 유니버스 타입 결정 (요청 → 전략 추천 → 기본 MARKET)
-        val strategy = strategyRepository.findById(request.strategyId)!!
         val universeType = request.universeType?.let {
             try { UniverseType.valueOf(it) } catch (e: Exception) { strategy.recommendedUniverseType }
         } ?: strategy.recommendedUniverseType

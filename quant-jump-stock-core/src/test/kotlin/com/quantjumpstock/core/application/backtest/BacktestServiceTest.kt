@@ -2,6 +2,10 @@ package com.quantjumpstock.core.application.backtest
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
+import com.quantjumpstock.core.domain.model.backtest.BacktestResult
+import com.quantjumpstock.core.domain.model.backtest.BacktestStatus
+import com.quantjumpstock.core.domain.model.backtest.BacktestType
+import com.quantjumpstock.core.domain.model.backtest.UniverseType
 import com.quantjumpstock.core.domain.port.output.BacktestResultRepository
 import com.quantjumpstock.core.domain.economic.port.output.MessagePublisher
 import com.quantjumpstock.core.domain.model.BacktestRequest
@@ -10,6 +14,7 @@ import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.DisplayName
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import org.junit.jupiter.api.assertThrows
 import org.mockito.Mock
 import org.mockito.junit.jupiter.MockitoExtension
 import org.mockito.kotlin.any
@@ -18,11 +23,13 @@ import org.mockito.kotlin.doNothing
 import org.mockito.kotlin.doThrow
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.verify
+import org.mockito.kotlin.whenever
 import java.math.BigDecimal
+import java.time.LocalDate
+import java.time.LocalDateTime
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
-import org.junit.jupiter.api.Assertions.assertFalse
 
 /**
  * BacktestService 단위 테스트
@@ -47,126 +54,125 @@ class BacktestServiceTest {
         backtestService = BacktestService(messagePublisher, backtestResultRepository, objectMapper)
     }
 
+    private fun savedPlaceholder(strategyId: Long = 1L, userId: String? = null): BacktestResult =
+        BacktestResult(
+            id = 100L,
+            strategyId = strategyId,
+            userId = userId?.toLongOrNull(),
+            startDate = LocalDate.of(2024, 1, 1),
+            endDate = LocalDate.of(2024, 12, 31),
+            initialCapital = BigDecimal("10000000"),
+            finalValue = BigDecimal.ZERO,
+            totalReturn = BigDecimal.ZERO,
+            cagr = BigDecimal.ZERO,
+            mdd = BigDecimal.ZERO,
+            universeType = UniverseType.MARKET,
+            backtestType = BacktestType.USER_CUSTOM,
+            status = BacktestStatus.RUNNING,
+            createdAt = LocalDateTime.now()
+        )
+
+    private fun makeRequest(
+        strategyId: Long = 1L,
+        startDate: String = "2024-01-01",
+        endDate: String = "2024-12-31",
+        capital: BigDecimal = BigDecimal("10000000"),
+        tickers: List<String> = listOf("AAPL")
+    ) = BacktestRunRequest(
+        strategyId = strategyId,
+        startDate = startDate,
+        endDate = endDate,
+        initialCapital = capital,
+        tickers = tickers
+    )
+
     @Test
     @DisplayName("백테스트 요청 성공")
-    fun testRequestBacktest_Success() {
+    fun testRunBacktest_Success() {
         // Given
-        val request = BacktestRequestDto(
-            strategyId = 1L,
-            startDate = "2024-01-01",
-            endDate = "2024-12-31",
-            initialCapital = BigDecimal("10000000")
-        )
-        val userId = "user-123"
+        val request = makeRequest(strategyId = 1L)
+        val userId = "100"
 
+        whenever(backtestResultRepository.save(any())).thenReturn(savedPlaceholder(1L, userId))
         doNothing().`when`(messagePublisher).publishBacktestRequest(
             eq(EventTopics.BACKTEST_REQUEST),
             any()
         )
 
         // When
-        val response = backtestService.requestBacktest(request, userId)
+        val response = backtestService.runBacktest(request, userId)
 
         // Then
-        assertTrue(response.success)
-        assertNotNull(response.requestId)
-        assertEquals("백테스트 요청이 성공적으로 접수되었습니다.", response.message)
+        assertNotNull(response.backtestId)
+        assertEquals("PENDING", response.status)
+        assertTrue(response.message.contains("시작"))
 
-        // Verify Kafka message published
+        // Verify Pub/Sub message published
         verify(messagePublisher).publishBacktestRequest(
             eq(EventTopics.BACKTEST_REQUEST),
-            argThat<BacktestRequest> { backtestRequest ->
-                backtestRequest.strategyId == 1L &&
-                backtestRequest.startDate == "2024-01-01" &&
-                backtestRequest.endDate == "2024-12-31" &&
-                backtestRequest.initialCapital == BigDecimal("10000000") &&
-                backtestRequest.userId == "user-123"
-            }
+            argThat<BacktestRequest> { req -> req.strategyId == 1L && req.userId == userId }
         )
     }
 
     @Test
     @DisplayName("백테스트 요청 성공 - userId 없음")
-    fun testRequestBacktest_SuccessWithoutUserId() {
+    fun testRunBacktest_SuccessWithoutUserId() {
         // Given
-        val request = BacktestRequestDto(
-            strategyId = 2L,
-            startDate = "2023-06-01",
-            endDate = "2023-12-31",
-            initialCapital = BigDecimal("5000000")
-        )
+        val request = makeRequest(strategyId = 2L)
 
+        whenever(backtestResultRepository.save(any())).thenReturn(savedPlaceholder(2L))
         doNothing().`when`(messagePublisher).publishBacktestRequest(
             eq(EventTopics.BACKTEST_REQUEST),
             any()
         )
 
         // When
-        val response = backtestService.requestBacktest(request, null)
+        val response = backtestService.runBacktest(request, null)
 
         // Then
-        assertTrue(response.success)
-        assertNotNull(response.requestId)
+        assertNotNull(response.backtestId)
+        assertEquals("PENDING", response.status)
 
-        // Verify Kafka message published with null userId
+        // Verify null userId
         verify(messagePublisher).publishBacktestRequest(
             eq(EventTopics.BACKTEST_REQUEST),
-            argThat<BacktestRequest> { backtestRequest ->
-                backtestRequest.strategyId == 2L &&
-                backtestRequest.userId == null
-            }
+            argThat<BacktestRequest> { req -> req.strategyId == 2L && req.userId == null }
         )
     }
 
     @Test
-    @DisplayName("백테스트 요청 실패 - Kafka 발행 실패")
-    fun testRequestBacktest_KafkaPublishFailure() {
+    @DisplayName("백테스트 요청 실패 - Pub/Sub 발행 실패 시 BacktestException 발생")
+    fun testRunBacktest_PublishFailure() {
         // Given
-        val request = BacktestRequestDto(
-            strategyId = 1L,
-            startDate = "2024-01-01",
-            endDate = "2024-12-31",
-            initialCapital = BigDecimal("10000000")
-        )
+        val request = makeRequest()
 
-        doThrow(RuntimeException("Kafka connection failed"))
+        whenever(backtestResultRepository.save(any())).thenReturn(savedPlaceholder())
+        doThrow(RuntimeException("Pub/Sub connection failed"))
             .`when`(messagePublisher).publishBacktestRequest(
                 eq(EventTopics.BACKTEST_REQUEST),
                 any()
             )
 
-        // When
-        val response = backtestService.requestBacktest(request, "user-123")
-
-        // Then
-        assertFalse(response.success)
-        assertNotNull(response.requestId)
-        assertTrue(response.message?.contains("실패") == true)
+        // When / Then
+        assertThrows<BacktestException> {
+            backtestService.runBacktest(request, "100")
+        }
     }
 
     @Test
     @DisplayName("백테스트 요청 - requestId 고유성 검증")
-    fun testRequestBacktest_UniqueRequestId() {
+    fun testRunBacktest_UniqueRequestId() {
         // Given
-        val request = BacktestRequestDto(
-            strategyId = 1L,
-            startDate = "2024-01-01",
-            endDate = "2024-12-31",
-            initialCapital = BigDecimal("10000000")
-        )
+        val request = makeRequest()
 
-        doNothing().`when`(messagePublisher).publishBacktestRequest(
-            eq(EventTopics.BACKTEST_REQUEST),
-            any()
-        )
+        whenever(backtestResultRepository.save(any())).thenReturn(savedPlaceholder())
+        doNothing().`when`(messagePublisher).publishBacktestRequest(any(), any())
 
         // When
-        val response1 = backtestService.requestBacktest(request, null)
-        val response2 = backtestService.requestBacktest(request, null)
+        val response1 = backtestService.runBacktest(request, null)
+        val response2 = backtestService.runBacktest(request, null)
 
         // Then
-        assertTrue(response1.success)
-        assertTrue(response2.success)
-        assertTrue(response1.requestId != response2.requestId, "각 요청은 고유한 requestId를 가져야 합니다")
+        assertTrue(response1.backtestId != response2.backtestId, "각 요청은 고유한 requestId를 가져야 합니다")
     }
 }

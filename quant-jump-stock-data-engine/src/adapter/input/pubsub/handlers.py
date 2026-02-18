@@ -503,7 +503,12 @@ class BacktestServiceProtocol(Protocol):
         equity_curve_data: Optional[list] = None,
         benchmark: str = DEFAULT_BENCHMARK,
         benchmarks: Optional[list] = None,
-        user_id: Optional[int] = None
+        user_id: Optional[int] = None,
+        risk_settings: Optional[dict] = None,
+        position_sizing: Optional[dict] = None,
+        trading_costs: Optional[dict] = None,
+        preloaded_data: Optional[dict] = None,
+        preloaded_benchmark: Optional[dict] = None
     ) -> object:
         """증분 백테스트 실행"""
         ...

@@ -54,6 +54,9 @@ data class Strategy(
         require(averageRating >= BigDecimal.ZERO && averageRating <= BigDecimal.valueOf(5)) {
             "Average rating must be between 0 and 5"
         }
+        require(recommendedUniverseType in supportedUniverseTypes) {
+            "recommendedUniverseType=$recommendedUniverseType must be one of supportedUniverseTypes=$supportedUniverseTypes"
+        }
     }
 
     /** 전략 상태 변경 - 비즈니스 규칙 검증 */

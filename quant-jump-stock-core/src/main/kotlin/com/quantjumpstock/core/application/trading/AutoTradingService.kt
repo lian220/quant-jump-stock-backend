@@ -1,8 +1,8 @@
 package com.quantjumpstock.core.application.trading
 
-import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyDefaultStockJpaRepository
-import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategySubscriptionJpaRepository
-import com.quantjumpstock.core.adapter.output.persistence.jpa.SubscriptionStatus
+import com.quantjumpstock.core.domain.model.backtest.UniverseType
+import com.quantjumpstock.core.domain.port.output.StrategyDefaultStockRepository
+import com.quantjumpstock.core.domain.port.output.StrategySubscriptionRepository
 import com.quantjumpstock.core.domain.model.prediction.VertexAIPredictionResult
 import com.quantjumpstock.core.domain.model.trading.*
 import com.quantjumpstock.core.domain.model.user.User
@@ -31,8 +31,8 @@ class AutoTradingService(
     private val accountRepository: AccountRepository,
     private val tradingApiPort: TradingApiPort,
     // SCRUM-349: Universe 기반 필터링
-    private val strategySubscriptionJpaRepository: StrategySubscriptionJpaRepository,
-    private val strategyDefaultStockJpaRepository: StrategyDefaultStockJpaRepository
+    private val strategySubscriptionRepository: StrategySubscriptionRepository,
+    private val strategyDefaultStockRepository: StrategyDefaultStockRepository
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -246,8 +246,7 @@ class AutoTradingService(
      */
     private fun resolveUniverseTickerFilter(userId: Long): Set<String>? {
         return try {
-            val activeSubscriptions = strategySubscriptionJpaRepository
-                .findByUserIdAndStatus(userId, SubscriptionStatus.ACTIVE)
+            val activeSubscriptions = strategySubscriptionRepository.findActiveByUserId(userId)
 
             if (activeSubscriptions.isEmpty()) return null
 
@@ -257,12 +256,13 @@ class AutoTradingService(
 
             activeSubscriptions.forEach { sub ->
                 when (sub.preferredUniverseType) {
-                    "PORTFOLIO", "FIXED" -> {
+                    UniverseType.PORTFOLIO, UniverseType.FIXED -> {
                         hasPortfolioOrFixed = true
-                        val tickers = strategyDefaultStockJpaRepository.findTickersByStrategyId(sub.strategy.id!!)
+                        val tickers = strategyDefaultStockRepository.findTickersByStrategyId(sub.strategyId)
                         portfolioTickers.addAll(tickers)
                     }
                     // MARKET, SECTOR: 필터 없음
+                    else -> Unit
                 }
             }
 
