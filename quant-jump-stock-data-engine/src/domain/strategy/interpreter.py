@@ -226,7 +226,11 @@ class StrategyInterpreter:
         needed_indicators = set()
         for rule in rules:
             for condition in rule.conditions:
-                needed_indicators.add((condition.indicator, tuple(sorted(condition.params.items()))))
+                hashable_params = tuple(sorted(
+                    (k, tuple(v) if isinstance(v, list) else v)
+                    for k, v in condition.params.items()
+                ))
+                needed_indicators.add((condition.indicator, hashable_params))
                 # value가 지표 참조인 경우
                 if isinstance(condition.value, str) and "_" in condition.value:
                     parts = condition.value.rsplit("_", 1)

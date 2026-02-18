@@ -112,8 +112,10 @@ if [ "$SKIP_BUILD" = false ]; then
     cd quant-jump-stock-core
 
     # Use Java 21
-    if [ -d "/Users/sfn1/Library/Java/JavaVirtualMachines/corretto-21.0.7/Contents/Home" ]; then
-        export JAVA_HOME="/Users/sfn1/Library/Java/JavaVirtualMachines/corretto-21.0.7/Contents/Home"
+    if command -v /usr/libexec/java_home >/dev/null 2>&1; then
+        export JAVA_HOME=$(/usr/libexec/java_home -v 21 2>/dev/null)
+    elif [ -d "/Library/Java/JavaVirtualMachines/graalvm-jdk-21/Contents/Home" ]; then
+        export JAVA_HOME="/Library/Java/JavaVirtualMachines/graalvm-jdk-21/Contents/Home"
     fi
 
     ./gradlew clean build -x test
