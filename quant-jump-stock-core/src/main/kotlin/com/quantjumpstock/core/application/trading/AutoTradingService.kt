@@ -1,5 +1,8 @@
 package com.quantjumpstock.core.application.trading
 
+import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategyDefaultStockJpaRepository
+import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategySubscriptionJpaRepository
+import com.quantjumpstock.core.adapter.output.persistence.jpa.SubscriptionStatus
 import com.quantjumpstock.core.domain.model.prediction.VertexAIPredictionResult
 import com.quantjumpstock.core.domain.model.trading.*
 import com.quantjumpstock.core.domain.model.user.User
@@ -26,7 +29,10 @@ class AutoTradingService(
     private val tradeRepository: TradeRepository,
     private val tradeSignalExecutedRepository: TradeSignalExecutedRepository,
     private val accountRepository: AccountRepository,
-    private val tradingApiPort: TradingApiPort
+    private val tradingApiPort: TradingApiPort,
+    // SCRUM-349: Universe 기반 필터링
+    private val strategySubscriptionJpaRepository: StrategySubscriptionJpaRepository,
+    private val strategyDefaultStockJpaRepository: StrategyDefaultStockJpaRepository
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -86,9 +92,16 @@ class AutoTradingService(
                 val maxAmountPerStock = tradingConfig.maxAmountPerStock
                 val minConfidence = tradingConfig.getMinConfidenceAsDecimal()
 
-                // Vertex AI 예측 결과를 신뢰도로 필터링 및 상위 N개 선택
+                // SCRUM-349: 유니버스 기반 종목 필터셋 조회
+                val universeTickerFilter = resolveUniverseTickerFilter(userId)
+                if (universeTickerFilter != null) {
+                    logger.info("🌐 Universe filter active for user ${user.userId}: ${universeTickerFilter.size} tickers allowed")
+                }
+
+                // Vertex AI 예측 결과를 신뢰도 + 유니버스 필터링 후 상위 N개 선택
                 val targetPredictions = predictions
                     .filter { it.confidence >= minConfidence }
+                    .filter { universeTickerFilter == null || it.symbol in universeTickerFilter }
                     .sortedByDescending { it.confidence }
                     .take(maxStocks)
 
@@ -222,6 +235,42 @@ class AutoTradingService(
 
         logger.info("✅ Auto Trading Execution Completed.")
         logger.info("📊 Summary: $totalTradesCreated trades created, $totalTradesSkipped skipped")
+    }
+
+    /**
+     * SCRUM-349: 사용자의 활성 구독 유니버스 타입에 따른 허용 종목 셋 반환
+     * - MARKET: null 반환 (모든 종목 허용)
+     * - PORTFOLIO / FIXED: 구독 전략의 기본 종목 티커 셋 반환
+     * - SECTOR: null 반환 (향후 확장)
+     * 구독이 없거나 오류 시 null 반환 (전체 허용)
+     */
+    private fun resolveUniverseTickerFilter(userId: Long): Set<String>? {
+        return try {
+            val activeSubscriptions = strategySubscriptionJpaRepository
+                .findByUserIdAndStatus(userId, SubscriptionStatus.ACTIVE)
+
+            if (activeSubscriptions.isEmpty()) return null
+
+            // 복수 구독 중 PORTFOLIO/FIXED가 하나라도 있으면 해당 전략 기본 종목 합집합 사용
+            val portfolioTickers = mutableSetOf<String>()
+            var hasPortfolioOrFixed = false
+
+            activeSubscriptions.forEach { sub ->
+                when (sub.preferredUniverseType) {
+                    "PORTFOLIO", "FIXED" -> {
+                        hasPortfolioOrFixed = true
+                        val tickers = strategyDefaultStockJpaRepository.findTickersByStrategyId(sub.strategy.id!!)
+                        portfolioTickers.addAll(tickers)
+                    }
+                    // MARKET, SECTOR: 필터 없음
+                }
+            }
+
+            if (hasPortfolioOrFixed && portfolioTickers.isNotEmpty()) portfolioTickers else null
+        } catch (e: Exception) {
+            logger.warn("Failed to resolve universe ticker filter for user $userId, defaulting to MARKET", e)
+            null
+        }
     }
 
     /**

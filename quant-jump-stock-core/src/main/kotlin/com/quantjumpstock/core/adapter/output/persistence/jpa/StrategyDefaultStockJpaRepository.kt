@@ -15,4 +15,8 @@ interface StrategyDefaultStockJpaRepository : JpaRepository<StrategyDefaultStock
     @Modifying(flushAutomatically = true, clearAutomatically = true)
     @Query("DELETE FROM StrategyDefaultStockEntity e WHERE e.strategyId = :strategyId")
     fun deleteByStrategyId(strategyId: Long)
+
+    // SCRUM-349: 전략 기본 종목 티커 목록 조회
+    @Query("SELECT s.ticker FROM StrategyDefaultStockEntity e JOIN StockEntity s ON s.id = e.stockId WHERE e.strategyId = :strategyId AND s.isActive = true")
+    fun findTickersByStrategyId(strategyId: Long): List<String>
 }
