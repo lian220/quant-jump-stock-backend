@@ -6,16 +6,16 @@
 
 스케줄러 기반 분석 파이프라인의 기능별 상세 문서입니다.
 
-- **[ANALYSIS_ARCHITECTURE.md](./ANALYSIS_ARCHITECTURE.md)** - 분석 기능 전체 개요 및 인덱스
+- **[ANALYSIS_아키텍처.md](./ANALYSIS_아키텍처.md)** - 분석 기능 전체 개요 및 인덱스
 - **[데이터수집.md](./데이터수집.md)** - 경제 데이터 수집 (FRED + Yahoo Finance)
 - **[기술적분석.md](./기술적분석.md)** - 기술적 지표 분석 (SMA, RSI, MACD)
 - **[뉴스감정분석.md](./뉴스감정분석.md)** - 뉴스 감정 분석 (Alpha Vantage)
-- **[AI분석.md](./AI분석.md)** - Vertex AI 주가 예측 (Transformer 모델)
+- **[인공지능분석.md](./인공지능분석.md)** - Vertex AI 주가 예측 (Transformer 모델)
 
 ## 플랫폼 분석 및 로드맵
 
-- **[PLATFORM_ANALYSIS.md](./PLATFORM_ANALYSIS.md)** - 4개 플랫폼(Seeking Alpha, RiverQuant, 알파스퀘어, QuantKit) 상세 분석
-- **[FEATURE_ROADMAP.md](./FEATURE_ROADMAP.md)** - Phase별 개발 로드맵 및 타임라인
+- **[플랫폼_분석.md](./플랫폼_분석.md)** - 4개 플랫폼(Seeking Alpha, RiverQuant, 알파스퀘어, QuantKit) 상세 분석
+- **[FEATURE_로드맵.md](./FEATURE_로드맵.md)** - Phase별 개발 로드맵 및 타임라인
 - **[PHASE_1_SPECS.md](./PHASE_1_SPECS.md)** - Phase 1 (핵심 기능) 상세 구현 스펙
 - **[PHASE_2_SPECS.md](./PHASE_2_SPECS.md)** - Phase 2 (경쟁 기능) 상세 구현 스펙
 - **[PHASE_3_SPECS.md](./PHASE_3_SPECS.md)** - Phase 3 (차별화 기능) 상세 구현 스펙

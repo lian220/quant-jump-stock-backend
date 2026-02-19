@@ -10,8 +10,8 @@ QuantiQ 시스템의 기술 문서 모음입니다.
 docs/
 ├── README.md                    # 문서 인덱스 (현재 파일)
 ├── database/                    # 데이터베이스 관련 문서
-│   ├── SCHEMA.md               # DB 스키마 정의 및 설명
-│   └── RELATIONSHIPS.md        # 연관 관계 및 데이터 흐름
+│   ├── 스키마.md               # DB 스키마 정의 및 설명
+│   └── 관계.md        # 연관 관계 및 데이터 흐름
 ├── api/                        # API 문서 (예정)
 │   ├── REST_API.md            # REST API 명세
 │   └── SWAGGER.md             # Swagger/OpenAPI 가이드
@@ -27,13 +27,13 @@ docs/
 
 ### Database
 
-#### [Database Schema](./database/SCHEMA.md)
+#### [Database Schema](./database/스키마.md)
 - PostgreSQL 및 MongoDB 스키마 정의
 - 엔티티 및 컬렉션 구조
 - 인덱스 및 성능 최적화
 - 보안 고려사항
 
-#### [Database Relationships](./database/RELATIONSHIPS.md)
+#### [Database Relationships](./database/관계.md)
 - 테이블 간 연관 관계
 - 데이터 흐름 다이어그램
 - 트랜잭션 경계
@@ -136,7 +136,7 @@ docs/
 
 **관련 문서**:
 - [Stock 마이그레이션 상세 문서](../claudedocs/Stock_마이그레이션_MongoDB_to_PostgreSQL.md)
-- [TODO: 비즈니스 로직 적용](../TODO.md#stock-데이터-postgresql-마이그레이션-후속-작업)
+- [TODO: 비즈니스 로직 적용](../할일.md#stock-데이터-postgresql-마이그레이션-후속-작업)
 
 **다음 단계**:
 - [ ] `StockPersistenceAdapter` 구현 (dual-write 지원)
@@ -155,7 +155,7 @@ docs/
 - [ ] 배포 및 운영 가이드
 
 ### 기능 개발
-- [ ] Vertex AI CustomJob 파라미터 전달 기능 ([TODO.md](../TODO.md))
+- [ ] Vertex AI CustomJob 파라미터 전달 기능 ([할일.md](../할일.md))
 - [ ] JWT 인증 구현
 - [ ] API Rate Limiting
 - [ ] 모니터링 대시보드
@@ -165,9 +165,9 @@ docs/
 ## 🔗 관련 리소스
 
 ### 내부 문서
-- [TODO List](../TODO.md)
-- [Database Schema](./database/SCHEMA.md)
-- [Database Relationships](./database/RELATIONSHIPS.md)
+- [TODO List](../할일.md)
+- [Database Schema](./database/스키마.md)
+- [Database Relationships](./database/관계.md)
 
 ### 외부 참고
 - [Spring Boot Documentation](https://spring.io/projects/spring-boot)

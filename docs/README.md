@@ -1,73 +1,57 @@
 # Backend 문서
 
-알고리즘 트레이딩 플랫폼 Quant Jump Stock Backend 문서입니다.
+Backend 문서는 Core API/Data Engine의 구현 상세를 다룹니다.  
+전사 정책/공통 아키텍처는 루트 [docs](../../docs/README.md)에서 관리합니다.
 
-## 폴더 구조
+## 문서 구조
 
 ```
 docs/
-├── architecture/       # 시스템 아키텍처
-│   ├── (기존 아키텍처 문서)
-│   └── refactor/       # 리팩토링 계획/리뷰
-├── plans/              # 백엔드 구현 계획
-├── database/           # 데이터베이스 스키마
-├── features/           # 주요 기능 & 분석
-├── guidelines/         # 개발 가이드라인
-├── setup/              # 개발 환경 & 배포
-├── analysis/           # 데이터 분석 결과
-└── kis/                # KIS API 연동
+├── README.md
+├── architecture/         # 백엔드 아키텍처/리팩토링
+├── plans/                # 구현 계획
+├── features/             # 기능 상세
+├── database/             # DB 스키마
+├── setup/                # 환경설정/배포/운영
+├── testing/              # 테스트 전략/실행 가이드
+├── troubleshooting/      # 장애 대응/문제 해결
+├── guidelines/           # 코딩/문서 가이드
+├── analysis/             # 데이터 분석 결과
+└── kis/                  # KIS API 연동
 ```
 
 ## 빠른 시작
 
 | 상황 | 문서 |
 |------|------|
-| 처음 시작 | [환경설정 가이드](./setup/환경설정_가이드.md) |
-| 시스템 구조 이해 | [아키텍처](./architecture/ARCHITECTURE.md) |
-| 배포 방법 | [배포 가이드](./setup/배포_운영_가이드.md) |
-| 스케줄러 운영 | [스케줄러 가이드](./setup/스케줄러_운영_가이드.md) |
-| 기술 개선사항 | [Backend TODO](../TODO.md) |
+| 개발 환경 구성 | [setup](./setup/) |
+| 구조 이해 | [architecture](./architecture/) |
+| 기능 구현 계획 확인 | [plans](./plans/) |
+| 스키마 확인 | [database](./database/) |
+| 테스트 기준 확인 | [testing](./testing/) |
+| 장애 대응 | [troubleshooting](./troubleshooting/) |
 
-## 주요 섹션
+## 섹션 안내
 
-### [아키텍처](./architecture/)
-- 시스템 아키텍처, 이벤트 기반 구조, DB 전략
-- Kafka 이벤트 스키마, 스케줄러 구조
-- 인증 아키텍처 (JWT + OAuth2)
-- [리팩토링 계획](./architecture/refactor/) — 헥사고날 아키텍처 완성도 개선
+### Architecture
+- 도메인 경계, 이벤트 흐름, 리팩토링 방향
 
-### [구현 계획](./plans/)
-- 전략 관리 시스템
-- 백테스트 데이터 통합
-- 트레이딩 시스템 개선
-- 멀티 벤치마크
-- 전략-유니버스 디커플링
+### Features
+- 백엔드 기능별 요구사항, 구현 상태, 제약사항
 
-### [설정 및 배포](./setup/)
-- 환경 설정, 인증, 환경변수 관리
-- 배포 가이드, 스케줄러 운영, Slack 연동
+### Setup/Deployment
+- 환경변수, 로컬 실행, 배포 절차, 운영 명령
 
-### [데이터베이스](./database/)
-- PostgreSQL + MongoDB 스키마
-- 테이블/컬렉션 관계도
+### Testing
+- 단위/통합 테스트 전략 및 실행 방법
 
-### [KIS API](./kis/)
-- 한국투자증권 API 연동 가이드
-- 사용자별 KIS 계정 관리
+### Troubleshooting
+- 자주 발생하는 장애와 점검 순서
 
-## 현재 상태
+## 루트 문서 연결
 
-### 완료됨
-- Phase 1: 기본 인프라 구축
-- Phase 2: Event-Driven Architecture
-- PostgreSQL + MongoDB 하이브리드 DB
-- 9개 Quartz Scheduler Job
-- Vertex AI 예측 모델 통합
-
-### 진행 중
-- Phase 3: 자동 매매 시스템 (85%)
-- 헥사고날 아키텍처 리팩토링
-
----
-
-**마지막 업데이트**: 2026-02-13
+- [전사 문서 허브](../../docs/README.md)
+- [공통 아키텍처](../../docs/architecture/)
+- [API 계약](../../docs/api/)
+- [인프라](../../docs/infra/)
+- [테스트 규칙](../../docs/testing/테스트_규칙.md)

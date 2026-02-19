@@ -37,7 +37,7 @@ QuantIQ는 4가지 분석 방식을 독립적으로 운영하며, 향후 **Compo
 | 1 | 경제 데이터 수집 | 22:00 | `economic.data.update.request` | `daily_stock_data` | **[데이터수집.md](../features/데이터수집.md)** |
 | 2 | 기술적 분석 | 23:05 | `analysis.technical.request` | `stock_recommendations` | **[기술적분석.md](./technical/기술적분석.md)** |
 | 3 | 뉴스 감정 분석 | 23:05 | `analysis.sentiment.request` | `sentiment_analysis` | **[뉴스감정분석.md](./sentiment/뉴스감정분석.md)** |
-| 4 | AI 예측 (Vertex AI) | 22:00 (2단계) | `vertex.ai.run.request` | `stock_predictions` | **[AI분석.md](./ai/AI분석.md)** |
+| 4 | AI 예측 (Vertex AI) | 22:00 (2단계) | `vertex.ai.run.request` | `stock_predictions` | **[인공지능분석.md](./ai/인공지능분석.md)** |
 
 ---
 
