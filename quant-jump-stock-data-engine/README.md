@@ -87,5 +87,5 @@ pytest tests/ -v --cov=src
 
 ## 참고 문서
 
-- [아키텍처 계획](./refactorplan/ARCHITECTURE.md)
+- [아키텍처 계획](./refactorplan/아키텍처.md)
 - [리팩토링 계획](./refactorplan/REFACTOR_PLAN.md)

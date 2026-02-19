@@ -18,7 +18,7 @@
 
 ## 아키텍처 개선
 - [ ] 헥사고날 아키텍처 마이그레이션 (현재 65/100 → 목표 100/100)
-  - 상세: [BACKEND_ARCHITECTURE.md](./docs/architecture/refactor/BACKEND_ARCHITECTURE.md)
+  - 상세: [백엔드_아키텍처.md](./docs/architecture/refactor/백엔드_아키텍처.md)
 - [ ] ArchUnit 위반 해소 (27건 → 0건)
 - [ ] Application → JPA 직접 의존성 제거 (11개 서비스)
 
@@ -31,7 +31,7 @@
 - [ ] 이메일/전화번호 인증 구현
 - [ ] 뉴스 감정 분석 통합 (종목 추천 근거)
   - [x] MongoDB `news_sentiment` 컬렉션 설계 (title, summary, url, sentiment, relevance_score)
-  - [ ] 인덱스 생성 (ticker+date, ticker+published_at, TTL 90일) → [docs/setup/mongodb-indexes.md](./docs/setup/mongodb-indexes.md)
+  - [ ] 인덱스 생성 (ticker+date, ticker+published_at, TTL 90일) → [docs/setup/몽고디비_인덱스.md](./docs/setup/몽고디비_인덱스.md)
   - [x] Data Engine: SentimentAnalysisService 수정 (원본 기사 저장 추가)
   - [x] 뉴스 API 통합 (Alpha Vantage NEWS_SENTIMENT)
   - [x] 감정 분석: Alpha Vantage 내장 감정 점수 사용
