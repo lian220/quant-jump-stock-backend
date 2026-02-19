@@ -68,7 +68,7 @@ class SlackApiClient(
                 text = "📊 경제 데이터 업데이트 요청",
                 attachments = listOf(
                     SlackAttachment(
-                        color = "36a64f",
+                        color = "#36a64f",
                         title = "경제 데이터 수집 요청",
                         text = "경제 데이터 업데이트 요청이 발행되었습니다.",
                         fields = listOf(
@@ -112,7 +112,7 @@ class SlackApiClient(
                 text = "📊 경제 데이터 업데이트 요청",
                 attachments = listOf(
                     SlackAttachment(
-                        color = "36a64f",
+                        color = "#36a64f",
                         title = "경제 데이터 수집 요청",
                         text = "경제 데이터 업데이트 요청이 발행되었습니다.",
                         fields = listOf(
@@ -145,7 +145,7 @@ class SlackApiClient(
                 text = "⚠️ 경제 데이터 수집 오류",
                 attachments = listOf(
                     SlackAttachment(
-                        color = "dc3545",
+                        color = "#dc3545",
                         title = "경제 데이터 수집 실패",
                         text = "경제 데이터 수집 중 오류가 발생했습니다.",
                         fields = listOf(
@@ -245,7 +245,7 @@ class SlackApiClient(
                 text = "📊 기술적 분석 요청",
                 attachments = listOf(
                     SlackAttachment(
-                        color = "0099cc",
+                        color = "#0099cc",
                         title = "기술적 지표 분석 시작",
                         text = "SMA, RSI, MACD 기술적 지표 분석이 요청되었습니다.",
                         fields = listOf(
@@ -299,7 +299,7 @@ class SlackApiClient(
                 text = "📰 뉴스 감정 분석 요청",
                 attachments = listOf(
                     SlackAttachment(
-                        color = "ffa500",
+                        color = "#ffa500",
                         title = "뉴스 감정 분석 시작",
                         text = "Alpha Vantage NEWS_SENTIMENT API를 통한 감정 분석이 요청되었습니다.",
                         fields = listOf(
@@ -353,7 +353,7 @@ class SlackApiClient(
                 text = "🏆 종목 추천 요청",
                 attachments = listOf(
                     SlackAttachment(
-                        color = "7b2d8e",
+                        color = "#7b2d8e",
                         title = "종목 추천 (Composite Score) 시작",
                         text = "AI(30%) + Technical(40%) + Sentiment(30%) 기반 종목 추천이 요청되었습니다.",
                         fields = listOf(
@@ -395,7 +395,7 @@ class SlackApiClient(
                 text = "⚠️ $analysisType 분석 오류",
                 attachments = listOf(
                     SlackAttachment(
-                        color = "dc3545",
+                        color = "#dc3545",
                         title = "$analysisType 분석 실패",
                         text = "분석 중 오류가 발생했습니다.",
                         fields = listOf(
@@ -429,7 +429,7 @@ class SlackApiClient(
                 text = title,
                 attachments = listOf(
                     SlackAttachment(
-                        color = "0099cc",
+                        color = "#0099cc",
                         title = description,
                         text = "분석 요청이 발행되었습니다.",
                         fields = listOf(
@@ -475,7 +475,7 @@ class SlackApiClient(
                 text = "🚀 Vertex AI 예측 작업 시작",
                 attachments = listOf(
                     SlackAttachment(
-                        color = "0099cc",
+                        color = "#0099cc",
                         title = "주가 예측 모델 실행",
                         text = "Vertex AI CustomJob이 시작되었습니다.",
                         fields = listOf(
@@ -520,7 +520,7 @@ class SlackApiClient(
                 text = "✅ Vertex AI 예측 작업 완료",
                 attachments = listOf(
                     SlackAttachment(
-                        color = "36a64f",
+                        color = "#36a64f",
                         title = "주가 예측 모델 실행 완료",
                         text = "Vertex AI CustomJob이 성공적으로 완료되었습니다.",
                         fields = listOf(
@@ -554,7 +554,7 @@ class SlackApiClient(
                     text = "❌ Vertex AI 예측 작업 실패",
                     attachments = listOf(
                         SlackAttachment(
-                            color = "dc3545",
+                            color = "#dc3545",
                             title = "주가 예측 모델 실행 실패",
                             text = "Vertex AI CustomJob 실행 중 오류가 발생했습니다.",
                             fields = listOf(
@@ -582,7 +582,7 @@ class SlackApiClient(
                     text = "❌ Vertex AI 예측 작업 실패",
                     attachments = listOf(
                         SlackAttachment(
-                            color = "dc3545",
+                            color = "#dc3545",
                             title = "주가 예측 모델 실행 실패",
                             text = "Vertex AI CustomJob 실행 중 오류가 발생했습니다.",
                             fields = listOf(
@@ -629,7 +629,7 @@ class SlackApiClient(
                 text = "🚨 API 에러 발생",
                 attachments = listOf(
                     SlackAttachment(
-                        color = "dc3545",
+                        color = "#dc3545",
                         title = "서버 에러 알림",
                         text = "API 호출 중 예기치 않은 에러가 발생했습니다.",
                         fields = listOfNotNull(
@@ -695,7 +695,7 @@ data class SlackApiResponse(
  */
 data class SlackMessage(
     val text: String,
-    val attachments: List<SlackAttachment>
+    val attachments: List<SlackAttachment>? = null
 )
 
 /**

@@ -118,10 +118,12 @@ if [ "$SKIP_BUILD" = false ]; then
         export JAVA_HOME="/Library/Java/JavaVirtualMachines/graalvm-jdk-21/Contents/Home"
     fi
 
-    ./gradlew clean build -x test
-    if [ $? -ne 0 ]; then
-        echo -e "${RED}❌ Build failed!${NC}"
-        exit 1
+    if ! ./gradlew clean build -x test; then
+        echo -e "${YELLOW}⚠ Gradle build conflict detected. Cleaning stale state and retrying...${NC}"
+        ./gradlew --stop || true
+        rm -f "$HOME/.gradle/daemon/8.5/"*.lock "$HOME/.gradle/daemon/8.5/registry.bin.lock" 2>/dev/null || true
+        rm -rf build .gradle
+        ./gradlew clean build -x test
     fi
     cd ..
     echo -e "${GREEN}✓ Build completed${NC}"

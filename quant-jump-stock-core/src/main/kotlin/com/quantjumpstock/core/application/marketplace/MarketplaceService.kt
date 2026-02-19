@@ -50,7 +50,7 @@ class MarketplaceService(
             )
         }
 
-        val strategies = page.content.map { it.toDto() }
+        val strategies = page.content.map { it.toDto() }.toMutableList()
         val pagination = page.toPaginationDto()
 
         logger.info("공개 전략 목록 조회 완료: 총 ${pagination.totalElements}개, 현재 페이지 ${pagination.currentPage + 1}/${pagination.totalPages}")
@@ -122,7 +122,7 @@ class MarketplaceService(
                     date = it.date.toString(),
                     value = it.value
                 )
-            } ?: emptyList(),
+            }?.toMutableList() ?: mutableListOf(),
             currentHoldings = this.currentHoldings.map {
                 CurrentHoldingDto(
                     ticker = it.ticker,
@@ -130,11 +130,11 @@ class MarketplaceService(
                     signalDate = it.signalDate.toString(),
                     reason = it.reason
                 )
-            },
-            rules = conditionsParser.parseToRules(this.conditions),
+            }.toMutableList(),
+            rules = conditionsParser.parseToRules(this.conditions).toMutableList(),
             monthlyReturns = this.latestBacktest?.equityCurve?.let {
                 monthlyReturnsCalculator.calculate(it)
-            } ?: emptyList(),
+            }?.toMutableList() ?: mutableListOf(),
             trades = this.latestBacktest?.trades?.map {
                 BacktestTradeDto(
                     tradeDate = it.tradeDate.toString(),
@@ -148,11 +148,11 @@ class MarketplaceService(
                     holdingDays = it.holdingDays,
                     signalReason = it.signalReason
                 )
-            } ?: emptyList(),
+            }?.toMutableList() ?: mutableListOf(),
             createdAt = this.createdAt,
             // SCRUM-344: 유니버스 + 대표 백테스트
             recommendedUniverseType = this.recommendedUniverseType,
-            supportedUniverseTypes = this.supportedUniverseTypes
+            supportedUniverseTypes = this.supportedUniverseTypes.toMutableList()
         )
     }
 
@@ -188,7 +188,7 @@ class MarketplaceService(
             },
             createdAt = this.createdAt,
             recommendedUniverseType = this.recommendedUniverseType,
-            supportedUniverseTypes = this.supportedUniverseTypes
+            supportedUniverseTypes = this.supportedUniverseTypes?.toMutableList()
         )
     }
 

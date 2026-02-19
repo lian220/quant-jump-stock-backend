@@ -22,7 +22,7 @@ class NewsSlackAlertAdapter(
         try {
             webClient.post()
                 .uri(slackWebhookUrl)
-                .bodyValue(SlackMessage(text = message, attachments = emptyList()))
+                .bodyValue(SlackMessage(text = message))
                 .retrieve()
                 .bodyToMono(String::class.java)
                 .subscribe(
