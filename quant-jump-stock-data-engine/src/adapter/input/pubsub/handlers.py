@@ -907,6 +907,27 @@ class BacktestRequestHandler(MessageHandler):
             execution_type = "증분" if is_incremental else "전체"
             self._log_success(f"백테스트 실행 ({execution_type})", start_time)
 
+            # Slack 알림 전송
+            try:
+                from services.slack_notifier import SlackNotifier
+                SlackNotifier.notify_backtest_completed(
+                    strategy_id=strategy_id,
+                    strategy_name=result.strategy_name,
+                    request_id=message.request_id,
+                    backtest_type=f"{execution_type} (CANONICAL)" if payload.get("backtestType") == "CANONICAL" else execution_type,
+                    start_date=start_date,
+                    end_date=end_date,
+                    total_return_pct=float((result.total_return / result.initial_capital) * 100),
+                    cagr=float(result.cagr),
+                    mdd=float(result.mdd),
+                    sharpe_ratio=float(result.sharpe_ratio) if result.sharpe_ratio is not None else 0.0,
+                    total_trades=result.total_trades,
+                    win_rate=float(result.win_rate) if result.win_rate is not None else 0.0,
+                    execution_time=elapsed
+                )
+            except Exception as slack_error:
+                logger.warning(f"Slack 알림 전송 실패 (백테스트는 완료됨): {slack_error}")
+
             # 성공 이벤트 발행
             if self.publisher:
                 self.publisher.publish("BACKTEST_COMPLETED", {

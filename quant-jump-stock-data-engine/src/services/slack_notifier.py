@@ -370,6 +370,50 @@ class SlackNotifier:
         SlackNotifier._post_to_webhook(webhook_url, fallback_text, blocks=blocks)
 
     @staticmethod
+    def notify_backtest_completed(
+        strategy_id: int,
+        strategy_name: str,
+        request_id: str,
+        backtest_type: str,
+        start_date: str,
+        end_date: str,
+        total_return_pct: float,
+        cagr: float,
+        mdd: float,
+        sharpe_ratio: float,
+        total_trades: int,
+        win_rate: float,
+        execution_time: float
+    ):
+        """백테스트 완료 알림 (Scheduler Webhook)"""
+        text = f"✅ 백테스트 완료: {strategy_name}"
+        
+        return_emoji = "🟢" if total_return_pct > 0 else "🔴"
+        sharpe_emoji = "⭐" if sharpe_ratio and sharpe_ratio > 1.0 else "📊"
+        
+        attachments = [
+            {
+                "color": "28a745" if total_return_pct > 0 else "dc3545",
+                "title": f"{return_emoji} {strategy_name} (전략 #{strategy_id})",
+                "text": f"백테스트 타입: {backtest_type} | 기간: {start_date} ~ {end_date}",
+                "fields": [
+                    {"title": "Request ID", "value": request_id[:8] + "...", "short": True},
+                    {"title": "소요 시간", "value": f"{execution_time:.2f}초", "short": True},
+                    {"title": f"{return_emoji} 총 수익률", "value": f"{total_return_pct:+.2f}%", "short": True},
+                    {"title": "📈 연평균 수익률 (CAGR)", "value": f"{cagr:+.2f}%", "short": True},
+                    {"title": "📉 최대 낙폭 (MDD)", "value": f"{mdd:.2f}%", "short": True},
+                    {"title": f"{sharpe_emoji} Sharpe Ratio", "value": f"{sharpe_ratio:.2f}" if sharpe_ratio else "N/A", "short": True},
+                    {"title": "🔄 총 거래", "value": f"{total_trades}건", "short": True},
+                    {"title": "🎯 승률", "value": f"{win_rate:.1f}%" if win_rate else "N/A", "short": True},
+                ],
+                "footer": "Quantiq Data Engine · Backtest",
+                "ts": int(datetime.now(KST).timestamp())
+            }
+        ]
+        
+        SlackNotifier._post_to_webhook(SlackNotifier._get_scheduler_webhook(), text, attachments=attachments)
+
+    @staticmethod
     def notify_buy_candidates(total_analyzed: int, buy_candidates: List, buy_criteria):
         """매수 후보 알림 (종합 리포트로 통합됨)"""
         logger.debug(
