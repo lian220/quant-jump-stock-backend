@@ -6,12 +6,59 @@ Composite Score 기반 종합 리포트를 생성한다.
 """
 import logging
 from typing import Dict, Any, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from core.database import MongoDB
 from services.buy_criteria import BuyCriteria
 
 logger = logging.getLogger(__name__)
+
+
+def _query_stock_predictions_by_date(db, analysis_date: str, target_date: datetime):
+    """
+    stock_predictions 컬렉션에서 해당 분석일 문서 조회.
+    MongoDB date가 ISODate(UTC)로 저장된 경우를 위해 여러 쿼리 시도.
+    """
+    # 1) Naive UTC 당일 범위
+    start_utc = datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0)
+    end_utc = start_utc + timedelta(days=1)
+    preds = list(db.stock_predictions.find(
+        {"date": {"$gte": start_utc, "$lt": end_utc}},
+        {"_id": 0, "ticker": 1, "predicted_price": 1, "actual_price": 1},
+    ))
+    if preds:
+        return preds
+    # 2) timezone-aware UTC 범위
+    start_utc_tz = start_utc.replace(tzinfo=timezone.utc)
+    end_utc_tz = end_utc.replace(tzinfo=timezone.utc)
+    preds = list(db.stock_predictions.find(
+        {"date": {"$gte": start_utc_tz, "$lt": end_utc_tz}},
+        {"_id": 0, "ticker": 1, "predicted_price": 1, "actual_price": 1},
+    ))
+    if preds:
+        return preds
+    # 3) 문자열 날짜
+    preds = list(db.stock_predictions.find(
+        {"date": analysis_date},
+        {"_id": 0, "ticker": 1, "predicted_price": 1, "actual_price": 1},
+    ))
+    if preds:
+        return preds
+    # 4) $expr로 년/월/일만 비교
+    y, m, d = target_date.year, target_date.month, target_date.day
+    preds = list(db.stock_predictions.find(
+        {
+            "$expr": {
+                "$and": [
+                    {"$eq": [{"$year": "$date"}, y]},
+                    {"$eq": [{"$month": "$date"}, m]},
+                    {"$eq": [{"$dayOfMonth": "$date"}, d]},
+                ]
+            }
+        },
+        {"_id": 0, "ticker": 1, "predicted_price": 1, "actual_price": 1},
+    ))
+    return preds
 
 
 class ComprehensiveReportService:
@@ -95,11 +142,8 @@ class ComprehensiveReportService:
                 "rise_probability": round(rise_pct, 2) if rise_pct is not None else 0.0,
             }
 
-        # 4. stock_predictions 조회 (정확한 날짜, 빠진 종목 보충)
-        preds = db.stock_predictions.find(
-            {"date": target_date},
-            {"_id": 0, "ticker": 1, "predicted_price": 1, "actual_price": 1},
-        )
+        # 4. stock_predictions 조회 (날짜는 ISODate(UTC)로 저장된 경우 많음 → 여러 방식 시도)
+        preds = _query_stock_predictions_by_date(db, analysis_date, target_date)
 
         pred_count = 0
         for doc in preds:

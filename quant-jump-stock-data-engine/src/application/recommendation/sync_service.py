@@ -8,7 +8,7 @@ Composite Score = 0.3 × ai + 0.4 × tech + 0.3 × sentiment (max 7.5)
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from decimal import Decimal
 from psycopg2.extras import execute_values
@@ -51,11 +51,9 @@ class RecommendationSyncService:
             # stock_analysis_results 데이터를 ai_predictions에 병합 (analysis_results 우선)
             ai_predictions = self._merge_ai_sources(ai_predictions, ai_analysis_results)
 
-            logger.debug(
-                f"[Sync] 조회 완료: AI={len(ai_predictions)}, "
-                f"AnalysisResults={len(ai_analysis_results)}, "
-                f"Sentiment={len(sentiment_analysis)}, Tech={len(technical_analysis)}, "
-                f"Prices={len(current_prices)}"
+            logger.info(
+                f"[Sync] 조회 완료: AI={len(ai_predictions)}, Sentiment={len(sentiment_analysis)}, "
+                f"Tech={len(technical_analysis)}, Prices={len(current_prices)} (date={analysis_date})"
             )
 
             # 2. 종목별로 데이터 병합
@@ -164,22 +162,45 @@ class RecommendationSyncService:
         return merged
 
     def _fetch_ai_predictions(self, analysis_date: str) -> Dict[str, Dict]:
-        """AI 예측 데이터 조회 (MongoDB stock_predictions) - 정확한 날짜 매칭"""
+        """
+        AI 예측 데이터 조회 (MongoDB stock_predictions).
+        - date 필드가 ISODate(UTC)로 저장되므로 naive datetime exact match + 문자열 $or 사용.
+        - rise_probability 없으면 predicted_price/actual_price로 계산 후 0~1 정규화.
+        """
         try:
-            from datetime import datetime as dt
-            target_date = dt.strptime(analysis_date, "%Y-%m-%d")
-            predictions = list(self.mongo_db.stock_predictions.find(
-                {"date": target_date}
-            ))
+            dt_date = datetime.strptime(analysis_date, "%Y-%m-%d")
 
-            return {
-                pred["ticker"]: {
-                    "predicted_price": pred.get("predicted_price"),
-                    "rise_probability": pred.get("rise_probability"),  # 0~1
-                } for pred in predictions if "ticker" in pred
-            }
+            # naive datetime exact match + 문자열 $or (comprehensive_report.py / _fetch_stock_analysis_results 패턴)
+            predictions = list(self.mongo_db.stock_predictions.find({
+                "$or": [
+                    {"date": dt_date},
+                    {"date": analysis_date},
+                ]
+            }))
+
+            logger.info(
+                f"[Sync] stock_predictions 조회 date={analysis_date} -> {len(predictions)}건 "
+                f"(ai_predicted_price/ai_rise_probability 반영용)"
+            )
+
+            out = {}
+            for pred in predictions:
+                ticker = pred.get("ticker")
+                if not ticker:
+                    continue
+                predicted = pred.get("predicted_price")
+                actual = pred.get("actual_price")
+                rise = pred.get("rise_probability")
+                if rise is None and predicted is not None and actual is not None and actual != 0:
+                    ratio = (float(predicted) - float(actual)) / float(actual)
+                    rise = max(0.0, min(1.0, 0.5 + ratio))
+                out[ticker] = {
+                    "predicted_price": float(predicted) if predicted is not None else None,
+                    "rise_probability": float(rise) if rise is not None else None,
+                }
+            return out
         except Exception as e:
-            logger.warning(f"AI 예측 조회 실패: {e}")
+            logger.warning(f"AI 예측 조회 실패: {e}", exc_info=True)
             return {}
 
     def _fetch_sentiment_analysis(self, analysis_date: str) -> Dict[str, Dict]:
@@ -201,11 +222,30 @@ class RecommendationSyncService:
             return {}
 
     def _fetch_technical_analysis(self, analysis_date: str) -> Dict[str, Dict]:
-        """기술적 분석 데이터 조회 (MongoDB stock_recommendations)"""
+        """기술적 분석 데이터 조회 (MongoDB stock_recommendations). date 필드 문자열/ISODate 둘 다 매칭."""
         try:
+            dt_date = datetime.strptime(analysis_date, "%Y-%m-%d")
+            start_utc = datetime(dt_date.year, dt_date.month, dt_date.day, 0, 0, 0)
+            end_utc = start_utc + timedelta(days=1)
+
             recommendations = list(self.mongo_db.stock_recommendations.find(
-                {"date": analysis_date}
+                {"date": {"$gte": start_utc, "$lt": end_utc}}
             ))
+            if not recommendations:
+                recommendations = list(self.mongo_db.stock_recommendations.find(
+                    {"date": analysis_date}
+                ))
+            if not recommendations:
+                y, m, d = dt_date.year, dt_date.month, dt_date.day
+                recommendations = list(self.mongo_db.stock_recommendations.find({
+                    "$expr": {
+                        "$and": [
+                            {"$eq": [{"$year": "$date"}, y]},
+                            {"$eq": [{"$month": "$date"}, m]},
+                            {"$eq": [{"$dayOfMonth": "$date"}, d]},
+                        ]
+                    }
+                }))
 
             results = {}
             for rec in recommendations:
@@ -279,8 +319,8 @@ class RecommendationSyncService:
             sentiment = sentiment_data.get(ticker, {})
             tech = tech_data.get(ticker, {})
 
-            # 기술적 분석이 없는 종목은 제외 (필수)
-            if not tech:
+            # AI·감정·기술 중 하나라도 있으면 병합 (기술적 분석 필수 아님)
+            if not ai and not sentiment and not tech:
                 continue
 
             # rise_probability가 없지만 predicted_price가 있으면 직접 계산
@@ -295,21 +335,21 @@ class RecommendationSyncService:
             # 감정 점수 계산 (0~5)
             sentiment_score = self._calculate_sentiment_score(sentiment.get("sentiment_score"))
 
-            # 기술적 점수 계산 (0~3.5)
-            tech_score = self._calculate_tech_score(tech)
-            tech_signals_count = self._count_tech_signals(tech)
+            # 기술적 점수 계산 (0~3.5, 없으면 0)
+            tech_score = self._calculate_tech_score(tech) if tech else Decimal("0")
+            tech_signals_count = self._count_tech_signals(tech) if tech else 0
 
-            # Composite Score 계산
-            # - 누락된 지표(AI/감정)는 분모(가중치 합)에서 제외
-            # - 사용 가능한 지표만으로 가중 평균 계산
+            # Composite Score 계산 (누락된 지표는 분모에서 제외, 기술도 선택)
             has_ai = rise_probability is not None
             has_sentiment = sentiment.get("sentiment_score") is not None
+            has_tech = bool(tech)
             composite_score = self._calculate_composite_score(
                 ai_score=ai_score,
                 sentiment_score=sentiment_score,
                 tech_score=tech_score,
                 has_ai=has_ai,
-                has_sentiment=has_sentiment
+                has_sentiment=has_sentiment,
+                has_tech=has_tech,
             )
 
             # 등급 판정
@@ -329,22 +369,23 @@ class RecommendationSyncService:
                 upside_percent = ((target_price - current_price) / current_price) * 100
                 price_recommendation = self._determine_price_recommendation(upside_percent)
 
+            stock_name = (tech or {}).get("stock_name") or (sentiment or {}).get("stock_name") or (ai or {}).get("stock_name") or ticker
             merged.append({
                 "ticker": ticker,
-                "stock_name": tech.get("stock_name", ticker),
+                "stock_name": stock_name,
                 "ai_predicted_price": ai.get("predicted_price"),
                 "ai_rise_probability": rise_probability,
                 "ai_score": float(ai_score),
                 "sentiment_score": sentiment.get("sentiment_score"),
                 "sentiment_news_count": sentiment.get("news_count"),
                 "sentiment_normalized_score": float(sentiment_score),
-                "tech_sma20": tech.get("sma20"),
-                "tech_sma50": tech.get("sma50"),
-                "tech_rsi": tech.get("rsi"),
-                "tech_macd": tech.get("macd"),
-                "tech_signal": tech.get("signal"),
-                "tech_golden_cross": tech.get("golden_cross", False),
-                "tech_macd_buy_signal": tech.get("macd_buy_signal", False),
+                "tech_sma20": (tech or {}).get("sma20"),
+                "tech_sma50": (tech or {}).get("sma50"),
+                "tech_rsi": (tech or {}).get("rsi"),
+                "tech_macd": (tech or {}).get("macd"),
+                "tech_signal": (tech or {}).get("signal"),
+                "tech_golden_cross": (tech or {}).get("golden_cross", False),
+                "tech_macd_buy_signal": (tech or {}).get("macd_buy_signal", False),
                 "tech_score": float(tech_score),
                 "tech_signals_count": tech_signals_count,
                 "composite_score": float(composite_score),
@@ -369,25 +410,24 @@ class RecommendationSyncService:
         sentiment_score: Decimal,
         tech_score: Decimal,
         has_ai: bool,
-        has_sentiment: bool
+        has_sentiment: bool,
+        has_tech: bool = True,
     ) -> Decimal:
         """
-        Composite Score 계산 (누락 지표 제외 가중 평균)
-
-        - 기술적 점수는 필수(tech_data 없으면 상위에서 이미 제외)
-        - AI/감정이 누락되면 해당 항목 가중치는 계산에서 제외
+        Composite Score 계산 (누락 지표 제외 가중 평균).
+        AI/감정/기술 모두 선택 사항이며, 있는 지표만 가중 평균에 포함.
         """
-        weighted_sum = self.weight_tech * tech_score
-        weight_sum = self.weight_tech
-
+        weighted_sum = Decimal("0")
+        weight_sum = Decimal("0")
+        if has_tech:
+            weighted_sum += self.weight_tech * tech_score
+            weight_sum += self.weight_tech
         if has_ai:
             weighted_sum += self.weight_ai * ai_score
             weight_sum += self.weight_ai
-
         if has_sentiment:
             weighted_sum += self.weight_sentiment * sentiment_score
             weight_sum += self.weight_sentiment
-
         if weight_sum == 0:
             return Decimal("0")
 
