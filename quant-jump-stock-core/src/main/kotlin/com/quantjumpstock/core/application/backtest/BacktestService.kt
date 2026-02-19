@@ -305,7 +305,7 @@ class BacktestService(
             ),
             equityCurve = equityCurve,
             benchmarkCurve = equityCurve?.filter { it.benchmark != null }?.map {
-                EquityCurvePoint(date = it.date, value = it.benchmark ?: 0.0)
+                EquityCurvePoint(date = it.date, value = it.benchmark ?: BigDecimal.ZERO)
             }?.ifEmpty { null },
             // SCRUM-337: 다중 벤치마크 커브 생성
             benchmarkCurves = buildMultiBenchmarkCurves(equityCurve),

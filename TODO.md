@@ -47,8 +47,25 @@
   - [ ] Frontend: 뉴스 분석 컴포넌트 (감정 뱃지, 상위 뉴스 5개 표시)
   - [ ] **테스트**: 스케줄러 실행 후 news_sentiment 컬렉션 확인
 
+## 보안/안정성 (코드 리뷰 2026-02-19)
+- [ ] 백테스트 Rate Limiting DB 레벨 잠금 (TOCTOU 레이스 컨디션)
+  - `BacktestController.kt` — 동시 요청 시 FREE 티어 제한(5개) 초과 가능
+  - SELECT FOR UPDATE 또는 DB unique constraint로 해결
+- [ ] DB 복합 인덱스 추가 (Flyway 마이그레이션)
+  - `backtest_results(user_id, strategy_id, status)` — countUserCustom 쿼리
+  - `backtest_results(status, created_at)` — findLatestCompleted 쿼리
+  - `prediction_results(user_id, created_date)` — findHighConfidenceBuySignals 쿼리
+- [ ] Pub/Sub 핸들러 async/sync 패턴 통일
+  - 현재: EconomicData(sync), TechnicalAnalysis(async), Sentiment(sync) 혼재
+  - 전체 async 또는 전체 sync로 통일
+- [ ] 외부 API 호출 재시도 로직 (exponential backoff)
+  - FRED API, Yahoo Finance, SaveTicker API — 단일 실패 시 전체 수집 중단됨
+  - tenacity 또는 자체 retry decorator 적용
+
 ## 성능
-- [ ] JPA N+1 쿼리 최적화
+- [ ] JPA N+1 쿼리 최적화 (@EntityGraph 적용)
+  - `BacktestResultJpaRepository.findByIdWithTrades()` — 관련 엔티티 별도 로드
+  - `MarketplaceService` 배치 전략 로드 시 다중 쿼리 발생
 - [ ] Kafka consumer 안정성 개선
 
 ## 테스트

@@ -321,7 +321,6 @@ class RecommendationSyncService:
             )
 
             # 🆕 Phase 6.5: 가격 메트릭 계산
-            current_price = price_data.get(ticker)
             target_price = ai.get("predicted_price")
             upside_percent = None
             price_recommendation = None

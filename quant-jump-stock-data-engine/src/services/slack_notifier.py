@@ -7,6 +7,7 @@ Bot Token 사용 시 스레드 답글(thread_ts) 지원.
 
 import requests
 import logging
+import threading
 from datetime import datetime
 from pytz import timezone
 from core.config import settings
@@ -19,14 +20,17 @@ EST = timezone('America/New_York')
 
 logger = logging.getLogger(__name__)
 
-# Bot Client 싱글톤
+# Bot Client 싱글톤 (thread-safe)
 _bot_client: Optional[SlackBotClient] = None
+_bot_client_lock = threading.Lock()
 
 
 def _get_bot_client() -> SlackBotClient:
     global _bot_client
     if _bot_client is None:
-        _bot_client = SlackBotClient(bot_token=getattr(settings, 'SLACK_BOT_TOKEN', ''))
+        with _bot_client_lock:
+            if _bot_client is None:
+                _bot_client = SlackBotClient(bot_token=getattr(settings, 'SLACK_BOT_TOKEN', ''))
     return _bot_client
 
 
