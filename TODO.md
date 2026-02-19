@@ -25,6 +25,11 @@
 ## 데이터
 - [ ] Stock 데이터 PostgreSQL 마이그레이션 후속 (Adapter 패턴 적용)
 - [ ] MongoDB 단계적 제거 (dual-write → RDB only → 삭제)
+- [ ] Alpha Vantage 다중 API 키 운영 체계 도입 (종목 수 확장 대응)
+  - [ ] 환경변수 확장: `ALPHA_VANTAGE_API_KEY` → `ALPHA_VANTAGE_API_KEYS`(쉼표 구분)
+  - [ ] Key Pool/라운드로빈 호출 로직 추가 (분당 호출 제한 분산)
+  - [ ] 키별 실패율/429 응답 모니터링 및 자동 제외(일시) 로직 추가
+  - [ ] 키 관리 문서 업데이트: [알파_밴티지_에이피아이_키.md](./docs/setup/알파_밴티지_에이피아이_키.md)
 
 ## 기능
 - [ ] Vertex AI CustomJob 파라미터 기능 추가
