@@ -142,13 +142,18 @@ class BuyCriteria:
         has_ai_data = bool(ai_scores and any(ai_scores.values()))
         has_sentiment_data = bool(sentiment_scores and any(sentiment_scores.values()))
 
-        # Tech-only 모드일 때 composite threshold 조정
+        # AI 데이터 없을 때 composite threshold 동적 조정
+        # AI(0.3) 없으면: 최대 composite = 0.4×3.5 + 0.3×~1.0 ≈ 1.5 → 2.0 달성 불가
         composite_threshold = self.min_composite_score
-        if not has_ai_data and not has_sentiment_data:
-            # Tech-only: 최대 composite = 0.4 × 3.5 = 1.4
-            # Threshold를 1.0으로 낮춤 (전체 기술 신호의 71%)
-            composite_threshold = 1.0
-            logger.info(f"Tech-only 모드: composite_threshold를 {composite_threshold}로 조정")
+        if not has_ai_data:
+            if has_sentiment_data:
+                # Tech(40%) + Sentiment(30%) 모드: 최대 ≈ 1.7
+                composite_threshold = 1.0
+                logger.info(f"AI 없음+감정 있음 모드: composite_threshold를 {composite_threshold}로 조정")
+            else:
+                # Tech-only 모드: 최대 composite = 0.4 × 3.5 = 1.4
+                composite_threshold = 1.0
+                logger.info(f"Tech-only 모드: composite_threshold를 {composite_threshold}로 조정")
 
         candidates = []
         for stock in all_results:

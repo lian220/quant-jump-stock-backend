@@ -1,3 +1,10 @@
+"""
+Slack 알림 서비스
+
+Bot Token 우선, Webhook fallback.
+Bot Token 사용 시 스레드 답글(thread_ts) 지원.
+"""
+
 import requests
 import logging
 from datetime import datetime
@@ -5,53 +12,94 @@ from pytz import timezone
 from core.config import settings
 from typing import Optional, Dict, List
 
+from adapter.output.slack.bot_client import SlackBotClient
+
 KST = timezone('Asia/Seoul')
 EST = timezone('America/New_York')
 
 logger = logging.getLogger(__name__)
 
+# Bot Client 싱글톤
+_bot_client: Optional[SlackBotClient] = None
+
+
+def _get_bot_client() -> SlackBotClient:
+    global _bot_client
+    if _bot_client is None:
+        _bot_client = SlackBotClient(bot_token=getattr(settings, 'SLACK_BOT_TOKEN', ''))
+    return _bot_client
+
 
 class SlackNotifier:
-    """Slack 알림 서비스 - Webhook 직접 호출 (Bot Token 불필요)"""
+    """Slack 알림 서비스 - Bot Token (스레드 답글) + Webhook fallback"""
 
     @staticmethod
     def _post_to_webhook(url: str, text: str, attachments: list = None, blocks: list = None):
-        """
-        지정 Webhook URL로 메시지 POST
-
-        Args:
-            url: Slack Webhook URL
-            text: fallback 텍스트
-            attachments: legacy 첨부 (attachments format)
-            blocks: Block Kit blocks
-        """
+        """Webhook URL로 메시지 POST (fallback)"""
         if not url:
-            logger.debug("Webhook URL이 비어있어 메시지를 보내지 않습니다")
             return
-
         if not getattr(settings, 'SLACK_ENABLED', True):
             logger.info("Slack 비활성화 상태 (SLACK_ENABLED=false)")
             return
-
         try:
             payload = {"text": text}
             if attachments:
                 payload["attachments"] = attachments
             if blocks:
                 payload["blocks"] = blocks
-
             response = requests.post(url, json=payload, timeout=10)
             response.raise_for_status()
             logger.debug("Slack Webhook 알림 발송 완료")
         except Exception as e:
-            logger.error(f"❌ Slack Webhook 알림 발송 실패: {e}")
+            logger.error(f"Slack Webhook 알림 발송 실패: {e}")
+
+    @staticmethod
+    def _post_message(
+        channel: str,
+        webhook_url: str,
+        text: str,
+        attachments: list = None,
+        blocks: list = None,
+        thread_ts: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        Bot Token 우선, Webhook fallback으로 메시지 발송.
+
+        Returns:
+            Bot Token 사용 시 메시지 ts (thread_ts로 사용 가능). Webhook이면 None.
+        """
+        if not getattr(settings, 'SLACK_ENABLED', True):
+            logger.info("Slack 비활성화 상태 (SLACK_ENABLED=false)")
+            return None
+
+        bot = _get_bot_client()
+        if bot.is_available and channel:
+            ts = bot.post_message(
+                channel=channel,
+                text=text,
+                blocks=blocks,
+                attachments=attachments,
+                thread_ts=thread_ts,
+            )
+            return ts
+
+        # Webhook fallback (thread_ts 미지원)
+        SlackNotifier._post_to_webhook(webhook_url, text, attachments=attachments, blocks=blocks)
+        return None
 
     @staticmethod
     def _get_current_time() -> str:
-        """한국/뉴욕 이중 시간 표시"""
         now_kst = datetime.now(KST)
         now_est = datetime.now(EST)
         return f"{now_kst.strftime('%Y-%m-%d %H:%M KST')} / {now_est.strftime('%H:%M EST')}"
+
+    @staticmethod
+    def _get_scheduler_channel() -> str:
+        return getattr(settings, 'SLACK_CHANNEL_SCHEDULER', '')
+
+    @staticmethod
+    def _get_error_channel() -> str:
+        return getattr(settings, 'SLACK_CHANNEL_ERROR', '')
 
     @staticmethod
     def _get_scheduler_webhook() -> str:
@@ -61,9 +109,22 @@ class SlackNotifier:
     def _get_error_webhook() -> str:
         return getattr(settings, 'SLACK_WEBHOOK_URL_ERROR', '') or settings.SLACK_WEBHOOK_URL
 
+    # ============================================================
+    # 경제 데이터 수집 알림
+    # ============================================================
+
     @staticmethod
-    def notify_economic_data_collection_start(request_id: str, source: str = "kafka", parent_thread_ts: Optional[str] = None) -> Optional[str]:
-        """경제 데이터 수집 시작 알림 (Webhook)"""
+    def notify_economic_data_collection_start(
+        request_id: str,
+        source: str = "pubsub",
+        parent_thread_ts: Optional[str] = None,
+    ) -> Optional[str]:
+        """
+        경제 데이터 수집 시작 알림.
+
+        Returns:
+            thread_ts (Bot Token 사용 시). 이후 답글에 사용.
+        """
         text = "🔄 경제 데이터 수집 시작"
         attachments = [
             {
@@ -81,18 +142,28 @@ class SlackNotifier:
             }
         ]
 
-        SlackNotifier._post_to_webhook(SlackNotifier._get_scheduler_webhook(), text, attachments=attachments)
-        return None
+        return SlackNotifier._post_message(
+            channel=SlackNotifier._get_scheduler_channel(),
+            webhook_url=SlackNotifier._get_scheduler_webhook(),
+            text=text,
+            attachments=attachments,
+            thread_ts=parent_thread_ts,
+        )
 
     @staticmethod
-    def notify_economic_data_collection_success(request_id: str, data_summary: dict = None, thread_ts: Optional[str] = None):
-        """경제 데이터 수집 완료 알림 (Webhook)"""
+    def notify_economic_data_collection_success(
+        request_id: str,
+        data_summary: dict = None,
+        thread_ts: Optional[str] = None,
+    ):
+        """경제 데이터 수집 완료 알림 (thread reply)"""
         if data_summary is None:
             data_summary = {}
 
         fred_count = data_summary.get("fred_collected", 0)
         yahoo_count = data_summary.get("yahoo_collected", 0)
         total_count = data_summary.get("total_indicators", fred_count + yahoo_count)
+        stocks_count = data_summary.get("stocks_collected", 0)
         duration = data_summary.get("duration", "N/A")
 
         text = "✅ 경제 데이터 수집 완료"
@@ -100,13 +171,13 @@ class SlackNotifier:
             {
                 "color": "28a745",
                 "title": "📊 수집 결과 요약",
-                "text": f"총 {total_count}개 지표 수집 완료 (FRED: {fred_count}, Yahoo: {yahoo_count})",
+                "text": f"총 {total_count}개 지표, {stocks_count}개 종목 수집 완료 (FRED: {fred_count}, Yahoo: {yahoo_count})",
                 "fields": [
                     {"title": "Request ID", "value": request_id, "short": True},
                     {"title": "소요 시간", "value": duration, "short": True},
                     {"title": "FRED 지표", "value": f"{fred_count}개", "short": True},
                     {"title": "Yahoo Finance", "value": f"{yahoo_count}개", "short": True},
-                    {"title": "총 수집 지표", "value": f"{total_count}개", "short": True},
+                    {"title": "개별 종목", "value": f"{stocks_count}개", "short": True},
                     {"title": "완료 시각", "value": datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S"), "short": True},
                 ],
                 "footer": "Quantiq Data Engine",
@@ -114,11 +185,21 @@ class SlackNotifier:
             }
         ]
 
-        SlackNotifier._post_to_webhook(SlackNotifier._get_scheduler_webhook(), text, attachments=attachments)
+        SlackNotifier._post_message(
+            channel=SlackNotifier._get_scheduler_channel(),
+            webhook_url=SlackNotifier._get_scheduler_webhook(),
+            text=text,
+            attachments=attachments,
+            thread_ts=thread_ts,
+        )
 
     @staticmethod
-    def notify_economic_data_collection_error(request_id: str, error: str, thread_ts: Optional[str] = None):
-        """경제 데이터 수집 오류 알림 (Webhook)"""
+    def notify_economic_data_collection_error(
+        request_id: str,
+        error: str,
+        thread_ts: Optional[str] = None,
+    ):
+        """경제 데이터 수집 오류 알림 (thread reply)"""
         text = "⚠️ 경제 데이터 수집 오류"
         attachments = [
             {
@@ -127,9 +208,8 @@ class SlackNotifier:
                 "text": "경제 데이터 수집 중 오류가 발생했습니다.",
                 "fields": [
                     {"title": "Request ID", "value": request_id, "short": True},
-                    {"title": "Error", "value": error, "short": False},
+                    {"title": "Error", "value": error[:200], "short": False},
                     {"title": "Timestamp", "value": datetime.now(KST).isoformat(), "short": True},
-                    {"title": "Action", "value": "로그를 확인하고 수동 재시도를 고려하세요", "short": False},
                     {"title": "Status", "value": "❌ Failed", "short": True},
                 ],
                 "footer": "Quantiq Data Engine",
@@ -137,59 +217,25 @@ class SlackNotifier:
             }
         ]
 
-        SlackNotifier._post_to_webhook(SlackNotifier._get_error_webhook(), text, attachments=attachments)
+        SlackNotifier._post_message(
+            channel=SlackNotifier._get_error_channel(),
+            webhook_url=SlackNotifier._get_error_webhook(),
+            text=text,
+            attachments=attachments,
+            thread_ts=thread_ts,
+        )
+
+    # ============================================================
+    # 종합 분석 리포트
+    # ============================================================
 
     @staticmethod
-    def notify_fred_api_error(indicator_code: str, error: str):
-        """FRED API 오류 알림"""
-        text = "⚠️ FRED API 오류"
-        attachments = [
-            {
-                "color": "ffc107",
-                "title": "FRED API 호출 실패",
-                "text": f"경제 지표 {indicator_code} 수집에 실패했습니다.",
-                "fields": [
-                    {"title": "Indicator", "value": indicator_code, "short": True},
-                    {"title": "Error", "value": error, "short": True},
-                    {"title": "Timestamp", "value": datetime.now(KST).isoformat(), "short": True},
-                ],
-                "footer": "Quantiq Data Engine",
-                "ts": int(datetime.now(KST).timestamp())
-            }
-        ]
-        SlackNotifier._post_to_webhook(SlackNotifier._get_error_webhook(), text, attachments=attachments)
-
-    @staticmethod
-    def notify_yahoo_finance_error(ticker: str, error: str):
-        """Yahoo Finance 오류 알림"""
-        text = "⚠️ Yahoo Finance 오류"
-        attachments = [
-            {
-                "color": "ffc107",
-                "title": "Yahoo Finance 호출 실패",
-                "text": f"시장 지표 {ticker} 수집에 실패했습니다.",
-                "fields": [
-                    {"title": "Ticker", "value": ticker, "short": True},
-                    {"title": "Error", "value": error, "short": True},
-                    {"title": "Timestamp", "value": datetime.now(KST).isoformat(), "short": True},
-                ],
-                "footer": "Quantiq Data Engine",
-                "ts": int(datetime.now(KST).timestamp())
-            }
-        ]
-        SlackNotifier._post_to_webhook(SlackNotifier._get_error_webhook(), text, attachments=attachments)
-
-    @staticmethod
-    def send_thread_message(text: str, thread_ts: str):
-        """스레드 답글 (Bot Token 필요 → Webhook에서는 미지원, 무시)"""
-        logger.debug(f"스레드 답글 스킵 (Webhook 모드): {text[:50]}...")
-
-    @staticmethod
-    def notify_comprehensive_report(report: Dict):
-        """Quantiq 종합 분석 리포트를 analysis webhook으로 전송"""
+    def notify_comprehensive_report(report: Dict, thread_ts: Optional[str] = None):
+        """Quantiq 종합 분석 리포트 발송 (thread reply 지원)"""
+        analysis_channel = getattr(settings, 'SLACK_CHANNEL_ANALYSIS', '')
         webhook_url = getattr(settings, 'SLACK_WEBHOOK_URL_ANALYSIS', '')
-        if not webhook_url:
-            logger.warning("⚠️ SLACK_WEBHOOK_URL_ANALYSIS 미설정, 추천 알림 생략")
+        if not analysis_channel and not webhook_url:
+            logger.warning("SLACK_CHANNEL_ANALYSIS / SLACK_WEBHOOK_URL_ANALYSIS 미설정, 추천 알림 생략")
             return
 
         current_time = SlackNotifier._get_current_time()
@@ -327,11 +373,22 @@ class SlackNotifier:
             f"🎯 Quantiq 종합 분석 완료: {total}개 분석, "
             f"{candidate_count}개 추천, 평균 종합 {avg_composite:.2f}"
         )
-        SlackNotifier._post_to_webhook(webhook_url, fallback_text, blocks=blocks)
+
+        SlackNotifier._post_message(
+            channel=analysis_channel,
+            webhook_url=webhook_url,
+            text=fallback_text,
+            blocks=blocks,
+            thread_ts=thread_ts,
+        )
+
+    # ============================================================
+    # 뉴스 수집
+    # ============================================================
 
     @staticmethod
     def notify_news_collection(result: Dict):
-        """뉴스 수집 결과를 뉴스 전용 Slack 채널로 전송"""
+        """뉴스 수집 결과 알림"""
         webhook_url = getattr(settings, 'SLACK_WEBHOOK_URL_NEWS', '')
         if not webhook_url:
             logger.debug("SLACK_WEBHOOK_URL_NEWS 미설정, 뉴스 알림 생략")
@@ -339,12 +396,10 @@ class SlackNotifier:
 
         source = result.get("source", "unknown")
         count = result.get("collected_count", 0)
-
         if count == 0:
             return
 
         current_time = SlackNotifier._get_current_time()
-
         blocks = [
             {
                 "type": "header",
@@ -368,6 +423,73 @@ class SlackNotifier:
 
         fallback_text = f"📰 뉴스 수집 완료: {source}에서 {count}건 저장"
         SlackNotifier._post_to_webhook(webhook_url, fallback_text, blocks=blocks)
+
+    # ============================================================
+    # FRED / Yahoo Finance 에러 알림
+    # ============================================================
+
+    @staticmethod
+    def notify_fred_api_error(indicator_code: str, error: str):
+        text = "⚠️ FRED API 오류"
+        attachments = [
+            {
+                "color": "ffc107",
+                "title": "FRED API 호출 실패",
+                "text": f"경제 지표 {indicator_code} 수집에 실패했습니다.",
+                "fields": [
+                    {"title": "Indicator", "value": indicator_code, "short": True},
+                    {"title": "Error", "value": error[:200], "short": True},
+                    {"title": "Timestamp", "value": datetime.now(KST).isoformat(), "short": True},
+                ],
+                "footer": "Quantiq Data Engine",
+                "ts": int(datetime.now(KST).timestamp())
+            }
+        ]
+        SlackNotifier._post_message(
+            channel=SlackNotifier._get_error_channel(),
+            webhook_url=SlackNotifier._get_error_webhook(),
+            text=text,
+            attachments=attachments,
+        )
+
+    @staticmethod
+    def notify_yahoo_finance_error(ticker: str, error: str):
+        text = "⚠️ Yahoo Finance 오류"
+        attachments = [
+            {
+                "color": "ffc107",
+                "title": "Yahoo Finance 호출 실패",
+                "text": f"시장 지표 {ticker} 수집에 실패했습니다.",
+                "fields": [
+                    {"title": "Ticker", "value": ticker, "short": True},
+                    {"title": "Error", "value": error[:200], "short": True},
+                    {"title": "Timestamp", "value": datetime.now(KST).isoformat(), "short": True},
+                ],
+                "footer": "Quantiq Data Engine",
+                "ts": int(datetime.now(KST).timestamp())
+            }
+        ]
+        SlackNotifier._post_message(
+            channel=SlackNotifier._get_error_channel(),
+            webhook_url=SlackNotifier._get_error_webhook(),
+            text=text,
+            attachments=attachments,
+        )
+
+    @staticmethod
+    def send_thread_message(text: str, thread_ts: str):
+        """스레드 답글 전송"""
+        if not thread_ts:
+            return
+
+        bot = _get_bot_client()
+        if bot.is_available:
+            channel = SlackNotifier._get_scheduler_channel()
+            if channel:
+                bot.post_message(channel=channel, text=text, thread_ts=thread_ts)
+                return
+
+        logger.debug(f"스레드 답글 스킵 (Bot Token/채널 미설정): {text[:50]}...")
 
     @staticmethod
     def notify_backtest_completed(

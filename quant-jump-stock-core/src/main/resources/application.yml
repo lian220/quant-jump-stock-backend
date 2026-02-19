@@ -74,9 +74,11 @@ spring:
   # 프로덕션: 환경변수로 실제 GCP 연결
   cloud:
     gcp:
-      project-id: ${GCP_PROJECT_ID:quantiq-local}
+      project-id: ${VERTEX_GCP_PROJECT_ID:quantiq-local}
+      credentials:
+        encoded-key: ${GCP_CREDENTIALS_ENCODED:}
       pubsub:
-        project-id: ${PUBSUB_PROJECT_ID:${GCP_PROJECT_ID:quantiq-local}}
+        project-id: ${PUBSUB_PROJECT_ID:${VERTEX_GCP_PROJECT_ID:quantiq-local}}
 
   # ============================================
   # Quartz Scheduler Configuration
@@ -160,9 +162,10 @@ messaging:
 # ============================================
 # Vertex AI Configuration
 # ============================================
+# Pub/Sub과 독립된 설정 — Pub/Sub은 spring.cloud.gcp.pubsub에서 관리
 gcp:
-  enabled: ${VERTEX_AI_ENABLED:false}  # Vertex AI 기능 활성화 여부
   vertex-ai:
+    enabled: ${VERTEX_AI_ENABLED:false}
     job-name: ${VERTEX_AI_JOB_NAME:quantiq-stock-prediction-job}
 
 

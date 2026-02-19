@@ -529,7 +529,16 @@ def get_all_data(collection_name):
             print("❌ 경고: daily_stock_data 컬렉션이 비어있습니다!")
             return []
         
-        cursor = db.daily_stock_data.find().sort("date", 1)
+        # 필요한 필드만 projection 해서 네트워크/메모리 사용량 절감
+        projection = {
+            "date": 1,
+            "fred_indicators": 1,
+            "yfinance_indicators": 1,
+        }
+        for ticker in active_tickers:
+            projection[f"stocks.{ticker}"] = 1
+
+        cursor = db.daily_stock_data.find({}, projection).sort("date", 1).batch_size(1000)
         
         all_data = []
         processed_count = 0
@@ -596,9 +605,11 @@ def get_all_data(collection_name):
                             # 티커를 주식명으로 변환
                             stock_name = ticker_to_stock.get(ticker, ticker)
                             
-                            # stocks 필드가 객체인 경우 close_price 가격을 사용
+                            # stocks 필드가 객체인 경우 close_price 우선, close 폴백 사용
                             if isinstance(stock_value, dict):
                                 close_price = stock_value.get("close_price")
+                                if close_price is None:
+                                    close_price = stock_value.get("close")
                                 if close_price is not None:
                                     result_dict[stock_name] = close_price
                                     stocks_added += 1
@@ -1518,13 +1529,14 @@ def get_predictions_from_db(chunk_size=1000):
         # stock_predictions 컬렉션에서 데이터 가져오기
         print("\n=== MongoDB stock_predictions 컬렉션에서 데이터 조회 ===")
         
-        # 총 문서 수 확인
-        total_count = db.stock_predictions.count_documents({})
-        print(f"stock_predictions 컬렉션의 총 문서 수: {total_count}")
-        
-        if total_count == 0:
-            print("경고: stock_predictions 컬렉션이 비어있습니다.")
-            return pd.DataFrame()
+        # 전체 카운트는 큰 컬렉션에서 비용이 크므로 기본 비활성화
+        log_total_counts = os.getenv("LOG_PREDICTIONS_TOTAL_COUNT", "false").lower() == "true"
+        if log_total_counts:
+            total_count = db.stock_predictions.count_documents({})
+            print(f"stock_predictions 컬렉션의 총 문서 수: {total_count}")
+            if total_count == 0:
+                print("경고: stock_predictions 컬렉션이 비어있습니다.")
+                return pd.DataFrame()
         
         # PostgreSQL stocks 테이블에서 티커 -> 주식명 매핑 생성
         ticker_to_name = {}
@@ -1546,13 +1558,69 @@ def get_predictions_from_db(chunk_size=1000):
         except Exception as e:
             print(f"⚠️ 티커 -> 주식명 매핑 생성 실패: {e}")
         
-        # 일반 find()로 데이터 가져오기 (aggregation/sort 제거 - Shared Tier 메모리 제한 회피)
-        # MongoDB에서 정렬하지 않고 Python에서 처리
-        print("stock_predictions에서 데이터 조회 중... (정렬 없이)")
-        cursor = db.stock_predictions.find(
+        def _to_datetime(value):
+            if value is None:
+                return None
+            if isinstance(value, datetime):
+                return value
+            if isinstance(value, str):
+                text = value.strip()
+                # YYYY-MM-DD 또는 ISO 문자열 대응
+                try:
+                    return datetime.fromisoformat(text.replace("Z", "+00:00"))
+                except ValueError:
+                    try:
+                        return datetime.strptime(text[:10], "%Y-%m-%d")
+                    except ValueError:
+                        return None
+            return None
+
+        def _normalize_date_key(value):
+            dt = _to_datetime(value)
+            if dt is not None:
+                return dt.strftime("%Y-%m-%d")
+            return str(value)
+
+        # 최근 데이터만 조회 (기본 365일) + 활성 종목 필터
+        lookback_days = int(os.getenv("PREDICTIONS_LOOKBACK_DAYS", "365"))
+        latest_doc = db.stock_predictions.find_one(
             {},
+            {"date": 1, "_id": 0},
+            sort=[("date", -1)]
+        )
+        query_filter = {}
+        if latest_doc and latest_doc.get("date"):
+            latest_date = _to_datetime(latest_doc["date"])
+            if latest_date is not None:
+                cutoff = latest_date - timedelta(days=lookback_days)
+                query_filter["date"] = {"$gte": cutoff}
+
+        active_tickers = list(ticker_to_name.keys())
+        if active_tickers:
+            query_filter["ticker"] = {"$in": active_tickers}
+        else:
+            print("⚠️ 활성 티커가 없어 stock_predictions 조회를 건너뜁니다.")
+            return pd.DataFrame()
+
+        log_query_count = os.getenv("LOG_PREDICTIONS_QUERY_COUNT", "false").lower() == "true"
+        if log_query_count:
+            filtered_count = db.stock_predictions.count_documents(query_filter)
+            print(
+                f"stock_predictions 조회 중... "
+                f"(lookback_days={lookback_days}, active_tickers={len(active_tickers)}, "
+                f"query_count={filtered_count})"
+            )
+        else:
+            print(
+                f"stock_predictions 조회 중... "
+                f"(lookback_days={lookback_days}, active_tickers={len(active_tickers)})"
+            )
+
+        batch_size = max(100, int(chunk_size))
+        cursor = db.stock_predictions.find(
+            query_filter,
             {"date": 1, "ticker": 1, "predicted_price": 1, "actual_price": 1, "_id": 0}
-        ).batch_size(5000)  # 배치 크기 설정으로 메모리 효율화
+        ).batch_size(batch_size)
         
         # Python에서 날짜별로 그룹화
         from collections import defaultdict
@@ -1565,7 +1633,8 @@ def get_predictions_from_db(chunk_size=1000):
                 print(f"  {doc_count}개 문서 처리 중...")
             date_val = doc.get("date")
             if date_val:
-                date_groups[date_val].append({
+                date_key = _normalize_date_key(date_val)
+                date_groups[date_key].append({
                     "ticker": doc.get("ticker"),
                     "predicted_price": doc.get("predicted_price"),
                     "actual_price": doc.get("actual_price")
@@ -1583,12 +1652,7 @@ def get_predictions_from_db(chunk_size=1000):
         # DataFrame 형태로 변환 (기존 Supabase 형식과 호환)
         all_data = []
         for result in results:
-            date_val = result["_id"]
-            if isinstance(date_val, datetime):
-                date_str = date_val.strftime('%Y-%m-%d')
-            else:
-                date_str = str(date_val)
-            
+            date_str = str(result["_id"])
             row = {"날짜": date_str}
             
             for pred in result["predictions"]:

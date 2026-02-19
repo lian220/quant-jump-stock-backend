@@ -147,12 +147,11 @@ services:
       # Pub/Sub (컨테이너 네트워크용 기본값 설정)
       PUBSUB_EMULATOR_HOST: ${PUBSUB_EMULATOR_HOST:-pubsub-emulator:8681}
       PUBSUB_PROJECT_ID: ${PUBSUB_PROJECT_ID:-quantiq-local}
-      # APIs
-      FRED_API_KEY: ${FRED_API_KEY}
-      # Slack (SLACK_BOT_TOKEN은 .env.common에서 로드)
-      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL_SCHEDULER}
+      # Slack
+      SLACK_ENABLED: ${SLACK_ENABLED:-false}
       SLACK_CHANNEL: "C0A1XASTLH2"
-      # Google Cloud (container path override)
+      # Google Cloud
+      VERTEX_AI_ENABLED: ${VERTEX_AI_ENABLED:-false}
       VERTEX_AI_CREDENTIALS_PATH: "/app/credentials/vertex-ai-key.json"
       # ML Scripts path
       ML_SCRIPTS_DIR: "/scripts/ml"
@@ -217,10 +216,8 @@ services:
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL_TRADING:-}
       SLACK_CHANNEL: ${SLACK_CHANNEL:-}
       SLACK_ENABLED: ${SLACK_ENABLED:-false}
-      # GCP / Vertex AI - 기본값 비활성화, .env.prod에서 활성화
-      GCP_ENABLED: ${GCP_ENABLED:-false}
-      VERTEX_AI_ENABLED: ${VERTEX_AI_ENABLED:-true}
-      VERTEX_AI_CREDENTIALS_PATH: "/app/credentials/vertex-ai-key.json"
+      # Vertex AI - .env.common의 GCP_CREDENTIALS_ENCODED로 인증
+      VERTEX_AI_ENABLED: ${VERTEX_AI_ENABLED:-false}
       # KIS (Korean Investment & Securities) - Temporary
       KIS_APP_KEY: "test_app_key"
       KIS_APP_SECRET: "test_app_secret"

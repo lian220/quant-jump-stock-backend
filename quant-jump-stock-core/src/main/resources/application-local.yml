@@ -7,16 +7,14 @@
 spring:
   cloud:
     gcp:
-      credentials:
-        enabled: false
       pubsub:
         emulator-host: ${PUBSUB_EMULATOR_HOST:localhost:8681}
 
 # ============================================
-# Vertex AI / GCP 비활성화 (로컬 개발 환경)
+# Vertex AI 설정 (로컬 개발 환경)
 # ============================================
-gcp:
-  enabled: false
+# VERTEX_AI_ENABLED=true 환경변수로 로컬에서도 활성화 가능
+# Pub/Sub은 위 에뮬레이터 설정으로 별도 관리
 
 # ============================================
 # Slack 비활성화 (로컬 개발 환경)

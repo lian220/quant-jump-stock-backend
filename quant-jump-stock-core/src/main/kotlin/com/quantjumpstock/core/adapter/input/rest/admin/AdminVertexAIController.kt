@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RestController
 @Tag(name = "Admin - Vertex AI", description = "Google Vertex AI 예측 모델 관리 (Admin 전용)")
 @RestController
 @RequestMapping("/api/v1/admin/vertex-ai")
-@ConditionalOnProperty(name = ["gcp.enabled"], havingValue = "true", matchIfMissing = false)
+@ConditionalOnProperty(name = ["gcp.vertex-ai.enabled"], havingValue = "true", matchIfMissing = false)
 class AdminVertexAIController(
     private val vertexAIService: VertexAIService
 ) {

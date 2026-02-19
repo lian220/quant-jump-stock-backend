@@ -38,7 +38,7 @@ def set_technical_service(service):
 
 
 @router.post("/technical")
-def run_technical_analysis(
+async def run_technical_analysis(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     service=Depends(get_technical_service),
@@ -57,7 +57,7 @@ def run_technical_analysis(
     logger.info(f"[{request_id}] REST API 기술적 분석 요청 (start_date={start_date}, end_date={end_date})")
 
     try:
-        result = service.run_technical_analysis(
+        result = await service.run_technical_analysis(
             request_id=request_id,
             thread_ts=None,
             start_date=start_date,

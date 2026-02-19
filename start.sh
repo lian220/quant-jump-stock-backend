@@ -77,8 +77,10 @@ done
 # Set env file based on mode
 if [ "$ENV_MODE" = "prod" ]; then
     ENV_FILE=".env.prod"
+    export DB_ENV_FILE=".env.db.prod"
 else
     ENV_FILE=".env.local"
+    export DB_ENV_FILE=".env.db.local"
 fi
 
 echo ""
@@ -92,14 +94,17 @@ echo ""
 
 cd "$PROJECT_ROOT"
 
-# Load environment (순서: .env.common → .env.local/.env.prod)
+# Load environment (순서: .env.common → .env.db.local/.env.db.prod → .env.local/.env.prod)
 set -a
 if [ -f ".env.common" ]; then
     source ".env.common"
 fi
+if [ -f "$DB_ENV_FILE" ]; then
+    source "$DB_ENV_FILE"
+fi
 if [ -f "$ENV_FILE" ]; then
     source "$ENV_FILE"
-    echo -e "${GREEN}✓ Loaded: .env.common → ${ENV_FILE}${NC}"
+    echo -e "${GREEN}✓ Loaded: .env.common → ${DB_ENV_FILE} → ${ENV_FILE}${NC}"
 else
     echo -e "${RED}❌ ${ENV_FILE} not found!${NC}"
     exit 1
@@ -169,8 +174,9 @@ fi
 # Start backend applications with correct environment
 echo -e "${YELLOW}🎯 Starting backend applications (${ENV_MODE} mode)...${NC}"
 
-# Set ENV_FILE for docker-compose variable substitution
+# Set ENV_FILE and DB_ENV_FILE for docker-compose variable substitution
 export ENV_FILE="$ENV_FILE"
+export DB_ENV_FILE="$DB_ENV_FILE"
 
 if [ "$FORCE_REBUILD" = true ]; then
     docker compose --env-file "$ENV_FILE" up -d --build quant-jump-stock-data-engine quant-jump-stock-core

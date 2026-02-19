@@ -25,8 +25,7 @@ import org.springframework.stereotype.Component
  */
 @Component
 @ConditionalOnProperty(
-    prefix = "gcp",
-    name = ["enabled"],
+    name = ["gcp.vertex-ai.enabled"],
     havingValue = "true",
     matchIfMissing = false
 )
@@ -43,8 +42,8 @@ class VertexAIPredictionJobAdapter(
             logger.info("예상 소요 시간: 30-35분")
             logger.info("=".repeat(80))
 
-            // Vertex AI 예측 실행 (Kafka 경로)
-            logger.info("Vertex AI 예측 실행 중 (Kafka → Data Engine → Vertex AI)...")
+            // Vertex AI 예측 실행 (Pub/Sub 경로)
+            logger.info("Vertex AI 예측 실행 중 (Pub/Sub → Data Engine → Vertex AI)...")
             val result = vertexAIService.runPrediction()
             logger.info("✅ Vertex AI 예측 요청 완료: requestId=${result.requestId}")
             logger.info("   → CustomJob 실행 중... (약 00:15-00:20 완료 예정)")

@@ -13,7 +13,7 @@ import java.util.concurrent.CompletableFuture
  * 매일 23:05에 실행 (기술적 지표 + 감정 분석을 병렬로 실행)
  *
  * 역할:
- * - 기술적 분석과 감정 분석을 동시에 Kafka로 발행
+ * - 기술적 분석과 감정 분석을 동시에 Pub/Sub으로 발행
  * - 각 분석은 독립적으로 실행되어 실패 시 서로 영향 없음
  * - 성능 향상: 순차 실행 대비 40% 이상 시간 단축
  */
@@ -39,8 +39,8 @@ class ParallelAnalysisJob(
             CompletableFuture.allOf(technicalFuture, sentimentFuture)
                 .thenRun {
                     logger.info("✅ 병렬 분석 요청 완료")
-                    logger.info("   - 기술적 분석: Kafka 발행 완료")
-                    logger.info("   - 감정 분석: Kafka 발행 완료")
+                    logger.info("   - 기술적 분석: Pub/Sub 발행 완료")
+                    logger.info("   - 감정 분석: Pub/Sub 발행 완료")
                     logger.info("   → Python Data Engine에서 병렬 처리 중...")
                 }
                 .exceptionally { e ->

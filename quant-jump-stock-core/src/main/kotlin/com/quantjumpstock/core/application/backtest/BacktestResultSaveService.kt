@@ -20,7 +20,7 @@ import java.time.LocalDateTime
 
 /**
  * 백테스트 결과 저장 서비스
- * Kafka Consumer에서 받은 백테스트 결과를 DB에 저장합니다.
+ * Pub/Sub에서 받은 백테스트 결과를 DB에 저장합니다.
  */
 @Service
 class BacktestResultSaveService(

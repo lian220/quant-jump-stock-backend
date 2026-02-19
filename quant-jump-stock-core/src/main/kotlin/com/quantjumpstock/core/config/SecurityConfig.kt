@@ -39,15 +39,14 @@ class SecurityConfig(
                                     "/api/auth/**",
                                     "/api/v1/vertex-ai/callback",
                                     "/swagger-ui/**",
-                                    "/v3/api-docs/**"
+                                    "/swagger-ui.html",
+                                    "/v3/api-docs/**",
+                                    "/actuator/health",
+                                    "/actuator/info"
                             )
                             .permitAll()
-                            .requestMatchers("/api/v1/portfolios/**")
-                            .authenticated()
-                            .requestMatchers("/api/v1/strategies/*/default-stocks/**")
-                            .authenticated()
                             .anyRequest()
-                            .permitAll()
+                            .authenticated()
                 }
                 .oauth2Login { oauth2 ->
                     oauth2

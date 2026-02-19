@@ -54,15 +54,15 @@ class EconomicDataManagementService(
                 endDate = endDate
             )
 
-            // Kafka 이벤트 1개 발행 (날짜 범위 포함)
+            // Pub/Sub 메시지 발행 (날짜 범위 포함)
             messagePublisher.publishEconomicDataUpdateRequest(
                 TOPIC_ECONOMIC_DATA_UPDATE_REQUEST,
                 request
             )
 
-            logger.info("✅ Kafka 이벤트 발행 완료: requestId=$requestId, threadTs=$threadTs, $dateInfo")
+            logger.info("✅ Pub/Sub 메시지 발행 완료: requestId=$requestId, threadTs=$threadTs, $dateInfo")
 
-            CompletableFuture.completedFuture("경제 데이터 업데이트 요청이 Kafka에 발행되었습니다.")
+            CompletableFuture.completedFuture("경제 데이터 업데이트 요청이 Pub/Sub에 발행되었습니다.")
         } catch (e: Exception) {
             logger.error("❌ 경제 데이터 업데이트 요청 실패", e)
 

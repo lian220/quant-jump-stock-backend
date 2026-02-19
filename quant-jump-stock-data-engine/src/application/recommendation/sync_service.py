@@ -11,6 +11,7 @@ import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from decimal import Decimal
+from psycopg2.extras import execute_values
 
 from core.database import MongoDB, PostgreSQL
 
@@ -89,9 +90,8 @@ class RecommendationSyncService:
 
     def _fetch_stock_analysis_results(self, analysis_date: str) -> Dict[str, Dict]:
         """
-        AI 분석 결과 조회 (MongoDB stock_analysis_results)
+        AI 분석 결과 조회 (MongoDB stock_analysis_results) - 정확한 날짜 매칭
 
-        stock_predictions보다 풍부한 정보를 담고 있음:
         - predictions.rise_probability: 상승 예상 퍼센트 (%)
         - predictions.predicted_future_price: 예측 미래 가격
         - recommendation: STRONG BUY / BUY / HOLD / SELL
@@ -164,9 +164,8 @@ class RecommendationSyncService:
         return merged
 
     def _fetch_ai_predictions(self, analysis_date: str) -> Dict[str, Dict]:
-        """AI 예측 데이터 조회 (MongoDB stock_predictions)"""
+        """AI 예측 데이터 조회 (MongoDB stock_predictions) - 정확한 날짜 매칭"""
         try:
-            # ISODate 형식으로 검색 (date 필드가 ISODate 타입)
             from datetime import datetime as dt
             target_date = dt.strptime(analysis_date, "%Y-%m-%d")
             predictions = list(self.mongo_db.stock_predictions.find(
@@ -284,8 +283,14 @@ class RecommendationSyncService:
             if not tech:
                 continue
 
+            # rise_probability가 없지만 predicted_price가 있으면 직접 계산
+            rise_probability = ai.get("rise_probability")
+            current_price = price_data.get(ticker)
+            if rise_probability is None and ai.get("predicted_price") and current_price:
+                rise_probability = (ai["predicted_price"] - current_price) / current_price
+
             # AI 점수 계산 (0~5)
-            ai_score = self._calculate_ai_score(ai.get("rise_probability"))
+            ai_score = self._calculate_ai_score(rise_probability)
 
             # 감정 점수 계산 (0~5)
             sentiment_score = self._calculate_sentiment_score(sentiment.get("sentiment_score"))
@@ -294,11 +299,17 @@ class RecommendationSyncService:
             tech_score = self._calculate_tech_score(tech)
             tech_signals_count = self._count_tech_signals(tech)
 
-            # Composite Score 계산 (0~7.5)
-            composite_score = (
-                self.weight_ai * ai_score
-                + self.weight_tech * tech_score
-                + self.weight_sentiment * sentiment_score
+            # Composite Score 계산
+            # - 누락된 지표(AI/감정)는 분모(가중치 합)에서 제외
+            # - 사용 가능한 지표만으로 가중 평균 계산
+            has_ai = rise_probability is not None
+            has_sentiment = sentiment.get("sentiment_score") is not None
+            composite_score = self._calculate_composite_score(
+                ai_score=ai_score,
+                sentiment_score=sentiment_score,
+                tech_score=tech_score,
+                has_ai=has_ai,
+                has_sentiment=has_sentiment
             )
 
             # 등급 판정
@@ -323,7 +334,7 @@ class RecommendationSyncService:
                 "ticker": ticker,
                 "stock_name": tech.get("stock_name", ticker),
                 "ai_predicted_price": ai.get("predicted_price"),
-                "ai_rise_probability": ai.get("rise_probability"),
+                "ai_rise_probability": rise_probability,
                 "ai_score": float(ai_score),
                 "sentiment_score": sentiment.get("sentiment_score"),
                 "sentiment_news_count": sentiment.get("news_count"),
@@ -353,11 +364,46 @@ class RecommendationSyncService:
 
         return merged
 
+    def _calculate_composite_score(
+        self,
+        ai_score: Decimal,
+        sentiment_score: Decimal,
+        tech_score: Decimal,
+        has_ai: bool,
+        has_sentiment: bool
+    ) -> Decimal:
+        """
+        Composite Score 계산 (누락 지표 제외 가중 평균)
+
+        - 기술적 점수는 필수(tech_data 없으면 상위에서 이미 제외)
+        - AI/감정이 누락되면 해당 항목 가중치는 계산에서 제외
+        """
+        weighted_sum = self.weight_tech * tech_score
+        weight_sum = self.weight_tech
+
+        if has_ai:
+            weighted_sum += self.weight_ai * ai_score
+            weight_sum += self.weight_ai
+
+        if has_sentiment:
+            weighted_sum += self.weight_sentiment * sentiment_score
+            weight_sum += self.weight_sentiment
+
+        if weight_sum == 0:
+            return Decimal("0")
+
+        return (weighted_sum / weight_sum).quantize(Decimal("0.01"))
+
     def _calculate_ai_score(self, rise_probability: Optional[float]) -> Decimal:
         """AI 점수 계산: rise_probability × 5 (0~5)"""
         if rise_probability is None:
             return Decimal("0")
-        return Decimal(str(rise_probability)) * Decimal("5")
+        try:
+            value = Decimal(str(rise_probability))
+        except Exception:
+            logger.warning(f"rise_probability 변환 실패 (값={rise_probability!r}), 0으로 대체")
+            return Decimal("0")
+        return value * Decimal("5")
 
     def _calculate_sentiment_score(self, sentiment: Optional[float]) -> Decimal:
         """감정 점수 정규화: (sentiment + 1) / 2 × 5 (0~5)"""
@@ -460,80 +506,89 @@ class RecommendationSyncService:
             return "매도"
 
     def _save_to_postgresql(self, merged_data: List[Dict], analysis_date: str) -> int:
-        """PostgreSQL에 upsert"""
+        """PostgreSQL에 배치 upsert"""
+        if not merged_data:
+            return 0
+
+        upsert_sql = """
+        INSERT INTO prediction_results (
+            ticker, stock_name, analysis_date,
+            ai_predicted_price, ai_rise_probability, ai_score,
+            sentiment_score, sentiment_news_count, sentiment_normalized_score,
+            tech_sma20, tech_sma50, tech_rsi, tech_macd, tech_signal,
+            tech_golden_cross, tech_macd_buy_signal, tech_score, tech_signals_count,
+            composite_score, composite_grade,
+            is_recommended, recommendation_reason,
+            current_price, target_price, upside_percent, price_recommendation,
+            updated_at
+        ) VALUES %s
+        ON CONFLICT (ticker, analysis_date)
+        DO UPDATE SET
+            stock_name = EXCLUDED.stock_name,
+            ai_predicted_price = EXCLUDED.ai_predicted_price,
+            ai_rise_probability = EXCLUDED.ai_rise_probability,
+            ai_score = EXCLUDED.ai_score,
+            sentiment_score = EXCLUDED.sentiment_score,
+            sentiment_news_count = EXCLUDED.sentiment_news_count,
+            sentiment_normalized_score = EXCLUDED.sentiment_normalized_score,
+            tech_sma20 = EXCLUDED.tech_sma20,
+            tech_sma50 = EXCLUDED.tech_sma50,
+            tech_rsi = EXCLUDED.tech_rsi,
+            tech_macd = EXCLUDED.tech_macd,
+            tech_signal = EXCLUDED.tech_signal,
+            tech_golden_cross = EXCLUDED.tech_golden_cross,
+            tech_macd_buy_signal = EXCLUDED.tech_macd_buy_signal,
+            tech_score = EXCLUDED.tech_score,
+            tech_signals_count = EXCLUDED.tech_signals_count,
+            composite_score = EXCLUDED.composite_score,
+            composite_grade = EXCLUDED.composite_grade,
+            is_recommended = EXCLUDED.is_recommended,
+            recommendation_reason = EXCLUDED.recommendation_reason,
+            current_price = EXCLUDED.current_price,
+            target_price = EXCLUDED.target_price,
+            upside_percent = EXCLUDED.upside_percent,
+            price_recommendation = EXCLUDED.price_recommendation,
+            updated_at = CURRENT_TIMESTAMP
+        """
+
+        row_template = "(" + ",".join(["%s"] * 26) + ", CURRENT_TIMESTAMP)"
+        rows = [
+            (
+                data["ticker"], data["stock_name"], analysis_date,
+                data["ai_predicted_price"], data["ai_rise_probability"], data["ai_score"],
+                data["sentiment_score"], data["sentiment_news_count"], data["sentiment_normalized_score"],
+                data["tech_sma20"], data["tech_sma50"], data["tech_rsi"],
+                data["tech_macd"], data["tech_signal"],
+                data["tech_golden_cross"], data["tech_macd_buy_signal"],
+                data["tech_score"], data["tech_signals_count"],
+                data["composite_score"], data["composite_grade"],
+                data["is_recommended"], data["recommendation_reason"],
+                data["current_price"], data["target_price"], data["upside_percent"], data["price_recommendation"],
+            )
+            for data in merged_data
+        ]
+
+        try:
+            with PostgreSQL.get_connection() as conn:
+                with conn.cursor() as cursor:
+                    execute_values(
+                        cursor,
+                        upsert_sql,
+                        rows,
+                        template=row_template,
+                        page_size=200,
+                    )
+            return len(rows)
+        except Exception as batch_error:
+            logger.error(f"❌ [Sync] 배치 upsert 실패, 개별 저장으로 폴백: {batch_error}")
+
+        # 폴백: 개별 쿼리 (기존 방식)
         synced_count = 0
-
-        for data in merged_data:
+        fallback_sql = upsert_sql.replace("VALUES %s", f"VALUES {row_template}")
+        for row in rows:
             try:
-                # UPSERT (ON CONFLICT UPDATE)
-                query = """
-                INSERT INTO prediction_results (
-                    ticker, stock_name, analysis_date,
-                    ai_predicted_price, ai_rise_probability, ai_score,
-                    sentiment_score, sentiment_news_count, sentiment_normalized_score,
-                    tech_sma20, tech_sma50, tech_rsi, tech_macd, tech_signal,
-                    tech_golden_cross, tech_macd_buy_signal, tech_score, tech_signals_count,
-                    composite_score, composite_grade,
-                    is_recommended, recommendation_reason,
-                    current_price, target_price, upside_percent, price_recommendation,
-                    updated_at
-                ) VALUES (
-                    %s, %s, %s,
-                    %s, %s, %s,
-                    %s, %s, %s,
-                    %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s,
-                    %s, %s,
-                    %s, %s,
-                    %s, %s, %s, %s,
-                    CURRENT_TIMESTAMP
-                )
-                ON CONFLICT (ticker, analysis_date)
-                DO UPDATE SET
-                    stock_name = EXCLUDED.stock_name,
-                    ai_predicted_price = EXCLUDED.ai_predicted_price,
-                    ai_rise_probability = EXCLUDED.ai_rise_probability,
-                    ai_score = EXCLUDED.ai_score,
-                    sentiment_score = EXCLUDED.sentiment_score,
-                    sentiment_news_count = EXCLUDED.sentiment_news_count,
-                    sentiment_normalized_score = EXCLUDED.sentiment_normalized_score,
-                    tech_sma20 = EXCLUDED.tech_sma20,
-                    tech_sma50 = EXCLUDED.tech_sma50,
-                    tech_rsi = EXCLUDED.tech_rsi,
-                    tech_macd = EXCLUDED.tech_macd,
-                    tech_signal = EXCLUDED.tech_signal,
-                    tech_golden_cross = EXCLUDED.tech_golden_cross,
-                    tech_macd_buy_signal = EXCLUDED.tech_macd_buy_signal,
-                    tech_score = EXCLUDED.tech_score,
-                    tech_signals_count = EXCLUDED.tech_signals_count,
-                    composite_score = EXCLUDED.composite_score,
-                    composite_grade = EXCLUDED.composite_grade,
-                    is_recommended = EXCLUDED.is_recommended,
-                    recommendation_reason = EXCLUDED.recommendation_reason,
-                    current_price = EXCLUDED.current_price,
-                    target_price = EXCLUDED.target_price,
-                    upside_percent = EXCLUDED.upside_percent,
-                    price_recommendation = EXCLUDED.price_recommendation,
-                    updated_at = CURRENT_TIMESTAMP
-                """
-
-                PostgreSQL.execute_query(query, (
-                    data["ticker"], data["stock_name"], analysis_date,
-                    data["ai_predicted_price"], data["ai_rise_probability"], data["ai_score"],
-                    data["sentiment_score"], data["sentiment_news_count"], data["sentiment_normalized_score"],
-                    data["tech_sma20"], data["tech_sma50"], data["tech_rsi"],
-                    data["tech_macd"], data["tech_signal"],
-                    data["tech_golden_cross"], data["tech_macd_buy_signal"],
-                    data["tech_score"], data["tech_signals_count"],
-                    data["composite_score"], data["composite_grade"],
-                    data["is_recommended"], data["recommendation_reason"],
-                    data["current_price"], data["target_price"], data["upside_percent"], data["price_recommendation"]
-                ), fetch_all=False)
-
+                PostgreSQL.execute_query(fallback_sql, row, fetch_all=False)
                 synced_count += 1
-
-            except Exception as e:
-                logger.error(f"❌ [Sync] {data['ticker']} 저장 실패: {e}")
-                continue
-
+            except Exception as row_error:
+                logger.error(f"❌ [Sync] 개별 저장 실패 (ticker={row[0]}): {row_error}")
         return synced_count

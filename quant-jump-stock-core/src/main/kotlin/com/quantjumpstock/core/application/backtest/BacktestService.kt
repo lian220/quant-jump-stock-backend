@@ -22,7 +22,7 @@ import java.util.UUID
 
 /**
  * 백테스트 Application Service
- * 백테스트 요청을 처리하고 Kafka로 이벤트를 발행합니다.
+ * 백테스트 요청을 처리하고 Pub/Sub으로 이벤트를 발행합니다.
  */
 @Service
 class BacktestService(
@@ -305,7 +305,7 @@ class BacktestService(
             ),
             equityCurve = equityCurve,
             benchmarkCurve = equityCurve?.filter { it.benchmark != null }?.map {
-                EquityCurvePoint(date = it.date, value = it.benchmark!!)
+                EquityCurvePoint(date = it.date, value = it.benchmark ?: 0.0)
             }?.ifEmpty { null },
             // SCRUM-337: 다중 벤치마크 커브 생성
             benchmarkCurves = buildMultiBenchmarkCurves(equityCurve),

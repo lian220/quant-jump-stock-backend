@@ -44,8 +44,9 @@ class ComprehensiveReportService:
 
     def load_ai_predictions(self, analysis_date: str) -> Dict[str, Dict[str, float]]:
         """
-        MongoDB에서 AI 예측 데이터 로드.
-        analysis_date의 종가 대비 predicted_price로 상승 확률 계산.
+        MongoDB에서 AI 예측 데이터 로드 (정확한 날짜 매칭).
+
+        stock_analysis_results (우선) + stock_predictions (보충) 둘 다 조회.
 
         Returns:
             {ticker: {"predicted_price": ..., "current_price": ..., "rise_probability": ...}}
@@ -61,45 +62,53 @@ class ComprehensiveReportService:
                 if price:
                     current_prices[ticker] = float(price)
 
-        # 2. 최신 AI 예측 로드 (가장 최근 date 기준)
-        latest_pred = db.stock_predictions.find_one(
-            {}, {"_id": 0, "date": 1}, sort=[("date", -1)]
-        )
-        if not latest_pred:
-            logger.info("AI 예측 데이터 없음")
-            return {}
+        # 2. analysis_date를 datetime으로 변환 (ISODate 매칭용)
+        if isinstance(analysis_date, datetime):
+            target_date = analysis_date
+        else:
+            target_date = datetime.strptime(str(analysis_date), "%Y-%m-%d")
 
-        pred_date = latest_pred["date"]
+        result = {}
 
-        # Staleness check: 예측 데이터가 너무 오래된 경우 경고
-        MAX_STALENESS_DAYS = 7
-        try:
-            pred_date_obj = datetime.strptime(pred_date, "%Y-%m-%d")
-            analysis_date_obj = datetime.strptime(analysis_date, "%Y-%m-%d")
-            delta_days = (analysis_date_obj - pred_date_obj).days
+        # 3. stock_analysis_results 조회 (정확한 날짜, 풍부한 데이터)
+        target_date_str = target_date.strftime("%Y-%m-%dT00:00:00.000Z")
+        analysis_docs = list(db.stock_analysis_results.find({
+            "$or": [{"date": target_date}, {"date": target_date_str}]
+        }))
 
-            if delta_days > MAX_STALENESS_DAYS:
-                logger.warning(
-                    f"AI 예측 데이터가 오래됨 (pred_date={pred_date}, "
-                    f"analysis_date={analysis_date}, delta={delta_days}일)"
-                )
-                # 너무 오래된 경우 사용하지 않음
-                return {}
-        except ValueError as e:
-            logger.error(f"날짜 파싱 실패: {e}")
-            return {}
+        for doc in analysis_docs:
+            ticker = doc.get("ticker")
+            if not ticker:
+                continue
+            predictions = doc.get("predictions", {})
+            predicted = predictions.get("predicted_future_price")
+            rise_pct = predictions.get("rise_probability")  # % 단위
 
+            if rise_pct is None and predicted:
+                current = current_prices.get(ticker, 0)
+                if current and current > 0:
+                    rise_pct = (predicted - current) / current * 100
+
+            result[ticker] = {
+                "predicted_price": float(predicted) if predicted else None,
+                "current_price": current_prices.get(ticker, 0.0),
+                "rise_probability": round(rise_pct, 2) if rise_pct is not None else 0.0,
+            }
+
+        # 4. stock_predictions 조회 (정확한 날짜, 빠진 종목 보충)
         preds = db.stock_predictions.find(
-            {"date": pred_date},
+            {"date": target_date},
             {"_id": 0, "ticker": 1, "predicted_price": 1, "actual_price": 1},
         )
 
-        result = {}
+        pred_count = 0
         for doc in preds:
             ticker = doc.get("ticker")
             predicted = doc.get("predicted_price")
             if not ticker or not predicted:
                 continue
+            if ticker in result:
+                continue  # stock_analysis_results 데이터 우선
 
             current = current_prices.get(ticker, doc.get("actual_price", 0))
             if current and current > 0:
@@ -112,8 +121,12 @@ class ComprehensiveReportService:
                 "current_price": float(current) if current else 0.0,
                 "rise_probability": round(rise_prob, 2),
             }
+            pred_count += 1
 
-        logger.debug(f"AI 예측 로드: pred_date={pred_date} → {len(result)}개 종목")
+        logger.debug(
+            f"AI 예측 로드: {analysis_date} → {len(result)}개 종목 "
+            f"(analysis_results={len(analysis_docs)}, predictions 보충={pred_count})"
+        )
         return result
 
     def generate_report(

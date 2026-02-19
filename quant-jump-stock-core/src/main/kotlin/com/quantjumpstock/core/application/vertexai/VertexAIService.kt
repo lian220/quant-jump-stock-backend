@@ -20,7 +20,7 @@ import java.util.UUID
  * Controller에서 비즈니스 로직을 분리하여 Hexagonal Architecture 준수.
  */
 @Service
-@ConditionalOnProperty(name = ["gcp.enabled"], havingValue = "true", matchIfMissing = false)
+@ConditionalOnProperty(name = ["gcp.vertex-ai.enabled"], havingValue = "true", matchIfMissing = false)
 class VertexAIService(
     private val messagePublisher: MessagePublisher,
     private val notificationPort: VertexAINotificationPort,
@@ -41,13 +41,13 @@ class VertexAIService(
         val requestId = UUID.randomUUID().toString()
         val timestamp = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
 
-        logger.info("🚀 Vertex AI 예측 요청 (Kafka 발행)")
+        logger.info("🚀 Vertex AI 예측 요청 (Pub/Sub 발행)")
         logger.info("Request ID: $requestId")
 
         // 알림 시작 → threadTs 획득
         val threadTs = notificationPort.notifyJobStarted(requestId, vertexAIConfig.jobName)
 
-        // Kafka 메시지 발행 (Data Engine에서 Vertex AI 실행)
+        // Pub/Sub 메시지 발행 (Data Engine에서 Vertex AI 실행)
         val request = VertexAIPredictionRequest(
             timestamp = timestamp,
             source = "core-api",
@@ -58,13 +58,13 @@ class VertexAIService(
 
         messagePublisher.publishVertexAIPredictionRequest(VERTEX_AI_RUN_TOPIC, request)
 
-        logger.info("✅ Kafka 메시지 발행 완료: topic=$VERTEX_AI_RUN_TOPIC")
+        logger.info("✅ Pub/Sub 메시지 발행 완료: topic=$VERTEX_AI_RUN_TOPIC")
 
         return VertexAIPredictionResult(
             success = true,
             requestId = requestId,
             threadTs = threadTs,
-            message = "Vertex AI 예측 요청이 전송되었습니다 (Kafka)"
+            message = "Vertex AI 예측 요청이 전송되었습니다 (Pub/Sub)"
         )
     }
 
