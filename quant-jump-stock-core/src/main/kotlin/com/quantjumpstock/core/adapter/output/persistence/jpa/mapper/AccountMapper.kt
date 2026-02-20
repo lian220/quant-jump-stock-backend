@@ -50,11 +50,10 @@ class AccountMapper {
      * 기존 Entity 업데이트용
      */
     fun updateEntity(entity: AccountBalanceEntity, domain: Account): AccountBalanceEntity {
-        return entity.copy(
-            cash = domain.cash,
-            totalValue = domain.totalValue,
-            lockedCash = domain.lockedCash,
-            updatedAt = domain.updatedAt
-        )
+        entity.cash = domain.cash
+        entity.totalValue = domain.totalValue
+        entity.lockedCash = domain.lockedCash
+        entity.updatedAt = domain.updatedAt
+        return entity
     }
 }

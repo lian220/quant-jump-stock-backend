@@ -2,6 +2,7 @@ package com.quantjumpstock.core.domain.port.output
 
 import com.quantjumpstock.core.domain.model.user.OAuthProvider
 import com.quantjumpstock.core.domain.model.user.User
+import com.quantjumpstock.core.domain.model.user.UserStatus
 
 /**
  * User Repository Port - 도메인 포트
@@ -28,4 +29,14 @@ interface UserRepository {
      * OAuth 제공자와 제공자 ID로 사용자 조회
      */
     fun findByOAuthProviderAndProviderId(provider: OAuthProvider, providerId: String): User?
+
+    /**
+     * 관리자용 페이징 조회 (검색어/상태 필터 포함)
+     * @return Pair(users, totalElements)
+     */
+    fun findAllPaged(page: Int, size: Int, search: String?, status: UserStatus?): Pair<List<User>, Long>
+
+    fun countByStatus(status: UserStatus): Long
+
+    fun count(): Long
 }

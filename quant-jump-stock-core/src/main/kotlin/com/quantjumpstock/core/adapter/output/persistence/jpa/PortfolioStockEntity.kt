@@ -9,7 +9,7 @@ import java.time.LocalDateTime
     name = "portfolio_stocks",
     uniqueConstraints = [UniqueConstraint(columnNames = ["portfolio_id", "stock_id"])]
 )
-data class PortfolioStockEntity(
+class PortfolioStockEntity(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,

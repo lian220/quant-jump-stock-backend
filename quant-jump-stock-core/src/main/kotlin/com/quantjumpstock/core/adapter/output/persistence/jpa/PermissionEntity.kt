@@ -6,7 +6,7 @@ import org.hibernate.annotations.CreationTimestamp
 
 @Entity
 @Table(name = "permissions")
-data class PermissionEntity(
+class PermissionEntity(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,

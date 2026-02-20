@@ -10,7 +10,7 @@ import org.hibernate.annotations.CreationTimestamp
     name = "strategy_default_stocks",
     uniqueConstraints = [UniqueConstraint(columnNames = ["strategy_id", "stock_id"])]
 )
-data class StrategyDefaultStockEntity(
+class StrategyDefaultStockEntity(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,

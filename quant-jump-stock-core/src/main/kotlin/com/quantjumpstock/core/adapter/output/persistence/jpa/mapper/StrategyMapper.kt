@@ -82,21 +82,20 @@ class StrategyMapper {
      * 기존 Entity 업데이트용 (연관관계 유지)
      */
     fun updateEntity(entity: StrategyEntity, domain: Strategy): StrategyEntity {
-        return entity.copy(
-            name = domain.name,
-            description = domain.description,
-            isPublic = domain.isPublic,
-            isPremium = domain.isPremium,
-            status = mapStatusToJpa(domain.status),
-            conditions = domain.conditions,
-            riskSettings = domain.riskSettings,
-            positionSizing = domain.positionSizing,
-            tradingCosts = domain.tradingCosts,
-            rebalanceFrequency = mapRebalanceFrequencyToJpa(domain.rebalanceFrequency),
-            subscriberCount = domain.subscriberCount,
-            averageRating = domain.averageRating,
-            updatedAt = domain.updatedAt
-        )
+        entity.name = domain.name
+        entity.description = domain.description
+        entity.isPublic = domain.isPublic
+        entity.isPremium = domain.isPremium
+        entity.status = mapStatusToJpa(domain.status)
+        entity.conditions = domain.conditions
+        entity.riskSettings = domain.riskSettings
+        entity.positionSizing = domain.positionSizing
+        entity.tradingCosts = domain.tradingCosts
+        entity.rebalanceFrequency = mapRebalanceFrequencyToJpa(domain.rebalanceFrequency)
+        entity.subscriberCount = domain.subscriberCount
+        entity.averageRating = domain.averageRating
+        entity.updatedAt = domain.updatedAt
+        return entity
     }
 
     /**

@@ -2,8 +2,11 @@ package com.quantjumpstock.core.adapter.output.persistence.jpa
 
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserEntity
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserStatus
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
 import org.springframework.data.jpa.repository.JpaRepository
 import org.springframework.data.jpa.repository.Query
+import org.springframework.data.repository.query.Param
 import org.springframework.stereotype.Repository
 import java.util.Optional
 
@@ -40,4 +43,31 @@ interface UserJpaRepository : JpaRepository<UserEntity, Long> {
         oauthProvider: OAuthProvider,
         oauthProviderId: String
     ): UserEntity?
+
+    // 관리자용 검색+필터 쿼리
+    @Query("""
+        SELECT u FROM UserEntity u
+        WHERE (LOWER(u.name) LIKE LOWER(CONCAT('%', :search, '%'))
+               OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')))
+          AND u.status = :status
+    """)
+    fun findBySearchAndStatus(
+        @Param("search") search: String,
+        @Param("status") status: UserStatus,
+        pageable: Pageable
+    ): Page<UserEntity>
+
+    @Query("""
+        SELECT u FROM UserEntity u
+        WHERE LOWER(u.name) LIKE LOWER(CONCAT('%', :search, '%'))
+               OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%'))
+    """)
+    fun findBySearch(
+        @Param("search") search: String,
+        pageable: Pageable
+    ): Page<UserEntity>
+
+    fun findByStatus(status: UserStatus, pageable: Pageable): Page<UserEntity>
+
+    fun countByStatus(status: UserStatus): Long
 }

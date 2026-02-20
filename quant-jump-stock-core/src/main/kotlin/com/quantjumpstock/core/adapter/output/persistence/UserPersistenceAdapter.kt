@@ -10,6 +10,8 @@ import com.quantjumpstock.core.domain.model.user.User
 import com.quantjumpstock.core.domain.model.user.UserRole
 import com.quantjumpstock.core.domain.model.user.UserStatus
 import com.quantjumpstock.core.domain.port.output.UserRepository
+import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 
@@ -62,6 +64,33 @@ class UserPersistenceAdapter(
             mapOAuthProvider(provider),
             providerId
         )?.let { toDomain(it) }
+    }
+
+    override fun findAllPaged(page: Int, size: Int, search: String?, status: UserStatus?): Pair<List<User>, Long> {
+        val pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))
+        val jpaStatus = status?.let { mapStatus(it) }
+        val searchTerm = search?.takeIf { it.isNotBlank() }
+
+        val result = when {
+            searchTerm != null && jpaStatus != null ->
+                userJpaRepository.findBySearchAndStatus(searchTerm, jpaStatus, pageable)
+            searchTerm != null ->
+                userJpaRepository.findBySearch(searchTerm, pageable)
+            jpaStatus != null ->
+                userJpaRepository.findByStatus(jpaStatus, pageable)
+            else ->
+                userJpaRepository.findAll(pageable)
+        }
+
+        return Pair(result.content.map { toDomain(it) }, result.totalElements)
+    }
+
+    override fun countByStatus(status: UserStatus): Long {
+        return userJpaRepository.countByStatus(mapStatus(status))
+    }
+
+    override fun count(): Long {
+        return userJpaRepository.count()
     }
 
     // ===== Mapping Functions =====

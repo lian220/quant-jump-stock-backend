@@ -8,7 +8,7 @@ import org.hibernate.annotations.CreationTimestamp
 
 @Entity
 @Table(name = "backtest_trades")
-data class BacktestTradeEntity(
+class BacktestTradeEntity(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,

@@ -25,7 +25,7 @@ import org.hibernate.annotations.UpdateTimestamp
         Index(name = "idx_kis_tokens_expiration", columnList = "expiration_time")
     ]
 )
-data class KisTokenEntity(
+class KisTokenEntity(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,

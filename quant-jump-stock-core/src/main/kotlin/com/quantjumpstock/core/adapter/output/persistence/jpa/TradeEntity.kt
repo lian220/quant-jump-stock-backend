@@ -8,7 +8,7 @@ import org.hibernate.annotations.UpdateTimestamp
 
 @Entity
 @Table(name = "trades")
-data class TradeEntity(
+class TradeEntity(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,

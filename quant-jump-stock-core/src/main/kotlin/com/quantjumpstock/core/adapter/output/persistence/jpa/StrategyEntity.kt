@@ -18,16 +18,16 @@ import org.hibernate.type.SqlTypes
         NamedAttributeNode("category")
     ]
 )
-data class StrategyEntity(
+class StrategyEntity(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,
 
     @Column(nullable = false, length = 100)
-    val name: String,
+    var name: String,
 
     @Column(columnDefinition = "TEXT")
-    val description: String? = null,
+    var description: String? = null,
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id", nullable = false)
@@ -38,10 +38,10 @@ data class StrategyEntity(
     val owner: UserEntity? = null,
 
     @Column(name = "is_public")
-    val isPublic: Boolean = false,
+    var isPublic: Boolean = false,
 
     @Column(name = "is_premium")
-    val isPremium: Boolean = false,
+    var isPremium: Boolean = false,
 
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
@@ -67,23 +67,23 @@ data class StrategyEntity(
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(columnDefinition = "jsonb", nullable = false)
-    val conditions: String = "{}",
+    var conditions: String = "{}",
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "risk_settings", columnDefinition = "jsonb")
-    val riskSettings: String = "{}",
+    var riskSettings: String = "{}",
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "position_sizing", columnDefinition = "jsonb")
-    val positionSizing: String = "{}",
+    var positionSizing: String = "{}",
 
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "trading_costs", columnDefinition = "jsonb")
-    val tradingCosts: String = "{}",
+    var tradingCosts: String = "{}",
 
     @Enumerated(EnumType.STRING)
     @Column(name = "rebalance_frequency", length = 20)
-    val rebalanceFrequency: RebalanceFrequency = RebalanceFrequency.MONTHLY,
+    var rebalanceFrequency: RebalanceFrequency = RebalanceFrequency.MONTHLY,
 
     @Column(name = "subscriber_count")
     var subscriberCount: Int = 0,

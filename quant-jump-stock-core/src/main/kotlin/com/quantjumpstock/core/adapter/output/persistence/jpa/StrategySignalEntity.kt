@@ -10,7 +10,7 @@ import org.hibernate.type.SqlTypes
 
 @Entity
 @Table(name = "strategy_signals")
-data class StrategySignalEntity(
+class StrategySignalEntity(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,
