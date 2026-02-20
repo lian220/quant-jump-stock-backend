@@ -5,6 +5,7 @@ import com.quantjumpstock.core.domain.model.marketplace.MarketplaceStrategy
 import com.quantjumpstock.core.domain.model.marketplace.StrategyDetail
 import com.quantjumpstock.core.domain.port.output.MarketplaceRepository
 import org.slf4j.LoggerFactory
+import org.springframework.cache.annotation.Cacheable
 import org.springframework.data.domain.Page
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -25,7 +26,12 @@ class MarketplaceService(
     /**
      * 공개 전략 목록 조회
      * 필터링 및 정렬 지원
+     * 캐싱: 6시간 TTL, 분석 스케줄러 완료 시 초기화
      */
+    @Cacheable(
+        value = ["marketplaceStrategies"],
+        key = "#request.categoryCode + ':' + #request.minCagr + ':' + #request.maxMdd + ':' + #request.sortBy + ':' + #request.page + ':' + #request.size"
+    )
     fun getPublicStrategies(request: StrategyListRequest): StrategyListResponse {
         logger.info("공개 전략 목록 조회: categoryCode=${request.categoryCode}, minCagr=${request.minCagr}, maxMdd=${request.maxMdd}, sortBy=${request.sortBy}")
 
@@ -64,7 +70,9 @@ class MarketplaceService(
     /**
      * 전략 상세 조회
      * 성과 지표, 수익 곡선, 현재 보유 종목 포함
+     * 캐싱: 6시간 TTL, 분석 스케줄러 완료 시 초기화
      */
+    @Cacheable(value = ["strategyDetail"], key = "#id")
     fun getStrategyDetail(id: Long): StrategyDetailResponse {
         logger.info("전략 상세 조회: id=$id")
 

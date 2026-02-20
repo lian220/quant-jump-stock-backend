@@ -73,7 +73,13 @@ class RecommendationService(
 
     /**
      * 특정 종목의 최근 예측 결과 조회
+     * 캐싱: 6시간 TTL, 분석 스케줄러 완료 시 초기화
      */
+    @Cacheable(
+        value = ["tickerPredictions"],
+        key = "#ticker + '_' + #limit",
+        unless = "#result.count == 0"
+    )
     fun getPredictionsByTicker(ticker: String, limit: Int = 30): TickerPredictionsResponse {
         val predictions = predictionResultRepository.findByTickerOrderByDateDesc(ticker)
             .take(limit)
@@ -100,7 +106,16 @@ class RecommendationService(
 
     /**
      * 최근 예측 결과 조회
+     * 캐싱: 6시간 TTL, 분석 스케줄러(00:20 KST) 완료 시 초기화
+     *
+     * ⚠️ 날짜는 캐시 키에 미포함: 자정 이후에도 스케줄러 evict(00:20) 전까지는
+     *    이전 날짜 기준 데이터가 반환될 수 있음 (최대 20분 오차). 허용된 동작.
      */
+    @Cacheable(
+        value = ["recentPredictions"],
+        key = "#days",
+        unless = "#result.count == 0"
+    )
     fun getRecentPredictions(days: Int = 7): RecentPredictionsResponse {
         val fromDate = LocalDate.now().minusDays(days.toLong())
         val predictions = predictionResultRepository.findRecentPredictions(fromDate)
