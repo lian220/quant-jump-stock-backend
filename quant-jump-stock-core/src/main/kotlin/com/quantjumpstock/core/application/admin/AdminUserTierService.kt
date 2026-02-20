@@ -54,14 +54,17 @@ class AdminUserTierService(
 
         if (newTier == UserTier.FREE) {
             if (tierEntity != null) {
-                userTierJpaRepository.downgradeToFree(userDbId)
+                tierEntity.tier = UserTier.FREE
+                tierEntity.expiresAt = null
             }
             logger.info("유저 티어 다운그레이드: userId={}, tier=FREE, updatedBy={}", userDbId, updatedBy)
         } else {
             val startedAt = LocalDateTime.now()
             val expiresAt = request.expiresAt ?: startedAt.plusYears(1)
             if (tierEntity != null) {
-                userTierJpaRepository.upgradeTier(userDbId, newTier, startedAt, expiresAt)
+                tierEntity.tier = newTier
+                tierEntity.startedAt = startedAt
+                tierEntity.expiresAt = expiresAt
             } else {
                 val newTierEntity = UserTierEntity(
                     user = userEntity,
