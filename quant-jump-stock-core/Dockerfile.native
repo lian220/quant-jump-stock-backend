@@ -20,6 +20,7 @@ RUN chmod +x app && chown appuser:appuser app
 USER appuser
 
 ENV SERVER_PORT=10010
+ENV TZ=Asia/Seoul
 EXPOSE 10010
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
