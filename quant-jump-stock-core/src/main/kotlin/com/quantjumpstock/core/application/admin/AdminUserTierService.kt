@@ -19,6 +19,28 @@ class AdminUserTierService(
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
+    fun getUserTiersBatch(userDbIds: List<Long>): List<AdminUserTierInfo> {
+        if (userDbIds.isEmpty()) return emptyList()
+
+        val users = userJpaRepository.findAllById(userDbIds).associateBy { it.id!! }
+        val tiers = userTierJpaRepository.findByUserIdIn(userDbIds).associateBy { it.user.id!! }
+        val subscriptionCounts = subscriptionRepository.countActiveByUserIds(userDbIds)
+
+        return userDbIds.mapNotNull { id ->
+            val userEntity = users[id] ?: return@mapNotNull null
+            val tierEntity = tiers[id]
+            AdminUserTierInfo(
+                userId = id,
+                userLoginId = userEntity.userId,
+                tier = tierEntity?.tier?.name ?: "FREE",
+                startedAt = tierEntity?.startedAt,
+                expiresAt = tierEntity?.expiresAt,
+                backtestCountToday = tierEntity?.backtestCountToday ?: 0,
+                activeSubscriptionCount = subscriptionCounts[id] ?: 0
+            )
+        }
+    }
+
     fun getUserTier(userDbId: Long): AdminUserTierInfo {
         val userEntity = userJpaRepository.findById(userDbId).orElseThrow {
             IllegalArgumentException("사용자를 찾을 수 없습니다: $userDbId")

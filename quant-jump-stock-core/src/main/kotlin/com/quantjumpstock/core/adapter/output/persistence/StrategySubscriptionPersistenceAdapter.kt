@@ -95,6 +95,13 @@ class StrategySubscriptionPersistenceAdapter(
         return jpaRepository.countActiveByUserId(userDbId)
     }
 
+    override fun countActiveByUserIds(userDbIds: List<Long>): Map<Long, Long> {
+        if (userDbIds.isEmpty()) return emptyMap()
+        return jpaRepository.countActiveByUserIdIn(userDbIds).associate { row ->
+            (row[0] as Long) to (row[1] as Long)
+        }
+    }
+
     override fun findDetailsByUserId(userDbId: Long): List<SubscriptionDetail> {
         return jpaRepository.findActiveSubscriptionsWithStrategy(userDbId).mapNotNull { entity ->
             toSubscriptionDetail(entity)
@@ -111,6 +118,7 @@ class StrategySubscriptionPersistenceAdapter(
     @Transactional
     override fun updateAlertEnabled(subscriptionId: Long, alertEnabled: Boolean): Boolean {
         val entity = jpaRepository.findById(subscriptionId).orElse(null) ?: return false
+        if (entity.status != SubscriptionStatus.ACTIVE) return false
         entity.notifySignals = alertEnabled
         entity.notifyRebalance = alertEnabled
         jpaRepository.save(entity)
@@ -136,7 +144,7 @@ class StrategySubscriptionPersistenceAdapter(
             strategyName = entity.strategy.name,
             strategyDescription = entity.strategy.description,
             isPremiumStrategy = entity.strategy.isPremium,
-            alertEnabled = entity.notifySignals && entity.notifyRebalance,
+            alertEnabled = entity.notifySignals || entity.notifyRebalance,
             preferredUniverseType = entity.preferredUniverseType,
             subscribedAt = entity.subscribedAt
         )

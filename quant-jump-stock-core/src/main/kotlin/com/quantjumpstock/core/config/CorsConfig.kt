@@ -16,7 +16,13 @@ class CorsConfig {
     @Bean
     fun corsConfigurationSource(): CorsConfigurationSource {
         val config = CorsConfiguration()
-        config.allowedOrigins = allowedOrigins.split(",").map { it.trim() }
+        val origins = allowedOrigins.split(",").map { it.trim() }
+        // allowCredentials=true와 wildcard "*"는 함께 사용 불가 → allowedOriginPatterns 사용
+        if (origins.contains("*")) {
+            config.allowedOriginPatterns = listOf("*")
+        } else {
+            config.allowedOrigins = origins
+        }
         config.allowedMethods = listOf("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
         config.allowedHeaders = listOf("*")
         config.allowCredentials = true

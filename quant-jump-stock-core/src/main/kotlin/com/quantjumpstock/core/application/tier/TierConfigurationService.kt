@@ -75,7 +75,7 @@ class TierConfigurationService(
         return tierConfigRepository.findByTier(tier)
             ?: TierConfiguration(
                 tier = tier,
-                maxSubscriptionCount = 3,
+                maxSubscriptionCount = 2, // V53 마이그레이션 FREE 티어 기본값과 일치
                 maxBacktestDaily = 3,
                 maxBacktestPerStrategy = 5,
                 isUnlimitedSubscription = tier != "FREE",

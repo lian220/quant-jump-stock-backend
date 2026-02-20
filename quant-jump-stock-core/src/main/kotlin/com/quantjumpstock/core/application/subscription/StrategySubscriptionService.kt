@@ -79,7 +79,8 @@ class StrategySubscriptionService(
         logger.info("전략 구독 완료: userId={}, strategyId={}, subscriptionId={}", userId, strategyId, result.subscriptionId)
 
         return SubscribeResponse(
-            subscriptionId = result.subscriptionId!!,
+            subscriptionId = result.subscriptionId
+                ?: throw SubscriptionException("INTERNAL_ERROR", "구독 ID 생성 오류", 500),
             strategyId = strategyId,
             message = "구독이 완료되었습니다."
         )

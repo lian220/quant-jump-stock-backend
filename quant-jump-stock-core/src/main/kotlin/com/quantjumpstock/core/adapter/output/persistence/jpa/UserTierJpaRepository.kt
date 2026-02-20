@@ -13,6 +13,8 @@ interface UserTierJpaRepository : JpaRepository<UserTierEntity, Long> {
 
     fun findByUserId(userId: Long): Optional<UserTierEntity>
 
+    fun findByUserIdIn(userIds: List<Long>): List<UserTierEntity>
+
     fun findByTier(tier: UserTier): List<UserTierEntity>
 
     fun existsByUserId(userId: Long): Boolean

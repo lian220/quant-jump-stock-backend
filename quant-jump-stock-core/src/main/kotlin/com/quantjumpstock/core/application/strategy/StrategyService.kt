@@ -87,15 +87,15 @@ class StrategyService(
             ?: throw StrategyException("전략을 찾을 수 없습니다: $strategyId")
 
         // 비공개 전략은 소유자만 조회 가능
+        var resolvedUser = userId?.let { userRepository.findByUserId(it) }
         if (!strategy.isPublic) {
-            val user = userId?.let { userRepository.findByUserId(it) }
-            if (user == null || strategy.ownerId != user.id) {
+            if (resolvedUser == null || strategy.ownerId != resolvedUser.id) {
                 throw StrategyException("이 전략에 접근할 권한이 없습니다")
             }
         }
 
-        // 로그인한 사용자의 구독 정보 조회
-        val userDbId = userId?.let { userRepository.findByUserId(it)?.id }
+        // 로그인한 사용자의 구독 정보 조회 (앞서 조회한 user 재사용)
+        val userDbId = resolvedUser?.id
         val subscriptionId = userDbId?.let { uid ->
             strategyId.let { sid -> subscriptionRepository.findActiveSubscriptionId(uid, sid) }
         }

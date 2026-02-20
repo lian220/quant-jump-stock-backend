@@ -5,8 +5,10 @@ import com.quantjumpstock.core.adapter.output.persistence.jpa.UserTierEntity
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserTierJpaRepository
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserTier
 import com.quantjumpstock.core.application.tier.TierConfigurationService
+import com.quantjumpstock.core.domain.port.output.AdminTierDetails
 import com.quantjumpstock.core.domain.port.output.BacktestLimitInfo
 import com.quantjumpstock.core.domain.port.output.UserTierRepository
+import java.time.LocalDateTime
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
@@ -45,8 +47,8 @@ class UserTierPersistenceAdapter(
         }
 
         val limit = tierConfigService.getBacktestDailyLimit(tierEntity.tier.name)
-        val allowed = tierEntity.canPerformBacktest(if (limit == Int.MAX_VALUE) Int.MAX_VALUE else limit)
-        val remaining = tierEntity.getRemainingBacktests(if (limit == Int.MAX_VALUE) Int.MAX_VALUE else limit)
+        val allowed = tierEntity.canPerformBacktest(limit)
+        val remaining = tierEntity.getRemainingBacktests(limit)
         val dailyLimit = when (tierEntity.tier) {
             UserTier.FREE -> limit
             UserTier.PREMIUM, UserTier.PREMIUM_YEARLY -> -1
@@ -154,5 +156,41 @@ class UserTierPersistenceAdapter(
                 message = "일일 백테스트 한도를 초과했습니다. (${limit}회/일)"
             )
         }
+    }
+
+    @Transactional(readOnly = true)
+    override fun getAdminTierDetails(userDbId: Long): AdminTierDetails? {
+        val tierEntity = userTierJpaRepository.findByUserId(userDbId).orElse(null) ?: return null
+        return AdminTierDetails(
+            tier = tierEntity.tier.name,
+            startedAt = tierEntity.startedAt,
+            expiresAt = tierEntity.expiresAt,
+            backtestCountToday = tierEntity.backtestCountToday
+        )
+    }
+
+    @Transactional
+    override fun updateAdminTier(
+        userDbId: Long,
+        tier: String,
+        startedAt: LocalDateTime?,
+        expiresAt: LocalDateTime?
+    ) {
+        val newTier = UserTier.valueOf(tier)
+        val userEntity = userJpaRepository.findById(userDbId).orElseThrow {
+            IllegalArgumentException("사용자를 찾을 수 없습니다: $userDbId")
+        }
+        val tierEntity = userTierJpaRepository.findByUserId(userDbId).orElse(null)
+        if (tierEntity != null) {
+            tierEntity.tier = newTier
+            tierEntity.startedAt = startedAt
+            tierEntity.expiresAt = expiresAt
+            userTierJpaRepository.save(tierEntity)
+        } else {
+            userTierJpaRepository.save(
+                UserTierEntity(user = userEntity, tier = newTier, startedAt = startedAt, expiresAt = expiresAt)
+            )
+        }
+        logger.info("어드민 티어 업데이트: userDbId={}, tier={}, expiresAt={}", userDbId, tier, expiresAt)
     }
 }

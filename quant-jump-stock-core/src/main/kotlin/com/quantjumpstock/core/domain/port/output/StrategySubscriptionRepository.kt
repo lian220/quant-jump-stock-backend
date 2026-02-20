@@ -38,6 +38,9 @@ interface StrategySubscriptionRepository {
     /** 활성 구독 수 조회 */
     fun countActiveByUserId(userDbId: Long): Long
 
+    /** 여러 유저의 활성 구독 수 배치 조회 */
+    fun countActiveByUserIds(userDbIds: List<Long>): Map<Long, Long>
+
     /** 구독 상세 목록 조회 */
     fun findDetailsByUserId(userDbId: Long): List<SubscriptionDetail>
 

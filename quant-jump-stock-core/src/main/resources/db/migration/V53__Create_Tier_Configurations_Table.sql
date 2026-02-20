@@ -19,6 +19,9 @@ VALUES
     (3, 'PREMIUM_YEARLY', 0, 0, 0, true,  true,  '프리미엄 연간 - 무제한')
 ON CONFLICT (tier) DO NOTHING;
 
+-- BIGSERIAL 시퀀스를 명시적 ID 이후로 리셋 (다음 자동 INSERT 충돌 방지)
+SELECT setval('tier_configurations_id_seq', (SELECT MAX(id) FROM tier_configurations));
+
 -- UNLIMITED_USERS 하드코딩 제거: 해당 계정을 PREMIUM으로 업그레이드
 UPDATE user_tiers ut
 SET tier = 'PREMIUM', started_at = NOW()

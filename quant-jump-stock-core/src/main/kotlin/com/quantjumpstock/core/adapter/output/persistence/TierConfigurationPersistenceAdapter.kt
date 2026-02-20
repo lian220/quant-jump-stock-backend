@@ -5,6 +5,7 @@ import com.quantjumpstock.core.adapter.output.persistence.jpa.TierConfigurationJ
 import com.quantjumpstock.core.domain.model.tier.TierConfiguration
 import com.quantjumpstock.core.domain.port.output.TierConfigurationRepository
 import org.springframework.stereotype.Component
+import org.springframework.transaction.annotation.Transactional
 
 @Component
 class TierConfigurationPersistenceAdapter(
@@ -19,6 +20,7 @@ class TierConfigurationPersistenceAdapter(
         return jpaRepository.findAll().map { it.toDomain() }
     }
 
+    @Transactional
     override fun save(config: TierConfiguration): TierConfiguration {
         val entity = jpaRepository.findByTier(config.tier).orElse(null)
         return if (entity != null) {

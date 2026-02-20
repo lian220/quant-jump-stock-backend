@@ -56,6 +56,18 @@ class AdminUsersController(
         return ResponseEntity.ok(response)
     }
 
+    @GetMapping("/tiers/batch")
+    @Operation(summary = "유저 티어 배치 조회", description = "여러 유저의 티어와 구독 현황을 한 번에 조회합니다.")
+    fun getUserTiersBatch(
+        @Parameter(description = "조회할 유저 ID 목록 (쉼표 구분, 최대 100)")
+        @RequestParam userIds: List<Long>
+    ): ResponseEntity<List<AdminUserTierInfo>> {
+        if (userIds.size > 100) {
+            return ResponseEntity.badRequest().build()
+        }
+        return ResponseEntity.ok(adminUserTierService.getUserTiersBatch(userIds))
+    }
+
     @GetMapping("/{id}/tier")
     @Operation(summary = "유저 티어 조회", description = "특정 유저의 티어와 구독 현황을 조회합니다.")
     fun getUserTier(@PathVariable id: Long): ResponseEntity<AdminUserTierInfo> {

@@ -28,7 +28,29 @@ interface UserTierRepository {
      * 이미 존재하면 무시
      */
     fun createFreeTierForUser(userId: String)
+
+    /**
+     * 어드민용: userDbId 기반 티어 상세 조회
+     */
+    fun getAdminTierDetails(userDbId: Long): AdminTierDetails?
+
+    /**
+     * 어드민용: 사용자 티어 업데이트
+     */
+    fun updateAdminTier(
+        userDbId: Long,
+        tier: String,
+        startedAt: java.time.LocalDateTime?,
+        expiresAt: java.time.LocalDateTime?
+    )
 }
+
+data class AdminTierDetails(
+    val tier: String,
+    val startedAt: java.time.LocalDateTime?,
+    val expiresAt: java.time.LocalDateTime?,
+    val backtestCountToday: Int
+)
 
 data class BacktestLimitInfo(
     val allowed: Boolean,

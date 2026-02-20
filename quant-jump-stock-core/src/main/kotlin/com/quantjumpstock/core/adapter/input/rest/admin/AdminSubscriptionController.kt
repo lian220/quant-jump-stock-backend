@@ -1,11 +1,8 @@
 package com.quantjumpstock.core.adapter.input.rest.admin
 
-import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategySubscriptionJpaRepository
-import com.quantjumpstock.core.adapter.output.persistence.jpa.SubscriptionStatus
+import com.quantjumpstock.core.application.admin.AdminSubscriptionService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
-import org.springframework.data.domain.PageRequest
-import org.springframework.data.domain.Sort
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.*
@@ -20,7 +17,7 @@ import java.time.LocalDateTime
 @Tag(name = "Admin Subscriptions", description = "관리자용 구독 현황 API")
 @PreAuthorize("hasRole('ADMIN')")
 class AdminSubscriptionController(
-    private val jpaRepository: StrategySubscriptionJpaRepository
+    private val adminSubscriptionService: AdminSubscriptionService
 ) {
 
     @GetMapping
@@ -31,29 +28,8 @@ class AdminSubscriptionController(
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int
     ): ResponseEntity<AdminSubscriptionListResponse> {
-        val safeSize = size.coerceIn(1, 100)
-        val pageable = PageRequest.of(page, safeSize, Sort.by(Sort.Direction.DESC, "subscribedAt"))
-
-        val items = when {
-            strategyId != null -> jpaRepository.findByStrategyId(strategyId)
-                .map { it.toAdminSummary() }
-            userId != null -> jpaRepository.findByUserId(userId)
-                .map { it.toAdminSummary() }
-            else -> {
-                // 전체 조회: 활성 구독만 (페이징)
-                val allActive = jpaRepository.findAll().filter { it.status == SubscriptionStatus.ACTIVE }
-                allActive.map { it.toAdminSummary() }
-            }
-        }
-
-        val activeCount = items.count { it.status == "ACTIVE" }
-
         return ResponseEntity.ok(
-            AdminSubscriptionListResponse(
-                subscriptions = items,
-                total = items.size.toLong(),
-                activeCount = activeCount.toLong()
-            )
+            adminSubscriptionService.getSubscriptions(strategyId, userId, page, size)
         )
     }
 }
@@ -74,15 +50,3 @@ data class AdminSubscriptionListResponse(
     val total: Long,
     val activeCount: Long
 )
-
-private fun com.quantjumpstock.core.adapter.output.persistence.jpa.StrategySubscriptionEntity.toAdminSummary() =
-    AdminSubscriptionSummary(
-        subscriptionId = id ?: 0L,
-        userId = user.id ?: 0L,
-        userLoginId = user.userId,
-        strategyId = strategy.id ?: 0L,
-        strategyName = strategy.name,
-        status = status.name,
-        alertEnabled = notifySignals && notifyRebalance,
-        subscribedAt = subscribedAt
-    )
