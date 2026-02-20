@@ -1,6 +1,7 @@
 package com.quantjumpstock.core.adapter.output.notification.slack
 
 import com.fasterxml.jackson.annotation.JsonProperty
+import com.quantjumpstock.core.infrastructure.util.DateRangeFormatter
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
@@ -450,13 +451,8 @@ class SlackApiClient(
         }
     }
 
-    private fun formatDateRange(startDate: String?, endDate: String?): String {
-        return when {
-            startDate != null && endDate != null -> "$startDate ~ $endDate"
-            startDate != null -> "$startDate ~ 오늘"
-            else -> "자동 (마지막 수집일+1 ~ 오늘)"
-        }
-    }
+    private fun formatDateRange(startDate: String?, endDate: String?): String =
+        DateRangeFormatter.format(startDate, endDate)
 
     /**
      * Vertex AI Job 시작 알림 (스레드 루트 메시지)

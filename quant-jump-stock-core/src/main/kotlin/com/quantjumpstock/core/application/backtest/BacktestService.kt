@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.module.kotlin.readValue
 import com.quantjumpstock.core.domain.model.backtest.BacktestGradeCalculator
 import com.quantjumpstock.core.domain.model.backtest.BacktestResult
+import com.quantjumpstock.core.domain.model.backtest.BacktestStatus
 import com.quantjumpstock.core.domain.model.backtest.BacktestTrade
 import com.quantjumpstock.core.domain.model.backtest.BacktestType
 import com.quantjumpstock.core.domain.model.backtest.UniverseType
@@ -22,7 +23,7 @@ import java.util.UUID
 
 /**
  * 백테스트 Application Service
- * 백테스트 요청을 처리하고 Kafka로 이벤트를 발행합니다.
+ * 백테스트 요청을 처리하고 Pub/Sub으로 이벤트를 발행합니다.
  */
 @Service
 class BacktestService(
@@ -92,7 +93,7 @@ class BacktestService(
                     }
                 } ?: UniverseType.MARKET,
                 backtestType = BacktestType.USER_CUSTOM,
-                status = com.quantjumpstock.core.domain.model.backtest.BacktestStatus.RUNNING,
+                status = BacktestStatus.RUNNING,
                 errorMessage = null
             )
             
@@ -117,6 +118,19 @@ class BacktestService(
             )
         } catch (e: Exception) {
             logger.error("백테스트 요청 실패: requestId=$requestId", e)
+            // Pub/Sub publish 실패 시 RUNNING 레코드를 FAILED로 업데이트
+            runCatching {
+                backtestResultRepository.findByRequestId(requestId)?.let { record ->
+                    backtestResultRepository.save(
+                        record.copy(
+                            status = BacktestStatus.FAILED,
+                            errorMessage = e.message
+                        )
+                    )
+                }
+            }.onFailure { updateErr ->
+                logger.warn("RUNNING 레코드 FAILED 업데이트 실패: requestId=$requestId", updateErr)
+            }
             throw BacktestException("백테스트 요청에 실패했습니다: ${e.message}", e)
         }
     }
@@ -305,7 +319,7 @@ class BacktestService(
             ),
             equityCurve = equityCurve,
             benchmarkCurve = equityCurve?.filter { it.benchmark != null }?.map {
-                EquityCurvePoint(date = it.date, value = it.benchmark!!)
+                EquityCurvePoint(date = it.date, value = it.benchmark ?: BigDecimal.ZERO)
             }?.ifEmpty { null },
             // SCRUM-337: 다중 벤치마크 커브 생성
             benchmarkCurves = buildMultiBenchmarkCurves(equityCurve),

@@ -28,7 +28,7 @@ import org.springframework.web.bind.annotation.RestController
 @Tag(name = "Vertex AI Callback", description = "Vertex AI Job 콜백 (내부 전용)")
 @RestController
 @RequestMapping("/api/v1/vertex-ai")
-@ConditionalOnProperty(name = ["gcp.enabled"], havingValue = "true", matchIfMissing = false)
+@ConditionalOnProperty(name = ["gcp.vertex-ai.enabled"], havingValue = "true", matchIfMissing = false)
 class VertexAICallbackController(
     private val vertexAIService: VertexAIService,
     @Value("\${vertex-ai.callback-secret:}") private val callbackSecret: String

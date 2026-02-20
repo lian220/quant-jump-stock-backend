@@ -10,11 +10,14 @@ import time
 from abc import ABC, abstractmethod
 from decimal import Decimal
 from typing import Optional, Protocol
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from pytz import timezone
 
 from adapter.output.postgresql.backtest_repository import BacktestCheckpoint
 from application.backtest.service import DEFAULT_BENCHMARK
+from application.recommendation.sync_service import RecommendationSyncService
+from core.database import MongoDB
+from services.comprehensive_report import ComprehensiveReportService
 from services.slack_notifier import SlackNotifier
 from .subscriber import PubSubMessage, NonRetryableError
 
@@ -97,7 +100,7 @@ class SentimentAnalysisServiceProtocol(Protocol):
 
 class NotifierProtocol(Protocol):
     """알림 서비스 프로토콜"""
-    def notify_start(self, request_id: str, source: str, thread_ts: Optional[str]) -> None:
+    def notify_start(self, request_id: str, source: str, thread_ts: Optional[str]) -> Optional[str]:
         ...
 
     def notify_success(self, request_id: str, summary: dict, thread_ts: Optional[str]) -> None:
@@ -137,10 +140,13 @@ class EconomicDataHandler(MessageHandler):
     def handle(self, message: PubSubMessage) -> None:
         start_time = self._log_start(message, "경제 데이터 업데이트")
 
-        # 수집 시작 알림
+        # 수집 시작 알림 (Bot Token 사용 시 thread_ts 반환)
+        thread_ts = message.thread_ts
         if self.notifier:
             source = message.payload.get("source", "pubsub")
-            self.notifier.notify_start(message.request_id, source, message.thread_ts)
+            new_ts = self.notifier.notify_start(message.request_id, source, thread_ts)
+            if new_ts:
+                thread_ts = new_ts
 
         try:
             result = self.service.collect_economic_data(
@@ -162,7 +168,7 @@ class EconomicDataHandler(MessageHandler):
             }
 
             if self.notifier:
-                self.notifier.notify_success(message.request_id, summary, message.thread_ts)
+                self.notifier.notify_success(message.request_id, summary, thread_ts)
 
             if self.publisher:
                 self.publisher.publish("ECONOMIC_DATA_UPDATED", {
@@ -172,11 +178,26 @@ class EconomicDataHandler(MessageHandler):
                     "duration": elapsed
                 })
 
+        except (ValueError, KeyError, TypeError) as e:
+            self._log_error("경제 데이터 수집 (재시도 불가 - 데이터 오류)", e)
+
+            if self.notifier:
+                self.notifier.notify_error(message.request_id, str(e), thread_ts)
+
+            if self.publisher:
+                self.publisher.publish("ECONOMIC_DATA_UPDATE_FAILED", {
+                    "status": "failed",
+                    "timestamp": datetime.now(KST).isoformat(),
+                    "requestId": message.request_id,
+                    "error": str(e)
+                })
+            raise NonRetryableError(f"경제 데이터 수집 데이터 오류: {e}") from e
+
         except Exception as e:
             self._log_error("경제 데이터 수집", e)
 
             if self.notifier:
-                self.notifier.notify_error(message.request_id, str(e), message.thread_ts)
+                self.notifier.notify_error(message.request_id, str(e), thread_ts)
 
             if self.publisher:
                 self.publisher.publish("ECONOMIC_DATA_UPDATE_FAILED", {
@@ -218,15 +239,28 @@ class TechnicalAnalysisHandler(MessageHandler):
 
             # 🆕 MongoDB → PostgreSQL 동기화 (분석 완료 후)
             try:
-                from application.recommendation.sync_service import RecommendationSyncService
-
-                # 분석 날짜 결정 (end_date 또는 오늘)
-                analysis_date = message.end_date or date.today().isoformat()
-
                 sync_service = RecommendationSyncService()
-                sync_result = sync_service.sync_latest_recommendations(analysis_date)
+                analyzed_dates = sorted({
+                    row.get("date")
+                    for row in result.get("results", [])
+                    if isinstance(row, dict) and row.get("date")
+                })
 
-                logger.info(f"🔄 동기화 완료: {sync_result.get('synced_count', 0)}개 종목")
+                # 결과에서 날짜를 추출하지 못하면 기존 단일 날짜 fallback
+                if not analyzed_dates:
+                    analyzed_dates = [message.end_date or message.start_date or date.today().isoformat()]
+
+                total_synced = 0
+                for analysis_date in analyzed_dates:
+                    sync_result = sync_service.sync_latest_recommendations(analysis_date)
+                    synced_count = sync_result.get("synced_count", 0)
+                    total_synced += synced_count
+                    logger.info(f"🔄 동기화 완료 (date={analysis_date}): {synced_count}개 종목")
+
+                logger.info(
+                    f"🔄 전체 동기화 완료: {total_synced}개 종목 "
+                    f"(대상일={len(analyzed_dates)}일, {analyzed_dates[0]}~{analyzed_dates[-1]})"
+                )
             except Exception as sync_error:
                 logger.error(f"⚠️ 동기화 실패 (분석은 성공): {sync_error}")
                 # 동기화 실패해도 분석 성공은 유지
@@ -239,6 +273,18 @@ class TechnicalAnalysisHandler(MessageHandler):
                     "duration": time.time() - start_time,
                     "result": result
                 })
+
+        except (ValueError, KeyError, TypeError) as e:
+            self._log_error("기술적 분석 (재시도 불가 - 데이터 오류)", e)
+
+            if self.publisher:
+                self.publisher.publish("ANALYSIS_TECHNICAL_FAILED", {
+                    "status": "failed",
+                    "timestamp": datetime.now(KST).isoformat(),
+                    "requestId": message.request_id,
+                    "error": str(e)
+                })
+            raise NonRetryableError(f"기술적 분석 데이터 오류: {e}") from e
 
         except Exception as e:
             self._log_error("기술적 분석", e)
@@ -290,6 +336,18 @@ class SentimentAnalysisHandler(MessageHandler):
                     "result": result
                 })
 
+        except (ValueError, KeyError, TypeError) as e:
+            self._log_error("뉴스 감정 분석 (재시도 불가 - 데이터 오류)", e)
+
+            if self.publisher:
+                self.publisher.publish("ANALYSIS_SENTIMENT_FAILED", {
+                    "status": "failed",
+                    "timestamp": datetime.now(KST).isoformat(),
+                    "requestId": message.request_id,
+                    "error": str(e)
+                })
+            raise NonRetryableError(f"뉴스 감정 분석 데이터 오류: {e}") from e
+
         except Exception as e:
             self._log_error("뉴스 감정 분석", e)
 
@@ -316,16 +374,78 @@ class StockRecommendationHandler(MessageHandler):
     def topic(self) -> str:
         return "analysis.recommendation.request"
 
+    @staticmethod
+    def _parse_date(value: str) -> date:
+        """YYYY-MM-DD 문자열을 date 객체로 변환"""
+        return datetime.strptime(value, "%Y-%m-%d").date()
+
+    def _resolve_analysis_dates(
+        self,
+        start_date: Optional[str],
+        end_date: Optional[str]
+    ) -> list[str]:
+        """요청 파라미터를 실제 처리할 분석 날짜 목록으로 변환"""
+        today = date.today()
+
+        if start_date and end_date:
+            start = self._parse_date(start_date)
+            end = self._parse_date(end_date)
+            if start > end:
+                raise ValueError(f"startDate({start_date})가 endDate({end_date})보다 클 수 없습니다")
+        elif start_date:
+            start = self._parse_date(start_date)
+            end = today
+            if start > end:
+                raise ValueError(f"startDate({start_date})가 오늘({today.isoformat()})보다 클 수 없습니다")
+        elif end_date:
+            single = self._parse_date(end_date)
+            return [single.isoformat()]
+        else:
+            return [today.isoformat()]
+
+        total_days = (end - start).days
+        return [
+            (start + timedelta(days=offset)).isoformat()
+            for offset in range(total_days + 1)
+            if (start + timedelta(days=offset)).weekday() < 5  # 주말 제외
+        ]
+
     def handle(self, message: PubSubMessage) -> None:
         start_time = self._log_start(message, "종목 추천 실행")
 
         try:
-            from application.recommendation.sync_service import RecommendationSyncService
-
-            analysis_date = message.end_date or date.today().isoformat()
-
             sync_service = RecommendationSyncService()
-            result = sync_service.sync_latest_recommendations(analysis_date)
+            analysis_dates = self._resolve_analysis_dates(message.start_date, message.end_date)
+            logger.info(f"종목 추천 처리 날짜 수: {len(analysis_dates)}일 ({analysis_dates[0]} ~ {analysis_dates[-1]})")
+
+            total_synced_count = 0
+            sync_results = []
+
+            report_db = MongoDB.get_db()
+            report_service = ComprehensiveReportService()
+
+            for analysis_date in analysis_dates:
+                result = sync_service.sync_latest_recommendations(analysis_date)
+                synced_count = int(result.get("synced_count", 0) or 0)
+                total_synced_count += synced_count
+                sync_results.append({
+                    "analysisDate": analysis_date,
+                    "status": result.get("status"),
+                    "syncedCount": synced_count
+                })
+
+                # 종합 분석 리포트: 기술적 + AI 예측 + 감정 분석 결합 후 Slack 발송
+                try:
+                    tech_docs = list(report_db.stock_recommendations.find(
+                        {"date": analysis_date},
+                        {"_id": 0, "ticker": 1, "stock_name": 1, "date": 1,
+                         "technical_indicators": 1, "is_recommended": 1}
+                    ))
+                    if tech_docs:
+                        report = report_service.generate_report(tech_docs, analysis_date)
+                        SlackNotifier.notify_comprehensive_report(report, thread_ts=message.thread_ts)
+                except Exception as e:
+                    logger.exception(f"종합 리포트 생성/전송 실패 ({analysis_date}): {e}")
 
             self._log_success("종목 추천", start_time)
 
@@ -334,8 +454,9 @@ class StockRecommendationHandler(MessageHandler):
                     "status": "success",
                     "timestamp": datetime.now(KST).isoformat(),
                     "requestId": message.request_id,
-                    "syncedCount": result.get("synced_count", 0),
-                    "analysisDate": analysis_date,
+                    "syncedCount": total_synced_count,
+                    "analysisDates": analysis_dates,
+                    "syncResults": sync_results,
                     "duration": time.time() - start_time
                 })
 

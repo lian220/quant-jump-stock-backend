@@ -36,7 +36,7 @@ usage() {
     echo "Examples:"
     echo "  $0              # Start with local environment"
     echo "  $0 local        # Explicitly local environment"
-    echo "  $0 prod         # Production DB with local Kafka"
+    echo "  $0 prod         # Production DB with local Pub/Sub emulator"
     echo "  $0 prod --skip-build"
     exit 0
 }
@@ -77,8 +77,10 @@ done
 # Set env file based on mode
 if [ "$ENV_MODE" = "prod" ]; then
     ENV_FILE=".env.prod"
+    export DB_ENV_FILE=".env.db.prod"
 else
     ENV_FILE=".env.local"
+    export DB_ENV_FILE=".env.db.local"
 fi
 
 echo ""
@@ -92,14 +94,25 @@ echo ""
 
 cd "$PROJECT_ROOT"
 
-# Load environment (순서: .env.common → .env.local/.env.prod)
+# Load environment (순서: .env.common → .env.db.local/.env.db.prod → .env.local/.env.prod)
 set -a
 if [ -f ".env.common" ]; then
     source ".env.common"
 fi
+DB_ENV_LOADED=false
+if [ -f "$DB_ENV_FILE" ]; then
+    source "$DB_ENV_FILE"
+    DB_ENV_LOADED=true
+else
+    echo -e "${YELLOW}⚠ ${DB_ENV_FILE} not found, skipping${NC}"
+fi
 if [ -f "$ENV_FILE" ]; then
     source "$ENV_FILE"
-    echo -e "${GREEN}✓ Loaded: .env.common → ${ENV_FILE}${NC}"
+    if [ "$DB_ENV_LOADED" = true ]; then
+        echo -e "${GREEN}✓ Loaded: .env.common → ${DB_ENV_FILE} → ${ENV_FILE}${NC}"
+    else
+        echo -e "${GREEN}✓ Loaded: .env.common → ${ENV_FILE}${NC}"
+    fi
 else
     echo -e "${RED}❌ ${ENV_FILE} not found!${NC}"
     exit 1
@@ -169,7 +182,8 @@ fi
 # Start backend applications with correct environment
 echo -e "${YELLOW}🎯 Starting backend applications (${ENV_MODE} mode)...${NC}"
 
-# Set ENV_FILE for docker-compose variable substitution
+# Set ENV_FILE and DB_ENV_FILE for docker-compose variable substitution
+# Export ENV_FILE for docker-compose variable substitution (DB_ENV_FILE already exported above)
 export ENV_FILE="$ENV_FILE"
 
 if [ "$FORCE_REBUILD" = true ]; then

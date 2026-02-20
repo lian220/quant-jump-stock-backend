@@ -52,13 +52,30 @@ class Settings:
     FRED_API_KEY = os.getenv("FRED_API_KEY", "aedfbcd8ba091c740281c0bd8ca93b46")
     ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY", "")
 
-    # Slack Settings (Webhook 기반 - Bot Token 불필요)
-    SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL", "")
-    SLACK_WEBHOOK_URL_TRADING = os.getenv("SLACK_WEBHOOK_URL_TRADING", "")
-    SLACK_WEBHOOK_URL_ANALYSIS = os.getenv("SLACK_WEBHOOK_URL_ANALYSIS", "")
-    SLACK_WEBHOOK_URL_NEWS = os.getenv("SLACK_WEBHOOK_URL_NEWS", "")
-    SLACK_WEBHOOK_URL_SCHEDULER = os.getenv("SLACK_WEBHOOK_URL_SCHEDULER", "")
-    SLACK_WEBHOOK_URL_ERROR = os.getenv("SLACK_WEBHOOK_URL_ERROR", "")
-    SLACK_ENABLED = os.getenv("SLACK_ENABLED", "true").lower() == "true"
+    # Slack Settings - config.settings에서 위임 (중복 os.getenv 방지)
+    @property
+    def SLACK_BOT_TOKEN(self):
+        from config.settings import get_settings
+        return get_settings().SLACK_BOT_TOKEN
+
+    @property
+    def SLACK_ENABLED(self):
+        from config.settings import get_settings
+        return get_settings().SLACK_ENABLED
+
+    @property
+    def SLACK_WEBHOOK_URL(self):
+        from config.settings import get_settings
+        return get_settings().SLACK_WEBHOOK_URL
+
+    @property
+    def SLACK_WEBHOOK_URL_TRADING(self):
+        from config.settings import get_settings
+        return get_settings().SLACK_WEBHOOK_URL_TRADING
+
+    @property
+    def SLACK_WEBHOOK_URL_NEWS(self):
+        from config.settings import get_settings
+        return get_settings().SLACK_WEBHOOK_URL_NEWS
 
 settings = Settings()

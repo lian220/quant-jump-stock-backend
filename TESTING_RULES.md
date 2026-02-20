@@ -1,10 +1,10 @@
 # Backend 테스트 규칙
 
 ## 실행 환경
-- **항상 Docker로 실행** (`--dev` 모드에서도 Backend는 Docker)
-- Core 수정 시: `./start.sh --build-backend` (재빌드 필수)
+- **항상 Docker로 실행**
+- Core 수정 시: `./start.sh local --rebuild` (재빌드 필수)
 - Data Engine 수정 시: 볼륨 마운트로 자동 반영 (재빌드 불필요)
-- 통합 시작: 루트에서 `./start.sh --dev --build`
+- 통합 시작: 루트에서 `./start.sh` (기본 local + build)
 
 ## 단위 테스트
 ```bash
@@ -37,5 +37,5 @@ docker logs -f qjs-core
 docker logs -f qjs-data-engine
 
 # 전체 로그
-./start.sh --logs
+docker compose logs -f
 ```

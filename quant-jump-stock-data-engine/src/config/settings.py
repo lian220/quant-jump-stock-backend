@@ -68,9 +68,17 @@ class ApiSettings(BaseSettings):
 
 
 class SlackSettings(BaseSettings):
-    """Slack 설정 - Webhook 기반 (Bot Token 불필요)"""
+    """Slack 설정 - Bot Token (스레드 답글) + Webhook (fallback)"""
     model_config = SettingsConfigDict(env_prefix="", extra="ignore")
 
+    # Bot Token (스레드 답글 지원)
+    bot_token: str = Field(default="", alias="SLACK_BOT_TOKEN")
+    channel_scheduler: str = Field(default="", alias="SLACK_CHANNEL_SCHEDULER")
+    channel_analysis: str = Field(default="", alias="SLACK_CHANNEL_ANALYSIS")
+    channel_error: str = Field(default="", alias="SLACK_CHANNEL_ERROR")
+    channel_trading: str = Field(default="", alias="SLACK_CHANNEL_TRADING")
+
+    # Webhook (fallback)
     webhook_url: str = Field(default="", alias="SLACK_WEBHOOK_URL")
     webhook_url_trading: str = Field(default="", alias="SLACK_WEBHOOK_URL_TRADING")
     webhook_url_analysis: str = Field(default="", alias="SLACK_WEBHOOK_URL_ANALYSIS")
@@ -162,6 +170,10 @@ class Settings(BaseSettings):
     @property
     def SLACK_ENABLED(self) -> bool:
         return self.slack.enabled
+
+    @property
+    def SLACK_BOT_TOKEN(self) -> str:
+        return self.slack.bot_token
 
     @property
     def POSTGRES_HOST(self) -> str:

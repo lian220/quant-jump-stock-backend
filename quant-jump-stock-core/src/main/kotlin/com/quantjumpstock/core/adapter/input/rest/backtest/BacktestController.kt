@@ -53,7 +53,7 @@ class BacktestController(
     @PostMapping("/run")
     @Operation(
         summary = "백테스트 실행",
-        description = "전략에 대한 백테스트를 실행합니다. 요청은 Kafka를 통해 비동기로 처리됩니다."
+        description = "전략에 대한 백테스트를 실행합니다. 요청은 Pub/Sub을 통해 비동기로 처리됩니다."
     )
     @ApiResponses(
         ApiResponse(responseCode = "202", description = "백테스트 요청 접수됨"),
@@ -84,7 +84,7 @@ class BacktestController(
                     "message" to "전략을 찾을 수 없습니다: ${request.strategyId}"
                 ))
 
-        // 문자열 userId → DB PK(Long) 변환하여 Kafka에 숫자 ID로 전달
+        // 문자열 userId → DB PK(Long) 변환하여 Pub/Sub에 숫자 ID로 전달
         val userDbId = userRepository.findByUserId(userLoginId)?.id
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(mapOf("error" to "USER_NOT_FOUND", "message" to "사용자를 찾을 수 없습니다."))

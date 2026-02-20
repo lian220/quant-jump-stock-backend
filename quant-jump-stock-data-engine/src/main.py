@@ -172,23 +172,10 @@ class NewTechnicalAnalysisAdapter:
         result = await self._service.analyze_stocks(
             request_id=request_id,
             thread_ts=thread_ts,
-            target_date=target_date
+            target_date=target_date,
+            start_date=start_date,
+            end_date=end_date
         )
-
-        # 종합 분석 리포트: 기술적 + AI 예측 + 감정 분석
-        if result.get("status") == "success":
-            try:
-                all_results = result.get("results", [])
-                analysis_date = target_date or datetime.now().strftime("%Y-%m-%d")
-
-                report = self._report_service.generate_report(all_results, analysis_date)
-                SlackNotifier.notify_comprehensive_report(report)
-
-                # 리포트 결과로 반환값 업데이트
-                result["recommended_count"] = report.get("candidate_count", 0)
-            except Exception as e:
-                logger.error(f"종합 리포트 생성/전송 실패: {e}")
-                # 분석 결과는 보존하고 계속 진행
 
         return result
 
@@ -207,7 +194,7 @@ class LegacySlackNotifierAdapter:
     """기존 SlackNotifier를 새 프로토콜에 맞게 래핑"""
 
     def notify_start(self, request_id, source, thread_ts):
-        SlackNotifier.notify_economic_data_collection_start(request_id, source, thread_ts)
+        return SlackNotifier.notify_economic_data_collection_start(request_id, source, thread_ts)
 
     def notify_success(self, request_id, summary, thread_ts):
         SlackNotifier.notify_economic_data_collection_success(request_id, summary, thread_ts)
@@ -220,10 +207,9 @@ def _init_services():
     """서비스 및 핸들러 초기화 (push/pull 공통)
 
     Returns:
-        tuple: (handlers_map, pubsub_publisher, vertexai_handler)
+        tuple: (handlers_map, pubsub_publisher)
             handlers_map: {topic_str: handler.handle} 딕셔너리
             pubsub_publisher: PubSubPublisherAdapter
-            vertexai_handler: VertexAIHandler 또는 None
     """
     # MongoDB 연결
     db = MongoDB.get_db()
@@ -299,29 +285,41 @@ def _init_services():
     # Vertex AI 핸들러 (GCP 활성화 시)
     vertexai_handler = None
     if settings.gcp.enabled:
-        logger.info("Vertex AI enabled - initializing services...")
-        try:
-            gcp_config = GcpConfig(
-                project_id=settings.gcp.project_id,
-                region=settings.gcp.region,
-                bucket_name=settings.gcp.model_bucket,
-                package_base_path=settings.gcp.package_base_path,
-                credentials_path=settings.gcp.credentials_path,
-                job_name=settings.gcp.job_name,
-                machine_type=settings.gcp.machine_type,
-                accelerator_type=settings.gcp.accelerator_type,
-                accelerator_count=settings.gcp.accelerator_count,
-                container_uri=settings.gcp.container_uri
-            )
-            prediction_service = PredictionService(config=gcp_config)
-            ml_router.set_prediction_service(prediction_service)
-            vertexai_handler = VertexAIHandler(
-                service=prediction_service,
-                publisher=pubsub_publisher
-            )
-            logger.info("Vertex AI services initialized")
-        except Exception as e:
-            logger.error(f"Failed to initialize Vertex AI services: {e}")
+        # 필수 설정 검증
+        missing = []
+        if not settings.gcp.project_id:
+            missing.append("VERTEX_AI_PROJECT_ID")
+        if not settings.gcp.model_bucket:
+            missing.append("VERTEX_AI_MODEL_BUCKET")
+        if not settings.gcp.region:
+            missing.append("VERTEX_AI_REGION")
+
+        if missing:
+            logger.warning(f"Vertex AI 필수 설정 누락: {', '.join(missing)} — Vertex AI 비활성화")
+        else:
+            logger.info("Vertex AI enabled - initializing services...")
+            try:
+                gcp_config = GcpConfig(
+                    project_id=settings.gcp.project_id,
+                    region=settings.gcp.region,
+                    bucket_name=settings.gcp.model_bucket,
+                    package_base_path=settings.gcp.package_base_path,
+                    credentials_path=settings.gcp.credentials_path,
+                    job_name=settings.gcp.job_name,
+                    machine_type=settings.gcp.machine_type,
+                    accelerator_type=settings.gcp.accelerator_type,
+                    accelerator_count=settings.gcp.accelerator_count,
+                    container_uri=settings.gcp.container_uri
+                )
+                prediction_service = PredictionService(config=gcp_config)
+                ml_router.set_prediction_service(prediction_service)
+                vertexai_handler = VertexAIHandler(
+                    service=prediction_service,
+                    publisher=pubsub_publisher
+                )
+                logger.info("Vertex AI services initialized")
+            except Exception as e:
+                logger.exception(f"Failed to initialize Vertex AI services: {e}")
     else:
         logger.info("GCP disabled - Vertex AI services not available")
 

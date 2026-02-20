@@ -91,8 +91,8 @@ class AnalysisNotifierPort(ABC):
     """분석 알림 포트"""
 
     @abstractmethod
-    async def notify_analysis_start(self, analysis_type: str, thread_ts: Optional[str]) -> None:
-        """분석 시작 알림"""
+    async def notify_analysis_start(self, analysis_type: str, thread_ts: Optional[str]) -> Optional[str]:
+        """분석 시작 알림. Returns: 새 메시지의 ts (Bot Token 사용 시)."""
         pass
 
     @abstractmethod

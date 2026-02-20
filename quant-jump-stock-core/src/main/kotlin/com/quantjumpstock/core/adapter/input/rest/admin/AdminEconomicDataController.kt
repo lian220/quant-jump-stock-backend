@@ -43,7 +43,7 @@ class AdminEconomicDataController(
             - startDate, endDate 모두 지정: 해당 범위 수집
 
             **실행 흐름:**
-            1. Kafka 이벤트 1개 발행 (날짜 범위 포함)
+            1. Pub/Sub 메시지 발행 (날짜 범위 포함)
             2. Python Data Engine에서 범위 데이터 수집
             3. Slack 스레드로 진행상황 알림
             4. MongoDB에 저장
@@ -90,7 +90,7 @@ class AdminEconomicDataController(
             }
             logger.info("경제 데이터 수집 요청: $dateInfo")
 
-            // Kafka 이벤트 1개 발행 (날짜 범위 전달, Data Engine이 처리)
+            // Pub/Sub 메시지 발행 (날짜 범위 전달, Data Engine이 처리)
             economicDataUseCase.triggerEconomicDataUpdate(startDate, endDate).get()
 
             val response = mutableMapOf<String, Any>(

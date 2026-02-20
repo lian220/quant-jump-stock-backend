@@ -54,7 +54,9 @@ class TechnicalAnalysisApplicationService:
         self,
         request_id: str,
         thread_ts: Optional[str] = None,
-        target_date: Optional[str] = None
+        target_date: Optional[str] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         전체 종목 기술적 분석
@@ -63,16 +65,23 @@ class TechnicalAnalysisApplicationService:
             request_id: 요청 ID
             thread_ts: Slack 스레드 타임스탬프
             target_date: 분석 기준 날짜 (YYYY-MM-DD)
+            start_date: 분석 시작 날짜 (YYYY-MM-DD, optional)
+            end_date: 분석 종료 날짜 (YYYY-MM-DD, optional)
 
         Returns:
             분석 결과 요약
         """
         try:
-            logger.info(f"[{request_id}] 기술적 분석 시작 (target_date={target_date})")
+            logger.info(
+                f"[{request_id}] 기술적 분석 시작 "
+                f"(target_date={target_date}, start_date={start_date}, end_date={end_date})"
+            )
 
-            # 시작 알림
+            # 시작 알림 (Bot Token 사용 시 thread_ts 반환)
             if self.notifier:
-                await self.notifier.notify_analysis_start("technical", thread_ts)
+                new_ts = await self.notifier.notify_analysis_start("technical", thread_ts)
+                if new_ts:
+                    thread_ts = new_ts
 
             # 1. 활성 종목 조회
             active_stocks = await self.stock_repository.get_active_stocks()
@@ -83,19 +92,31 @@ class TechnicalAnalysisApplicationService:
             ticker_to_name = {s.ticker: s.stock_name for s in active_stocks}
 
             # 2. 날짜 범위 결정
-            if target_date:
-                target_dt = datetime.strptime(target_date, "%Y-%m-%d")
-                analysis_date = target_date
-            else:
-                target_dt = datetime.now()
-                analysis_date = target_dt.strftime("%Y-%m-%d")
+            range_mode = bool(start_date and end_date)
+            if range_mode:
+                range_start_dt = datetime.strptime(start_date, "%Y-%m-%d")
+                range_end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+                if range_start_dt > range_end_dt:
+                    raise ValueError("start_date must be before or equal to end_date")
 
-            start_dt = target_dt - timedelta(days=self.lookback_days)
-            start_date = start_dt.strftime("%Y-%m-%d")
-            end_date = analysis_date
+                data_start_dt = range_start_dt - timedelta(days=self.lookback_days)
+                query_start_date = data_start_dt.strftime("%Y-%m-%d")
+                query_end_date = end_date
+                analysis_date = None
+            else:
+                if target_date:
+                    target_dt = datetime.strptime(target_date, "%Y-%m-%d")
+                    analysis_date = target_date
+                else:
+                    target_dt = datetime.now()
+                    analysis_date = target_dt.strftime("%Y-%m-%d")
+
+                data_start_dt = target_dt - timedelta(days=self.lookback_days)
+                query_start_date = data_start_dt.strftime("%Y-%m-%d")
+                query_end_date = analysis_date
 
             # 3. 가격 데이터 조회
-            price_data = await self.price_repository.get_daily_prices(start_date, end_date)
+            price_data = await self.price_repository.get_daily_prices(query_start_date, query_end_date)
 
             if not price_data:
                 logger.warning("No price data found")
@@ -109,14 +130,16 @@ class TechnicalAnalysisApplicationService:
                 if len(prices) < 50:
                     continue
 
-                result = self._analyze_single_stock(
+                stock_results = self._analyze_single_stock(
                     ticker=ticker,
                     stock_name=ticker_to_name.get(ticker, ticker),
                     prices=prices,
-                    analysis_date=analysis_date
+                    analysis_date=analysis_date,
+                    start_date=start_date if range_mode else None,
+                    end_date=end_date if range_mode else None
                 )
 
-                if result:
+                for result in stock_results:
                     results.append(result)
                     if result.is_recommended:
                         recommended.append(result)
@@ -159,8 +182,10 @@ class TechnicalAnalysisApplicationService:
         ticker: str,
         stock_name: str,
         prices: list,
-        analysis_date: str
-    ) -> Optional[TechnicalResult]:
+        analysis_date: Optional[str],
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
+    ) -> List[TechnicalResult]:
         """단일 종목 분석"""
         try:
             # DataFrame 생성
@@ -181,40 +206,104 @@ class TechnicalAnalysisApplicationService:
             rsi = calculate_rsi(close, 14)
             macd_line, signal_line, _ = calculate_macd(close)
 
-            # 분석 날짜의 값 추출
+            results: List[TechnicalResult] = []
+
+            # 기간 분석: 범위 내 거래일 전부 계산
+            if start_date and end_date:
+                range_start = pd.to_datetime(start_date)
+                range_end = pd.to_datetime(end_date)
+                target_dates = df.index[(df.index >= range_start) & (df.index <= range_end)]
+
+                for target_dt in target_dates:
+                    result = self._build_result_for_date(
+                        ticker=ticker,
+                        stock_name=stock_name,
+                        target_dt=target_dt,
+                        sma20=sma20,
+                        sma50=sma50,
+                        rsi=rsi,
+                        macd_line=macd_line,
+                        signal_line=signal_line
+                    )
+                    if result:
+                        results.append(result)
+
+                return results
+
+            # 단일 날짜 분석: 해당 날짜가 없으면 가장 최근 거래일로 fallback
+            if analysis_date is None:
+                return results
+
             target_dt = pd.to_datetime(analysis_date)
             if target_dt not in df.index:
-                return None
+                latest_candidates = df.index[df.index <= target_dt]
+                if len(latest_candidates) == 0:
+                    latest_candidates = df.index
+                target_dt = latest_candidates.max()
+                if pd.isna(target_dt):
+                    return results
 
+            single_result = self._build_result_for_date(
+                ticker=ticker,
+                stock_name=stock_name,
+                target_dt=target_dt,
+                sma20=sma20,
+                sma50=sma50,
+                rsi=rsi,
+                macd_line=macd_line,
+                signal_line=signal_line,
+                store_date=analysis_date,
+            )
+            if single_result:
+                results.append(single_result)
+
+            return results
+
+        except (ValueError, KeyError) as e:
+            logger.warning(f"Failed to analyze {ticker}: {e}")
+            return []
+
+    def _build_result_for_date(
+        self,
+        ticker: str,
+        stock_name: str,
+        target_dt: pd.Timestamp,
+        sma20: pd.Series,
+        sma50: pd.Series,
+        rsi: pd.Series,
+        macd_line: pd.Series,
+        signal_line: pd.Series,
+        store_date: Optional[str] = None,
+    ) -> Optional[TechnicalResult]:
+        try:
             latest_sma20 = sma20.loc[target_dt]
             latest_sma50 = sma50.loc[target_dt]
             latest_rsi = rsi.loc[target_dt]
             latest_macd = macd_line.loc[target_dt]
             latest_signal = signal_line.loc[target_dt]
-
-            # NaN 체크
-            if pd.isna(latest_sma20) or pd.isna(latest_sma50):
-                return None
-
-            # 시그널 판단
-            golden_cross = latest_sma20 > latest_sma50
-            macd_buy = latest_macd > latest_signal
-            is_recommended = golden_cross and (latest_rsi < 50) and macd_buy
-
-            return TechnicalResult(
-                ticker=ticker,
-                stock_name=stock_name,
-                date=analysis_date,
-                sma20=float(latest_sma20),
-                sma50=float(latest_sma50),
-                rsi=float(latest_rsi) if not pd.isna(latest_rsi) else 50.0,
-                macd=float(latest_macd) if not pd.isna(latest_macd) else 0.0,
-                signal=float(latest_signal) if not pd.isna(latest_signal) else 0.0,
-                golden_cross=bool(golden_cross),
-                macd_buy_signal=bool(macd_buy),
-                is_recommended=bool(is_recommended)
-            )
-
-        except Exception as e:
-            logger.warning(f"Failed to analyze {ticker}: {e}")
+        except KeyError:
+            logger.debug(f"Indicator index missing for {ticker} at {target_dt}")
             return None
+
+        # NaN 체크
+        if pd.isna(latest_sma20) or pd.isna(latest_sma50):
+            return None
+
+        # 시그널 판단
+        golden_cross = latest_sma20 > latest_sma50
+        macd_buy = latest_macd > latest_signal
+        is_recommended = golden_cross and (latest_rsi < 50) and macd_buy
+
+        return TechnicalResult(
+            ticker=ticker,
+            stock_name=stock_name,
+            date=store_date if store_date else target_dt.strftime("%Y-%m-%d"),
+            sma20=float(latest_sma20),
+            sma50=float(latest_sma50),
+            rsi=float(latest_rsi) if not pd.isna(latest_rsi) else 50.0,
+            macd=float(latest_macd) if not pd.isna(latest_macd) else 0.0,
+            signal=float(latest_signal) if not pd.isna(latest_signal) else 0.0,
+            golden_cross=bool(golden_cross),
+            macd_buy_signal=bool(macd_buy),
+            is_recommended=bool(is_recommended)
+        )

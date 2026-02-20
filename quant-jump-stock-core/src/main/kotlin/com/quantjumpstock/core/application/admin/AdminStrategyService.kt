@@ -1,8 +1,11 @@
 package com.quantjumpstock.core.application.admin
 
+import com.quantjumpstock.core.domain.model.backtest.BacktestStatus
 import com.quantjumpstock.core.domain.model.strategy.Strategy
 import com.quantjumpstock.core.domain.model.strategy.StrategyStatus
+import com.quantjumpstock.core.domain.port.output.BacktestResultRepository
 import com.quantjumpstock.core.domain.port.output.StrategyRepository
+import com.quantjumpstock.core.domain.port.output.UserRepository
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
@@ -16,7 +19,9 @@ import org.springframework.transaction.annotation.Transactional
 @Service
 @Transactional(readOnly = true)
 class AdminStrategyService(
-    private val strategyRepository: StrategyRepository
+    private val strategyRepository: StrategyRepository,
+    private val userRepository: UserRepository,
+    private val backtestResultRepository: BacktestResultRepository
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -55,7 +60,7 @@ class AdminStrategyService(
             }
         }
 
-        val summaries = strategiesPage.content.map { it.toAdminSummary() }
+        val summaries = strategiesPage.content.map { toAdminSummary(it) }
 
         return AdminStrategyListResponse(
             strategies = summaries,
@@ -143,31 +148,35 @@ class AdminStrategyService(
     /**
      * Strategy 도메인 모델을 AdminStrategySummary로 변환
      *
-     * 참고: 도메인 모델에는 category 정보가 categoryId만 있으므로,
-     * 상세 정보가 필요한 경우 별도 조회가 필요합니다.
-     * 현재는 Admin용 요약 정보만 제공합니다.
+     * - categoryCode/categoryName: categoryId 기반 임시값 사용 (Category 테이블 분리 후 개선 예정)
+     * - ownerName/ownerEmail: UserRepository로 실제 조회
+     * - latestCagr/latestMdd: BacktestResultRepository의 Canonical 백테스트에서 조회
      */
-    private fun Strategy.toAdminSummary(): AdminStrategySummary {
+    private fun toAdminSummary(strategy: Strategy): AdminStrategySummary {
+        val owner = strategy.ownerId?.let { userRepository.findById(it) }
+        val latestBacktest = strategy.id?.let { backtestResultRepository.findCanonicalByStrategyId(it) }
+            ?.takeIf { it.status == BacktestStatus.COMPLETED }
+
         return AdminStrategySummary(
-            id = this.id!!,
-            name = this.name,
-            description = this.description,
-            categoryCode = this.categoryId.toString(),  // TODO: Category 조회로 개선
-            categoryName = "Category ${this.categoryId}",  // TODO: Category 조회로 개선
-            ownerId = this.ownerId,
-            ownerName = null,  // TODO: User 조회로 개선
-            ownerEmail = null,  // TODO: User 조회로 개선
-            status = this.status,
-            stockSelectionType = this.stockSelectionType,
-            isPublic = this.isPublic,
-            isPremium = this.isPremium,
-            rebalanceFrequency = this.rebalanceFrequency,
-            subscriberCount = this.subscriberCount,
-            averageRating = this.averageRating,
-            latestCagr = null,  // TODO: BacktestResult 조회로 개선
-            latestMdd = null,   // TODO: BacktestResult 조회로 개선
-            createdAt = this.createdAt,
-            updatedAt = this.updatedAt
+            id = strategy.id!!,
+            name = strategy.name,
+            description = strategy.description,
+            categoryCode = strategy.categoryId?.toString(),
+            categoryName = null,
+            ownerId = strategy.ownerId,
+            ownerName = owner?.name,
+            ownerEmail = owner?.email,
+            status = strategy.status,
+            stockSelectionType = strategy.stockSelectionType,
+            isPublic = strategy.isPublic,
+            isPremium = strategy.isPremium,
+            rebalanceFrequency = strategy.rebalanceFrequency,
+            subscriberCount = strategy.subscriberCount,
+            averageRating = strategy.averageRating,
+            latestCagr = latestBacktest?.cagr,
+            latestMdd = latestBacktest?.mdd,
+            createdAt = strategy.createdAt,
+            updatedAt = strategy.updatedAt
         )
     }
 }

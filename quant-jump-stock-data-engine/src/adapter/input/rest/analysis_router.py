@@ -2,7 +2,7 @@
 Analysis REST API Router
 
 기술적 분석 직접 실행 API.
-Kafka 경유 없이 Data Engine에서 바로 실행.
+Data Engine에서 바로 실행.
 """
 import logging
 import uuid
@@ -38,7 +38,7 @@ def set_technical_service(service):
 
 
 @router.post("/technical")
-def run_technical_analysis(
+async def run_technical_analysis(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     service=Depends(get_technical_service),
@@ -46,8 +46,7 @@ def run_technical_analysis(
     """
     기술적 분석 + Composite Score 실행
 
-    Kafka 경유 없이 직접 실행합니다.
-    분석 완료 후 BuyCriteria 필터링 + Slack 알림.
+    직접 실행합니다. 분석 완료 후 BuyCriteria 필터링 + Slack 알림.
 
     Query Parameters:
         start_date: 분석 시작 날짜 (YYYY-MM-DD, optional)
@@ -57,7 +56,7 @@ def run_technical_analysis(
     logger.info(f"[{request_id}] REST API 기술적 분석 요청 (start_date={start_date}, end_date={end_date})")
 
     try:
-        result = service.run_technical_analysis(
+        result = await service.run_technical_analysis(
             request_id=request_id,
             thread_ts=None,
             start_date=start_date,

@@ -25,8 +25,7 @@ import org.springframework.stereotype.Component
  */
 @Component
 @ConditionalOnProperty(
-    prefix = "gcp",
-    name = ["enabled"],
+    name = ["gcp.vertex-ai.enabled"],
     havingValue = "true",
     matchIfMissing = false
 )
@@ -35,23 +34,27 @@ class VertexAIPredictionJobAdapter(
 ) : Job {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
+    companion object {
+        private val SEPARATOR = "=".repeat(80)
+    }
+
     override fun execute(context: JobExecutionContext?) {
         try {
             val triggerName = context?.trigger?.key?.name ?: "unknown"
-            logger.info("=".repeat(80))
+            logger.info(SEPARATOR)
             logger.info("Vertex AI 주가 예측 시작 (23:45) [Trigger: $triggerName]")
             logger.info("예상 소요 시간: 30-35분")
-            logger.info("=".repeat(80))
+            logger.info(SEPARATOR)
 
-            // Vertex AI 예측 실행 (Kafka 경로)
-            logger.info("Vertex AI 예측 실행 중 (Kafka → Data Engine → Vertex AI)...")
+            // Vertex AI 예측 실행 (Pub/Sub 경로)
+            logger.info("Vertex AI 예측 실행 중 (Pub/Sub → Data Engine → Vertex AI)...")
             val result = vertexAIService.runPrediction()
             logger.info("✅ Vertex AI 예측 요청 완료: requestId=${result.requestId}")
             logger.info("   → CustomJob 실행 중... (약 00:15-00:20 완료 예정)")
 
-            logger.info("=".repeat(80))
+            logger.info(SEPARATOR)
             logger.info("Vertex AI 예측 Job 완료 (요청 발행)")
-            logger.info("=".repeat(80))
+            logger.info(SEPARATOR)
 
         } catch (e: Exception) {
             logger.error("❌ Vertex AI 예측 Job 실행 중 오류", e)

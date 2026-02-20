@@ -1,6 +1,7 @@
 package com.quantjumpstock.core.adapter.input.rest.admin
 
 import com.quantjumpstock.core.domain.analysis.port.input.AnalysisUseCase
+import com.quantjumpstock.core.infrastructure.util.DateRangeFormatter
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.ExampleObject
@@ -11,6 +12,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
@@ -40,7 +42,7 @@ class AdminAnalysisController(
             기술적 지표(SMA, RSI, MACD) 기반 종목 분석을 실행합니다.
 
             **실행 흐름:**
-            1. Kafka 이벤트 발행 (analysis.technical.request)
+            1. Pub/Sub 메시지 발행 (analysis.technical.request)
             2. Python Data Engine에서 분석 수행
             3. Slack 스레드로 진행상황 알림
             4. 분석 완료 후 MongoDB에 결과 저장
@@ -61,7 +63,7 @@ class AdminAnalysisController(
                     examples = [ExampleObject(
                         value = """{
   "success": true,
-  "message": "기술적 분석 요청이 Kafka에 발행되었습니다. (requestId: req-abc123)",
+  "message": "기술적 분석 요청이 Pub/Sub에 발행되었습니다. (requestId: req-abc123)",
   "analysisType": "TECHNICAL",
   "timestamp": "2026-02-01T10:30:00Z"
 }"""
@@ -76,7 +78,7 @@ class AdminAnalysisController(
                     examples = [ExampleObject(
                         value = """{
   "success": false,
-  "message": "기술적 분석 요청 실패: Kafka connection error",
+  "message": "기술적 분석 요청 실패: Pub/Sub connection error",
   "timestamp": "2026-02-01T10:30:00Z"
 }"""
                     )]
@@ -87,23 +89,29 @@ class AdminAnalysisController(
     @PostMapping("/technical")
     fun executeTechnicalAnalysis(
         @RequestParam(required = false) startDate: String?,
-        @RequestParam(required = false) endDate: String?
+        @RequestParam(required = false) endDate: String?,
+        @RequestParam(name = "startdate", required = false) startDateLower: String?,
+        @RequestParam(name = "enddate", required = false) endDateLower: String?,
+        @RequestBody(required = false) body: Map<String, Any?>?
     ): ResponseEntity<Map<String, Any>> {
         return try {
-            val dateInfo = formatDateRange(startDate, endDate)
+            val resolvedStartDate = resolveDateParam(startDate, startDateLower, body, "startDate")
+            val resolvedEndDate = resolveDateParam(endDate, endDateLower, body, "endDate")
+
+            val dateInfo = formatDateRange(resolvedStartDate, resolvedEndDate)
             logger.info("기술적 분석 요청: $dateInfo")
 
-            // Kafka 이벤트 1개 발행 (날짜 범위 전달)
-            analysisUseCase.triggerTechnicalAnalysis(startDate, endDate).get(30, TimeUnit.SECONDS)
+            // Pub/Sub 메시지 발행 (날짜 범위 전달)
+            analysisUseCase.triggerTechnicalAnalysis(resolvedStartDate, resolvedEndDate).get(30, TimeUnit.SECONDS)
 
             val response = mutableMapOf<String, Any>(
                 "success" to true,
-                "message" to "기술적 분석 요청이 Kafka에 발행되었습니다.",
+                "message" to "기술적 분석 요청이 Pub/Sub에 발행되었습니다.",
                 "analysisType" to "TECHNICAL",
                 "timestamp" to Instant.now().toString()
             )
-            startDate?.let { response["startDate"] = it }
-            endDate?.let { response["endDate"] = it }
+            resolvedStartDate?.let { response["startDate"] = it }
+            resolvedEndDate?.let { response["endDate"] = it }
 
             ResponseEntity.ok(response.toMap())
         } catch (e: Exception) {
@@ -145,23 +153,29 @@ class AdminAnalysisController(
     @PostMapping("/sentiment")
     fun executeSentimentAnalysis(
         @RequestParam(required = false) startDate: String?,
-        @RequestParam(required = false) endDate: String?
+        @RequestParam(required = false) endDate: String?,
+        @RequestParam(name = "startdate", required = false) startDateLower: String?,
+        @RequestParam(name = "enddate", required = false) endDateLower: String?,
+        @RequestBody(required = false) body: Map<String, Any?>?
     ): ResponseEntity<Map<String, Any>> {
         return try {
-            val dateInfo = formatDateRange(startDate, endDate)
+            val resolvedStartDate = resolveDateParam(startDate, startDateLower, body, "startDate")
+            val resolvedEndDate = resolveDateParam(endDate, endDateLower, body, "endDate")
+
+            val dateInfo = formatDateRange(resolvedStartDate, resolvedEndDate)
             logger.info("감정 분석 요청: $dateInfo")
 
-            // Kafka 이벤트 1개 발행 (날짜 범위 전달)
-            analysisUseCase.triggerSentimentAnalysis(startDate, endDate).get(30, TimeUnit.SECONDS)
+            // Pub/Sub 메시지 발행 (날짜 범위 전달)
+            analysisUseCase.triggerSentimentAnalysis(resolvedStartDate, resolvedEndDate).get(30, TimeUnit.SECONDS)
 
             val response = mutableMapOf<String, Any>(
                 "success" to true,
-                "message" to "뉴스 감정 분석 요청이 Kafka에 발행되었습니다.",
+                "message" to "뉴스 감정 분석 요청이 Pub/Sub에 발행되었습니다.",
                 "analysisType" to "SENTIMENT",
                 "timestamp" to Instant.now().toString()
             )
-            startDate?.let { response["startDate"] = it }
-            endDate?.let { response["endDate"] = it }
+            resolvedStartDate?.let { response["startDate"] = it }
+            resolvedEndDate?.let { response["endDate"] = it }
 
             ResponseEntity.ok(response.toMap())
         } catch (e: Exception) {
@@ -216,13 +230,19 @@ class AdminAnalysisController(
     @PostMapping("/recommendation")
     fun executeStockRecommendation(
         @RequestParam(required = false) startDate: String?,
-        @RequestParam(required = false) endDate: String?
+        @RequestParam(required = false) endDate: String?,
+        @RequestParam(name = "startdate", required = false) startDateLower: String?,
+        @RequestParam(name = "enddate", required = false) endDateLower: String?,
+        @RequestBody(required = false) body: Map<String, Any?>?
     ): ResponseEntity<Map<String, Any>> {
         return try {
-            val dateInfo = formatDateRange(startDate, endDate)
+            val resolvedStartDate = resolveDateParam(startDate, startDateLower, body, "startDate")
+            val resolvedEndDate = resolveDateParam(endDate, endDateLower, body, "endDate")
+
+            val dateInfo = formatDateRange(resolvedStartDate, resolvedEndDate)
             logger.info("종목 추천 요청: $dateInfo")
 
-            analysisUseCase.triggerStockRecommendation(startDate, endDate).get(30, TimeUnit.SECONDS)
+            analysisUseCase.triggerStockRecommendation(resolvedStartDate, resolvedEndDate).get(30, TimeUnit.SECONDS)
 
             val response = mutableMapOf<String, Any>(
                 "success" to true,
@@ -230,8 +250,8 @@ class AdminAnalysisController(
                 "analysisType" to "RECOMMENDATION",
                 "timestamp" to Instant.now().toString()
             )
-            startDate?.let { response["startDate"] = it }
-            endDate?.let { response["endDate"] = it }
+            resolvedStartDate?.let { response["startDate"] = it }
+            resolvedEndDate?.let { response["endDate"] = it }
 
             ResponseEntity.ok(response.toMap())
         } catch (e: Exception) {
@@ -263,13 +283,22 @@ class AdminAnalysisController(
         ]
     )
     @PostMapping("/parallel")
-    fun executeParallelAnalysis(): ResponseEntity<Map<String, Any>> {
+    fun executeParallelAnalysis(
+        @RequestParam(required = false) startDate: String?,
+        @RequestParam(required = false) endDate: String?,
+        @RequestParam(name = "startdate", required = false) startDateLower: String?,
+        @RequestParam(name = "enddate", required = false) endDateLower: String?,
+        @RequestBody(required = false) body: Map<String, Any?>?
+    ): ResponseEntity<Map<String, Any>> {
         return try {
+            val resolvedStartDate = resolveDateParam(startDate, startDateLower, body, "startDate")
+            val resolvedEndDate = resolveDateParam(endDate, endDateLower, body, "endDate")
+
             logger.info("병렬 분석 수동 트리거 요청 받음")
 
             // 기술적 분석과 감정 분석을 동시에 트리거
-            val technicalFuture = analysisUseCase.triggerTechnicalAnalysis()
-            val sentimentFuture = analysisUseCase.triggerSentimentAnalysis()
+            val technicalFuture = analysisUseCase.triggerTechnicalAnalysis(resolvedStartDate, resolvedEndDate)
+            val sentimentFuture = analysisUseCase.triggerSentimentAnalysis(resolvedStartDate, resolvedEndDate)
 
             // 두 분석 모두 완료될 때까지 대기
             java.util.concurrent.CompletableFuture.allOf(technicalFuture, sentimentFuture)
@@ -277,7 +306,7 @@ class AdminAnalysisController(
                     ResponseEntity.ok(
                         mapOf<String, Any>(
                             "success" to true,
-                            "message" to "병렬 분석 요청이 Kafka에 발행되었습니다.",
+                            "message" to "병렬 분석 요청이 Pub/Sub에 발행되었습니다.",
                             "analysisType" to "PARALLEL",
                             "details" to mapOf(
                                 "technical" to technicalFuture.get(),
@@ -352,11 +381,22 @@ class AdminAnalysisController(
         }
     }
 
-    private fun formatDateRange(startDate: String?, endDate: String?): String {
-        return when {
-            startDate != null && endDate != null -> "$startDate ~ $endDate"
-            startDate != null -> "$startDate ~ 오늘"
-            else -> "자동 (마지막 수집일+1 ~ 오늘)"
-        }
+    private fun formatDateRange(startDate: String?, endDate: String?): String =
+        DateRangeFormatter.format(startDate, endDate)
+
+    private fun resolveDateParam(
+        camelCase: String?,
+        lowerCase: String?,
+        body: Map<String, Any?>?,
+        key: String
+    ): String? {
+        if (!camelCase.isNullOrBlank()) return camelCase
+        if (!lowerCase.isNullOrBlank()) return lowerCase
+
+        val bodyCamelCase = body?.get(key)?.toString()?.takeIf { it.isNotBlank() }
+        if (bodyCamelCase != null) return bodyCamelCase
+
+        val lowerKey = key.lowercase()
+        return body?.get(lowerKey)?.toString()?.takeIf { it.isNotBlank() }
     }
 }

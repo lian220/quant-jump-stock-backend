@@ -298,7 +298,10 @@ class EconomicDataService:
         """
         try:
             stock = stock_obj or yf.Ticker(ticker)
-            df = stock.history(start=start_date, end=end_date, interval="1d")
+            # yfinance history()의 end는 exclusive이므로 +1일 해야 해당 날짜 포함
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+            end_date_exclusive = end_dt.strftime("%Y-%m-%d")
+            df = stock.history(start=start_date, end=end_date_exclusive, interval="1d")
 
             if df is None or df.empty:
                 return None

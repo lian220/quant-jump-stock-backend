@@ -59,7 +59,7 @@ import java.util.*
  * - Vertex AI 예측이 35분을 초과하면 종목 추천이 예측 완료 전에 실행
  *
  * **향후 개선**:
- * - Quartz JobListener 또는 Kafka 완료 이벤트 기반 트리거로 전환
+ * - Quartz JobListener 또는 Pub/Sub 완료 이벤트 기반 트리거로 전환
  * - 각 Job이 이전 Job의 완료를 명시적으로 확인하도록 개선
  */
 @Configuration

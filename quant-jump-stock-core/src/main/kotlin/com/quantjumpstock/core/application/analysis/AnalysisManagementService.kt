@@ -1,6 +1,7 @@
 package com.quantjumpstock.core.application.analysis
 
 import com.quantjumpstock.core.domain.analysis.port.input.AnalysisUseCase
+import com.quantjumpstock.core.infrastructure.util.DateRangeFormatter
 import com.quantjumpstock.core.domain.economic.port.output.MessagePublisher
 import com.quantjumpstock.core.domain.economic.port.output.NotificationSender
 import com.quantjumpstock.core.domain.model.AnalysisRequest
@@ -50,15 +51,15 @@ class AnalysisManagementService(
                 endDate = endDate
             )
 
-            // Kafka 이벤트 1개 발행 (날짜 범위 포함)
+            // Pub/Sub 메시지 발행 (날짜 범위 포함)
             messagePublisher.publishAnalysisRequest(
                 TOPIC_ANALYSIS_TECHNICAL_REQUEST,
                 request
             )
 
-            logger.info("✅ Kafka 이벤트 발행 완료: requestId=$requestId, threadTs=$threadTs, type=TECHNICAL, $dateInfo")
+            logger.info("✅ Pub/Sub 메시지 발행 완료: requestId=$requestId, threadTs=$threadTs, type=TECHNICAL, $dateInfo")
 
-            CompletableFuture.completedFuture("기술적 분석 요청이 Kafka에 발행되었습니다.")
+            CompletableFuture.completedFuture("기술적 분석 요청이 Pub/Sub에 발행되었습니다.")
         } catch (e: Exception) {
             logger.error("❌ 기술적 분석 요청 실패", e)
 
@@ -99,15 +100,15 @@ class AnalysisManagementService(
                 endDate = endDate
             )
 
-            // Kafka 이벤트 1개 발행 (날짜 범위 포함)
+            // Pub/Sub 메시지 발행 (날짜 범위 포함)
             messagePublisher.publishAnalysisRequest(
                 TOPIC_ANALYSIS_SENTIMENT_REQUEST,
                 request
             )
 
-            logger.info("✅ Kafka 이벤트 발행 완료: requestId=$requestId, threadTs=$threadTs, type=SENTIMENT, $dateInfo")
+            logger.info("✅ Pub/Sub 메시지 발행 완료: requestId=$requestId, threadTs=$threadTs, type=SENTIMENT, $dateInfo")
 
-            CompletableFuture.completedFuture("뉴스 감정 분석 요청이 Kafka에 발행되었습니다.")
+            CompletableFuture.completedFuture("뉴스 감정 분석 요청이 Pub/Sub에 발행되었습니다.")
         } catch (e: Exception) {
             logger.error("❌ 뉴스 감정 분석 요청 실패", e)
 
@@ -171,13 +172,8 @@ class AnalysisManagementService(
         }
     }
 
-    private fun formatDateRange(startDate: String?, endDate: String?): String {
-        return when {
-            startDate != null && endDate != null -> "기간: $startDate ~ $endDate"
-            startDate != null -> "시작일: $startDate ~ 오늘"
-            else -> "자동 (마지막 수집일+1 ~ 오늘)"
-        }
-    }
+    private fun formatDateRange(startDate: String?, endDate: String?): String =
+        DateRangeFormatter.format(startDate, endDate)
 
     companion object {
         const val TOPIC_ANALYSIS_TECHNICAL_REQUEST = "analysis.technical.request"

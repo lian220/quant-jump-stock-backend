@@ -9,7 +9,7 @@ import java.util.concurrent.CompletableFuture
 interface EconomicDataUseCase {
     /**
      * 경제 데이터 업데이트 트리거
-     * Kafka 이벤트를 발행하여 데이터 수집을 요청합니다.
+     * Pub/Sub 메시지를 발행하여 데이터 수집을 요청합니다.
      *
      * @param startDate 수집 시작 날짜 (YYYY-MM-DD). null이면 Data Engine이 마지막 수집일+1부터 결정
      * @param endDate 수집 종료 날짜 (YYYY-MM-DD). null이면 오늘
