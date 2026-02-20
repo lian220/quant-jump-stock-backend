@@ -5,6 +5,9 @@
 # Docker 환경에서는 환경변수가 이 값을 오버라이드
 
 spring:
+  data:
+    mongodb:
+      auto-index-creation: true
   cloud:
     gcp:
       pubsub:

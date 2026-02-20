@@ -44,9 +44,10 @@ class MongoDB:
             )
 
             # stock_recommendations: ticker + date upsert 및 조회
+            # Spring @CompoundIndex와 동일한 이름 사용 (ticker_date_unique) — 중복 생성 방지
             db["stock_recommendations"].create_index(
                 [("ticker", ASCENDING), ("date", ASCENDING)],
-                name="idx_ticker_date",
+                name="ticker_date_unique",
                 unique=True,
                 background=True
             )
@@ -82,7 +83,7 @@ class PostgreSQL:
                     maxconn=4,
                     **cls.get_connection_params()
                 )
-                logger.info("PostgreSQL ThreadedConnectionPool created (min=1, max=3)")
+                logger.info("PostgreSQL ThreadedConnectionPool created (min=1, max=4)")
             except Exception as e:
                 logger.error(f"Failed to create PostgreSQL connection pool: {e}")
                 raise

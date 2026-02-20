@@ -132,7 +132,7 @@ class StrategyService(StrategyExecutionUseCase, SignalGenerationUseCase):
                 signals_generated=0,
                 total_execution_time_ms=0.0,
                 results=[],
-                errors=["No valid price data available"]
+                errors=["No symbols provided for execution"]
             )
 
         # 일괄 실행
