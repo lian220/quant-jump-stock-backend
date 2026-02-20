@@ -78,4 +78,44 @@ class Settings:
         from config.settings import get_settings
         return get_settings().SLACK_WEBHOOK_URL_NEWS
 
+    @property
+    def SLACK_WEBHOOK_URL_SCHEDULER(self):
+        from config.settings import get_settings
+        return get_settings().SLACK_WEBHOOK_URL_SCHEDULER
+
+    @property
+    def SLACK_WEBHOOK_URL_ANALYSIS(self):
+        from config.settings import get_settings
+        return get_settings().SLACK_WEBHOOK_URL_ANALYSIS
+
+    @property
+    def SLACK_WEBHOOK_URL_ERROR(self):
+        from config.settings import get_settings
+        return get_settings().SLACK_WEBHOOK_URL_ERROR
+
+    @property
+    def SLACK_CHANNEL(self):
+        from config.settings import get_settings
+        return get_settings().slack.channel_scheduler  # 기본 채널 = scheduler 채널
+
+    @property
+    def SLACK_CHANNEL_SCHEDULER(self):
+        from config.settings import get_settings
+        return get_settings().slack.channel_scheduler
+
+    @property
+    def SLACK_CHANNEL_ANALYSIS(self):
+        from config.settings import get_settings
+        return get_settings().slack.channel_analysis
+
+    @property
+    def SLACK_CHANNEL_ERROR(self):
+        from config.settings import get_settings
+        return get_settings().slack.channel_error
+
+    @property
+    def SLACK_CHANNEL_TRADING(self):
+        from config.settings import get_settings
+        return get_settings().slack.channel_trading
+
 settings = Settings()
