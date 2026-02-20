@@ -12,6 +12,7 @@ import org.springframework.security.config.annotation.web.configuration.EnableWe
 import org.springframework.security.config.http.SessionCreationPolicy
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
+import org.springframework.web.cors.CorsConfigurationSource
 
 /**
  * Spring Security 설정
@@ -26,12 +27,14 @@ class SecurityConfig(
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
     private val customOAuth2UserService: CustomOAuth2UserService,
     private val oAuth2SuccessHandler: OAuth2AuthenticationSuccessHandler,
-    private val objectMapper: ObjectMapper
+    private val objectMapper: ObjectMapper,
+    private val corsConfigurationSource: CorsConfigurationSource
 ) {
 
     @Bean
     fun securityFilterChain(http: HttpSecurity): SecurityFilterChain {
         http
+                .cors { it.configurationSource(corsConfigurationSource) }
                 .csrf { it.disable() }
                 .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED) }
                 .authorizeHttpRequests { auth ->

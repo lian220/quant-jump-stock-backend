@@ -2,6 +2,7 @@ package com.quantjumpstock.core.adapter.input.rest.backtest
 
 import com.quantjumpstock.core.application.auth.AuthService
 import com.quantjumpstock.core.application.backtest.*
+import com.quantjumpstock.core.application.tier.TierConfigurationService
 import com.quantjumpstock.core.application.portfolio.StrategyDefaultStockService
 import com.quantjumpstock.core.domain.model.backtest.BacktestStatus
 import com.quantjumpstock.core.domain.model.backtest.UniverseType
@@ -38,6 +39,7 @@ class BacktestController(
     private val backtestService: BacktestService,
     private val authService: AuthService,
     private val userTierService: UserTierService,
+    private val tierConfigService: TierConfigurationService,
     private val userRepository: UserRepository,
     private val defaultStockService: StrategyDefaultStockService,
     private val stockRepository: StockRepository,
@@ -96,20 +98,21 @@ class BacktestController(
             }
         } ?: strategy.recommendedUniverseType
 
-        // SCRUM-344: 티어별 백테스트 보관 제한 (무료 5개/전략, 프리미엄 무제한)
+        // SCRUM-344: 티어별 백테스트 보관 제한 (DB 설정값 사용, 하드코딩 제거)
         // NOTE: TOCTOU race condition exists here - two concurrent requests can both pass the count check.
         // A proper fix requires a DB-level unique constraint or SELECT FOR UPDATE. Acceptable for now as
         // the worst case is one extra backtest stored beyond the limit.
         val tierInfo = userTierService.checkBacktestLimit(userLoginId)
         if (tierInfo.tier == "FREE") {
+            val perStrategyLimit = tierConfigService.getBacktestPerStrategyLimit(tierInfo.tier)
             val customCount = backtestResultRepository.countUserCustomByUserIdAndStrategyId(userDbId, request.strategyId)
-            if (customCount >= FREE_BACKTEST_LIMIT_PER_STRATEGY) {
+            if (customCount >= perStrategyLimit) {
                 return ResponseEntity.badRequest()
                     .body(mapOf(
                         "error" to "BACKTEST_LIMIT_EXCEEDED",
-                        "message" to "무료 사용자는 전략당 최대 ${FREE_BACKTEST_LIMIT_PER_STRATEGY}개의 커스텀 백테스트만 보관할 수 있습니다. 현재: ${customCount}개",
+                        "message" to "무료 사용자는 전략당 최대 ${perStrategyLimit}개의 커스텀 백테스트만 보관할 수 있습니다. 현재: ${customCount}개",
                         "currentCount" to customCount,
-                        "limit" to FREE_BACKTEST_LIMIT_PER_STRATEGY,
+                        "limit" to perStrategyLimit,
                         "tier" to "FREE"
                     ))
             }
@@ -488,6 +491,5 @@ class BacktestController(
 
     companion object {
         private const val MAX_BACKTEST_DAYS = 365L
-        private const val FREE_BACKTEST_LIMIT_PER_STRATEGY = 5L
     }
 }

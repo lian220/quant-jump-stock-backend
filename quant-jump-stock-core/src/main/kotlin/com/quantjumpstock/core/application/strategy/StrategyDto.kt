@@ -194,7 +194,13 @@ data class StrategyDetailResponse(
     val createdAt: LocalDateTime,
 
     @Schema(description = "수정일")
-    val updatedAt: LocalDateTime
+    val updatedAt: LocalDateTime,
+
+    @Schema(description = "현재 사용자의 구독 여부 (비로그인 시 false)")
+    val isSubscribed: Boolean = false,
+
+    @Schema(description = "현재 사용자의 구독 ID (구독 중이 아니면 null)")
+    val subscriptionId: Long? = null
 )
 
 /**

@@ -13,8 +13,12 @@ import java.util.Optional
 interface StrategySubscriptionJpaRepository : JpaRepository<StrategySubscriptionEntity, Long> {
 
     fun findByUserId(userId: Long): List<StrategySubscriptionEntity>
+    fun findByUserId(userId: Long, pageable: Pageable): Page<StrategySubscriptionEntity>
 
     fun findByStrategyId(strategyId: Long): List<StrategySubscriptionEntity>
+    fun findByStrategyId(strategyId: Long, pageable: Pageable): Page<StrategySubscriptionEntity>
+
+    fun findByStatus(status: SubscriptionStatus, pageable: Pageable): Page<StrategySubscriptionEntity>
 
     fun findByUserIdAndStatus(userId: Long, status: SubscriptionStatus): List<StrategySubscriptionEntity>
 
@@ -72,4 +76,7 @@ interface StrategySubscriptionJpaRepository : JpaRepository<StrategySubscription
 
     @Query("SELECT COUNT(ss) FROM StrategySubscriptionEntity ss WHERE ss.strategy.id = :strategyId AND ss.status = 'ACTIVE'")
     fun countActiveByStrategyId(strategyId: Long): Long
+
+    @Query("SELECT ss.user.id, COUNT(ss) FROM StrategySubscriptionEntity ss WHERE ss.user.id IN :userIds AND ss.status = 'ACTIVE' GROUP BY ss.user.id")
+    fun countActiveByUserIdIn(userIds: List<Long>): List<Array<Any>>
 }

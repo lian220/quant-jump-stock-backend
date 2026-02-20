@@ -41,10 +41,10 @@ class UserTierEntity(
     @Column(name = "updated_at")
     var updatedAt: LocalDateTime = LocalDateTime.now()
 ) {
-    fun canPerformBacktest(): Boolean {
+    fun canPerformBacktest(dailyLimit: Int = DEFAULT_FREE_DAILY_LIMIT): Boolean {
         resetDailyCountIfNeeded()
         return when (tier) {
-            UserTier.FREE -> backtestCountToday < FREE_DAILY_LIMIT
+            UserTier.FREE -> backtestCountToday < dailyLimit
             UserTier.PREMIUM, UserTier.PREMIUM_YEARLY -> true
         }
     }
@@ -54,10 +54,10 @@ class UserTierEntity(
         backtestCountToday++
     }
 
-    fun getRemainingBacktests(): Int {
+    fun getRemainingBacktests(dailyLimit: Int = DEFAULT_FREE_DAILY_LIMIT): Int {
         if (tier != UserTier.FREE) return Int.MAX_VALUE
         resetDailyCountIfNeeded()
-        return (FREE_DAILY_LIMIT - backtestCountToday).coerceAtLeast(0)
+        return (dailyLimit - backtestCountToday).coerceAtLeast(0)
     }
 
     fun isPremiumActive(): Boolean {
@@ -75,7 +75,8 @@ class UserTierEntity(
     }
 
     companion object {
-        const val FREE_DAILY_LIMIT = 3
+        /** 기본 폴백값 (DB에서 설정값을 읽기 전 fallback용) */
+        const val DEFAULT_FREE_DAILY_LIMIT = 3
     }
 }
 
