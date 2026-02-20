@@ -10,29 +10,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from dataclasses import dataclass
 
-import pandas as pd
-
 from domain.strategy.models import StrategyDefinition, SignalType
-
-
-@dataclass
-class PriceData:
-    """시세 데이터 DTO"""
-    symbol: str
-    timestamp: datetime
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: int
-
-
-@dataclass
-class IndicatorData:
-    """기술적 지표 데이터 DTO"""
-    symbol: str
-    timestamp: datetime
-    indicators: Dict[str, float]  # e.g., {"sma_20": 150.5, "rsi_14": 65.2}
 
 
 @dataclass
@@ -79,60 +57,6 @@ class StrategyRepositoryPort(ABC):
     @abstractmethod
     async def update(self, strategy: StrategyDefinition) -> None:
         """전략 업데이트"""
-        pass
-
-
-class MarketDataPort(ABC):
-    """
-    시장 데이터 포트
-
-    주가 및 기술적 지표 데이터를 가져오는 인터페이스.
-    구현체: MongoDB, KIS API, 외부 데이터 제공자 등
-    """
-
-    @abstractmethod
-    async def get_latest_price(self, symbol: str) -> Optional[PriceData]:
-        """최신 시세 조회"""
-        pass
-
-    @abstractmethod
-    async def get_price_history(
-        self,
-        symbol: str,
-        start_date: datetime,
-        end_date: Optional[datetime] = None,
-        limit: int = 200
-    ) -> pd.DataFrame:
-        """
-        과거 시세 조회
-
-        Returns:
-            DataFrame with columns: [open, high, low, close, volume]
-            Index: DatetimeIndex
-        """
-        pass
-
-    @abstractmethod
-    async def get_indicators(
-        self,
-        symbol: str,
-        indicator_names: List[str]
-    ) -> Optional[IndicatorData]:
-        """
-        기술적 지표 조회
-
-        Args:
-            symbol: 종목 코드
-            indicator_names: 필요한 지표 목록 (e.g., ["sma_20", "rsi_14"])
-        """
-        pass
-
-    @abstractmethod
-    async def get_multiple_symbols_latest(
-        self,
-        symbols: List[str]
-    ) -> Dict[str, PriceData]:
-        """여러 종목의 최신 시세 일괄 조회"""
         pass
 
 

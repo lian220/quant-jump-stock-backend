@@ -41,7 +41,7 @@ class CategoryService(
     }
 
     private fun StrategyCategory.toDto() = CategoryDto(
-        id = this.id!!,
+        id = this.id ?: throw IllegalStateException("카테고리에 ID가 없습니다: code=$code"),
         code = this.code,
         name = this.name,
         description = this.description,

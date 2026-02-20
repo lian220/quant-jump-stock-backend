@@ -7,6 +7,7 @@ import com.quantjumpstock.core.infrastructure.security.UserPrincipal
 import com.quantjumpstock.core.infrastructure.security.SecurityUtils
 import com.quantjumpstock.core.infrastructure.security.AccessDeniedException
 import com.quantjumpstock.core.infrastructure.security.UnauthorizedException
+import org.slf4j.LoggerFactory
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.*
 class UserBalanceController(
     private val balanceService: BalanceService
 ) {
+    private val logger = LoggerFactory.getLogger(UserBalanceController::class.java)
 
     /**
      * User 기준 잔고 및 수익률 조회
@@ -75,33 +77,19 @@ class UserBalanceController(
     /**
      * 본인 확인 검증
      *
-     * 현재: 개발 단계이므로 경고만 로깅
-     * 향후: 인증 활성화 시 예외 발생
-     *
      * @param requestedUserId URL의 userId
      * @param currentUser 현재 로그인한 사용자
      * @throws UnauthorizedException 인증되지 않은 경우
      * @throws AccessDeniedException 본인이 아닌 경우
      */
     private fun validateUserAccess(requestedUserId: String, currentUser: UserPrincipal?) {
-        // TODO: 인증 활성화 시 아래 주석 해제
-        /*
-        // 1. 인증 확인
         if (currentUser == null) {
             throw UnauthorizedException("Authentication required. Please login first.")
         }
 
-        // 2. 본인 확인 (관리자는 모든 사용자 접근 가능)
         if (!SecurityUtils.isAdmin() && currentUser.userId != requestedUserId) {
+            logger.warn("Unauthorized access attempt: user=${currentUser.userId} tried to access userId=$requestedUserId")
             throw AccessDeniedException("You can only access your own balance and profit information.")
-        }
-        */
-
-        // 개발 단계: 경고 로그만
-        if (currentUser == null) {
-            println("⚠️ [DEV MODE] Unauthenticated access to user $requestedUserId balance")
-        } else if (currentUser.userId != requestedUserId && !SecurityUtils.isAdmin()) {
-            println("⚠️ [DEV MODE] User ${currentUser.userId} accessing $requestedUserId's balance")
         }
     }
 }

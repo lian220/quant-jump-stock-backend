@@ -23,12 +23,18 @@ class UserPortfolioService(
 
     /**
      * 내 포트폴리오 목록 조회
+     * N+1 방지: 종목 수를 단일 GROUP BY 쿼리로 일괄 조회
      */
     fun getUserPortfolios(userId: Long): List<UserPortfolioResponse> {
         val portfolios = userPortfolioRepository.findByUserId(userId)
+        if (portfolios.isEmpty()) return emptyList()
+
+        val portfolioIds = portfolios.mapNotNull { it.id }
+        val stockCountMap = portfolioStockRepository.countByPortfolioIdIn(portfolioIds)
+
         return portfolios.map { portfolio ->
-            val stockCount = portfolioStockRepository.findByPortfolioId(portfolio.id!!).size
-            portfolio.toResponse(stockCount)
+            val portfolioId = portfolio.id ?: throw IllegalStateException("포트폴리오에 ID가 없습니다")
+            portfolio.toResponse(stockCountMap[portfolioId] ?: 0)
         }
     }
 
@@ -114,7 +120,8 @@ class UserPortfolioService(
         val existing = portfolioStockRepository.findByPortfolioIdAndStockId(portfolioId, stockId)
             ?: throw PortfolioException("포트폴리오 종목을 찾을 수 없습니다: portfolioId=$portfolioId, stockId=$stockId")
 
-        portfolioStockRepository.deleteById(existing.id!!)
+        val existingId = existing.id ?: throw IllegalStateException("삭제할 포트폴리오 종목에 ID가 없습니다: portfolioId=$portfolioId, stockId=$stockId")
+        portfolioStockRepository.deleteById(existingId)
 
         return PortfolioResponse(success = true, message = "종목이 삭제되었습니다")
     }
@@ -143,9 +150,10 @@ class UserPortfolioService(
         val savedPortfolio = userPortfolioRepository.save(portfolio)
 
         // 기본 종목 복사
+        val savedPortfolioId = savedPortfolio.id ?: throw IllegalStateException("포트폴리오 저장 후 ID 생성 실패: userId=$userId, strategyId=$strategyId")
         defaultStocks.forEach { ds ->
             val portfolioStock = PortfolioStock(
-                portfolioId = savedPortfolio.id!!,
+                portfolioId = savedPortfolioId,
                 stockId = ds.stockId,
                 targetWeight = ds.targetWeight,
                 isFromStrategy = true,
@@ -177,7 +185,7 @@ class UserPortfolioService(
 
     private fun UserPortfolio.toResponse(stockCount: Int = 0): UserPortfolioResponse {
         return UserPortfolioResponse(
-            id = this.id!!,
+            id = this.id ?: throw IllegalStateException("포트폴리오에 ID가 없습니다"),
             userId = this.userId,
             strategyId = this.strategyId,
             name = this.name,
@@ -190,13 +198,15 @@ class UserPortfolioService(
     }
 
     private fun loadStockMap(stockIds: List<Long>): Map<Long, com.quantjumpstock.core.domain.model.stock.Stock> {
-        return stockRepository.findAllByIds(stockIds.distinct()).associateBy { it.id!! }
+        return stockRepository.findAllByIds(stockIds.distinct()).associateBy {
+            it.id ?: throw IllegalStateException("종목에 ID가 없습니다: ticker=${it.ticker}")
+        }
     }
 
     private fun PortfolioStock.toResponse(stockMap: Map<Long, com.quantjumpstock.core.domain.model.stock.Stock>): PortfolioStockResponse {
         val stock = stockMap[this.stockId]
         return PortfolioStockResponse(
-            id = this.id!!,
+            id = this.id ?: throw IllegalStateException("포트폴리오 종목에 ID가 없습니다: portfolioId=$portfolioId, stockId=$stockId"),
             portfolioId = this.portfolioId,
             stockId = this.stockId,
             ticker = stock?.ticker,

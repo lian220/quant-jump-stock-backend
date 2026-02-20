@@ -8,7 +8,6 @@ Hexagonal Architecture의 Application 레이어.
 from .ports import (
     # Output Ports
     StrategyRepositoryPort,
-    MarketDataPort,
     SignalOutputPort,
     NotificationPort,
     # Input Ports
@@ -34,7 +33,6 @@ from domain.backtest.metrics import PerformanceMetrics
 __all__ = [
     # Output Ports
     "StrategyRepositoryPort",
-    "MarketDataPort",
     "SignalOutputPort",
     "NotificationPort",
     # Input Ports

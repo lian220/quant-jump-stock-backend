@@ -1,4 +1,4 @@
-from pymongo import MongoClient
+from pymongo import MongoClient, ASCENDING, DESCENDING
 import psycopg2
 import psycopg2.extras
 import psycopg2.pool
@@ -28,6 +28,32 @@ class MongoDB:
     def get_db(cls):
         client = cls.get_client()
         return client[settings.MONGODB_DB_NAME]
+
+    @classmethod
+    def ensure_indexes(cls, db) -> None:
+        """
+        서비스 기동 시 필요한 MongoDB 인덱스를 생성합니다.
+        이미 존재하는 인덱스는 무시(idempotent)합니다.
+        """
+        try:
+            # daily_stock_data: date 범위 조회
+            db["daily_stock_data"].create_index(
+                [("date", ASCENDING)],
+                name="idx_date",
+                background=True
+            )
+
+            # stock_recommendations: ticker + date upsert 및 조회
+            db["stock_recommendations"].create_index(
+                [("ticker", ASCENDING), ("date", ASCENDING)],
+                name="idx_ticker_date",
+                unique=True,
+                background=True
+            )
+
+            logger.info("MongoDB indexes ensured")
+        except Exception as e:
+            logger.warning(f"MongoDB index creation warning: {e}")
 
 
 class PostgreSQL:

@@ -12,6 +12,8 @@ interface PortfolioStockRepository {
 
     fun findByPortfolioIdAndStockId(portfolioId: Long, stockId: Long): PortfolioStock?
 
+    fun countByPortfolioIdIn(portfolioIds: List<Long>): Map<Long, Int>
+
     fun deleteById(id: Long)
 
     fun deleteByPortfolioId(portfolioId: Long)

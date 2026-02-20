@@ -347,7 +347,8 @@ class BacktestResultSaveService(
     private fun notifyCanonicalIfNeeded(result: BacktestResult) {
         if (result.backtestType == BacktestType.CANONICAL && result.status == BacktestStatus.COMPLETED) {
             try {
-                canonicalBacktestService.onCanonicalBacktestCompleted(result.strategyId, result.id!!)
+                val backtestId = result.id ?: throw IllegalStateException("백테스트 결과에 ID가 없습니다: strategyId=${result.strategyId}")
+                canonicalBacktestService.onCanonicalBacktestCompleted(result.strategyId, backtestId)
             } catch (e: Exception) {
                 logger.warn("Canonical 백테스트 완료 처리 실패: strategyId={}, backtestId={}", result.strategyId, result.id, e)
             }
