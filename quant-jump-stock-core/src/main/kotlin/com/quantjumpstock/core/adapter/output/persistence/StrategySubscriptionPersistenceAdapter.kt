@@ -53,6 +53,7 @@ class StrategySubscriptionPersistenceAdapter(
                     existing.notifySignals = true
                     existing.notifyRebalance = true
                     val saved = jpaRepository.save(existing)
+                    strategyJpaRepository.incrementSubscriberCount(strategyId)
                     SubscribeResult(success = true, subscriptionId = saved.id, alreadySubscribed = false)
                 }
             }
@@ -74,6 +75,7 @@ class StrategySubscriptionPersistenceAdapter(
             preferredUniverseType = universeType
         )
         val saved = jpaRepository.save(entity)
+        strategyJpaRepository.incrementSubscriberCount(strategyId)
         return SubscribeResult(success = true, subscriptionId = saved.id, alreadySubscribed = false)
     }
 
@@ -85,6 +87,7 @@ class StrategySubscriptionPersistenceAdapter(
         if (existing.status != SubscriptionStatus.ACTIVE) return false
 
         jpaRepository.updateStatus(existing.id!!, SubscriptionStatus.CANCELLED, LocalDateTime.now())
+        strategyJpaRepository.decrementSubscriberCount(strategyId)
         return true
     }
 
