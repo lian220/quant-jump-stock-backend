@@ -25,6 +25,7 @@ class CacheConfig {
                 buildCache("strategyDetail", 6, TimeUnit.HOURS, 200),
                 buildCache("recentPredictions", 6, TimeUnit.HOURS, 20),
                 buildCache("tickerPredictions", 6, TimeUnit.HOURS, 200),
+                buildCache("tierConfigurations", 24, TimeUnit.HOURS, 10),
             )
         )
         return simpleCacheManager

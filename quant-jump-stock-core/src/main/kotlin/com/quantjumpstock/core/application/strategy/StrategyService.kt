@@ -8,6 +8,7 @@ import com.quantjumpstock.core.domain.port.output.BacktestResultRepository
 import com.quantjumpstock.core.domain.port.output.StrategyRepository
 import com.quantjumpstock.core.domain.port.output.StrategyCategoryRepository
 import com.quantjumpstock.core.domain.port.output.UserRepository
+import com.quantjumpstock.core.domain.port.output.StrategySubscriptionRepository
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
@@ -28,7 +29,8 @@ class StrategyService(
     private val strategyRepository: StrategyRepository,
     private val userRepository: UserRepository,
     private val categoryRepository: StrategyCategoryRepository,
-    private val backtestResultRepository: BacktestResultRepository
+    private val backtestResultRepository: BacktestResultRepository,
+    private val subscriptionRepository: StrategySubscriptionRepository
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -92,7 +94,16 @@ class StrategyService(
             }
         }
 
-        return strategy.toDetailResponse()
+        // 로그인한 사용자의 구독 정보 조회
+        val userDbId = userId?.let { userRepository.findByUserId(it)?.id }
+        val subscriptionId = userDbId?.let { uid ->
+            strategyId.let { sid -> subscriptionRepository.findActiveSubscriptionId(uid, sid) }
+        }
+
+        return strategy.toDetailResponse(
+            isSubscribed = subscriptionId != null,
+            subscriptionId = subscriptionId
+        )
     }
 
     /**
@@ -203,7 +214,10 @@ class StrategyService(
     /**
      * Strategy 도메인 모델을 StrategyDetailResponse로 변환
      */
-    private fun Strategy.toDetailResponse(): StrategyDetailResponse {
+    private fun Strategy.toDetailResponse(
+        isSubscribed: Boolean = false,
+        subscriptionId: Long? = null
+    ): StrategyDetailResponse {
         val category = categoryRepository.findById(this.categoryId)
         val owner = this.ownerId?.let { userRepository.findById(it) }
 
@@ -237,7 +251,9 @@ class StrategyService(
             averageRating = this.averageRating,
             backtestResults = emptyList(), // 백테스트 결과는 별도 조회 필요
             createdAt = this.createdAt,
-            updatedAt = this.updatedAt
+            updatedAt = this.updatedAt,
+            isSubscribed = isSubscribed,
+            subscriptionId = subscriptionId
         )
     }
 

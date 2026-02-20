@@ -9,15 +9,6 @@ class UserTierService(
 ) {
 
     fun checkBacktestLimit(userId: String): BacktestLimitResult {
-        if (userId in UNLIMITED_USERS) {
-            return BacktestLimitResult(
-                allowed = true,
-                remaining = Int.MAX_VALUE,
-                dailyLimit = Int.MAX_VALUE,
-                tier = "ADMIN",
-                message = null
-            )
-        }
         val info = userTierRepository.checkBacktestLimit(userId)
         return BacktestLimitResult(
             allowed = info.allowed,
@@ -33,15 +24,6 @@ class UserTierService(
     }
 
     fun checkAndIncrementBacktestCount(userId: String): BacktestLimitResult {
-        if (userId in UNLIMITED_USERS) {
-            return BacktestLimitResult(
-                allowed = true,
-                remaining = Int.MAX_VALUE,
-                dailyLimit = Int.MAX_VALUE,
-                tier = "ADMIN",
-                message = null
-            )
-        }
         val info = userTierRepository.checkAndIncrementBacktestCount(userId)
         return BacktestLimitResult(
             allowed = info.allowed,
@@ -49,14 +31,6 @@ class UserTierService(
             dailyLimit = info.dailyLimit,
             tier = info.tier,
             message = info.message
-        )
-    }
-
-    companion object {
-        private val UNLIMITED_USERS = setOf(
-            "n_user_74cc63b0",
-            "lian_test",
-            "list_test"
         )
     }
 }

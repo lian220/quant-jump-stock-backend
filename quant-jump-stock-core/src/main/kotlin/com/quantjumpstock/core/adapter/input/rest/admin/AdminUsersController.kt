@@ -2,6 +2,9 @@ package com.quantjumpstock.core.adapter.input.rest.admin
 
 import com.quantjumpstock.core.application.admin.AdminUserListResponse
 import com.quantjumpstock.core.application.admin.AdminUserService
+import com.quantjumpstock.core.application.admin.AdminUserTierInfo
+import com.quantjumpstock.core.application.admin.AdminUserTierService
+import com.quantjumpstock.core.application.admin.UpdateUserTierRequest
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
@@ -9,6 +12,7 @@ import jakarta.validation.constraints.Max
 import jakarta.validation.constraints.Min
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.security.core.Authentication
 import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.*
 
@@ -21,7 +25,8 @@ import org.springframework.web.bind.annotation.*
 @Tag(name = "Admin Users", description = "관리자용 회원 관리 API")
 @PreAuthorize("hasRole('ADMIN')")
 class AdminUsersController(
-    private val adminUserService: AdminUserService
+    private val adminUserService: AdminUserService,
+    private val adminUserTierService: AdminUserTierService
 ) {
 
     @GetMapping
@@ -49,5 +54,30 @@ class AdminUsersController(
             status = status
         )
         return ResponseEntity.ok(response)
+    }
+
+    @GetMapping("/{id}/tier")
+    @Operation(summary = "유저 티어 조회", description = "특정 유저의 티어와 구독 현황을 조회합니다.")
+    fun getUserTier(@PathVariable id: Long): ResponseEntity<AdminUserTierInfo> {
+        return try {
+            ResponseEntity.ok(adminUserTierService.getUserTier(id))
+        } catch (e: IllegalArgumentException) {
+            ResponseEntity.notFound().build()
+        }
+    }
+
+    @PatchMapping("/{id}/tier")
+    @Operation(summary = "유저 티어 변경", description = "특정 유저의 티어를 변경합니다. (FREE ↔ PREMIUM)")
+    fun updateUserTier(
+        @PathVariable id: Long,
+        @RequestBody request: UpdateUserTierRequest,
+        authentication: Authentication
+    ): ResponseEntity<AdminUserTierInfo> {
+        return try {
+            val updatedBy = authentication.name ?: "admin"
+            ResponseEntity.ok(adminUserTierService.updateUserTier(id, request, updatedBy))
+        } catch (e: IllegalArgumentException) {
+            ResponseEntity.notFound().build()
+        }
     }
 }
