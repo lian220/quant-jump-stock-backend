@@ -31,10 +31,11 @@ class MongoPriceRepository(PriceRepositoryPort):
         start_date: str,
         end_date: str
     ) -> Dict[str, List[DailyPrice]]:
-        """일별 가격 데이터 조회"""
-        cursor = self.collection.find({
-            "date": {"$gte": start_date, "$lte": end_date}
-        }).sort("date", 1)
+        """일별 가격 데이터 조회 (projection 최적화: stocks 필드만 로드)"""
+        cursor = self.collection.find(
+            {"date": {"$gte": start_date, "$lte": end_date}},
+            {"date": 1, "stocks": 1, "_id": 0}
+        ).sort("date", 1)
 
         result: Dict[str, List[DailyPrice]] = {}
 

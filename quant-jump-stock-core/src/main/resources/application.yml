@@ -74,11 +74,11 @@ spring:
   # 프로덕션: 환경변수로 실제 GCP 연결
   cloud:
     gcp:
-      project-id: ${VERTEX_GCP_PROJECT_ID:quantiq-local}
+      project-id: ${VERTEX_AI_PROJECT_ID:quantiq-local}
       credentials:
         encoded-key: ${GCP_CREDENTIALS_ENCODED:}
       pubsub:
-        project-id: ${PUBSUB_PROJECT_ID:${VERTEX_GCP_PROJECT_ID:quantiq-local}}
+        project-id: ${PUBSUB_PROJECT_ID:${VERTEX_AI_PROJECT_ID:quantiq-local}}
 
   # ============================================
   # Quartz Scheduler Configuration

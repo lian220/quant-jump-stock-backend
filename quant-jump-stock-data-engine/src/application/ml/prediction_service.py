@@ -10,7 +10,8 @@ from typing import Optional, Dict, Any
 from dataclasses import dataclass
 
 from adapter.output.gcp.storage_service import GcsStorageService, UploadResult
-from adapter.output.gcp.vertexai_service import VertexAIService, JobResult, JobConfig
+# Lazy import: vertexai_service는 실제 사용 시점에만 import (Cold Start 최적화)
+# google-cloud-aiplatform 패키지가 ~8초 import 소요
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,8 @@ class PredictionService:
     """
 
     def __init__(self, config: GcpConfig, ml_script_path: Optional[Path] = None):
+        from adapter.output.gcp.vertexai_service import VertexAIService, JobConfig
+
         self.config = config
         self.ml_script_path = ml_script_path or self._get_default_script_path()
 

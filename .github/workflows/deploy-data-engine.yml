@@ -71,7 +71,7 @@ jobs:
             --no-allow-unauthenticated
             --memory=1Gi --cpu=1
             --min-instances=0 --max-instances=3
-            --port=8080 --timeout=300
+            --port=8080 --timeout=600
             --service-account=qjs-data-engine@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
           env_vars: |
             PUBSUB_MODE=push
@@ -90,8 +90,19 @@ jobs:
             ALPHA_VANTAGE_API_KEY=${{ env.ALPHA_VANTAGE_API_KEY }}
             ALPHA_VANTAGE_API_KEY_1=${{ env.ALPHA_VANTAGE_API_KEY_1 }}
             ALPHA_VANTAGE_API_KEY_2=${{ env.ALPHA_VANTAGE_API_KEY_2 }}
+            ALPHA_VANTAGE_API_KEY_3=${{ env.ALPHA_VANTAGE_API_KEY_3 }}
+            ALPHA_VANTAGE_API_KEY_4=${{ env.ALPHA_VANTAGE_API_KEY_4 }}
+            VERTEX_AI_PROJECT_ID=${{ env.VERTEX_AI_PROJECT_ID }}
+            VERTEX_AI_REGION=${{ env.VERTEX_AI_REGION }}
+            VERTEX_AI_BUCKET_NAME=${{ env.VERTEX_AI_BUCKET_NAME }}
+            VERTEX_AI_MACHINE_TYPE=${{ env.VERTEX_AI_MACHINE_TYPE }}
+            VERTEX_AI_GPU_TYPE=${{ env.VERTEX_AI_GPU_TYPE }}
+            VERTEX_AI_GPU_COUNT=${{ env.VERTEX_AI_GPU_COUNT }}
+            VERTEX_AI_CONTAINER_URI=${{ env.VERTEX_AI_CONTAINER_URI }}
+            GCP_CREDENTIALS_ENCODED=${{ env.GCP_CREDENTIALS_ENCODED }}
             SLACK_ENABLED=${{ env.SLACK_ENABLED }}
             SLACK_BOT_TOKEN=${{ env.SLACK_BOT_TOKEN }}
+            SLACK_CHANNEL=${{ env.SLACK_CHANNEL }}
             SLACK_CHANNEL_TRADING=${{ env.SLACK_CHANNEL_TRADING }}
             SLACK_CHANNEL_ANALYSIS=${{ env.SLACK_CHANNEL_ANALYSIS }}
             SLACK_CHANNEL_SCHEDULER=${{ env.SLACK_CHANNEL_SCHEDULER }}

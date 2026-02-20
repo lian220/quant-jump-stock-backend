@@ -13,9 +13,11 @@ from typing import Optional, Protocol
 from datetime import datetime, date, timedelta
 from pytz import timezone
 
-from adapter.output.postgresql.backtest_repository import BacktestCheckpoint
-from application.backtest.service import DEFAULT_BENCHMARK
 from application.recommendation.sync_service import RecommendationSyncService
+
+# Cold Start 최적화: application.backtest.service → pandas/numpy 전체 로드
+# BacktestCheckpoint, _DEFAULT_BENCHMARK는 BacktestRequestHandler 내부에서 lazy import
+_DEFAULT_BENCHMARK = "SPY"
 from core.database import MongoDB
 from services.comprehensive_report import ComprehensiveReportService
 from services.slack_notifier import SlackNotifier
@@ -300,22 +302,35 @@ class TechnicalAnalysisHandler(MessageHandler):
 
 
 class SentimentAnalysisHandler(MessageHandler):
-    """감정 분석 핸들러"""
+    """감정 분석 핸들러 (Slack 스레드 답글 공통화)"""
 
     def __init__(
         self,
         service: SentimentAnalysisServiceProtocol,
+        notifier=None,
         publisher: Optional[EventPublisherProtocol] = None
     ):
         self.service = service
+        self.notifier = notifier
         self.publisher = publisher
 
     @property
     def topic(self) -> str:
         return "analysis.sentiment.request"
 
-    def handle(self, message: PubSubMessage) -> None:
+    async def handle(self, message: PubSubMessage) -> None:
         start_time = self._log_start(message, "뉴스 감정 분석 요청")
+
+        thread_ts = message.thread_ts
+
+        # 시작 알림 (기술적 분석과 동일한 패턴)
+        if self.notifier:
+            try:
+                new_ts = await self.notifier.notify_analysis_start("sentiment", thread_ts)
+                if new_ts:
+                    thread_ts = new_ts
+            except Exception as e:
+                logger.warning(f"감정 분석 시작 알림 실패: {e}")
 
         try:
             result = self.service.run_sentiment_analysis(
@@ -325,19 +340,36 @@ class SentimentAnalysisHandler(MessageHandler):
                 end_date=message.end_date
             )
 
+            elapsed = time.time() - start_time
             self._log_success("뉴스 감정 분석", start_time)
+
+            # 완료 알림 (기술적 분석과 동일한 패턴)
+            if self.notifier:
+                total_analyzed = len(result) if isinstance(result, list) else result.get("total_analyzed", 0) if isinstance(result, dict) else 0
+                try:
+                    await self.notifier.notify_analysis_complete(
+                        "sentiment", total_analyzed, 0, thread_ts
+                    )
+                except Exception as e:
+                    logger.warning(f"감정 분석 완료 알림 실패: {e}")
 
             if self.publisher:
                 self.publisher.publish("ANALYSIS_SENTIMENT_COMPLETED", {
                     "status": "success",
                     "timestamp": datetime.now(KST).isoformat(),
                     "requestId": message.request_id,
-                    "duration": time.time() - start_time,
+                    "duration": elapsed,
                     "result": result
                 })
 
         except (ValueError, KeyError, TypeError) as e:
             self._log_error("뉴스 감정 분석 (재시도 불가 - 데이터 오류)", e)
+
+            if self.notifier:
+                try:
+                    await self.notifier.notify_analysis_error("sentiment", str(e), thread_ts)
+                except Exception:
+                    pass
 
             if self.publisher:
                 self.publisher.publish("ANALYSIS_SENTIMENT_FAILED", {
@@ -350,6 +382,12 @@ class SentimentAnalysisHandler(MessageHandler):
 
         except Exception as e:
             self._log_error("뉴스 감정 분석", e)
+
+            if self.notifier:
+                try:
+                    await self.notifier.notify_analysis_error("sentiment", str(e), thread_ts)
+                except Exception:
+                    pass
 
             if self.publisher:
                 self.publisher.publish("ANALYSIS_SENTIMENT_FAILED", {
@@ -606,7 +644,7 @@ class BacktestServiceProtocol(Protocol):
         initial_capital: float,
         commission_rate: float,
         slippage_rate: float,
-        benchmark: str = DEFAULT_BENCHMARK
+        benchmark: str = _DEFAULT_BENCHMARK
     ) -> object:
         ...
 
@@ -622,7 +660,7 @@ class BacktestServiceProtocol(Protocol):
         existing_backtest: Optional[dict],
         checkpoint: Optional[object],
         equity_curve_data: Optional[list] = None,
-        benchmark: str = DEFAULT_BENCHMARK,
+        benchmark: str = _DEFAULT_BENCHMARK,
         benchmarks: Optional[list] = None,
         user_id: Optional[int] = None,
         risk_settings: Optional[dict] = None,
@@ -815,7 +853,7 @@ class BacktestRequestHandler(MessageHandler):
         commission_rate = payload.get("commissionRate", 0.00015)
         slippage_rate = payload.get("slippageRate", 0.0001)
         force_full = payload.get("forceFull", False)  # 강제 전체 실행 옵션
-        benchmark = payload.get("benchmark", DEFAULT_BENCHMARK)
+        benchmark = payload.get("benchmark", _DEFAULT_BENCHMARK)
         # SCRUM-337: 다중 벤치마크 지원
         benchmarks = payload.get("benchmarks", [benchmark])
         # SCRUM-330: 리스크 관리 파라미터 수신
@@ -1009,6 +1047,7 @@ class BacktestRequestHandler(MessageHandler):
                     logger.warning(f"checkpoint_data에 필수 키 누락: {missing}. 체크포인트 저장을 건너뜁니다. backtest_id={result_id}")
                     return result, result_id, incremental_result.is_incremental
 
+                from adapter.output.postgresql.backtest_repository import BacktestCheckpoint
                 new_checkpoint = BacktestCheckpoint(
                     backtest_id=result_id,
                     checkpoint_date=checkpoint_date,
@@ -1113,7 +1152,7 @@ class BacktestRequestHandler(MessageHandler):
                 "startDate": payload.get("startDate"),
                 "endDate": payload.get("endDate"),
                 "initialCapital": payload.get("initialCapital", 10000000.0),
-                "benchmark": payload.get("benchmark", DEFAULT_BENCHMARK),
+                "benchmark": payload.get("benchmark", _DEFAULT_BENCHMARK),
                 "userId": payload.get("userId"),
                 "errorCode": "BACKTEST_EXECUTION_ERROR",
                 "errorMessage": error_message,

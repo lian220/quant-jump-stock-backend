@@ -11,6 +11,7 @@ Architecture:
     pull (기본): Streaming pull - VM/로컬 개발용
     push: HTTP push endpoint - Cloud Run용 (scale-to-zero 지원)
 """
+from __future__ import annotations
 
 import os
 import logging
@@ -28,8 +29,6 @@ from config.settings import get_settings
 # Legacy imports (점진적 교체 예정)
 from core.database import MongoDB, PostgreSQL
 from features.economic_data.router import router as economic_router
-from features.economic_data.service import EconomicDataService
-from services.recommendation_service import RecommendationService
 from services.slack_notifier import SlackNotifier
 
 # Hexagonal imports - Pub/Sub adapters
@@ -60,13 +59,10 @@ from adapter.output.mongodb.analysis_repository import (
 )
 from adapter.output.slack import SlackAnalysisNotifierAdapter
 
-# New Application Services
-from application.analysis import (
-    TechnicalAnalysisApplicationService,
-    RecommendationApplicationService,
-)
-from application.ml.prediction_service import PredictionService, GcpConfig
-from application.backtest import BacktestApplicationService
+# Heavy 패키지(pandas, numpy, yfinance) Cold Start 최적화:
+# EconomicDataService, RecommendationService, TechnicalAnalysisApplicationService,
+# RecommendationApplicationService, BacktestApplicationService
+# → _init_services()에서 lazy import
 
 KST = timezone('Asia/Seoul')
 
@@ -211,6 +207,15 @@ def _init_services():
             handlers_map: {topic_str: handler.handle} 딕셔너리
             pubsub_publisher: PubSubPublisherAdapter
     """
+    # Heavy 패키지 lazy import (Cold Start 최적화: pandas ~14s, numpy ~2s, yfinance ~4s)
+    from features.economic_data.service import EconomicDataService
+    from services.recommendation_service import RecommendationService
+    from application.analysis import (
+        TechnicalAnalysisApplicationService,
+        RecommendationApplicationService,
+    )
+    from application.backtest import BacktestApplicationService
+
     # MongoDB 연결
     db = MongoDB.get_db()
     if db is None:
@@ -267,6 +272,7 @@ def _init_services():
     )
     sentiment_handler = SentimentAnalysisHandler(
         service=sentiment_service,
+        notifier=analysis_notifier,
         publisher=pubsub_publisher
     )
     recommendation_handler = StockRecommendationHandler(
@@ -302,6 +308,7 @@ def _init_services():
         else:
             logger.info("Vertex AI enabled - initializing services...")
             try:
+                from application.ml.prediction_service import PredictionService, GcpConfig
                 gcp_config = GcpConfig(
                     project_id=settings.gcp.project_id,
                     region=settings.gcp.region,

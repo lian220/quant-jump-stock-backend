@@ -10,9 +10,23 @@ from dataclasses import dataclass
 from datetime import datetime
 import uuid
 
-from google.cloud import aiplatform
-from google.cloud.aiplatform import CustomJob
-from google.cloud.aiplatform_v1.types import JobState
+# Lazy import: google-cloud-aiplatform (~8초 import 시간)
+# 실제 사용 시점에만 import하여 Cold Start 최적화
+aiplatform = None
+CustomJob = None
+JobState = None
+
+
+def _ensure_aiplatform():
+    """google-cloud-aiplatform 패키지를 lazy load"""
+    global aiplatform, CustomJob, JobState
+    if aiplatform is None:
+        from google.cloud import aiplatform as _aiplatform
+        from google.cloud.aiplatform import CustomJob as _CustomJob
+        from google.cloud.aiplatform_v1.types import JobState as _JobState
+        aiplatform = _aiplatform
+        CustomJob = _CustomJob
+        JobState = _JobState
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +67,8 @@ class VertexAIService:
         job_config: Optional[JobConfig] = None,
         credentials_path: Optional[str] = None
     ):
+        _ensure_aiplatform()
+
         self.project_id = project_id
         self.region = region
         self.staging_bucket = staging_bucket
