@@ -1,0 +1,32 @@
+[
+  {
+    "name": "com.quantjumpstock.core.adapter.output.notification.slack.SlackMessage",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "com.quantjumpstock.core.adapter.output.notification.slack.SlackApiMessage",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "com.quantjumpstock.core.adapter.output.notification.slack.SlackApiResponse",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "com.quantjumpstock.core.adapter.output.notification.slack.SlackAttachment",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true
+  },
+  {
+    "name": "com.quantjumpstock.core.adapter.output.notification.slack.SlackField",
+    "allDeclaredConstructors": true,
+    "allPublicMethods": true,
+    "allDeclaredFields": true
+  }
+]
