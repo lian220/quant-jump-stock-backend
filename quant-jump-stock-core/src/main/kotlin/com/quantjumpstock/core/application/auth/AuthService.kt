@@ -9,6 +9,7 @@ import com.quantjumpstock.core.infrastructure.security.JwtService
 import org.slf4j.LoggerFactory
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
+import org.springframework.transaction.annotation.Transactional
 
 /**
  * 인증 서비스
@@ -30,7 +31,11 @@ class AuthService(
         val user = findUser(request.userId)
             ?: throw AuthException("사용자를 찾을 수 없습니다")
 
-        if (user.passwordHash == null || !passwordEncoder.matches(request.password, user.passwordHash)) {
+        if (user.passwordHash == null) {
+            throw AuthException("소셜 로그인으로 가입된 계정입니다. OAuth 로그인을 이용해주세요.")
+        }
+
+        if (!passwordEncoder.matches(request.password, user.passwordHash)) {
             throw AuthException("비밀번호가 일치하지 않습니다")
         }
 
@@ -96,7 +101,10 @@ class AuthService(
 
     /**
      * 회원가입 처리
+     * User 저장과 무료 티어 생성을 하나의 트랜잭션으로 처리.
+     * Tier 생성 실패 시 User 저장도 롤백됨.
      */
+    @Transactional
     fun signup(request: SignupRequest): SignupResponse {
         if (userRepository.existsByUserId(request.userId)) {
             return SignupResponse(
@@ -138,12 +146,8 @@ class AuthService(
 
         val savedUser = userRepository.save(user)
 
-        // 무료 티어 자동 생성
-        try {
-            userTierRepository.createFreeTierForUser(savedUser.userId)
-        } catch (e: Exception) {
-            logger.warn("사용자 티어 생성 실패: userId=${savedUser.userId}, error=${e.message}", e)
-        }
+        // 무료 티어 자동 생성 (실패 시 트랜잭션 전체 롤백)
+        userTierRepository.createFreeTierForUser(savedUser.userId)
 
         // 회원가입 성공 시 JWT 발급 (자동 로그인)
         val savedUserId = savedUser.id

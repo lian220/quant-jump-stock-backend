@@ -1,4 +1,4 @@
-from pymongo import MongoClient
+from pymongo import MongoClient, ASCENDING, DESCENDING
 import psycopg2
 import psycopg2.extras
 import psycopg2.pool
@@ -29,6 +29,33 @@ class MongoDB:
         client = cls.get_client()
         return client[settings.MONGODB_DB_NAME]
 
+    @classmethod
+    def ensure_indexes(cls, db) -> None:
+        """
+        서비스 기동 시 필요한 MongoDB 인덱스를 생성합니다.
+        이미 존재하는 인덱스는 무시(idempotent)합니다.
+        """
+        try:
+            # daily_stock_data: date 범위 조회
+            db["daily_stock_data"].create_index(
+                [("date", ASCENDING)],
+                name="idx_date",
+                background=True
+            )
+
+            # stock_recommendations: ticker + date upsert 및 조회
+            # Spring @CompoundIndex와 동일한 이름 사용 (ticker_date_unique) — 중복 생성 방지
+            db["stock_recommendations"].create_index(
+                [("ticker", ASCENDING), ("date", ASCENDING)],
+                name="ticker_date_unique",
+                unique=True,
+                background=True
+            )
+
+            logger.info("MongoDB indexes ensured")
+        except Exception as e:
+            logger.warning(f"MongoDB index creation warning: {e}")
+
 
 class PostgreSQL:
     """PostgreSQL 연결 관리 클래스 (ThreadedConnectionPool 기반)"""
@@ -56,7 +83,7 @@ class PostgreSQL:
                     maxconn=4,
                     **cls.get_connection_params()
                 )
-                logger.info("PostgreSQL ThreadedConnectionPool created (min=1, max=3)")
+                logger.info("PostgreSQL ThreadedConnectionPool created (min=1, max=4)")
             except Exception as e:
                 logger.error(f"Failed to create PostgreSQL connection pool: {e}")
                 raise

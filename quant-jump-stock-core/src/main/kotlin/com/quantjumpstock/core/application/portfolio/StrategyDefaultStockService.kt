@@ -118,7 +118,8 @@ class StrategyDefaultStockService(
         val existing = defaultStockRepository.findByStrategyIdAndStockId(strategyId, stockId)
             ?: throw PortfolioException("기본 종목을 찾을 수 없습니다: strategyId=$strategyId, stockId=$stockId")
 
-        defaultStockRepository.deleteById(existing.id!!)
+        val existingId = existing.id ?: throw IllegalStateException("삭제할 기본 종목에 ID가 없습니다: strategyId=$strategyId, stockId=$stockId")
+        defaultStockRepository.deleteById(existingId)
 
         return PortfolioResponse(success = true, message = "기본 종목이 삭제되었습니다")
     }
@@ -192,7 +193,9 @@ class StrategyDefaultStockService(
     }
 
     private fun loadStockMap(stockIds: List<Long>): Map<Long, com.quantjumpstock.core.domain.model.stock.Stock> {
-        return stockRepository.findAllByIds(stockIds.distinct()).associateBy { it.id!! }
+        return stockRepository.findAllByIds(stockIds.distinct()).associateBy {
+            it.id ?: throw IllegalStateException("종목에 ID가 없습니다: ticker=${it.ticker}")
+        }
     }
 
     private fun StrategyDefaultStock.toResponse(stockMap: Map<Long, com.quantjumpstock.core.domain.model.stock.Stock>): DefaultStockResponse {

@@ -216,6 +216,9 @@ def _init_services():
     if db is None:
         raise RuntimeError("Failed to connect to MongoDB")
 
+    # MongoDB 인덱스 생성 (idempotent - 이미 존재하면 무시)
+    MongoDB.ensure_indexes(db)
+
     # 서비스 초기화
     economic_service = LegacyEconomicServiceAdapter(EconomicDataService())
     slack_notifier = LegacySlackNotifierAdapter()

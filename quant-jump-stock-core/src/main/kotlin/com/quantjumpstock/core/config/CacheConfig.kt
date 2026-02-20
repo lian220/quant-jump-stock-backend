@@ -20,6 +20,11 @@ class CacheConfig {
             listOf(
                 buildCache("benchmark", 1, TimeUnit.HOURS, 100),
                 buildCache("buySignals", 6, TimeUnit.HOURS, 50),
+                buildCache("categories", 24, TimeUnit.HOURS, 10),
+                buildCache("marketplaceStrategies", 6, TimeUnit.HOURS, 500),
+                buildCache("strategyDetail", 6, TimeUnit.HOURS, 200),
+                buildCache("recentPredictions", 6, TimeUnit.HOURS, 20),
+                buildCache("tickerPredictions", 6, TimeUnit.HOURS, 200),
             )
         )
         return simpleCacheManager

@@ -36,7 +36,7 @@ class ExecutionTask:
     """실행 태스크 정의"""
     strategy: StrategyDefinition
     symbol: str
-    price_data: pd.DataFrame
+    price_data: Optional[pd.DataFrame]
 
 
 class StrategyExecutor:
@@ -81,7 +81,7 @@ class StrategyExecutor:
         self,
         strategy: StrategyDefinition,
         symbol: str,
-        price_data: pd.DataFrame
+        price_data: Optional[pd.DataFrame]
     ) -> ExecutionResult:
         """
         단일 전략 동기 실행 (ThreadPool 내부에서 호출)
@@ -98,7 +98,7 @@ class StrategyExecutor:
 
         try:
             # 데이터 검증
-            if price_data.empty:
+            if price_data is None or price_data.empty:
                 raise InsufficientDataError(
                     f"No price data for symbol: {symbol}"
                 )

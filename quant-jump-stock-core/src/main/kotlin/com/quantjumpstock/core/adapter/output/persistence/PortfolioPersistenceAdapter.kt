@@ -158,6 +158,12 @@ class PortfolioStockPersistenceAdapter(
         return jpaRepository.findByPortfolioIdAndStockId(portfolioId, stockId)?.let { toDomain(it) }
     }
 
+    override fun countByPortfolioIdIn(portfolioIds: List<Long>): Map<Long, Int> {
+        if (portfolioIds.isEmpty()) return emptyMap()
+        return jpaRepository.countGroupByPortfolioId(portfolioIds)
+            .associate { row -> (row[0] as Long) to (row[1] as Long).toInt() }
+    }
+
     override fun deleteById(id: Long) {
         jpaRepository.deleteById(id)
     }

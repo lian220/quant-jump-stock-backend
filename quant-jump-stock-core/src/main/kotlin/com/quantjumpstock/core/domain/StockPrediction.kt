@@ -24,6 +24,7 @@ import org.springframework.data.mongodb.core.mapping.Field
 )
 data class StockPrediction(
         @Id val id: String? = null,
+        @Indexed(background = true)
         val ticker: String,
         val date: LocalDate,
         @Field("predicted_price") val predictedPrice: Double? = null,

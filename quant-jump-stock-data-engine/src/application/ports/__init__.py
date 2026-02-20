@@ -8,7 +8,6 @@ Application Ports (Hexagonal Architecture)
 
 from .output_ports import (
     StrategyRepositoryPort,
-    MarketDataPort,
     SignalOutputPort,
     NotificationPort,
 )
@@ -20,7 +19,6 @@ from .input_ports import (
 __all__ = [
     # Output Ports (Driven)
     "StrategyRepositoryPort",
-    "MarketDataPort",
     "SignalOutputPort",
     "NotificationPort",
     # Input Ports (Driving)

@@ -7,7 +7,7 @@ Strategy Service
 
 import logging
 from typing import List, Optional, Dict
-from datetime import datetime, timedelta
+from datetime import datetime
 
 from domain.strategy.models import StrategyDefinition, SignalType
 from domain.common.exceptions import (
@@ -23,7 +23,6 @@ from application.ports.input_ports import (
 )
 from application.ports.output_ports import (
     StrategyRepositoryPort,
-    MarketDataPort,
     SignalOutputPort,
     NotificationPort,
     TradingSignal,
@@ -44,7 +43,6 @@ class StrategyService(StrategyExecutionUseCase, SignalGenerationUseCase):
     def __init__(
         self,
         strategy_repository: StrategyRepositoryPort,
-        market_data: MarketDataPort,
         signal_output: SignalOutputPort,
         notification: Optional[NotificationPort] = None,
         max_workers: int = 4,
@@ -53,14 +51,12 @@ class StrategyService(StrategyExecutionUseCase, SignalGenerationUseCase):
         """
         Args:
             strategy_repository: 전략 저장소 포트
-            market_data: 시장 데이터 포트
             signal_output: 신호 출력 포트
             notification: 알림 포트 (선택)
             max_workers: 병렬 실행 워커 수
             min_signal_weight: 최소 신호 가중치 필터
         """
         self.strategy_repository = strategy_repository
-        self.market_data = market_data
         self.signal_output = signal_output
         self.notification = notification
         self.executor = StrategyExecutor(max_workers=max_workers)
@@ -77,22 +73,11 @@ class StrategyService(StrategyExecutionUseCase, SignalGenerationUseCase):
         if strategy is None:
             raise StrategyNotFoundError(f"Strategy not found: {strategy_id}")
 
-        # 가격 데이터 조회 (최근 200일)
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=250)  # 여유있게 250일
-
-        price_data = await self.market_data.get_price_history(
-            symbol=symbol,
-            start_date=start_date,
-            end_date=end_date,
-            limit=200
-        )
-
         # 전략 실행
         result = await self.executor.execute_single(
             strategy=strategy,
             symbol=symbol,
-            price_data=price_data
+            price_data=None
         )
 
         # 유효한 신호면 발행
@@ -128,35 +113,15 @@ class StrategyService(StrategyExecutionUseCase, SignalGenerationUseCase):
                 errors=["No strategies found"]
             )
 
-        # 가격 데이터 일괄 조회
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=250)
-
-        price_data_map: Dict[str, any] = {}
-        for symbol in request.symbols:
-            try:
-                price_data = await self.market_data.get_price_history(
-                    symbol=symbol,
-                    start_date=start_date,
-                    end_date=end_date,
-                    limit=200
-                )
-                price_data_map[symbol] = price_data
-            except Exception as e:
-                logger.warning(f"Failed to get price data for {symbol}: {e}")
-                price_data_map[symbol] = None
-
         # 실행 태스크 생성
         tasks: List[ExecutionTask] = []
         for strategy in strategies:
             for symbol in request.symbols:
-                price_data = price_data_map.get(symbol)
-                if price_data is not None and not price_data.empty:
-                    tasks.append(ExecutionTask(
-                        strategy=strategy,
-                        symbol=symbol,
-                        price_data=price_data
-                    ))
+                tasks.append(ExecutionTask(
+                    strategy=strategy,
+                    symbol=symbol,
+                    price_data=None
+                ))
 
         if not tasks:
             return BatchExecutionResult(
@@ -167,7 +132,7 @@ class StrategyService(StrategyExecutionUseCase, SignalGenerationUseCase):
                 signals_generated=0,
                 total_execution_time_ms=0.0,
                 results=[],
-                errors=["No valid price data available"]
+                errors=["No symbols provided for execution"]
             )
 
         # 일괄 실행

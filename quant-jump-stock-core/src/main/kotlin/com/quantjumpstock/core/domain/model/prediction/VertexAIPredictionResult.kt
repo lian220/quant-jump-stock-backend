@@ -1,6 +1,9 @@
 package com.quantjumpstock.core.domain.model.prediction
 
 import org.springframework.data.annotation.Id
+import org.springframework.data.mongodb.core.index.CompoundIndex
+import org.springframework.data.mongodb.core.index.CompoundIndexes
+import org.springframework.data.mongodb.core.index.Indexed
 import org.springframework.data.mongodb.core.mapping.Document
 import org.springframework.data.mongodb.core.mapping.Field
 import java.time.LocalDate
@@ -13,6 +16,18 @@ import java.time.LocalDateTime
  * Composite Score 기반 새 시스템은 PredictionResult 사용.
  */
 @Document(collection = "prediction_results")
+@CompoundIndexes(
+    CompoundIndex(
+        name = "idx_date_signal_confidence",
+        def = "{'date': 1, 'signal': 1, 'confidence': -1}",
+        background = true
+    ),
+    CompoundIndex(
+        name = "idx_symbol_date",
+        def = "{'symbol': 1, 'date': -1}",
+        background = true
+    )
+)
 data class VertexAIPredictionResult(
     @Id
     val id: String? = null,
@@ -47,6 +62,7 @@ data class VertexAIPredictionResult(
     @Field("created_at")
     val createdAt: LocalDateTime = LocalDateTime.now(),
 
+    @Indexed(background = true)
     @Field("vertex_ai_job_id")
     val vertexAIJobId: String? = null,
 
