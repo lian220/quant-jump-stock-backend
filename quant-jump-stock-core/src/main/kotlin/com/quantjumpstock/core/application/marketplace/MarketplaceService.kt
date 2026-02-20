@@ -30,7 +30,7 @@ class MarketplaceService(
      */
     @Cacheable(
         value = ["marketplaceStrategies"],
-        key = "#request.categoryCode + ':' + #request.minCagr + ':' + #request.maxMdd + ':' + #request.sortBy + ':' + #request.page + ':' + #request.size"
+        key = "#request.cacheKey()"
     )
     fun getPublicStrategies(request: StrategyListRequest): StrategyListResponse {
         logger.info("공개 전략 목록 조회: categoryCode=${request.categoryCode}, minCagr=${request.minCagr}, maxMdd=${request.maxMdd}, sortBy=${request.sortBy}")

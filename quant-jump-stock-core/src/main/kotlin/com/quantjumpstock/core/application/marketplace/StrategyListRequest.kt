@@ -28,6 +28,8 @@ data class StrategyListRequest(
     @Parameter(description = "페이지 크기", example = "20")
     val size: Int = 20
 ) {
+    fun cacheKey(): String = "${categoryCode}:${minCagr}:${maxMdd}:${sortBy}:${page}:${size}"
+
     fun toPageable(): Pageable {
         val sort = when (sortBy?.lowercase()) {
             "subscribers" -> Sort.by(Sort.Direction.DESC, "subscriberCount")
