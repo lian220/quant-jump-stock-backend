@@ -11,7 +11,7 @@ import org.hibernate.type.SqlTypes
 
 @Entity
 @Table(name = "backtest_results")
-data class BacktestResultEntity(
+class BacktestResultEntity(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,

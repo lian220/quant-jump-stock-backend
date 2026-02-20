@@ -7,7 +7,7 @@ import org.hibernate.annotations.UpdateTimestamp
 
 @Entity
 @Table(name = "fred_indicators")
-data class FredIndicatorEntity(
+class FredIndicatorEntity(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,

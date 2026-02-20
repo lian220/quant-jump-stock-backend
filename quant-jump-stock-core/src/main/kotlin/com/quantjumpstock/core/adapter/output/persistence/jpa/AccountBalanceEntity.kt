@@ -8,7 +8,7 @@ import org.hibernate.annotations.UpdateTimestamp
 
 @Entity
 @Table(name = "account_balances")
-data class AccountBalanceEntity(
+class AccountBalanceEntity(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,

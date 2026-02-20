@@ -14,7 +14,7 @@ import org.hibernate.annotations.CreationTimestamp
         )
     ]
 )
-data class RolePermissionEntity(
+class RolePermissionEntity(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,

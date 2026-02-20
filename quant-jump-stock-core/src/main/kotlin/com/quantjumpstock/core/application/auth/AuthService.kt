@@ -145,9 +145,23 @@ class AuthService(
             logger.warn("사용자 티어 생성 실패: userId=${savedUser.userId}, error=${e.message}", e)
         }
 
+        // 회원가입 성공 시 JWT 발급 (자동 로그인)
+        val savedUserId = savedUser.id
+            ?: throw IllegalStateException("저장된 사용자에 id가 없습니다: userId=${savedUser.userId}")
+        val token = jwtService.generateToken(savedUser.userId, savedUser.email, savedUser.role.name, savedUserId)
+
         return SignupResponse(
             success = true,
-            message = "회원가입이 완료되었습니다"
+            message = "회원가입이 완료되었습니다",
+            token = token,
+            user = UserInfo(
+                userId = savedUser.userId,
+                name = savedUser.name,
+                email = savedUser.email,
+                phone = savedUser.phone,
+                role = savedUser.role.name,
+                status = savedUser.status.name
+            )
         )
     }
 
@@ -207,6 +221,8 @@ data class SignupRequest(
 data class SignupResponse(
     val success: Boolean,
     val message: String? = null,
+    val token: String? = null,
+    val user: UserInfo? = null,
     val error: String? = null
 )
 

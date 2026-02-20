@@ -15,7 +15,7 @@ import org.hibernate.annotations.CreationTimestamp
         )
     ]
 )
-data class StrategySubscriptionEntity(
+class StrategySubscriptionEntity(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,

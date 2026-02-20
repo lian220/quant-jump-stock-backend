@@ -64,12 +64,11 @@ class TradeMapper {
      * 기존 Entity 업데이트용
      */
     fun updateEntity(entity: TradeEntity, domain: Trade): TradeEntity {
-        return entity.copy(
-            status = mapStatusToJpa(domain.status),
-            kisOrderId = domain.kisOrderId,
-            executedAt = domain.executedAt,
-            updatedAt = domain.updatedAt
-        )
+        entity.status = mapStatusToJpa(domain.status)
+        entity.kisOrderId = domain.kisOrderId
+        entity.executedAt = domain.executedAt
+        entity.updatedAt = domain.updatedAt
+        return entity
     }
 
     private fun mapSide(jpaSide: JpaTradeSide): TradeSide {

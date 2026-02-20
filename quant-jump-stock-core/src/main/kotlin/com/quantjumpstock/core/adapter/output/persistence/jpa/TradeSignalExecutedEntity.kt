@@ -7,7 +7,7 @@ import org.hibernate.annotations.CreationTimestamp
 
 @Entity
 @Table(name = "trade_signals_executed")
-data class TradeSignalExecutedEntity(
+class TradeSignalExecutedEntity(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,

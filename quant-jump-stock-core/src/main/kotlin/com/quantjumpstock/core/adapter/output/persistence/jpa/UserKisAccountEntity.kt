@@ -11,7 +11,7 @@ import org.hibernate.annotations.UpdateTimestamp
  */
 @Entity
 @Table(name = "user_kis_accounts")
-data class UserKisAccountEntity(
+class UserKisAccountEntity(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,
