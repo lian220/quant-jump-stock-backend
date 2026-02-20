@@ -70,6 +70,7 @@ class UserPersistenceAdapter(
         val pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"))
         val jpaStatus = status?.let { mapStatus(it) }
         val searchTerm = search?.takeIf { it.isNotBlank() }
+            ?.let { s -> s.replace("!", "!!").replace("%", "!%").replace("_", "!_") }
 
         val result = when {
             searchTerm != null && jpaStatus != null ->

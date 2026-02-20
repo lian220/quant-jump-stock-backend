@@ -47,8 +47,8 @@ interface UserJpaRepository : JpaRepository<UserEntity, Long> {
     // 관리자용 검색+필터 쿼리
     @Query("""
         SELECT u FROM UserEntity u
-        WHERE (LOWER(u.name) LIKE LOWER(CONCAT('%', :search, '%'))
-               OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')))
+        WHERE (LOWER(u.name) LIKE LOWER(CONCAT('%', :search, '%')) ESCAPE '!'
+               OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')) ESCAPE '!')
           AND u.status = :status
     """)
     fun findBySearchAndStatus(
@@ -59,8 +59,8 @@ interface UserJpaRepository : JpaRepository<UserEntity, Long> {
 
     @Query("""
         SELECT u FROM UserEntity u
-        WHERE LOWER(u.name) LIKE LOWER(CONCAT('%', :search, '%'))
-               OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%'))
+        WHERE LOWER(u.name) LIKE LOWER(CONCAT('%', :search, '%')) ESCAPE '!'
+               OR LOWER(u.email) LIKE LOWER(CONCAT('%', :search, '%')) ESCAPE '!'
     """)
     fun findBySearch(
         @Param("search") search: String,

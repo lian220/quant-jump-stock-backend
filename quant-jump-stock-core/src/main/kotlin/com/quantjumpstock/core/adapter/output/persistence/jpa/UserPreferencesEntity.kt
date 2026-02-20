@@ -18,7 +18,7 @@ class UserPreferencesEntity(
     @Column(name = "investment_categories", length = 500)
     val investmentCategories: String? = null,
 
-    @Column(name = "markets", length = 100)
+    @Column(name = "markets", length = 500)
     val markets: String? = null,
 
     @Column(name = "risk_tolerance", length = 20)

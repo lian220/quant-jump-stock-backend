@@ -5,13 +5,17 @@ import com.quantjumpstock.core.application.admin.AdminUserService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
+import jakarta.validation.constraints.Max
+import jakarta.validation.constraints.Min
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
+import org.springframework.validation.annotation.Validated
 import org.springframework.web.bind.annotation.*
 
 /**
  * 관리자용 회원 관리 API
  */
+@Validated
 @RestController
 @RequestMapping("/api/v1/admin/users")
 @Tag(name = "Admin Users", description = "관리자용 회원 관리 API")
@@ -29,8 +33,8 @@ class AdminUsersController(
         @Parameter(description = "페이지 번호 (0부터 시작)")
         @RequestParam(defaultValue = "0") page: Int,
 
-        @Parameter(description = "페이지 크기")
-        @RequestParam(defaultValue = "20") size: Int,
+        @Parameter(description = "페이지 크기 (최대 100)")
+        @Max(100) @Min(1) @RequestParam(defaultValue = "20") size: Int,
 
         @Parameter(description = "검색어 (이름 또는 이메일)")
         @RequestParam(required = false) search: String?,

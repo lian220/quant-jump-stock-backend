@@ -2,6 +2,8 @@ package com.quantjumpstock.core.application.user
 
 import com.quantjumpstock.core.domain.model.user.UserPreferences
 import com.quantjumpstock.core.domain.port.output.UserPreferencesRepository
+import jakarta.validation.constraints.Pattern
+import jakarta.validation.constraints.Size
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -55,8 +57,14 @@ class UserPreferencesService(
  * 투자 성향 저장 요청
  */
 data class SavePreferencesRequest(
+    @field:Size(max = 20, message = "투자 카테고리는 최대 20개까지 입력할 수 있습니다")
     val investmentCategories: List<String>? = null,
+
+    @field:Size(max = 20, message = "시장은 최대 20개까지 입력할 수 있습니다")
     val markets: List<String>? = null,
+
+    @field:Size(max = 20, message = "위험 허용 범위 값이 너무 깁니다")
+    @field:Pattern(regexp = "^(CONSERVATIVE|MODERATE|AGGRESSIVE)?$", message = "위험 허용 범위는 CONSERVATIVE, MODERATE, AGGRESSIVE 중 하나여야 합니다")
     val riskTolerance: String? = null
 )
 

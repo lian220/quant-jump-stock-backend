@@ -25,7 +25,7 @@ class AdminUserService(
         search: String?,
         status: String?
     ): AdminUserListResponse {
-        logger.info("관리자 회원 목록 조회: page=$page, size=$size, search=$search, status=$status")
+        logger.info("관리자 회원 목록 조회: page=$page, size=$size, hasSearch=${search != null}, status=$status")
 
         val userStatus = status?.let {
             try { UserStatus.valueOf(it) } catch (_: IllegalArgumentException) { null }
@@ -42,7 +42,7 @@ class AdminUserService(
 
         val userSummaries = users.map { user ->
             AdminUserSummary(
-                id = user.id!!,
+                id = user.id ?: throw IllegalStateException("영속화된 사용자에 id가 없습니다: userId=${user.userId}"),
                 userId = user.userId,
                 name = user.name,
                 email = user.email,

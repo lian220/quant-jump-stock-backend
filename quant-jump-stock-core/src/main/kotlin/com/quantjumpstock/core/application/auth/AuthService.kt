@@ -146,7 +146,9 @@ class AuthService(
         }
 
         // 회원가입 성공 시 JWT 발급 (자동 로그인)
-        val token = jwtService.generateToken(savedUser.userId, savedUser.email, savedUser.role.name, savedUser.id)
+        val savedUserId = savedUser.id
+            ?: throw IllegalStateException("저장된 사용자에 id가 없습니다: userId=${savedUser.userId}")
+        val token = jwtService.generateToken(savedUser.userId, savedUser.email, savedUser.role.name, savedUserId)
 
         return SignupResponse(
             success = true,
