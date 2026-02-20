@@ -22,6 +22,7 @@ import org.mockito.kotlin.any
 import org.mockito.kotlin.eq
 import org.mockito.kotlin.isNull
 import org.mockito.kotlin.whenever
+import org.springframework.cache.CacheManager
 import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.PageRequest
 import java.math.BigDecimal
@@ -46,6 +47,9 @@ class MarketplaceServiceTest {
 
     @Mock
     private lateinit var monthlyReturnsCalculator: MonthlyReturnsCalculator
+
+    @Mock
+    private lateinit var cacheManager: CacheManager
 
     @InjectMocks
     private lateinit var marketplaceService: MarketplaceService
