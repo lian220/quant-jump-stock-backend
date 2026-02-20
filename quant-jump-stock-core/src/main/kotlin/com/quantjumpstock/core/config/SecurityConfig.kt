@@ -52,7 +52,8 @@ class SecurityConfig(
                                     "/api/v1/marketplace/**",
                                     "/api/v1/news/**",
                                     "/api/v1/benchmarks/**",
-                                    "/api/v1/categories/**"
+                                    "/api/v1/categories/**",
+                                    "/api/v1/stats/**"
                             )
                             .permitAll()
                             .anyRequest()
