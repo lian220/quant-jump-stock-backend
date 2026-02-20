@@ -6,10 +6,14 @@ import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategySubscripti
 import com.quantjumpstock.core.adapter.output.persistence.jpa.SubscriptionStatus
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserJpaRepository
 import com.quantjumpstock.core.domain.model.backtest.UniverseType
+import com.quantjumpstock.core.domain.port.output.AdminSubscriptionInfo
+import com.quantjumpstock.core.domain.port.output.AdminSubscriptionPage
 import com.quantjumpstock.core.domain.port.output.StrategySubscriptionRepository
 import com.quantjumpstock.core.domain.port.output.StrategySubscriptionView
 import com.quantjumpstock.core.domain.port.output.SubscribeResult
 import com.quantjumpstock.core.domain.port.output.SubscriptionDetail
+import org.springframework.data.domain.PageRequest
+import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDateTime
@@ -134,6 +138,36 @@ class StrategySubscriptionPersistenceAdapter(
             .orElse(null)
             ?.takeIf { it.status == SubscriptionStatus.ACTIVE }
             ?.id
+    }
+
+    override fun findAdminSubscriptions(strategyId: Long?, userId: Long?, page: Int, size: Int): AdminSubscriptionPage {
+        val safeSize = size.coerceIn(1, 100)
+        val pageable = PageRequest.of(page, safeSize, Sort.by(Sort.Direction.DESC, "subscribedAt"))
+
+        val pagedResult = when {
+            strategyId != null -> jpaRepository.findByStrategyId(strategyId, pageable)
+            userId != null -> jpaRepository.findByUserId(userId, pageable)
+            else -> jpaRepository.findByStatus(SubscriptionStatus.ACTIVE, pageable)
+        }
+
+        val items = pagedResult.content.map { entity ->
+            AdminSubscriptionInfo(
+                subscriptionId = entity.id ?: 0L,
+                userDbId = entity.user.id ?: 0L,
+                userLoginId = entity.user.userId,
+                strategyId = entity.strategy.id ?: 0L,
+                strategyName = entity.strategy.name,
+                status = entity.status.name,
+                alertEnabled = entity.notifySignals || entity.notifyRebalance,
+                subscribedAt = entity.subscribedAt
+            )
+        }
+        val activeCount = when {
+            strategyId != null || userId != null -> items.count { it.status == "ACTIVE" }.toLong()
+            else -> pagedResult.totalElements
+        }
+
+        return AdminSubscriptionPage(items = items, total = pagedResult.totalElements, activeCount = activeCount)
     }
 
     private fun toSubscriptionDetail(entity: StrategySubscriptionEntity): SubscriptionDetail? {

@@ -55,7 +55,27 @@ interface StrategySubscriptionRepository {
 
     /** 특정 전략에 대한 활성 구독 ID 조회 (없으면 null) */
     fun findActiveSubscriptionId(userDbId: Long, strategyId: Long): Long?
+
+    /** 어드민용: 페이징 기반 구독 현황 조회 */
+    fun findAdminSubscriptions(strategyId: Long?, userId: Long?, page: Int, size: Int): AdminSubscriptionPage
 }
+
+data class AdminSubscriptionInfo(
+    val subscriptionId: Long,
+    val userDbId: Long,
+    val userLoginId: String,
+    val strategyId: Long,
+    val strategyName: String,
+    val status: String,
+    val alertEnabled: Boolean,
+    val subscribedAt: java.time.LocalDateTime
+)
+
+data class AdminSubscriptionPage(
+    val items: List<AdminSubscriptionInfo>,
+    val total: Long,
+    val activeCount: Long
+)
 
 data class SubscribeResult(
     val success: Boolean,
