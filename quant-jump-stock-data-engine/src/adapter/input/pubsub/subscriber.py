@@ -126,8 +126,8 @@ class PubSubSubscriberAdapter:
                 logger.error(f"Non-retryable error for {topic} (ACK처리, 재시도 안함): {e}")
                 message.ack()
             except Exception as e:
-                logger.exception(f"Handler error for {topic} (NACK처리, 재시도 예정): {e}")
-                message.nack()
+                logger.exception(f"Handler error for {topic} (ACK처리, 재시도 안함): {e}")
+                message.ack()
 
         return callback
 

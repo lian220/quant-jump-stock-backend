@@ -49,8 +49,8 @@ class PubSubEventListenerAdapter(
                 handler(data)
                 message.ack()
             } catch (e: Exception) {
-                logger.error("메시지 처리 실패 (subscription=$subscription)", e)
-                message.nack()
+                logger.error("메시지 처리 실패 (subscription=$subscription, ACK처리 재시도 안함)", e)
+                message.ack()
             }
         }
         logger.info("Pub/Sub 구독 시작: $subscription")

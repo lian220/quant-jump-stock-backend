@@ -123,5 +123,5 @@ async def handle_push_message(topic_name: str, request: Request) -> Response:
             logger.error(f"Non-retryable error for {dot_topic} (ACK): {e}")
             return Response(status_code=200, content="Non-retryable error (ACK)")
 
-        logger.exception(f"Handler error for {dot_topic} (NACK, will retry): {e}")
-        return Response(status_code=500, content="Handler error")
+        logger.exception(f"Handler error for {dot_topic} (ACK처리, 재시도 안함): {e}")
+        return Response(status_code=200, content="Handler error (ACK, no retry)")
