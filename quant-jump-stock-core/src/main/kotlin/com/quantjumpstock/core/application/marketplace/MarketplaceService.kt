@@ -5,7 +5,7 @@ import com.quantjumpstock.core.domain.model.marketplace.MarketplaceStrategy
 import com.quantjumpstock.core.domain.model.marketplace.StrategyDetail
 import com.quantjumpstock.core.domain.port.output.MarketplaceRepository
 import org.slf4j.LoggerFactory
-import org.springframework.cache.annotation.Cacheable
+import org.springframework.cache.CacheManager
 import org.springframework.data.domain.Page
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -19,20 +19,21 @@ import org.springframework.transaction.annotation.Transactional
 class MarketplaceService(
     private val marketplaceRepository: MarketplaceRepository,
     private val conditionsParser: ConditionsParser,
-    private val monthlyReturnsCalculator: MonthlyReturnsCalculator
+    private val monthlyReturnsCalculator: MonthlyReturnsCalculator,
+    private val cacheManager: CacheManager
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
     /**
      * 공개 전략 목록 조회
      * 필터링 및 정렬 지원
-     * 캐싱: 6시간 TTL, 분석 스케줄러 완료 시 초기화
+     * 캐싱: 6시간 TTL (수동 캐싱 - GraalVM Native Image SpEL 호환)
      */
-    @Cacheable(
-        value = ["marketplaceStrategies"],
-        key = "#request.cacheKey()"
-    )
     fun getPublicStrategies(request: StrategyListRequest): StrategyListResponse {
+        val cacheKey = request.cacheKey()
+        val cache = cacheManager.getCache("marketplaceStrategies")
+        cache?.get(cacheKey, StrategyListResponse::class.java)?.let { return it }
+
         logger.info("공개 전략 목록 조회: categoryCode=${request.categoryCode}, minCagr=${request.minCagr}, maxMdd=${request.maxMdd}, sortBy=${request.sortBy}")
 
         val page = when (request.sortBy?.lowercase()) {
@@ -61,19 +62,20 @@ class MarketplaceService(
 
         logger.info("공개 전략 목록 조회 완료: 총 ${pagination.totalElements}개, 현재 페이지 ${pagination.currentPage + 1}/${pagination.totalPages}")
 
-        return StrategyListResponse(
-            strategies = strategies,
-            pagination = pagination
-        )
+        val result = StrategyListResponse(strategies = strategies, pagination = pagination)
+        cache?.put(cacheKey, result)
+        return result
     }
 
     /**
      * 전략 상세 조회
      * 성과 지표, 수익 곡선, 현재 보유 종목 포함
-     * 캐싱: 6시간 TTL, 분석 스케줄러 완료 시 초기화
+     * 캐싱: 6시간 TTL (수동 캐싱 - GraalVM Native Image SpEL 호환)
      */
-    @Cacheable(value = ["strategyDetail"], key = "#id")
     fun getStrategyDetail(id: Long): StrategyDetailResponse {
+        val cache = cacheManager.getCache("strategyDetail")
+        cache?.get(id, StrategyDetailResponse::class.java)?.let { return it }
+
         logger.info("전략 상세 조회: id=$id")
 
         val strategyDetail = marketplaceRepository.findPublicStrategyById(id)
@@ -81,7 +83,9 @@ class MarketplaceService(
 
         logger.info("전략 상세 조회 완료: ${strategyDetail.name}")
 
-        return strategyDetail.toDetailResponse()
+        val result = strategyDetail.toDetailResponse()
+        cache?.put(id, result)
+        return result
     }
 
     /**
