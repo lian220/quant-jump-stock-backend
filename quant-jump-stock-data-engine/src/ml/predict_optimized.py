@@ -531,6 +531,7 @@ def get_all_data(collection_name):
         
         # 필요한 필드만 projection 해서 네트워크/메모리 사용량 절감
         projection = {
+            "_id": 0,
             "date": 1,
             "fred_indicators": 1,
             "yfinance_indicators": 1,
@@ -576,7 +577,10 @@ def get_all_data(collection_name):
                 if isinstance(yfinance_indicators, dict):
                     for key, val in yfinance_indicators.items():
                         if isinstance(val, dict):
-                            result_dict[key] = val.get("close") or val.get("close_price")
+                            close_val = val.get("close")
+                            if close_val is None:
+                                close_val = val.get("close_price")
+                            result_dict[key] = close_val
                         else:
                             result_dict[key] = val
                 
@@ -1652,7 +1656,7 @@ def get_predictions_from_db(chunk_size=1000):
         # DataFrame 형태로 변환 (기존 Supabase 형식과 호환)
         all_data = []
         for result in results:
-            date_str = str(result["_id"])
+            date_str = result["_id"]
             row = {"날짜": date_str}
             
             for pred in result["predictions"]:

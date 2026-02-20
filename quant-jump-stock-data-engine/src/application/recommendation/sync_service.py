@@ -193,7 +193,9 @@ class RecommendationSyncService:
                 rise = pred.get("rise_probability")
                 if rise is None and predicted is not None and actual is not None and actual != 0:
                     ratio = (float(predicted) - float(actual)) / float(actual)
-                    rise = max(0.0, min(1.0, 0.5 + ratio))
+                    # _fetch_stock_analysis_results와 동일 스케일: 0.5 + rise_pct/40.0
+                    # ratio는 소수 (e.g., 0.1 = 10%), rise_pct는 % 단위이므로 ratio*100/40 = ratio*2.5
+                    rise = max(0.0, min(1.0, 0.5 + ratio * 2.5))
                 out[ticker] = {
                     "predicted_price": float(predicted) if predicted is not None else None,
                     "rise_probability": float(rise) if rise is not None else None,
@@ -327,7 +329,9 @@ class RecommendationSyncService:
             rise_probability = ai.get("rise_probability")
             current_price = price_data.get(ticker)
             if rise_probability is None and ai.get("predicted_price") and current_price:
-                rise_probability = (ai["predicted_price"] - current_price) / current_price
+                ratio = (ai["predicted_price"] - current_price) / current_price
+                # _fetch_stock_analysis_results와 동일 스케일: 0.5 + rise_pct/40.0
+                rise_probability = max(0.0, min(1.0, 0.5 + ratio * 2.5))
 
             # AI 점수 계산 (0~5)
             ai_score = self._calculate_ai_score(rise_probability)
@@ -395,7 +399,7 @@ class RecommendationSyncService:
                 # 🆕 Phase 6.5: 가격 메트릭
                 "current_price": current_price,
                 "target_price": target_price,
-                "upside_percent": round(upside_percent, 2) if upside_percent else None,
+                "upside_percent": round(upside_percent, 2) if upside_percent is not None else None,
                 "price_recommendation": price_recommendation,
             })
 
@@ -417,21 +421,20 @@ class RecommendationSyncService:
         Composite Score 계산 (누락 지표 제외 가중 평균).
         AI/감정/기술 모두 선택 사항이며, 있는 지표만 가중 평균에 포함.
         """
+        # 고정 분모 사용: 누락된 지표는 0점으로 기여 (Kotlin 측과 동일 방식)
         weighted_sum = Decimal("0")
-        weight_sum = Decimal("0")
         if has_tech:
             weighted_sum += self.weight_tech * tech_score
-            weight_sum += self.weight_tech
         if has_ai:
             weighted_sum += self.weight_ai * ai_score
-            weight_sum += self.weight_ai
         if has_sentiment:
             weighted_sum += self.weight_sentiment * sentiment_score
-            weight_sum += self.weight_sentiment
-        if weight_sum == 0:
+
+        fixed_denominator = self.weight_ai + self.weight_sentiment + self.weight_tech
+        if fixed_denominator == 0:
             return Decimal("0")
 
-        return (weighted_sum / weight_sum).quantize(Decimal("0.01"))
+        return (weighted_sum / fixed_denominator).quantize(Decimal("0.01"))
 
     def _calculate_ai_score(self, rise_probability: Optional[float]) -> Decimal:
         """AI 점수 계산: rise_probability × 5 (0~5)"""
@@ -619,7 +622,7 @@ class RecommendationSyncService:
                     )
             return len(rows)
         except Exception as batch_error:
-            logger.error(f"❌ [Sync] 배치 upsert 실패, 개별 저장으로 폴백: {batch_error}")
+            logger.exception(f"❌ [Sync] 배치 upsert 실패, 개별 저장으로 폴백: {batch_error}")
 
         # 폴백: 개별 쿼리 (기존 방식)
         synced_count = 0
@@ -629,5 +632,5 @@ class RecommendationSyncService:
                 PostgreSQL.execute_query(fallback_sql, row, fetch_all=False)
                 synced_count += 1
             except Exception as row_error:
-                logger.error(f"❌ [Sync] 개별 저장 실패 (ticker={row[0]}): {row_error}")
+                logger.exception(f"❌ [Sync] 개별 저장 실패 (ticker={row[0]}): {row_error}")
         return synced_count

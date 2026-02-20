@@ -417,6 +417,9 @@ class StockRecommendationHandler(MessageHandler):
             total_synced_count = 0
             sync_results = []
 
+            report_db = MongoDB.get_db()
+            report_service = ComprehensiveReportService()
+
             for analysis_date in analysis_dates:
                 result = sync_service.sync_latest_recommendations(analysis_date)
                 synced_count = int(result.get("synced_count", 0) or 0)
@@ -429,14 +432,12 @@ class StockRecommendationHandler(MessageHandler):
 
                 # 종합 분석 리포트: 기술적 + AI 예측 + 감정 분석 결합 후 Slack 발송
                 try:
-                    db = MongoDB.get_db()
-                    tech_docs = list(db.stock_recommendations.find(
+                    tech_docs = list(report_db.stock_recommendations.find(
                         {"date": analysis_date},
                         {"_id": 0, "ticker": 1, "stock_name": 1, "date": 1,
                          "technical_indicators": 1, "is_recommended": 1}
                     ))
                     if tech_docs:
-                        report_service = ComprehensiveReportService()
                         report = report_service.generate_report(tech_docs, analysis_date)
                         SlackNotifier.notify_comprehensive_report(report, thread_ts=message.thread_ts)
                 except Exception as e:

@@ -207,10 +207,9 @@ def _init_services():
     """서비스 및 핸들러 초기화 (push/pull 공통)
 
     Returns:
-        tuple: (handlers_map, pubsub_publisher, vertexai_handler)
+        tuple: (handlers_map, pubsub_publisher)
             handlers_map: {topic_str: handler.handle} 딕셔너리
             pubsub_publisher: PubSubPublisherAdapter
-            vertexai_handler: VertexAIHandler 또는 None
     """
     # MongoDB 연결
     db = MongoDB.get_db()
@@ -320,7 +319,7 @@ def _init_services():
                 )
                 logger.info("Vertex AI services initialized")
             except Exception as e:
-                logger.error(f"Failed to initialize Vertex AI services: {e}")
+                logger.exception(f"Failed to initialize Vertex AI services: {e}")
     else:
         logger.info("GCP disabled - Vertex AI services not available")
 

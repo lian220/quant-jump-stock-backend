@@ -150,7 +150,7 @@ class SentimentAnalysisService:
                             if published_time:
                                 try:
                                     published_at = datetime.strptime(published_time, "%Y%m%dT%H%M%S")
-                                except Exception as e:
+                                except (ValueError, TypeError) as e:
                                     logger.debug(f"날짜 파싱 실패 ({published_time}): {e}")
                                     published_at = datetime.utcnow()
                             else:

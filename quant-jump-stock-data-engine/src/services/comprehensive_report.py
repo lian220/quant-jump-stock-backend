@@ -44,21 +44,8 @@ def _query_stock_predictions_by_date(db, analysis_date: str, target_date: dateti
     ))
     if preds:
         return preds
-    # 4) $expr로 년/월/일만 비교
-    y, m, d = target_date.year, target_date.month, target_date.day
-    preds = list(db.stock_predictions.find(
-        {
-            "$expr": {
-                "$and": [
-                    {"$eq": [{"$year": "$date"}, y]},
-                    {"$eq": [{"$month": "$date"}, m]},
-                    {"$eq": [{"$dayOfMonth": "$date"}, d]},
-                ]
-            }
-        },
-        {"_id": 0, "ticker": 1, "predicted_price": 1, "actual_price": 1},
-    ))
-    return preds
+    # Strategy 1~3으로 충분, $expr는 인덱스 미사용으로 풀스캔 유발
+    return []
 
 
 class ComprehensiveReportService:
@@ -89,19 +76,31 @@ class ComprehensiveReportService:
         logger.debug(f"감정 분석 로드: {analysis_date} → {len(scores)}개 종목")
         return scores
 
-    def load_ai_predictions(self, analysis_date: str) -> Dict[str, Dict[str, float]]:
+    def load_ai_predictions(self, analysis_date) -> Dict[str, Dict[str, float]]:
         """
         MongoDB에서 AI 예측 데이터 로드 (정확한 날짜 매칭).
 
         stock_analysis_results (우선) + stock_predictions (보충) 둘 다 조회.
+
+        Args:
+            analysis_date: 분석 날짜 (str "YYYY-MM-DD" 또는 datetime)
 
         Returns:
             {ticker: {"predicted_price": ..., "current_price": ..., "rise_probability": ...}}
         """
         db = MongoDB.get_db()
 
+        # 날짜 정규화를 모든 DB 쿼리 전에 수행
+        if isinstance(analysis_date, datetime):
+            target_date = analysis_date
+            analysis_date_str = analysis_date.strftime("%Y-%m-%d")
+        else:
+            analysis_date_str = str(analysis_date)
+            target_date = datetime.strptime(analysis_date_str, "%Y-%m-%d")
+        target_date_str = target_date.strftime("%Y-%m-%dT00:00:00.000Z")
+
         # 1. 분석일의 종가 로드
-        daily_doc = db.daily_stock_data.find_one({"date": analysis_date})
+        daily_doc = db.daily_stock_data.find_one({"date": analysis_date_str})
         current_prices = {}
         if daily_doc and daily_doc.get("stocks"):
             for ticker, val in daily_doc["stocks"].items():
@@ -109,16 +108,9 @@ class ComprehensiveReportService:
                 if price:
                     current_prices[ticker] = float(price)
 
-        # 2. analysis_date를 datetime으로 변환 (ISODate 매칭용)
-        if isinstance(analysis_date, datetime):
-            target_date = analysis_date
-        else:
-            target_date = datetime.strptime(str(analysis_date), "%Y-%m-%d")
-
         result = {}
 
         # 3. stock_analysis_results 조회 (정확한 날짜, 풍부한 데이터)
-        target_date_str = target_date.strftime("%Y-%m-%dT00:00:00.000Z")
         analysis_docs = list(db.stock_analysis_results.find({
             "$or": [{"date": target_date}, {"date": target_date_str}]
         }))
@@ -130,6 +122,11 @@ class ComprehensiveReportService:
             predictions = doc.get("predictions", {})
             predicted = predictions.get("predicted_future_price")
             rise_pct = predictions.get("rise_probability")  # % 단위
+            if rise_pct is not None:
+                try:
+                    rise_pct = float(rise_pct)
+                except (TypeError, ValueError):
+                    rise_pct = None
 
             if rise_pct is None and predicted:
                 current = current_prices.get(ticker, 0)
@@ -143,7 +140,7 @@ class ComprehensiveReportService:
             }
 
         # 4. stock_predictions 조회 (날짜는 ISODate(UTC)로 저장된 경우 많음 → 여러 방식 시도)
-        preds = _query_stock_predictions_by_date(db, analysis_date, target_date)
+        preds = _query_stock_predictions_by_date(db, analysis_date_str, target_date)
 
         pred_count = 0
         for doc in preds:

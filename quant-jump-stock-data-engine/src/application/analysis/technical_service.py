@@ -275,11 +275,15 @@ class TechnicalAnalysisApplicationService:
         signal_line: pd.Series,
         store_date: Optional[str] = None,
     ) -> Optional[TechnicalResult]:
-        latest_sma20 = sma20.loc[target_dt]
-        latest_sma50 = sma50.loc[target_dt]
-        latest_rsi = rsi.loc[target_dt]
-        latest_macd = macd_line.loc[target_dt]
-        latest_signal = signal_line.loc[target_dt]
+        try:
+            latest_sma20 = sma20.loc[target_dt]
+            latest_sma50 = sma50.loc[target_dt]
+            latest_rsi = rsi.loc[target_dt]
+            latest_macd = macd_line.loc[target_dt]
+            latest_signal = signal_line.loc[target_dt]
+        except KeyError:
+            logger.debug(f"Indicator index missing for {ticker} at {target_dt}")
+            return None
 
         # NaN 체크
         if pd.isna(latest_sma20) or pd.isna(latest_sma50):

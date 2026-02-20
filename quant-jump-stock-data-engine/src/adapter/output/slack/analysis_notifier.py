@@ -55,7 +55,7 @@ class SlackAnalysisNotifierAdapter(AnalysisNotifierPort):
         channel: str,
         webhook_url: str,
         text: str,
-        attachments: list = None,
+        attachments: list | None = None,
         thread_ts: Optional[str] = None,
     ) -> Optional[str]:
         """Bot Token 우선, Webhook fallback. Returns ts."""
@@ -75,7 +75,7 @@ class SlackAnalysisNotifierAdapter(AnalysisNotifierPort):
         self._post_to_webhook(webhook_url, text, attachments)
         return None
 
-    def _post_to_webhook(self, url: str, text: str, attachments: list = None) -> None:
+    def _post_to_webhook(self, url: str, text: str, attachments: list | None = None) -> None:
         if not url:
             return
         if not self.settings.SLACK_ENABLED:
@@ -87,7 +87,7 @@ class SlackAnalysisNotifierAdapter(AnalysisNotifierPort):
             response = requests.post(url, json=payload, timeout=10)
             response.raise_for_status()
         except Exception as e:
-            logger.error(f"Slack Webhook 알림 발송 실패: {e}")
+            logger.exception(f"Slack Webhook 알림 발송 실패: {e}")
 
     async def notify_analysis_start(
         self,

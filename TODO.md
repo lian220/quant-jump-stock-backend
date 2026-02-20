@@ -66,7 +66,7 @@
 - [ ] JPA N+1 쿼리 최적화 (@EntityGraph 적용)
   - `BacktestResultJpaRepository.findByIdWithTrades()` — 관련 엔티티 별도 로드
   - `MarketplaceService` 배치 전략 로드 시 다중 쿼리 발생
-- [ ] Kafka consumer 안정성 개선
+- [ ] Pub/Sub 안정성 개선 (dead-letter topics, ack deadline, 재시도 설정)
 
 ## 테스트
 - [ ] 단위 테스트 커버리지 (0% → 80%)

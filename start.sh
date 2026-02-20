@@ -36,7 +36,7 @@ usage() {
     echo "Examples:"
     echo "  $0              # Start with local environment"
     echo "  $0 local        # Explicitly local environment"
-    echo "  $0 prod         # Production DB with local Kafka"
+    echo "  $0 prod         # Production DB with local Pub/Sub emulator"
     echo "  $0 prod --skip-build"
     exit 0
 }
@@ -99,12 +99,20 @@ set -a
 if [ -f ".env.common" ]; then
     source ".env.common"
 fi
+DB_ENV_LOADED=false
 if [ -f "$DB_ENV_FILE" ]; then
     source "$DB_ENV_FILE"
+    DB_ENV_LOADED=true
+else
+    echo -e "${YELLOW}⚠ ${DB_ENV_FILE} not found, skipping${NC}"
 fi
 if [ -f "$ENV_FILE" ]; then
     source "$ENV_FILE"
-    echo -e "${GREEN}✓ Loaded: .env.common → ${DB_ENV_FILE} → ${ENV_FILE}${NC}"
+    if [ "$DB_ENV_LOADED" = true ]; then
+        echo -e "${GREEN}✓ Loaded: .env.common → ${DB_ENV_FILE} → ${ENV_FILE}${NC}"
+    else
+        echo -e "${GREEN}✓ Loaded: .env.common → ${ENV_FILE}${NC}"
+    fi
 else
     echo -e "${RED}❌ ${ENV_FILE} not found!${NC}"
     exit 1

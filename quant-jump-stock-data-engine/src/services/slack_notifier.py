@@ -106,12 +106,20 @@ class SlackNotifier:
         return getattr(settings, 'SLACK_CHANNEL_ERROR', '')
 
     @staticmethod
+    def _get_analysis_channel() -> str:
+        return getattr(settings, 'SLACK_CHANNEL_ANALYSIS', '')
+
+    @staticmethod
     def _get_scheduler_webhook() -> str:
         return getattr(settings, 'SLACK_WEBHOOK_URL_SCHEDULER', '') or settings.SLACK_WEBHOOK_URL
 
     @staticmethod
     def _get_error_webhook() -> str:
         return getattr(settings, 'SLACK_WEBHOOK_URL_ERROR', '') or settings.SLACK_WEBHOOK_URL
+
+    @staticmethod
+    def _get_analysis_webhook() -> str:
+        return getattr(settings, 'SLACK_WEBHOOK_URL_ANALYSIS', '') or settings.SLACK_WEBHOOK_URL
 
     # ============================================================
     # 경제 데이터 수집 알림
@@ -236,8 +244,8 @@ class SlackNotifier:
     @staticmethod
     def notify_comprehensive_report(report: Dict, thread_ts: Optional[str] = None):
         """Quantiq 종합 분석 리포트 발송 (thread reply 지원)"""
-        analysis_channel = getattr(settings, 'SLACK_CHANNEL_ANALYSIS', '')
-        webhook_url = getattr(settings, 'SLACK_WEBHOOK_URL_ANALYSIS', '')
+        analysis_channel = SlackNotifier._get_analysis_channel()
+        webhook_url = SlackNotifier._get_analysis_webhook()
         if not analysis_channel and not webhook_url:
             logger.warning("SLACK_CHANNEL_ANALYSIS / SLACK_WEBHOOK_URL_ANALYSIS 미설정, 추천 알림 생략")
             return

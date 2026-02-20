@@ -152,14 +152,20 @@ class AdminAnalysisController(
     @PostMapping("/sentiment")
     fun executeSentimentAnalysis(
         @RequestParam(required = false) startDate: String?,
-        @RequestParam(required = false) endDate: String?
+        @RequestParam(required = false) endDate: String?,
+        @RequestParam(name = "startdate", required = false) startDateLower: String?,
+        @RequestParam(name = "enddate", required = false) endDateLower: String?,
+        @RequestBody(required = false) body: Map<String, Any?>?
     ): ResponseEntity<Map<String, Any>> {
         return try {
-            val dateInfo = formatDateRange(startDate, endDate)
+            val resolvedStartDate = resolveDateParam(startDate, startDateLower, body, "startDate")
+            val resolvedEndDate = resolveDateParam(endDate, endDateLower, body, "endDate")
+
+            val dateInfo = formatDateRange(resolvedStartDate, resolvedEndDate)
             logger.info("감정 분석 요청: $dateInfo")
 
             // Pub/Sub 메시지 발행 (날짜 범위 전달)
-            analysisUseCase.triggerSentimentAnalysis(startDate, endDate).get(30, TimeUnit.SECONDS)
+            analysisUseCase.triggerSentimentAnalysis(resolvedStartDate, resolvedEndDate).get(30, TimeUnit.SECONDS)
 
             val response = mutableMapOf<String, Any>(
                 "success" to true,
@@ -167,8 +173,8 @@ class AdminAnalysisController(
                 "analysisType" to "SENTIMENT",
                 "timestamp" to Instant.now().toString()
             )
-            startDate?.let { response["startDate"] = it }
-            endDate?.let { response["endDate"] = it }
+            resolvedStartDate?.let { response["startDate"] = it }
+            resolvedEndDate?.let { response["endDate"] = it }
 
             ResponseEntity.ok(response.toMap())
         } catch (e: Exception) {
@@ -223,13 +229,19 @@ class AdminAnalysisController(
     @PostMapping("/recommendation")
     fun executeStockRecommendation(
         @RequestParam(required = false) startDate: String?,
-        @RequestParam(required = false) endDate: String?
+        @RequestParam(required = false) endDate: String?,
+        @RequestParam(name = "startdate", required = false) startDateLower: String?,
+        @RequestParam(name = "enddate", required = false) endDateLower: String?,
+        @RequestBody(required = false) body: Map<String, Any?>?
     ): ResponseEntity<Map<String, Any>> {
         return try {
-            val dateInfo = formatDateRange(startDate, endDate)
+            val resolvedStartDate = resolveDateParam(startDate, startDateLower, body, "startDate")
+            val resolvedEndDate = resolveDateParam(endDate, endDateLower, body, "endDate")
+
+            val dateInfo = formatDateRange(resolvedStartDate, resolvedEndDate)
             logger.info("종목 추천 요청: $dateInfo")
 
-            analysisUseCase.triggerStockRecommendation(startDate, endDate).get(30, TimeUnit.SECONDS)
+            analysisUseCase.triggerStockRecommendation(resolvedStartDate, resolvedEndDate).get(30, TimeUnit.SECONDS)
 
             val response = mutableMapOf<String, Any>(
                 "success" to true,
@@ -237,8 +249,8 @@ class AdminAnalysisController(
                 "analysisType" to "RECOMMENDATION",
                 "timestamp" to Instant.now().toString()
             )
-            startDate?.let { response["startDate"] = it }
-            endDate?.let { response["endDate"] = it }
+            resolvedStartDate?.let { response["startDate"] = it }
+            resolvedEndDate?.let { response["endDate"] = it }
 
             ResponseEntity.ok(response.toMap())
         } catch (e: Exception) {
@@ -272,14 +284,20 @@ class AdminAnalysisController(
     @PostMapping("/parallel")
     fun executeParallelAnalysis(
         @RequestParam(required = false) startDate: String?,
-        @RequestParam(required = false) endDate: String?
+        @RequestParam(required = false) endDate: String?,
+        @RequestParam(name = "startdate", required = false) startDateLower: String?,
+        @RequestParam(name = "enddate", required = false) endDateLower: String?,
+        @RequestBody(required = false) body: Map<String, Any?>?
     ): ResponseEntity<Map<String, Any>> {
         return try {
+            val resolvedStartDate = resolveDateParam(startDate, startDateLower, body, "startDate")
+            val resolvedEndDate = resolveDateParam(endDate, endDateLower, body, "endDate")
+
             logger.info("병렬 분석 수동 트리거 요청 받음")
 
             // 기술적 분석과 감정 분석을 동시에 트리거
-            val technicalFuture = analysisUseCase.triggerTechnicalAnalysis(startDate, endDate)
-            val sentimentFuture = analysisUseCase.triggerSentimentAnalysis(startDate, endDate)
+            val technicalFuture = analysisUseCase.triggerTechnicalAnalysis(resolvedStartDate, resolvedEndDate)
+            val sentimentFuture = analysisUseCase.triggerSentimentAnalysis(resolvedStartDate, resolvedEndDate)
 
             // 두 분석 모두 완료될 때까지 대기
             java.util.concurrent.CompletableFuture.allOf(technicalFuture, sentimentFuture)

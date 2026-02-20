@@ -36,7 +36,7 @@ class SlackNotifierAdapter(NotificationPort):
         channel: str,
         webhook_url: str,
         text: str,
-        attachments: list = None,
+        attachments: list | None = None,
         thread_ts: Optional[str] = None,
     ) -> Optional[str]:
         """Bot Token 우선, Webhook fallback."""
@@ -54,7 +54,7 @@ class SlackNotifierAdapter(NotificationPort):
         self._post_to_webhook(webhook_url, text, attachments)
         return None
 
-    def _post_to_webhook(self, url: str, text: str, attachments: list = None) -> None:
+    def _post_to_webhook(self, url: str, text: str, attachments: list | None = None) -> None:
         if not url:
             return
         if not self.settings.SLACK_ENABLED:
@@ -66,7 +66,7 @@ class SlackNotifierAdapter(NotificationPort):
             response = requests.post(url, json=payload, timeout=10)
             response.raise_for_status()
         except Exception as e:
-            logger.error(f"Slack Webhook 알림 발송 실패: {e}")
+            logger.exception(f"Slack Webhook 알림 발송 실패: {e}")
 
     def _get_trading_channel(self) -> str:
         return self.settings.slack.channel_trading
