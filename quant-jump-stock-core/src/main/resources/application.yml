@@ -65,7 +65,7 @@ spring:
   data:
     mongodb:
       uri: ${MONGODB_URI:mongodb://quantiq_user:quantiq_password@localhost:27017/stock_trading?authSource=admin}
-      auto-index-creation: false
+      auto-index-creation: true
 
   # ============================================
   # Google Cloud Pub/Sub Configuration

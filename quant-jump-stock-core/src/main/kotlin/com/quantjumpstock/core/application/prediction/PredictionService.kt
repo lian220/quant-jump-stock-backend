@@ -1,9 +1,13 @@
 package com.quantjumpstock.core.application.prediction
 
 import com.quantjumpstock.core.domain.model.prediction.PredictionResult
+import com.quantjumpstock.core.domain.model.stock.StockPriceSnapshot
+import com.quantjumpstock.core.domain.port.output.StockPriceDataPort
 import com.quantjumpstock.core.domain.prediction.port.output.PredictionResultRepositoryPort
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.LocalDate
 
 /**
@@ -14,7 +18,8 @@ import java.time.LocalDate
  */
 @Service
 class PredictionService(
-    private val predictionResultRepository: PredictionResultRepositoryPort
+    private val predictionResultRepository: PredictionResultRepositoryPort,
+    private val stockPriceDataPort: StockPriceDataPort
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
@@ -24,12 +29,13 @@ class PredictionService(
     fun getAllPredictions(days: Int): PredictionListResponse {
         val fromDate = LocalDate.now().minusDays(days.toLong())
         val predictions = predictionResultRepository.findRecentPredictions(fromDate)
+        val priceMap = loadPricesSafely(predictions.map { it.ticker }.distinct())
 
         return PredictionListResponse(
             success = true,
             count = predictions.size,
             fromDate = fromDate,
-            predictions = predictions.map { it.toBuySignalDto() }
+            predictions = predictions.map { it.toBuySignalDto(priceMap[it.ticker]) }
         )
     }
 
@@ -43,12 +49,13 @@ class PredictionService(
             ?: LocalDate.now()
 
         val predictions = predictionResultRepository.findByDate(latestDate)
+        val priceMap = loadPricesSafely(predictions.map { it.ticker }.distinct())
 
         return PredictionListResponse(
             success = true,
             count = predictions.size,
             fromDate = latestDate,
-            predictions = predictions.map { it.toBuySignalDto() }
+            predictions = predictions.map { it.toBuySignalDto(priceMap[it.ticker]) }
         )
     }
 
@@ -74,13 +81,14 @@ class PredictionService(
             targetDate,
             minCompositeScore
         )
+        val priceMap = loadPricesSafely(buySignals.map { it.ticker }.distinct())
 
         return BuySignalsResponse(
             success = true,
             date = targetDate,
             minConfidence = minConfidence,
             count = buySignals.size,
-            buySignals = buySignals.map { it.toBuySignalDto() }
+            buySignals = buySignals.map { it.toBuySignalDto(priceMap[it.ticker]) }
         )
     }
 
@@ -90,12 +98,13 @@ class PredictionService(
     fun getPredictionsBySymbol(symbol: String, limit: Int): SymbolPredictionsResponse {
         val predictions = predictionResultRepository.findByTickerOrderByDateDesc(symbol)
             .take(limit)
+        val priceMap = loadPricesSafely(predictions.map { it.ticker }.distinct())
 
         return SymbolPredictionsResponse(
             success = true,
             symbol = symbol,
             count = predictions.size,
-            predictions = predictions.map { it.toBuySignalDto() }
+            predictions = predictions.map { it.toBuySignalDto(priceMap[it.ticker]) }
         )
     }
 
@@ -104,12 +113,13 @@ class PredictionService(
      */
     fun getPredictionsByDate(date: LocalDate): PredictionListResponse {
         val predictions = predictionResultRepository.findByDate(date)
+        val priceMap = loadPricesSafely(predictions.map { it.ticker }.distinct())
 
         return PredictionListResponse(
             success = true,
             count = predictions.size,
             fromDate = date,
-            predictions = predictions.map { it.toBuySignalDto() }
+            predictions = predictions.map { it.toBuySignalDto(priceMap[it.ticker]) }
         )
     }
 
@@ -127,6 +137,18 @@ class PredictionService(
             period = "${fromDate} ~ ${LocalDate.now()}",
             stats = stats
         )
+    }
+
+    /**
+     * 가격 데이터 안전 조회 (Graceful Degradation)
+     */
+    private fun loadPricesSafely(tickers: List<String>): Map<String, StockPriceSnapshot> {
+        return try {
+            stockPriceDataPort.getLatestPrices(tickers)
+        } catch (e: Exception) {
+            logger.warn("가격 데이터 일괄 조회 실패, 가격 없이 반환: ${e.message}")
+            emptyMap()
+        }
     }
 
     /**
@@ -158,23 +180,39 @@ class PredictionService(
 
 /**
  * PredictionResult → API 응답용 DTO 변환
+ *
+ * @param priceSnapshot MongoDB에서 조회한 최신 가격 (null이면 DB 값 사용)
  */
-fun PredictionResult.toBuySignalDto(): Map<String, Any?> = mapOf(
-    "ticker" to ticker,
-    "stockName" to stockName,
-    "analysisDate" to analysisDate.toString(),
-    "compositeScore" to compositeScore.toDouble(),
-    "compositeGrade" to compositeGrade.name,
-    "aiScore" to aiScore.toDouble(),
-    "techScore" to techScore.toDouble(),
-    "sentimentScore" to sentimentNormalizedScore.toDouble(),
-    "isRecommended" to isRecommended,
-    "recommendationReason" to recommendationReason,
-    "currentPrice" to currentPrice?.toDouble(),
-    "targetPrice" to targetPrice?.toDouble(),
-    "upsidePercent" to upsidePercent?.toDouble(),
-    "priceRecommendation" to priceRecommendation
-)
+fun PredictionResult.toBuySignalDto(priceSnapshot: StockPriceSnapshot? = null): Map<String, Any?> {
+    val enrichedCurrentPrice = priceSnapshot?.close ?: currentPrice
+    val enrichedUpsidePercent = if (enrichedCurrentPrice != null && targetPrice != null &&
+        enrichedCurrentPrice.compareTo(BigDecimal.ZERO) != 0
+    ) {
+        targetPrice!!.subtract(enrichedCurrentPrice)
+            .divide(enrichedCurrentPrice, 4, RoundingMode.HALF_UP)
+            .multiply(BigDecimal(100))
+            .setScale(2, RoundingMode.HALF_UP)
+    } else {
+        upsidePercent
+    }
+
+    return mapOf(
+        "ticker" to ticker,
+        "stockName" to stockName,
+        "analysisDate" to analysisDate.toString(),
+        "compositeScore" to compositeScore.toDouble(),
+        "compositeGrade" to compositeGrade.name,
+        "aiScore" to aiScore.toDouble(),
+        "techScore" to techScore.toDouble(),
+        "sentimentScore" to sentimentNormalizedScore.toDouble(),
+        "isRecommended" to isRecommended,
+        "recommendationReason" to recommendationReason,
+        "currentPrice" to enrichedCurrentPrice?.toDouble(),
+        "targetPrice" to targetPrice?.toDouble(),
+        "upsidePercent" to enrichedUpsidePercent?.toDouble(),
+        "priceRecommendation" to priceRecommendation
+    )
+}
 
 /**
  * 예측 결과 목록 응답

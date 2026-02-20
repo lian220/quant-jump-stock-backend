@@ -1,10 +1,14 @@
 package com.quantjumpstock.core.application.recommendation
 
 import com.quantjumpstock.core.domain.model.prediction.PredictionResult
+import com.quantjumpstock.core.domain.model.stock.StockPriceSnapshot
+import com.quantjumpstock.core.domain.port.output.StockPriceDataPort
 import com.quantjumpstock.core.domain.prediction.port.output.PredictionResultRepositoryPort
 import org.slf4j.LoggerFactory
 import org.springframework.cache.annotation.Cacheable
 import org.springframework.stereotype.Service
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.LocalDate
 
 /**
@@ -19,7 +23,8 @@ import java.time.LocalDate
  */
 @Service
 class RecommendationService(
-    private val predictionResultRepository: PredictionResultRepositoryPort
+    private val predictionResultRepository: PredictionResultRepositoryPort,
+    private val stockPriceDataPort: StockPriceDataPort
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
@@ -55,12 +60,14 @@ class RecommendationService(
 
         logger.info("Found {} stocks with compositeScore >= {}", buySignals.size, minCompositeScore)
 
+        val priceMap = loadPricesSafely(buySignals.map { it.ticker }.distinct())
+
         return BuySignalsResponse(
             success = true,
             date = date,
             minConfidence = minConfidence,
             count = buySignals.size,
-            buySignals = buySignals.map { it.toBuySignalDto() }
+            buySignals = buySignals.map { it.toBuySignalDto(priceMap[it.ticker]) }
         )
     }
 
@@ -77,6 +84,18 @@ class RecommendationService(
             count = predictions.size,
             predictions = predictions
         )
+    }
+
+    /**
+     * 가격 데이터 안전 조회 (Graceful Degradation)
+     */
+    private fun loadPricesSafely(tickers: List<String>): Map<String, StockPriceSnapshot> {
+        return try {
+            stockPriceDataPort.getLatestPrices(tickers)
+        } catch (e: Exception) {
+            logger.warn("가격 데이터 일괄 조회 실패, 가격 없이 반환: ${e.message}")
+            emptyMap()
+        }
     }
 
     /**
@@ -97,8 +116,22 @@ class RecommendationService(
 
 /**
  * PredictionResult를 BuySignalDto로 변환
+ *
+ * @param priceSnapshot MongoDB에서 조회한 최신 가격 (null이면 DB 값 사용)
  */
-private fun PredictionResult.toBuySignalDto(): BuySignalDto {
+private fun PredictionResult.toBuySignalDto(priceSnapshot: StockPriceSnapshot? = null): BuySignalDto {
+    val enrichedCurrentPrice = priceSnapshot?.close ?: currentPrice
+    val enrichedUpsidePercent = if (enrichedCurrentPrice != null && targetPrice != null &&
+        enrichedCurrentPrice.compareTo(BigDecimal.ZERO) != 0
+    ) {
+        targetPrice!!.subtract(enrichedCurrentPrice)
+            .divide(enrichedCurrentPrice, 4, RoundingMode.HALF_UP)
+            .multiply(BigDecimal(100))
+            .setScale(2, RoundingMode.HALF_UP)
+    } else {
+        upsidePercent
+    }
+
     return BuySignalDto(
         ticker = ticker,
         stockName = stockName,
@@ -110,10 +143,10 @@ private fun PredictionResult.toBuySignalDto(): BuySignalDto {
         sentimentScore = sentimentNormalizedScore,
         isRecommended = isRecommended,
         recommendationReason = recommendationReason,
-        currentPrice = currentPrice,
+        currentPrice = enrichedCurrentPrice,
         targetPrice = targetPrice,
-        upsidePercent = upsidePercent,
-        priceRecommendation = priceRecommendation  // String 그대로
+        upsidePercent = enrichedUpsidePercent,
+        priceRecommendation = priceRecommendation
     )
 }
 
