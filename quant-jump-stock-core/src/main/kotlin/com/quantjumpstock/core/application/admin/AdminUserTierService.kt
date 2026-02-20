@@ -1,10 +1,8 @@
 package com.quantjumpstock.core.application.admin
 
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserJpaRepository
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserTier
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserTierEntity
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserTierJpaRepository
 import com.quantjumpstock.core.domain.port.output.StrategySubscriptionRepository
+import com.quantjumpstock.core.domain.port.output.UserRepository
+import com.quantjumpstock.core.domain.port.output.UserTierRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -13,8 +11,8 @@ import java.time.LocalDateTime
 @Service
 @Transactional(readOnly = true)
 class AdminUserTierService(
-    private val userJpaRepository: UserJpaRepository,
-    private val userTierJpaRepository: UserTierJpaRepository,
+    private val userRepository: UserRepository,
+    private val userTierRepository: UserTierRepository,
     private val subscriptionRepository: StrategySubscriptionRepository
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -22,82 +20,59 @@ class AdminUserTierService(
     fun getUserTiersBatch(userDbIds: List<Long>): List<AdminUserTierInfo> {
         if (userDbIds.isEmpty()) return emptyList()
 
-        val users = userJpaRepository.findAllById(userDbIds).associateBy { it.id!! }
-        val tiers = userTierJpaRepository.findByUserIdIn(userDbIds).associateBy { it.user.id!! }
+        val users = userRepository.findAllByDbIds(userDbIds).associateBy { it.id!! }
+        val tiers = userTierRepository.getAdminTierDetailsBatch(userDbIds)
         val subscriptionCounts = subscriptionRepository.countActiveByUserIds(userDbIds)
 
         return userDbIds.mapNotNull { id ->
-            val userEntity = users[id] ?: return@mapNotNull null
-            val tierEntity = tiers[id]
+            val user = users[id] ?: return@mapNotNull null
+            val tierDetails = tiers[id]
             AdminUserTierInfo(
                 userId = id,
-                userLoginId = userEntity.userId,
-                tier = tierEntity?.tier?.name ?: "FREE",
-                startedAt = tierEntity?.startedAt,
-                expiresAt = tierEntity?.expiresAt,
-                backtestCountToday = tierEntity?.backtestCountToday ?: 0,
+                userLoginId = user.userId,
+                tier = tierDetails?.tier ?: "FREE",
+                startedAt = tierDetails?.startedAt,
+                expiresAt = tierDetails?.expiresAt,
+                backtestCountToday = tierDetails?.backtestCountToday ?: 0,
                 activeSubscriptionCount = subscriptionCounts[id] ?: 0
             )
         }
     }
 
     fun getUserTier(userDbId: Long): AdminUserTierInfo {
-        val userEntity = userJpaRepository.findById(userDbId).orElseThrow {
-            IllegalArgumentException("사용자를 찾을 수 없습니다: $userDbId")
-        }
+        val user = userRepository.findById(userDbId)
+            ?: throw IllegalArgumentException("사용자를 찾을 수 없습니다: $userDbId")
 
-        val tierEntity = userTierJpaRepository.findByUserId(userDbId).orElse(null)
+        val tierDetails = userTierRepository.getAdminTierDetails(userDbId)
         val activeSubscriptionCount = subscriptionRepository.countActiveByUserId(userDbId)
 
         return AdminUserTierInfo(
             userId = userDbId,
-            userLoginId = userEntity.userId,
-            tier = tierEntity?.tier?.name ?: "FREE",
-            startedAt = tierEntity?.startedAt,
-            expiresAt = tierEntity?.expiresAt,
-            backtestCountToday = tierEntity?.backtestCountToday ?: 0,
+            userLoginId = user.userId,
+            tier = tierDetails?.tier ?: "FREE",
+            startedAt = tierDetails?.startedAt,
+            expiresAt = tierDetails?.expiresAt,
+            backtestCountToday = tierDetails?.backtestCountToday ?: 0,
             activeSubscriptionCount = activeSubscriptionCount
         )
     }
 
     @Transactional
     fun updateUserTier(userDbId: Long, request: UpdateUserTierRequest, updatedBy: String): AdminUserTierInfo {
-        val userEntity = userJpaRepository.findById(userDbId).orElseThrow {
-            IllegalArgumentException("사용자를 찾을 수 없습니다: $userDbId")
-        }
+        userRepository.findById(userDbId)
+            ?: throw IllegalArgumentException("사용자를 찾을 수 없습니다: $userDbId")
 
-        val newTier = try {
-            UserTier.valueOf(request.tier.uppercase())
-        } catch (_: IllegalArgumentException) {
+        val validTiers = listOf("FREE", "PREMIUM", "PREMIUM_YEARLY")
+        val newTier = request.tier.uppercase()
+        if (newTier !in validTiers) {
             throw IllegalArgumentException("유효하지 않은 티어입니다: ${request.tier}")
         }
 
-        val tierEntity = userTierJpaRepository.findByUserId(userDbId).orElse(null)
+        val startedAt = if (newTier == "FREE") null else LocalDateTime.now()
+        val expiresAt = if (newTier == "FREE") null else request.expiresAt ?: startedAt?.plusYears(1)
 
-        if (newTier == UserTier.FREE) {
-            if (tierEntity != null) {
-                tierEntity.tier = UserTier.FREE
-                tierEntity.expiresAt = null
-            }
-            logger.info("유저 티어 다운그레이드: userId={}, tier=FREE, updatedBy={}", userDbId, updatedBy)
-        } else {
-            val startedAt = LocalDateTime.now()
-            val expiresAt = request.expiresAt ?: startedAt.plusYears(1)
-            if (tierEntity != null) {
-                tierEntity.tier = newTier
-                tierEntity.startedAt = startedAt
-                tierEntity.expiresAt = expiresAt
-            } else {
-                val newTierEntity = UserTierEntity(
-                    user = userEntity,
-                    tier = newTier,
-                    startedAt = startedAt,
-                    expiresAt = expiresAt
-                )
-                userTierJpaRepository.save(newTierEntity)
-            }
-            logger.info("유저 티어 업그레이드: userId={}, tier={}, expiresAt={}, updatedBy={}", userDbId, newTier, expiresAt, updatedBy)
-        }
+        userTierRepository.updateAdminTier(userDbId, newTier, startedAt, expiresAt)
+        logger.info("유저 티어 변경: userDbId={}, tier={}, updatedBy={}", userDbId, newTier, updatedBy)
 
         return getUserTier(userDbId)
     }

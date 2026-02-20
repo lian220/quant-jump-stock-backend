@@ -1,7 +1,5 @@
 package com.quantjumpstock.core.application.admin
 
-import com.quantjumpstock.core.adapter.input.rest.admin.AdminSubscriptionListResponse
-import com.quantjumpstock.core.adapter.input.rest.admin.AdminSubscriptionSummary
 import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategySubscriptionEntity
 import com.quantjumpstock.core.adapter.output.persistence.jpa.StrategySubscriptionJpaRepository
 import com.quantjumpstock.core.adapter.output.persistence.jpa.SubscriptionStatus
@@ -9,6 +7,7 @@ import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDateTime
 
 @Service
 @Transactional(readOnly = true)
@@ -21,7 +20,7 @@ class AdminSubscriptionService(
         userId: Long?,
         page: Int,
         size: Int
-    ): AdminSubscriptionListResponse {
+    ): AdminSubscriptionListResult {
         val safeSize = size.coerceIn(1, 100)
         val pageable = PageRequest.of(page, safeSize, Sort.by(Sort.Direction.DESC, "subscribedAt"))
 
@@ -37,7 +36,7 @@ class AdminSubscriptionService(
             else -> pagedResult.totalElements
         }
 
-        return AdminSubscriptionListResponse(
+        return AdminSubscriptionListResult(
             subscriptions = items,
             total = pagedResult.totalElements,
             activeCount = activeCount
@@ -45,7 +44,24 @@ class AdminSubscriptionService(
     }
 }
 
-private fun StrategySubscriptionEntity.toAdminSummary() = AdminSubscriptionSummary(
+data class AdminSubscriptionItemResult(
+    val subscriptionId: Long,
+    val userId: Long,
+    val userLoginId: String,
+    val strategyId: Long,
+    val strategyName: String,
+    val status: String,
+    val alertEnabled: Boolean,
+    val subscribedAt: LocalDateTime
+)
+
+data class AdminSubscriptionListResult(
+    val subscriptions: List<AdminSubscriptionItemResult>,
+    val total: Long,
+    val activeCount: Long
+)
+
+private fun StrategySubscriptionEntity.toAdminSummary() = AdminSubscriptionItemResult(
     subscriptionId = id ?: 0L,
     userId = user.id ?: 0L,
     userLoginId = user.userId,

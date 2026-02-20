@@ -159,6 +159,20 @@ class UserTierPersistenceAdapter(
     }
 
     @Transactional(readOnly = true)
+    override fun getAdminTierDetailsBatch(userDbIds: List<Long>): Map<Long, AdminTierDetails> {
+        if (userDbIds.isEmpty()) return emptyMap()
+        return userTierJpaRepository.findByUserIdIn(userDbIds).associate { entity ->
+            val userId = entity.user.id!!
+            userId to AdminTierDetails(
+                tier = entity.tier.name,
+                startedAt = entity.startedAt,
+                expiresAt = entity.expiresAt,
+                backtestCountToday = entity.backtestCountToday
+            )
+        }
+    }
+
+    @Transactional(readOnly = true)
     override fun getAdminTierDetails(userDbId: Long): AdminTierDetails? {
         val tierEntity = userTierJpaRepository.findByUserId(userDbId).orElse(null) ?: return null
         return AdminTierDetails(

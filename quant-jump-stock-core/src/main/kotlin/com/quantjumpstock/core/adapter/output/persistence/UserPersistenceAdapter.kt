@@ -94,6 +94,10 @@ class UserPersistenceAdapter(
         return userJpaRepository.count()
     }
 
+    override fun findAllByDbIds(ids: List<Long>): List<User> {
+        return userJpaRepository.findAllById(ids).map { toDomain(it) }
+    }
+
     // ===== Mapping Functions =====
 
     private fun toDomain(entity: UserEntity): User {

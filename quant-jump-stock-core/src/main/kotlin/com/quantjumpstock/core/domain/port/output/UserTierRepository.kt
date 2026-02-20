@@ -35,6 +35,11 @@ interface UserTierRepository {
     fun getAdminTierDetails(userDbId: Long): AdminTierDetails?
 
     /**
+     * 어드민용: 여러 사용자 티어 일괄 조회
+     */
+    fun getAdminTierDetailsBatch(userDbIds: List<Long>): Map<Long, AdminTierDetails>
+
+    /**
      * 어드민용: 사용자 티어 업데이트
      */
     fun updateAdminTier(

@@ -1,12 +1,12 @@
 package com.quantjumpstock.core.adapter.input.rest.admin
 
+import com.quantjumpstock.core.application.admin.AdminSubscriptionListResult
 import com.quantjumpstock.core.application.admin.AdminSubscriptionService
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.springframework.http.ResponseEntity
 import org.springframework.security.access.prepost.PreAuthorize
 import org.springframework.web.bind.annotation.*
-import java.time.LocalDateTime
 
 /**
  * 어드민용 구독 현황 조회 API
@@ -27,26 +27,9 @@ class AdminSubscriptionController(
         @RequestParam(required = false) userId: Long?,
         @RequestParam(defaultValue = "0") page: Int,
         @RequestParam(defaultValue = "20") size: Int
-    ): ResponseEntity<AdminSubscriptionListResponse> {
+    ): ResponseEntity<AdminSubscriptionListResult> {
         return ResponseEntity.ok(
             adminSubscriptionService.getSubscriptions(strategyId, userId, page, size)
         )
     }
 }
-
-data class AdminSubscriptionSummary(
-    val subscriptionId: Long,
-    val userId: Long,
-    val userLoginId: String,
-    val strategyId: Long,
-    val strategyName: String,
-    val status: String,
-    val alertEnabled: Boolean,
-    val subscribedAt: LocalDateTime
-)
-
-data class AdminSubscriptionListResponse(
-    val subscriptions: List<AdminSubscriptionSummary>,
-    val total: Long,
-    val activeCount: Long
-)

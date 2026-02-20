@@ -39,4 +39,9 @@ interface UserRepository {
     fun countByStatus(status: UserStatus): Long
 
     fun count(): Long
+
+    /**
+     * 어드민용: DB PK 목록으로 일괄 조회
+     */
+    fun findAllByDbIds(ids: List<Long>): List<User>
 }
