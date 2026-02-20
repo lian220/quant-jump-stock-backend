@@ -1,0 +1,78 @@
+[
+  {
+    "name": "java.util.AbstractCollection",
+    "methods": [
+      { "name": "toString", "parameterTypes": [] }
+    ]
+  },
+  {
+    "name": "java.util.AbstractList",
+    "methods": [
+      { "name": "toString", "parameterTypes": [] }
+    ]
+  },
+  {
+    "name": "java.util.AbstractSet",
+    "methods": [
+      { "name": "toString", "parameterTypes": [] }
+    ]
+  },
+  {
+    "name": "java.util.ArrayList",
+    "allPublicMethods": true
+  },
+  {
+    "name": "java.util.LinkedList",
+    "allPublicMethods": true
+  },
+  {
+    "name": "java.util.HashSet",
+    "allPublicMethods": true
+  },
+  {
+    "name": "java.util.LinkedHashSet",
+    "allPublicMethods": true
+  },
+  {
+    "name": "java.util.LinkedHashMap",
+    "allPublicMethods": true
+  },
+  {
+    "name": "java.util.HashMap",
+    "allPublicMethods": true
+  },
+  {
+    "name": "java.util.Collections$UnmodifiableList",
+    "allPublicMethods": true
+  },
+  {
+    "name": "java.util.Collections$UnmodifiableCollection",
+    "allPublicMethods": true
+  },
+  {
+    "name": "java.util.Collections$UnmodifiableRandomAccessList",
+    "allPublicMethods": true
+  },
+  {
+    "name": "java.util.Collections$UnmodifiableMap",
+    "allPublicMethods": true
+  },
+  {
+    "name": "java.util.Collections$EmptyList",
+    "allPublicMethods": true
+  },
+  {
+    "name": "java.util.Collections$EmptyMap",
+    "allPublicMethods": true
+  },
+  {
+    "name": "java.util.Collections$SingletonList",
+    "allPublicMethods": true
+  },
+  {
+    "name": "java.util.AbstractMap",
+    "methods": [
+      { "name": "toString", "parameterTypes": [] }
+    ]
+  }
+]

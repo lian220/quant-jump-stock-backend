@@ -175,9 +175,9 @@ class SlackApiClient(
 
         try {
             val color = when (status) {
-                "started" -> "0099cc"
-                "stopped" -> "999999"
-                else -> "666666"
+                "started" -> "#0099cc"
+                "stopped" -> "#999999"
+                else -> "#666666"
             }
 
             val message = SlackMessage(
