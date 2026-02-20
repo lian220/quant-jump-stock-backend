@@ -1,6 +1,7 @@
 package com.quantjumpstock.core.adapter.input.rest.admin
 
 import com.quantjumpstock.core.domain.analysis.port.input.AnalysisUseCase
+import com.quantjumpstock.core.infrastructure.util.DateRangeFormatter
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.media.Content
 import io.swagger.v3.oas.annotations.media.ExampleObject
@@ -380,13 +381,8 @@ class AdminAnalysisController(
         }
     }
 
-    private fun formatDateRange(startDate: String?, endDate: String?): String {
-        return when {
-            startDate != null && endDate != null -> "$startDate ~ $endDate"
-            startDate != null -> "$startDate ~ 오늘"
-            else -> "자동 (마지막 수집일+1 ~ 오늘)"
-        }
-    }
+    private fun formatDateRange(startDate: String?, endDate: String?): String =
+        DateRangeFormatter.format(startDate, endDate)
 
     private fun resolveDateParam(
         camelCase: String?,

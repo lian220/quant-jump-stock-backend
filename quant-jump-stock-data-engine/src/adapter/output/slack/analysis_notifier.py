@@ -86,7 +86,7 @@ class SlackAnalysisNotifierAdapter(AnalysisNotifierPort):
                 payload["attachments"] = attachments
             response = requests.post(url, json=payload, timeout=10)
             response.raise_for_status()
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             logger.exception(f"Slack Webhook 알림 발송 실패: {e}")
 
     async def notify_analysis_start(

@@ -1,6 +1,7 @@
 package com.quantjumpstock.core.application.analysis
 
 import com.quantjumpstock.core.domain.analysis.port.input.AnalysisUseCase
+import com.quantjumpstock.core.infrastructure.util.DateRangeFormatter
 import com.quantjumpstock.core.domain.economic.port.output.MessagePublisher
 import com.quantjumpstock.core.domain.economic.port.output.NotificationSender
 import com.quantjumpstock.core.domain.model.AnalysisRequest
@@ -171,13 +172,8 @@ class AnalysisManagementService(
         }
     }
 
-    private fun formatDateRange(startDate: String?, endDate: String?): String {
-        return when {
-            startDate != null && endDate != null -> "기간: $startDate ~ $endDate"
-            startDate != null -> "시작일: $startDate ~ 오늘"
-            else -> "자동 (마지막 수집일+1 ~ 오늘)"
-        }
-    }
+    private fun formatDateRange(startDate: String?, endDate: String?): String =
+        DateRangeFormatter.format(startDate, endDate)
 
     companion object {
         const val TOPIC_ANALYSIS_TECHNICAL_REQUEST = "analysis.technical.request"

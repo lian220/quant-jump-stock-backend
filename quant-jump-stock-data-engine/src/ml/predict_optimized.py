@@ -1567,6 +1567,15 @@ def get_predictions_from_db(chunk_size=1000):
                 return None
             if isinstance(value, datetime):
                 return value
+            if hasattr(value, 'year') and not isinstance(value, str):  # datetime.date
+                return datetime(value.year, value.month, value.day)
+            if isinstance(value, (int, float)):
+                try:
+                    # milliseconds → seconds 변환 (13자리 이상이면 ms)
+                    ts = value / 1000 if value > 1e12 else value
+                    return datetime.utcfromtimestamp(ts)
+                except (OSError, OverflowError, ValueError):
+                    return None
             if isinstance(value, str):
                 text = value.strip()
                 # YYYY-MM-DD 또는 ISO 문자열 대응

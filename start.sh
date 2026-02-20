@@ -183,8 +183,8 @@ fi
 echo -e "${YELLOW}🎯 Starting backend applications (${ENV_MODE} mode)...${NC}"
 
 # Set ENV_FILE and DB_ENV_FILE for docker-compose variable substitution
+# Export ENV_FILE for docker-compose variable substitution (DB_ENV_FILE already exported above)
 export ENV_FILE="$ENV_FILE"
-export DB_ENV_FILE="$DB_ENV_FILE"
 
 if [ "$FORCE_REBUILD" = true ]; then
     docker compose --env-file "$ENV_FILE" up -d --build quant-jump-stock-data-engine quant-jump-stock-core

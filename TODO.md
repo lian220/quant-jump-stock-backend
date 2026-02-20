@@ -55,6 +55,8 @@
   - `backtest_results(user_id, strategy_id, status)` — countUserCustom 쿼리
   - `backtest_results(status, created_at)` — findLatestCompleted 쿼리
   - `prediction_results(user_id, created_date)` — findHighConfidenceBuySignals 쿼리
+  - ⚠️ 운영 적용 시 `CREATE INDEX CONCURRENTLY` 사용 필수 (표준 CREATE INDEX는 테이블 배타 락)
+  - Flyway 마이그레이션은 트랜잭션 밖에서 실행해야 함 (`executeInTransaction=false` 설정 필요)
 - [ ] Pub/Sub 핸들러 async/sync 패턴 통일
   - 현재: EconomicData(sync), TechnicalAnalysis(async), Sentiment(sync) 혼재
   - 전체 async 또는 전체 sync로 통일

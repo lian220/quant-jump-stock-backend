@@ -65,7 +65,7 @@ class SlackNotifierAdapter(NotificationPort):
                 payload["attachments"] = attachments
             response = requests.post(url, json=payload, timeout=10)
             response.raise_for_status()
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             logger.exception(f"Slack Webhook 알림 발송 실패: {e}")
 
     def _get_trading_channel(self) -> str:
@@ -111,7 +111,7 @@ class SlackNotifierAdapter(NotificationPort):
         ]
 
         self._post_message(
-            channel=self._get_trading_channel(),
+            channel=channel or self._get_trading_channel(),
             webhook_url=self._get_trading_webhook(),
             text=text,
             attachments=attachments,

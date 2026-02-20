@@ -401,9 +401,10 @@ class SlackNotifier:
     @staticmethod
     def notify_news_collection(result: Dict):
         """뉴스 수집 결과 알림"""
+        channel = getattr(settings, 'SLACK_CHANNEL_ANALYSIS', '')
         webhook_url = getattr(settings, 'SLACK_WEBHOOK_URL_NEWS', '')
-        if not webhook_url:
-            logger.debug("SLACK_WEBHOOK_URL_NEWS 미설정, 뉴스 알림 생략")
+        if not channel and not webhook_url:
+            logger.debug("SLACK_CHANNEL_ANALYSIS/SLACK_WEBHOOK_URL_NEWS 미설정, 뉴스 알림 생략")
             return
 
         source = result.get("source", "unknown")
@@ -434,7 +435,12 @@ class SlackNotifier:
         ]
 
         fallback_text = f"📰 뉴스 수집 완료: {source}에서 {count}건 저장"
-        SlackNotifier._post_to_webhook(webhook_url, fallback_text, blocks=blocks)
+        SlackNotifier._post_message(
+            channel=channel,
+            webhook_url=webhook_url,
+            text=fallback_text,
+            blocks=blocks,
+        )
 
     # ============================================================
     # FRED / Yahoo Finance 에러 알림
@@ -489,16 +495,16 @@ class SlackNotifier:
         )
 
     @staticmethod
-    def send_thread_message(text: str, thread_ts: str):
+    def send_thread_message(text: str, thread_ts: str, channel: Optional[str] = None):
         """스레드 답글 전송"""
         if not thread_ts:
             return
 
         bot = _get_bot_client()
         if bot.is_available:
-            channel = SlackNotifier._get_scheduler_channel()
-            if channel:
-                bot.post_message(channel=channel, text=text, thread_ts=thread_ts)
+            target_channel = channel or SlackNotifier._get_scheduler_channel()
+            if target_channel:
+                bot.post_message(channel=target_channel, text=text, thread_ts=thread_ts)
                 return
 
         logger.debug(f"스레드 답글 스킵 (Bot Token/채널 미설정): {text[:50]}...")

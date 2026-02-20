@@ -404,7 +404,11 @@ class StockRecommendationHandler(MessageHandler):
             return [today.isoformat()]
 
         total_days = (end - start).days
-        return [(start + timedelta(days=offset)).isoformat() for offset in range(total_days + 1)]
+        return [
+            (start + timedelta(days=offset)).isoformat()
+            for offset in range(total_days + 1)
+            if (start + timedelta(days=offset)).weekday() < 5  # 주말 제외
+        ]
 
     def handle(self, message: PubSubMessage) -> None:
         start_time = self._log_start(message, "종목 추천 실행")
@@ -441,7 +445,7 @@ class StockRecommendationHandler(MessageHandler):
                         report = report_service.generate_report(tech_docs, analysis_date)
                         SlackNotifier.notify_comprehensive_report(report, thread_ts=message.thread_ts)
                 except Exception as e:
-                    logger.error(f"종합 리포트 생성/전송 실패 ({analysis_date}): {e}")
+                    logger.exception(f"종합 리포트 생성/전송 실패 ({analysis_date}): {e}")
 
             self._log_success("종목 추천", start_time)
 

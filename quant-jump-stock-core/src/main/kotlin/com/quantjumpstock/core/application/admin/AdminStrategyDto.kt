@@ -41,10 +41,10 @@ data class AdminStrategySummary(
     val description: String?,
 
     @Schema(description = "카테고리 코드")
-    val categoryCode: String,
+    val categoryCode: String?,
 
     @Schema(description = "카테고리 이름")
-    val categoryName: String,
+    val categoryName: String?,
 
     @Schema(description = "소유자 ID")
     val ownerId: Long?,

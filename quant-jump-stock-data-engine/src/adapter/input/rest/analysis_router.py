@@ -2,7 +2,7 @@
 Analysis REST API Router
 
 기술적 분석 직접 실행 API.
-Pub/Sub 경유 없이 Data Engine에서 바로 실행.
+Data Engine에서 바로 실행.
 """
 import logging
 import uuid
@@ -46,8 +46,7 @@ async def run_technical_analysis(
     """
     기술적 분석 + Composite Score 실행
 
-    Pub/Sub 경유 없이 직접 실행합니다.
-    분석 완료 후 BuyCriteria 필터링 + Slack 알림.
+    직접 실행합니다. 분석 완료 후 BuyCriteria 필터링 + Slack 알림.
 
     Query Parameters:
         start_date: 분석 시작 날짜 (YYYY-MM-DD, optional)

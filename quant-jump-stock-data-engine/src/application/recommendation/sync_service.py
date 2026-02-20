@@ -4,7 +4,7 @@ RecommendationSyncService - MongoDB → PostgreSQL 동기화
 MongoDB에 저장된 AI 예측, 감정 분석, 기술적 분석 결과를 통합하여
 PostgreSQL prediction_results 테이블에 저장한다.
 
-Composite Score = 0.3 × ai + 0.4 × tech + 0.3 × sentiment (max 7.5)
+Composite Score = 0.3 × ai + 0.4 × tech + 0.3 × sentiment (고정 분모=1.0, 최대 ~4.4)
 """
 
 import logging
@@ -96,8 +96,7 @@ class RecommendationSyncService:
         - metrics.accuracy: 모델 정확도
         """
         try:
-            from datetime import datetime as dt
-            target_date = dt.strptime(analysis_date, "%Y-%m-%d")
+            target_date = datetime.strptime(analysis_date, "%Y-%m-%d")
             # date 필드가 ISODate 또는 String일 수 있으므로 둘 다 검색
             target_date_str = target_date.strftime("%Y-%m-%dT00:00:00.000Z")
             results = list(self.mongo_db.stock_analysis_results.find({

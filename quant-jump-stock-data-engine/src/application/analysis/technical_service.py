@@ -259,7 +259,7 @@ class TechnicalAnalysisApplicationService:
 
             return results
 
-        except Exception as e:
+        except (ValueError, KeyError) as e:
             logger.warning(f"Failed to analyze {ticker}: {e}")
             return []
 

@@ -1,6 +1,7 @@
 package com.quantjumpstock.core.application.economic
 
 import com.quantjumpstock.core.domain.economic.port.input.EconomicDataUseCase
+import com.quantjumpstock.core.infrastructure.util.DateRangeFormatter
 import com.quantjumpstock.core.domain.economic.port.output.MessagePublisher
 import com.quantjumpstock.core.domain.economic.port.output.NotificationSender
 import com.quantjumpstock.core.domain.economic.port.output.RestApiClient
@@ -96,13 +97,8 @@ class EconomicDataManagementService(
         }
     }
 
-    private fun formatDateRange(startDate: String?, endDate: String?): String {
-        return when {
-            startDate != null && endDate != null -> "기간: $startDate ~ $endDate"
-            startDate != null -> "시작일: $startDate ~ 오늘"
-            else -> "자동 (마지막 수집일+1 ~ 오늘)"
-        }
-    }
+    private fun formatDateRange(startDate: String?, endDate: String?): String =
+        DateRangeFormatter.format(startDate, endDate)
 
     companion object {
         const val TOPIC_ECONOMIC_DATA_UPDATE_REQUEST = "economic.data.update.request"
