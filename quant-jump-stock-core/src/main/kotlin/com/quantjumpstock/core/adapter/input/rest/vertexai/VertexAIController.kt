@@ -9,7 +9,6 @@ import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.tags.Tag
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
@@ -28,7 +27,6 @@ import org.springframework.web.bind.annotation.RestController
 @Tag(name = "Vertex AI Callback", description = "Vertex AI Job 콜백 (내부 전용)")
 @RestController
 @RequestMapping("/api/v1/vertex-ai")
-@ConditionalOnProperty(name = ["gcp.vertex-ai.enabled"], havingValue = "true", matchIfMissing = false)
 class VertexAICallbackController(
     private val vertexAIService: VertexAIService,
     @Value("\${vertex-ai.callback-secret:}") private val callbackSecret: String

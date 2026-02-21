@@ -7,7 +7,6 @@ import com.quantjumpstock.core.domain.vertexai.model.JobCallback
 import com.quantjumpstock.core.domain.vertexai.model.JobStatus
 import com.quantjumpstock.core.domain.vertexai.port.output.VertexAINotificationPort
 import org.slf4j.LoggerFactory
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Service
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -20,7 +19,6 @@ import java.util.UUID
  * Controller에서 비즈니스 로직을 분리하여 Hexagonal Architecture 준수.
  */
 @Service
-@ConditionalOnProperty(name = ["gcp.vertex-ai.enabled"], havingValue = "true", matchIfMissing = false)
 class VertexAIService(
     private val messagePublisher: MessagePublisher,
     private val notificationPort: VertexAINotificationPort,

@@ -6,7 +6,6 @@ import io.swagger.v3.oas.annotations.tags.Tag
 import com.quantjumpstock.core.adapter.input.api.StandardApiResponses
 import com.quantjumpstock.core.adapter.input.api.VertexAIJobResponses
 import org.slf4j.LoggerFactory
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
@@ -24,7 +23,6 @@ import org.springframework.web.bind.annotation.RestController
 @Tag(name = "Admin - Vertex AI", description = "Google Vertex AI 예측 모델 관리 (Admin 전용)")
 @RestController
 @RequestMapping("/api/v1/admin/vertex-ai")
-@ConditionalOnProperty(name = ["gcp.vertex-ai.enabled"], havingValue = "true", matchIfMissing = false)
 class AdminVertexAIController(
     private val vertexAIService: VertexAIService
 ) {

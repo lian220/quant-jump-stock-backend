@@ -1,6 +1,5 @@
 package com.quantjumpstock.core.config
 
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.boot.context.properties.ConfigurationProperties
 import org.springframework.context.annotation.Configuration
 
@@ -12,7 +11,6 @@ import org.springframework.context.annotation.Configuration
  */
 @Configuration
 @ConfigurationProperties(prefix = "gcp.vertex-ai")
-@ConditionalOnProperty(name = ["gcp.vertex-ai.enabled"], havingValue = "true", matchIfMissing = false)
 class VertexAIConfig {
     var jobName: String = "quantiq-stock-prediction"
     var region: String = "asia-northeast3"
