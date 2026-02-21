@@ -93,7 +93,8 @@ graalvmNative {
             mainClass.set("com.quantjumpstock.core.QuantJumpStockCoreApplicationKt")
             buildArgs.addAll(
                 "--no-fallback",
-                "-H:+ReportExceptionStackTraces"
+                "-H:+ReportExceptionStackTraces",
+                "--initialize-at-run-time=sun.security.rsa"
             )
             // CI에서 -PnativeImageArgs="-J-Xmx12g" 전달 시 적용
             if (project.hasProperty("nativeImageArgs")) {
