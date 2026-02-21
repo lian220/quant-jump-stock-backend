@@ -51,7 +51,7 @@ class VertexAIService(
             source = "core-api",
             requestId = requestId,
             threadTs = threadTs,
-            envVars = emptyMap()
+            envVars = HashMap()
         )
 
         messagePublisher.publishVertexAIPredictionRequest(VERTEX_AI_RUN_TOPIC, request)
