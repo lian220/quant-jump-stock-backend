@@ -43,6 +43,11 @@ class TierConfigurationService(
         return if (config.isUnlimitedBacktest) Long.MAX_VALUE else config.maxBacktestPerStrategy.toLong()
     }
 
+    // 단건 티어 설정 조회 (대소문자 무관)
+    fun getConfiguration(tier: String): TierConfigurationDto? {
+        return tierConfigRepository.findByTier(tier.uppercase())?.toDto()
+    }
+
     // 전체 설정 목록
     @Cacheable(value = ["tierConfigurations"])
     fun getAllConfigurations(): List<TierConfigurationDto> {
