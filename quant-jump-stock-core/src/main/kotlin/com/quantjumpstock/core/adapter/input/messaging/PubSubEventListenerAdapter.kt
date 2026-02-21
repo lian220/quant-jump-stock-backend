@@ -4,7 +4,12 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.quantjumpstock.core.events.EventTopics
 import com.quantjumpstock.core.application.trading.AutoTradingService
 import com.quantjumpstock.core.application.backtest.BacktestResultSaveService
+import com.quantjumpstock.core.application.notification.NotificationService
+import com.quantjumpstock.core.domain.notification.model.NotificationPriority
+import com.quantjumpstock.core.domain.notification.model.NotificationType
 import com.quantjumpstock.core.domain.news.port.input.NewsCollectionUseCase
+import com.quantjumpstock.core.domain.port.output.StrategyRepository
+import com.quantjumpstock.core.domain.port.output.UserRepository
 import com.google.cloud.spring.pubsub.core.PubSubTemplate
 import com.google.cloud.spring.pubsub.support.BasicAcknowledgeablePubsubMessage
 import jakarta.annotation.PostConstruct
@@ -25,7 +30,10 @@ class PubSubEventListenerAdapter(
     private val objectMapper: ObjectMapper,
     private val autoTradingService: AutoTradingService,
     private val backtestResultSaveService: BacktestResultSaveService,
-    private val newsCollectionUseCase: NewsCollectionUseCase
+    private val newsCollectionUseCase: NewsCollectionUseCase,
+    private val notificationService: NotificationService,
+    private val strategyRepository: StrategyRepository,
+    private val userRepository: UserRepository
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -72,6 +80,22 @@ class PubSubEventListenerAdapter(
 
             logger.info("🤖 자동 매매 로직 실행 중...")
             autoTradingService.executeAutoTrading()
+
+            // 알림 생성
+            try {
+                val userId = payload?.get("userId")?.asText()?.let { resolveNotificationUserId(it, null) }
+                if (userId != null) {
+                    notificationService.create(
+                        userId = userId,
+                        type = NotificationType.AI_ANALYSIS_COMPLETE,
+                        priority = NotificationPriority.NORMAL,
+                        title = "AI 분석이 완료되었습니다",
+                        actionUrl = "/recommendations"
+                    )
+                }
+            } catch (e: Exception) {
+                logger.warn("분석 완료 알림 생성 실패 (무시): ${e.message}")
+            }
 
             logger.info("✅ 분석 완료 이벤트 처리 완료")
         } catch (e: Exception) {
@@ -152,6 +176,25 @@ class PubSubEventListenerAdapter(
             logger.info("종목: $symbol")
             logger.info("신호: $signalType")
             logger.info("신뢰도: ${confidence * 100}%")
+
+            // 알림 생성 — 시그널 대상 사용자 결정 필요 (현재는 payload의 userId만 처리)
+            try {
+                val userId = payload.get("userId")?.asText()?.let { resolveNotificationUserId(it, null) }
+                if (userId != null) {
+                    val signalTypeKr = if (signalType == "BUY") "매수" else "매도"
+                    val confidencePct = (confidence * 100).toInt()
+                    notificationService.create(
+                        userId = userId,
+                        type = NotificationType.TRADING_SIGNAL,
+                        priority = NotificationPriority.CRITICAL,
+                        title = "$symbol $signalTypeKr 시그널 (신뢰도 ${confidencePct}%)",
+                        actionUrl = "/stocks/$symbol",
+                        metadata = mapOf("symbol" to symbol, "signalType" to signalType, "confidence" to confidence)
+                    )
+                }
+            } catch (e: Exception) {
+                logger.warn("매매 시그널 알림 생성 실패 (무시): ${e.message}")
+            }
         } catch (e: Exception) {
             logger.error("❌ 매매 신호 이벤트 처리 실패: $message", e)
             throw e
@@ -181,6 +224,33 @@ class PubSubEventListenerAdapter(
             backtestResultSaveService.saveBacktestResult(payload)
 
             logger.info("✅ 백테스트 결과 저장 완료")
+
+            // 알림 생성
+            if (status == "success") {
+                try {
+                    val userId = resolveNotificationUserId(payload.get("userId")?.asText(), strategyId)
+                    if (userId != null) {
+                        val totalReturn = payload.get("totalReturn")?.asDouble()
+                        val strategyName = strategyRepository.findById(strategyId)?.name ?: "전략"
+                        val returnStr = totalReturn?.let { String.format("%+.1f%%", it) } ?: ""
+                        notificationService.create(
+                            userId = userId,
+                            type = NotificationType.BACKTEST_COMPLETE,
+                            priority = NotificationPriority.HIGH,
+                            title = "백테스트 완료! $strategyName $returnStr",
+                            actionUrl = "/strategies/$strategyId/backtest",
+                            metadata = mapOf(
+                                "strategyId" to strategyId,
+                                "strategyName" to strategyName,
+                                "totalReturn" to (totalReturn ?: 0.0),
+                                "status" to status
+                            )
+                        )
+                    }
+                } catch (e: Exception) {
+                    logger.warn("백테스트 완료 알림 생성 실패 (무시): ${e.message}")
+                }
+            }
         } catch (e: Exception) {
             logger.error("❌ 백테스트 완료 이벤트 처리 실패: $message", e)
             throw e
@@ -266,6 +336,31 @@ class PubSubEventListenerAdapter(
             logger.error("❌ 뉴스 수집 실패 이벤트 처리 실패: $message", e)
             throw e
         }
+    }
+
+    /**
+     * 알림 대상 userId 해석
+     * payload의 userId(String) 또는 strategyId의 소유자로부터 Long userId를 얻는다
+     */
+    private fun resolveNotificationUserId(userIdStr: String?, strategyId: Long?): Long? {
+        // 1) payload에 userId가 있으면 직접 변환
+        if (!userIdStr.isNullOrBlank()) {
+            userIdStr.toLongOrNull()?.let { return it }
+            try {
+                userRepository.findByUserId(userIdStr)?.id?.let { return it }
+            } catch (e: Exception) {
+                logger.warn("userId 조회 실패: $userIdStr")
+            }
+        }
+        // 2) strategyId로 소유자 조회
+        if (strategyId != null && strategyId > 0) {
+            try {
+                strategyRepository.findById(strategyId)?.ownerId?.let { return it }
+            } catch (e: Exception) {
+                logger.warn("전략 소유자 조회 실패: strategyId=$strategyId")
+            }
+        }
+        return null
     }
 
     companion object {
