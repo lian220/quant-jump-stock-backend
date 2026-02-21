@@ -74,5 +74,17 @@
     "methods": [
       { "name": "toString", "parameterTypes": [] }
     ]
+  },
+  {
+    "name": "kotlin.collections.EmptyMap",
+    "allPublicMethods": true
+  },
+  {
+    "name": "kotlin.collections.EmptyList",
+    "allPublicMethods": true
+  },
+  {
+    "name": "kotlin.collections.EmptySet",
+    "allPublicMethods": true
   }
 ]

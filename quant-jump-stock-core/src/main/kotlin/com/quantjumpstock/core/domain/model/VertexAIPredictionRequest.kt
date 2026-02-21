@@ -8,5 +8,5 @@ data class VertexAIPredictionRequest(
     val source: String,
     val requestId: String,
     val threadTs: String? = null,
-    val envVars: Map<String, String> = emptyMap()
+    val envVars: Map<String, String> = HashMap()
 )
