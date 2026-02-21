@@ -32,7 +32,7 @@ class NotificationEntity(
     @Column(name = "action_url", length = 500)
     val actionUrl: String? = null,
 
-    @Column(columnDefinition = "TEXT")
+    @Column(columnDefinition = "jsonb")
     val metadata: String? = null,
 
     @Column(name = "is_read", nullable = false)
