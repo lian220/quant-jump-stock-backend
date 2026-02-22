@@ -33,8 +33,7 @@ class AdminTierController(
     @GetMapping("/{tier}")
     @Operation(summary = "단건 티어 설정 조회")
     fun getConfiguration(@PathVariable tier: String): ResponseEntity<Any> {
-        val configs = tierConfigService.getAllConfigurations()
-        val config = configs.find { it.tier.equals(tier, ignoreCase = true) }
+        val config = tierConfigService.getConfiguration(tier)
             ?: return ResponseEntity.notFound().build()
         return ResponseEntity.ok(config)
     }

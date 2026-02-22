@@ -71,7 +71,7 @@ class TestPredictionService:
     @pytest.fixture
     def mock_vertexai_service(self):
         """VertexAI Service Mock"""
-        with patch('application.ml.prediction_service.VertexAIService') as mock:
+        with patch('adapter.output.gcp.vertexai_service.VertexAIService') as mock:
             instance = MagicMock()
             mock.return_value = instance
             yield instance

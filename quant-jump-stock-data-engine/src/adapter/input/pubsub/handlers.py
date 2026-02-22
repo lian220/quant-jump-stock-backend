@@ -756,6 +756,22 @@ class VertexAIHandler(MessageHandler):
         lower = error_message.lower()
         return any(p in lower for p in self._NON_RETRYABLE_PATTERNS)
 
+    def _notify_job_submitted(self, thread_ts: str, result, start_time: float, env_vars: dict):
+        """Job 제출 완료 시 Slack 스레드에 답글"""
+        try:
+            fine_tune_mode = env_vars.get("FINE_TUNE_MODE", "true")
+            mode = "Fine-tuning" if fine_tune_mode == "true" else "Full Training"
+            elapsed = f"{time.time() - start_time:.1f}초"
+
+            SlackNotifier.notify_job_submitted(
+                thread_ts=thread_ts,
+                job_name=result.job_name or "N/A",
+                mode=mode,
+                elapsed=elapsed,
+            )
+        except Exception as e:
+            logger.warning(f"Slack 답글 발송 실패 (Job은 정상 제출됨): {e}")
+
     def handle(self, message: PubSubMessage) -> None:
         start_time = self._log_start(message, "Vertex AI 예측 실행 요청")
 
@@ -774,6 +790,10 @@ class VertexAIHandler(MessageHandler):
 
             if result.success:
                 self._log_success("Vertex AI 예측 실행", start_time)
+
+                # Slack 스레드 답글: "Job 제출 완료"
+                if thread_ts:
+                    self._notify_job_submitted(thread_ts, result, start_time, env_vars)
 
                 if self.publisher:
                     self.publisher.publish("VERTEX_AI_JOB_SUBMITTED", {

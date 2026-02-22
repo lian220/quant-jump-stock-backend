@@ -4,9 +4,9 @@ import com.quantjumpstock.core.adapter.output.persistence.jpa.UserJpaRepository
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserTierEntity
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserTierJpaRepository
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserTier
-import com.quantjumpstock.core.application.tier.TierConfigurationService
 import com.quantjumpstock.core.domain.port.output.AdminTierDetails
 import com.quantjumpstock.core.domain.port.output.BacktestLimitInfo
+import com.quantjumpstock.core.domain.port.output.TierConfigurationRepository
 import com.quantjumpstock.core.domain.port.output.UserTierRepository
 import java.time.LocalDateTime
 import org.slf4j.LoggerFactory
@@ -17,10 +17,16 @@ import org.springframework.transaction.annotation.Transactional
 class UserTierPersistenceAdapter(
     private val userTierJpaRepository: UserTierJpaRepository,
     private val userJpaRepository: UserJpaRepository,
-    private val tierConfigService: TierConfigurationService
+    private val tierConfigRepository: TierConfigurationRepository
 ) : UserTierRepository {
 
     private val logger = LoggerFactory.getLogger(javaClass)
+
+    private fun getBacktestDailyLimit(tier: String): Int {
+        val config = tierConfigRepository.findByTier(tier)
+            ?: return UserTierEntity.DEFAULT_FREE_DAILY_LIMIT
+        return if (config.isUnlimitedBacktest) Int.MAX_VALUE else config.maxBacktestDaily
+    }
 
     @Transactional(readOnly = true)
     override fun checkBacktestLimit(userId: String): BacktestLimitInfo {
@@ -37,7 +43,7 @@ class UserTierPersistenceAdapter(
         val tierEntity = userTierJpaRepository.findByUserId(userPk).orElse(null)
 
         if (tierEntity == null) {
-            val limit = tierConfigService.getBacktestDailyLimit(UserTier.FREE.name)
+            val limit = getBacktestDailyLimit(UserTier.FREE.name)
             return BacktestLimitInfo(
                 allowed = true,
                 remaining = limit,
@@ -46,7 +52,7 @@ class UserTierPersistenceAdapter(
             )
         }
 
-        val limit = tierConfigService.getBacktestDailyLimit(tierEntity.tier.name)
+        val limit = getBacktestDailyLimit(tierEntity.tier.name)
         val allowed = tierEntity.canPerformBacktest(limit)
         val remaining = tierEntity.getRemainingBacktests(limit)
         val dailyLimit = when (tierEntity.tier) {
@@ -111,7 +117,7 @@ class UserTierPersistenceAdapter(
 
         // 티어 엔티티 없으면 생성 (첫 백테스트)
         if (tierEntity == null) {
-            val limit = tierConfigService.getBacktestDailyLimit(UserTier.FREE.name)
+            val limit = getBacktestDailyLimit(UserTier.FREE.name)
             val newTier = userTierJpaRepository.save(UserTierEntity(user = userEntity))
             newTier.incrementBacktestCount()
             userTierJpaRepository.save(newTier)
@@ -136,7 +142,7 @@ class UserTierPersistenceAdapter(
         }
 
         // FREE 유저: DB에서 한도 조회 후 원자적 조건부 증가
-        val limit = tierConfigService.getBacktestDailyLimit(UserTier.FREE.name)
+        val limit = getBacktestDailyLimit(UserTier.FREE.name)
         val updated = userTierJpaRepository.incrementBacktestCountIfBelowLimit(userPk, limit)
 
         return if (updated > 0) {

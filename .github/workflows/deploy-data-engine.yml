@@ -32,20 +32,6 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev --quiet
 
-      # ── Load env from Secret Manager ──────────────
-      - name: Load environment variables
-        run: |
-          gcloud secrets versions access latest --secret=qjs-env-common > /tmp/env-common
-          gcloud secrets versions access latest --secret=qjs-env-db-prod > /tmp/env-db-prod
-          gcloud secrets versions access latest --secret=qjs-env-prod > /tmp/env-prod
-
-          # 주석/빈줄 제거 후 GITHUB_ENV에 추가
-          grep -v '^\s*#' /tmp/env-common | grep -v '^\s*$' >> $GITHUB_ENV
-          grep -v '^\s*#' /tmp/env-db-prod | grep -v '^\s*$' >> $GITHUB_ENV
-          grep -v '^\s*#' /tmp/env-prod | grep -v '^\s*$' >> $GITHUB_ENV
-
-          rm -f /tmp/env-common /tmp/env-db-prod /tmp/env-prod
-
       # ── Docker Build & Push ─────────────────────────
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -61,6 +47,8 @@ jobs:
           cache-to: type=gha,mode=max
 
       # ── Deploy to Cloud Run ────────────────────────
+      # 시크릿은 Secret Manager 볼륨 마운트로 주입 (평문 env_vars 제거)
+      # 앱이 /secrets/*/env 파일을 .env로 로드 (K_SERVICE 환경변수로 Cloud Run 감지)
       - name: Deploy Data Engine to Cloud Run
         uses: google-github-actions/deploy-cloudrun@v2
         with:
@@ -69,49 +57,19 @@ jobs:
           region: ${{ env.REGION }}
           flags: >-
             --no-allow-unauthenticated
-            --memory=1Gi --cpu=1
+            --memory=512Mi --cpu=1
             --min-instances=0 --max-instances=3
             --port=8080 --timeout=600
+            --cpu-throttling
             --service-account=qjs-data-engine@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
           env_vars: |
             PUBSUB_MODE=push
-            ENVIRONMENT=prod
             VERTEX_AI_ENABLED=true
-            PUBSUB_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
-            LOG_LEVEL=INFO
-            MONGODB_URI=${{ env.MONGODB_URI }}
-            MONGODB_DB_NAME=${{ env.MONGODB_DB_NAME }}
-            DB_HOST=${{ env.DB_HOST }}
-            DB_PORT=${{ env.DB_PORT }}
-            DB_NAME=${{ env.DB_NAME }}
-            DB_USER=${{ env.DB_USER }}
-            DB_PASSWORD=${{ env.DB_PASSWORD }}
-            FRED_API_KEY=${{ env.FRED_API_KEY }}
-            ALPHA_VANTAGE_API_KEY=${{ env.ALPHA_VANTAGE_API_KEY }}
-            ALPHA_VANTAGE_API_KEY_1=${{ env.ALPHA_VANTAGE_API_KEY_1 }}
-            ALPHA_VANTAGE_API_KEY_2=${{ env.ALPHA_VANTAGE_API_KEY_2 }}
-            ALPHA_VANTAGE_API_KEY_3=${{ env.ALPHA_VANTAGE_API_KEY_3 }}
-            ALPHA_VANTAGE_API_KEY_4=${{ env.ALPHA_VANTAGE_API_KEY_4 }}
-            VERTEX_AI_PROJECT_ID=${{ env.VERTEX_AI_PROJECT_ID }}
-            VERTEX_AI_REGION=${{ env.VERTEX_AI_REGION }}
-            VERTEX_AI_BUCKET_NAME=${{ env.VERTEX_AI_BUCKET_NAME }}
-            VERTEX_AI_MACHINE_TYPE=${{ env.VERTEX_AI_MACHINE_TYPE }}
-            VERTEX_AI_GPU_TYPE=${{ env.VERTEX_AI_GPU_TYPE }}
-            VERTEX_AI_GPU_COUNT=${{ env.VERTEX_AI_GPU_COUNT }}
-            VERTEX_AI_CONTAINER_URI=${{ env.VERTEX_AI_CONTAINER_URI }}
-            GCP_CREDENTIALS_ENCODED=${{ env.GCP_CREDENTIALS_ENCODED }}
-            SLACK_ENABLED=${{ env.SLACK_ENABLED }}
-            SLACK_BOT_TOKEN=${{ env.SLACK_BOT_TOKEN }}
-            SLACK_CHANNEL=${{ env.SLACK_CHANNEL }}
-            SLACK_CHANNEL_TRADING=${{ env.SLACK_CHANNEL_TRADING }}
-            SLACK_CHANNEL_ANALYSIS=${{ env.SLACK_CHANNEL_ANALYSIS }}
-            SLACK_CHANNEL_SCHEDULER=${{ env.SLACK_CHANNEL_SCHEDULER }}
-            SLACK_CHANNEL_ERROR=${{ env.SLACK_CHANNEL_ERROR }}
-            SLACK_WEBHOOK_URL_TRADING=${{ env.SLACK_WEBHOOK_URL_TRADING }}
-            SLACK_WEBHOOK_URL_NEWS=${{ env.SLACK_WEBHOOK_URL_NEWS }}
-            SLACK_WEBHOOK_URL_ANALYSIS=${{ env.SLACK_WEBHOOK_URL_ANALYSIS }}
-            SLACK_WEBHOOK_URL_SCHEDULER=${{ env.SLACK_WEBHOOK_URL_SCHEDULER }}
-            SLACK_WEBHOOK_URL_ERROR=${{ env.SLACK_WEBHOOK_URL_ERROR }}
+            GCP_ENABLED=true
+          secrets: |
+            /secrets/common/env=qjs-env-common:latest
+            /secrets/db-prod/env=qjs-env-db-prod:latest
+            /secrets/prod/env=qjs-env-prod:latest
 
       # ── Health Check ───────────────────────────────
       - name: Verify Deployment

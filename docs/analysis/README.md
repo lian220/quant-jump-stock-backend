@@ -1,18 +1,18 @@
 # 분석 기능 아키텍처
 
-**최종 업데이트**: 2026-02-14
+**최종 업데이트**: 2026-02-22
 
 ---
 
 ## 개요
 
-QuantIQ의 분석 파이프라인은 **Core(Spring Boot) → Kafka → Data Engine(Python)** 구조로 동작한다.
-Quartz 스케줄러가 정해진 시간에 Job을 실행하면, Kafka를 통해 Data Engine이 실제 분석을 수행하고 결과를 MongoDB에 저장한다.
+QuantIQ의 분석 파이프라인은 **Core(Spring Boot) → Pub/Sub → Data Engine(Python)** 구조로 동작한다.
+Quartz 스케줄러가 정해진 시간에 Job을 실행하면, Pub/Sub을 통해 Data Engine이 실제 분석을 수행하고 결과를 MongoDB에 저장한다.
 
-```
-┌─────────────────┐     Kafka      ┌───────────────────────┐     MongoDB
+```text
+┌─────────────────┐    Pub/Sub     ┌───────────────────────┐     MongoDB
 │  Core (Kotlin)  │ ─────────────→ │  Data Engine (Python) │ ──────────→
-│  Quartz Jobs    │  토픽별 요청   │  Kafka Handlers       │  결과 저장
+│  Quartz Jobs    │  토픽별 요청   │  Pub/Sub Handlers     │  결과 저장
 └─────────────────┘                └───────────────────────┘
 ```
 
@@ -32,7 +32,7 @@ QuantIQ는 4가지 분석 방식을 독립적으로 운영하며, 향후 **Compo
 
 ## 기능별 상세 문서
 
-| # | 기능 | 실행 시간 | Kafka 토픽 | MongoDB 컬렉션 | 문서 |
+| # | 기능 | 실행 시간 | Pub/Sub 토픽 | MongoDB 컬렉션 | 문서 |
 |---|------|-----------|------------|----------------|------|
 | 1 | 경제 데이터 수집 | 22:00 | `economic.data.update.request` | `daily_stock_data` | **[데이터수집.md](../features/데이터수집.md)** |
 | 2 | 기술적 분석 | 23:05 | `analysis.technical.request` | `stock_recommendations` | **[기술적분석.md](./technical/기술적분석.md)** |
@@ -43,7 +43,7 @@ QuantIQ는 4가지 분석 방식을 독립적으로 운영하며, 향후 **Compo
 
 ## 일일 분석 타임라인 (KST)
 
-```
+```text
 22:00  경제 데이터 수집 + Vertex AI 예측  (EconomicDataUpdate2JobAdapter)
        ├─ [1단계] FRED + Yahoo Finance → daily_stock_data
        └─ [2단계] Transformer Fine-tuning → stock_predictions
@@ -78,4 +78,4 @@ QuantIQ는 4가지 분석 방식을 독립적으로 운영하며, 향후 **Compo
 
 - [스케줄러 아키텍처](../architecture/스케줄러_아키텍처.md) — Quartz 설정 및 구조
 - [스케줄러 운영 가이드](../setup/스케줄러_운영_가이드.md) — 수동 트리거, 모니터링, 트러블슈팅
-- [이벤트 기반 아키텍처](../architecture/이벤트_기반_아키텍처.md) — Kafka 이벤트 상세
+- [이벤트 기반 아키텍처](../architecture/이벤트_기반_아키텍처.md) — Pub/Sub 이벤트 상세

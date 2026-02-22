@@ -1,9 +1,11 @@
 package com.quantjumpstock.core.application.news
 
-import com.quantjumpstock.core.domain.news.model.NewsNotification
+import com.quantjumpstock.core.application.notification.NotificationService
 import com.quantjumpstock.core.domain.news.model.NewsSubscription
-import com.quantjumpstock.core.domain.news.port.output.NewsNotificationRepository
 import com.quantjumpstock.core.domain.news.port.output.NewsSubscriptionRepository
+import com.quantjumpstock.core.domain.notification.model.Notification
+import com.quantjumpstock.core.domain.notification.model.NotificationPriority
+import com.quantjumpstock.core.domain.notification.model.NotificationType
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -12,7 +14,7 @@ import java.time.format.DateTimeFormatter
 @Service
 class NewsSubscriptionService(
     private val subscriptionRepository: NewsSubscriptionRepository,
-    private val notificationRepository: NewsNotificationRepository
+    private val notificationService: NotificationService
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
     private val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")
@@ -74,32 +76,43 @@ class NewsSubscriptionService(
         )
     }
 
-    // === 알림 관리 ===
+    // === 알림 관리 (통합 NotificationService에 위임) ===
 
     fun getUserNotifications(userId: Long, limit: Int = 30): NotificationListResponse {
-        val notifications = notificationRepository.findByUserPaged(userId, limit)
-        val unreadCount = notificationRepository.countUnreadByUser(userId)
+        val notifications = notificationService.getUserNotifications(userId, limit)
+        val unreadCount = notificationService.getUnreadCount(userId)
         return NotificationListResponse(
-            notifications = notifications.map { it.toResponse() },
+            notifications = notifications.map { n ->
+                NotificationResponse(
+                    id = n.id ?: throw IllegalStateException("Notification id must not be null"),
+                    title = n.title,
+                    message = n.message,
+                    categoryName = (n.metadata?.get("categoryName") as? String),
+                    importance = (n.metadata?.get("importance") as? Number)?.toDouble() ?: 0.0,
+                    sourceUrl = n.actionUrl,
+                    isRead = n.isRead,
+                    createdAt = n.createdAt?.format(formatter) ?: ""
+                )
+            },
             unreadCount = unreadCount
         )
     }
 
     fun getUnreadCount(userId: Long): Long {
-        return notificationRepository.countUnreadByUser(userId)
+        return notificationService.getUnreadCount(userId)
     }
 
     @Transactional
     fun markAsRead(userId: Long, notificationId: Long): Boolean {
-        return notificationRepository.markAsRead(notificationId, userId) > 0
+        return notificationService.markAsRead(userId, notificationId)
     }
 
     @Transactional
     fun markAllAsRead(userId: Long): Int {
-        return notificationRepository.markAllAsRead(userId)
+        return notificationService.markAllAsRead(userId)
     }
 
-    // === 뉴스 수집 후 구독자 매칭 → 알림 생성 ===
+    // === 뉴스 수집 후 구독자 매칭 → 통합 알림 생성 ===
 
     @Transactional
     fun createNotificationsForNews(
@@ -113,7 +126,18 @@ class NewsSubscriptionService(
         sourceUrl: String?
     ) {
         val matchedUserIds = mutableSetOf<Long>()
-        val notifications = mutableListOf<NewsNotification>()
+        val notifications = mutableListOf<Notification>()
+
+        val priority = when {
+            importance >= 0.7 -> NotificationPriority.HIGH
+            importance >= 0.4 -> NotificationPriority.NORMAL
+            else -> NotificationPriority.LOW
+        }
+
+        val metadata = mapOf<String, Any>(
+            "newsId" to (newsId ?: ""),
+            "importance" to importance
+        )
 
         // 카테고리 구독 매칭
         categories.forEach { category ->
@@ -121,14 +145,14 @@ class NewsSubscriptionService(
             subs.forEach { sub ->
                 if (sub.notifyChannel == "IN_APP" && matchedUserIds.add(sub.userId)) {
                     notifications.add(
-                        NewsNotification(
+                        Notification(
                             userId = sub.userId,
-                            newsId = newsId,
-                            categoryName = category,
+                            type = NotificationType.NEWS,
+                            priority = priority,
                             title = title,
                             message = summary,
-                            importance = importance,
-                            sourceUrl = sourceUrl
+                            actionUrl = sourceUrl,
+                            metadata = metadata + ("categoryName" to category)
                         )
                     )
                 }
@@ -141,13 +165,14 @@ class NewsSubscriptionService(
             subs.forEach { sub ->
                 if (sub.notifyChannel == "IN_APP" && matchedUserIds.add(sub.userId)) {
                     notifications.add(
-                        NewsNotification(
+                        Notification(
                             userId = sub.userId,
-                            newsId = newsId,
+                            type = NotificationType.NEWS,
+                            priority = priority,
                             title = "[$ticker] $title",
                             message = summary,
-                            importance = importance,
-                            sourceUrl = sourceUrl
+                            actionUrl = sourceUrl,
+                            metadata = metadata + ("ticker" to ticker)
                         )
                     )
                 }
@@ -159,13 +184,14 @@ class NewsSubscriptionService(
         sourceSubs.forEach { sub ->
             if (sub.notifyChannel == "IN_APP" && matchedUserIds.add(sub.userId)) {
                 notifications.add(
-                    NewsNotification(
+                    Notification(
                         userId = sub.userId,
-                        newsId = newsId,
+                        type = NotificationType.NEWS,
+                        priority = priority,
                         title = title,
                         message = summary,
-                        importance = importance,
-                        sourceUrl = sourceUrl
+                        actionUrl = sourceUrl,
+                        metadata = metadata + ("sourceName" to sourceName)
                     )
                 )
             }
@@ -173,7 +199,7 @@ class NewsSubscriptionService(
 
         // 배치 저장
         if (notifications.isNotEmpty()) {
-            notificationRepository.saveAll(notifications)
+            notificationService.createBatch(notifications)
             logger.info("뉴스 알림 생성: {} 명에게 전달 ({})", matchedUserIds.size, title.take(30))
         }
     }
@@ -201,17 +227,6 @@ class NewsSubscriptionService(
         displayName = displayName,
         channel = notifyChannel,
         isActive = isActive
-    )
-
-    private fun NewsNotification.toResponse() = NotificationResponse(
-        id = id!!,
-        title = title,
-        message = message,
-        categoryName = categoryName,
-        importance = importance,
-        sourceUrl = sourceUrl,
-        isRead = isRead,
-        createdAt = createdAt?.format(formatter) ?: ""
     )
 
     companion object {
