@@ -11,6 +11,7 @@ from typing import Optional, Dict, Any
 from dataclasses import dataclass
 
 from adapter.output.gcp.storage_service import GcsStorageService, UploadResult
+from adapter.output.gcp.vertexai_service import JobResult
 # Lazy import: vertexai_service는 실제 사용 시점에만 import (Cold Start 최적화)
 # google-cloud-aiplatform 패키지가 ~8초 import 소요
 
