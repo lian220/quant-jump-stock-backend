@@ -561,7 +561,7 @@ class SlackNotifier:
             webhook_url=SlackNotifier._get_scheduler_webhook(),
             text=f"📤 Vertex AI Job 제출 완료 ({mode})",
             attachments=[{
-                "color": "#0099cc",
+                "color": "0099cc",
                 "title": f"Job 제출 완료 - {mode}",
                 "fields": [
                     {"title": "Job Name", "value": job_name or "N/A", "short": True},

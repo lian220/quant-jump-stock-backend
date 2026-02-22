@@ -32,7 +32,7 @@ class AdminVertexAIController(
     @PostMapping("/predict")
     @Operation(
         summary = "Vertex AI 예측 수동 실행",
-        description = "스케줄러 대기 없이 즉시 Vertex AI CustomJob 실행. fineTune=true(기본): Fine-tuning(5 epochs, ~3분), fineTune=false: Full Training(50 epochs, ~25분)"
+        description = "스케줄러 대기 없이 즉시 Vertex AI CustomJob 실행. fineTune=true(기본): Fine-tuning(5 epochs, ~3분), fineTune=false: Full Training(50 epochs, ~20-30분)"
     )
     @VertexAIJobResponses
     fun runPrediction(

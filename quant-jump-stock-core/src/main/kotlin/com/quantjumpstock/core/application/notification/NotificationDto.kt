@@ -35,7 +35,7 @@ data class NotificationItemDto(
         private val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")
 
         fun from(n: Notification) = NotificationItemDto(
-            id = n.id!!,
+            id = n.id ?: throw IllegalStateException("Notification id must not be null"),
             type = n.type.name,
             priority = n.priority.name,
             title = n.title,

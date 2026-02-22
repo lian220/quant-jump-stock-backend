@@ -118,28 +118,30 @@ def get_indicator_key_mappings():
         conn = get_postgres_connection()
         if conn is None:
             return yfinance_name_to_ticker, fred_name_to_code
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            try:
-                cur.execute("SELECT ticker, name FROM yfinance_indicators WHERE is_active = true")
-                for row in cur.fetchall():
-                    ticker = row.get("ticker")
-                    name = row.get("name")
-                    if ticker and name:
-                        yfinance_name_to_ticker[name] = ticker
-                        yfinance_name_to_ticker[ticker] = ticker
-            except Exception as e:
-                print(f"⚠️ 경고: yfinance 키 매핑 조회 실패: {e}")
-            try:
-                cur.execute("SELECT code, name FROM fred_indicators WHERE is_active = true")
-                for row in cur.fetchall():
-                    code = row.get("code")
-                    name = row.get("name")
-                    if code and name:
-                        fred_name_to_code[name] = code
-                        fred_name_to_code[code] = code
-            except Exception as e:
-                print(f"⚠️ 경고: FRED 키 매핑 조회 실패: {e}")
-        conn.close()
+        try:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                try:
+                    cur.execute("SELECT ticker, name FROM yfinance_indicators WHERE is_active = true")
+                    for row in cur.fetchall():
+                        ticker = row.get("ticker")
+                        name = row.get("name")
+                        if ticker and name:
+                            yfinance_name_to_ticker[name] = ticker
+                            yfinance_name_to_ticker[ticker] = ticker
+                except Exception as e:
+                    print(f"⚠️ 경고: yfinance 키 매핑 조회 실패: {e}")
+                try:
+                    cur.execute("SELECT code, name FROM fred_indicators WHERE is_active = true")
+                    for row in cur.fetchall():
+                        code = row.get("code")
+                        name = row.get("name")
+                        if code and name:
+                            fred_name_to_code[name] = code
+                            fred_name_to_code[code] = code
+                except Exception as e:
+                    print(f"⚠️ 경고: FRED 키 매핑 조회 실패: {e}")
+        finally:
+            conn.close()
     except Exception as e:
         print(f"⚠️ 경고: 키 매핑 조회 중 오류: {e}")
     return yfinance_name_to_ticker, fred_name_to_code
@@ -443,9 +445,14 @@ def get_stock_data_from_db():
         print("  1단계: 앞 값으로 채우기 (ffill)...")
         df[numeric_columns] = df[numeric_columns].ffill()
         
-        # 2단계: 뒤로 채우기 (backward fill)
-        print("  2단계: 뒤 값으로 채우기 (bfill)...")
-        df[numeric_columns] = df[numeric_columns].bfill()
+        # 2단계: 시작 부분 NaN만 처리 (첫 행 기준 bfill 대신 median 사용)
+        # bfill은 미래 데이터를 과거로 전파하여 look-ahead bias를 유발하므로 사용하지 않음
+        print("  2단계: 시작 부분 NaN → 컬럼별 중앙값으로 채우기...")
+        for col in numeric_columns:
+            if df[col].isna().any():
+                col_median = df[col].median()
+                if pd.notna(col_median):
+                    df[col] = df[col].fillna(col_median)
         
         # 3단계: 여전히 NaN인 경우 컬럼별 평균값으로 채우기
         remaining_nan = df[numeric_columns].isna().sum().sum()

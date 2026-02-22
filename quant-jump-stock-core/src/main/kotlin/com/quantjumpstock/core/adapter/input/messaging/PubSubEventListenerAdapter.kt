@@ -232,7 +232,7 @@ class PubSubEventListenerAdapter(
                     if (userId != null) {
                         val totalReturn = payload.get("totalReturn")?.asDouble()
                         val strategyName = strategyRepository.findById(strategyId)?.name ?: "전략"
-                        val returnStr = totalReturn?.let { String.format("%+.1f%%", it) } ?: ""
+                        val returnStr = totalReturn?.let { String.format(java.util.Locale.US, "%+.1f%%", it) } ?: ""
                         notificationService.create(
                             userId = userId,
                             type = NotificationType.BACKTEST_COMPLETE,
@@ -349,7 +349,7 @@ class PubSubEventListenerAdapter(
             try {
                 userRepository.findByUserId(userIdStr)?.id?.let { return it }
             } catch (e: Exception) {
-                logger.warn("userId 조회 실패: $userIdStr")
+                logger.warn("userId 조회 실패: $userIdStr", e)
             }
         }
         // 2) strategyId로 소유자 조회
@@ -357,7 +357,7 @@ class PubSubEventListenerAdapter(
             try {
                 strategyRepository.findById(strategyId)?.ownerId?.let { return it }
             } catch (e: Exception) {
-                logger.warn("전략 소유자 조회 실패: strategyId=$strategyId")
+                logger.warn("전략 소유자 조회 실패: strategyId=$strategyId", e)
             }
         }
         return null

@@ -84,7 +84,7 @@ class NewsSubscriptionService(
         return NotificationListResponse(
             notifications = notifications.map { n ->
                 NotificationResponse(
-                    id = n.id!!,
+                    id = n.id ?: throw IllegalStateException("Notification id must not be null"),
                     title = n.title,
                     message = n.message,
                     categoryName = (n.metadata?.get("categoryName") as? String),
