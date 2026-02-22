@@ -55,12 +55,13 @@ class GcsStorageService:
 
         self.bucket = self.client.bucket(bucket_name)
 
-    def upload_package(self, script_path: Path) -> UploadResult:
+    def upload_package(self, script_path: Path, inject_env: dict[str, str] | None = None) -> UploadResult:
         """
         ML 패키지를 GCS에 업로드
 
         Args:
             script_path: predict_optimized.py 경로
+            inject_env: 스크립트 상단에 주입할 환경변수 딕셔너리
 
         Returns:
             UploadResult
@@ -75,23 +76,55 @@ class GcsStorageService:
 
             # 스크립트 로드
             python_script = script_path.read_text(encoding="utf-8")
+
+            # 환경변수 주입 (Cloud Scheduler 직접 호출 시 credentials 내장)
+            if inject_env:
+                env_lines = ["# === 자동 주입된 환경변수 (업로드 시점) ==="]
+                for key, value in inject_env.items():
+                    # 값에 따옴표가 포함될 수 있으므로 repr 사용
+                    env_lines.append(f'os.environ.setdefault({repr(key)}, {repr(value)})')
+                env_lines.append("# === 환경변수 주입 끝 ===\n")
+                env_block = "\n".join(env_lines) + "\n"
+
+                # 'import os' 다음 줄에 주입
+                import_os_marker = "import os\n"
+                if import_os_marker in python_script:
+                    python_script = python_script.replace(
+                        import_os_marker,
+                        import_os_marker + env_block,
+                        1  # 첫 번째만
+                    )
+                else:
+                    # import os가 없으면 최상단에 추가
+                    python_script = f"import os\n{env_block}" + python_script
+
+                logger.info(f"환경변수 {len(inject_env)}개 주입 완료")
+
             setup_script = self._generate_setup_py()
 
             # tar.gz 패키지 생성
             package_bytes = self._create_tar_gz_package(python_script, setup_script)
 
-            # GCS 업로드
+            # 1) 버전별 경로 업로드 (롤백용)
             blob_path = f"{self.package_base_path}/{self.PACKAGE_PREFIX}-v{new_version}.tar.gz"
             blob = self.bucket.blob(blob_path)
             blob.upload_from_string(package_bytes, content_type="application/gzip")
 
+            # 2) latest 고정 경로 업로드 (Cloud Scheduler용)
+            latest_blob_path = f"{self.package_base_path}/predict_optimized-latest.tar.gz"
+            latest_blob = self.bucket.blob(latest_blob_path)
+            latest_blob.upload_from_string(package_bytes, content_type="application/gzip")
+
             gcs_uri = f"gs://{self.bucket_name}/{blob_path}"
+            latest_gcs_uri = f"gs://{self.bucket_name}/{latest_blob_path}"
 
             logger.info(f"GCS 패키지 업로드 완료: v{new_version}, {len(package_bytes)} bytes")
+            logger.info(f"  버전별: {gcs_uri}")
+            logger.info(f"  latest: {latest_gcs_uri}")
 
             return UploadResult(
                 success=True,
-                message="패키지 업로드 완료",
+                message=f"패키지 업로드 완료 (v{new_version} + latest)",
                 gcs_uri=gcs_uri,
                 version=new_version
             )

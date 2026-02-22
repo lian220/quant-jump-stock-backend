@@ -3,7 +3,6 @@ package com.quantjumpstock.core.scheduler
 import com.quantjumpstock.core.adapter.input.scheduler.*
 import org.quartz.*
 import org.springframework.context.annotation.ImportRuntimeHints
-import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.context.annotation.DependsOn
@@ -30,8 +29,8 @@ import java.util.*
  * 23:30  ParallelAnalysisJob          → 기술적 분석 (SMA/RSI/MACD) + 감정 분석
  *        └─ 의존: EconomicDataUpdate2Job 완료 후 실행
  *
- * 23:45  VertexAIPredictionJob        → AI 주가 예측 (소요 시간: ~30-35분)
- *        └─ 의존: 경제 데이터 + 기술적 분석 완료 후 실행
+ * 23:45  (Cloud Scheduler)            → AI 주가 예측 (Vertex AI 직접 호출, ~30-35분)
+ *        └─ Cloud Scheduler → Vertex AI API 직접 호출 (Core API 경유 안 함)
  *
  * 00:20  StockRecommendationJob       → 종목 추천 (Composite Score)
  *        └─ 의존: Vertex AI 예측 완료 후 실행
@@ -52,7 +51,7 @@ import java.util.*
  * ## ⚠️ 알려진 제한사항: 시간 기반 의존성 체인
  *
  * 현재 파이프라인은 고정 시간 간격에 의존합니다 (완료 이벤트 기반 트리거 아님).
- * 예: 23:00 경제 데이터 → 23:30 기술적 분석 → 23:45 Vertex AI → 00:20 종목 추천
+ * 예: 23:00 경제 데이터 → 23:30 기술적 분석 → 23:45 Cloud Scheduler → Vertex AI → 00:20 종목 추천
  *
  * **잠재적 문제**:
  * - 경제 데이터 수집이 23:30을 넘으면 기술적 분석이 불완전한 데이터로 실행
@@ -142,41 +141,10 @@ class QuartzConfig {
     }
 
     // ========================
-    // 3. Vertex AI 예측 (23:45) - GCP 활성화 시에만
+    // 3. Vertex AI 예측 (23:45) - Cloud Scheduler → Vertex AI API 직접 호출
     // ========================
-    // 경제 데이터 + 기술적 분석 완료 후 AI 예측 실행
-    // 예측 소요 시간: 약 30-35분
-    @Bean
-    @ConditionalOnProperty(
-        prefix = "gcp",
-        name = ["enabled"],
-        havingValue = "true",
-        matchIfMissing = false
-    )
-    fun vertexAIPredictionJobDetail(): JobDetail {
-        return JobBuilder.newJob(VertexAIPredictionJobAdapter::class.java)
-            .withIdentity("vertexAIPredictionJob")
-            .storeDurably()
-            .build()
-    }
-
-    @Bean
-    @ConditionalOnProperty(
-        prefix = "gcp",
-        name = ["enabled"],
-        havingValue = "true",
-        matchIfMissing = false
-    )
-    fun vertexAIPredictionTrigger(): Trigger {
-        return TriggerBuilder.newTrigger()
-            .forJob(vertexAIPredictionJobDetail())
-            .withIdentity("vertexAIPredictionTrigger")
-            .withSchedule(
-                CronScheduleBuilder.cronSchedule("0 45 23 * * ?")
-                    .inTimeZone(TimeZone.getTimeZone("Asia/Seoul"))
-            )
-            .build()
-    }
+    // Quartz Job 제거됨: Cloud Scheduler가 Vertex AI API를 직접 호출
+    // predict_optimized.py가 FINE_TUNE_MODE/TARGET_DATE를 자체 판단
 
     // ========================
     // 4. 종목 추천 (00:20)

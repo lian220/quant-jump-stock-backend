@@ -4,7 +4,6 @@ import com.quantjumpstock.core.domain.model.AnalysisRequest
 import com.quantjumpstock.core.domain.model.BacktestRequest
 import com.quantjumpstock.core.domain.model.EconomicDataUpdateRequest
 import com.quantjumpstock.core.domain.model.VertexAIPredictionRequest
-
 /**
  * 메시지 발행 인터페이스 (Output Port)
  * Kafka와 같은 메시지 브로커에 이벤트를 발행하는 인터페이스입니다.
@@ -31,7 +30,7 @@ interface MessagePublisher {
     )
 
     /**
-     * Vertex AI 예측 요청 메시지 발행
+     * Vertex AI 예측 요청 메시지 발행 (Admin 긴급 수동 실행용)
      * @param topic 메시지 토픽
      * @param request Vertex AI 예측 요청
      */

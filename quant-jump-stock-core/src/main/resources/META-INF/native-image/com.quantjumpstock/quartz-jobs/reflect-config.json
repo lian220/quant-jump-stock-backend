@@ -56,13 +56,6 @@
     "allPublicMethods": true
   },
   {
-    "name": "com.quantjumpstock.core.adapter.input.scheduler.VertexAIPredictionJobAdapter",
-    "allDeclaredConstructors": true,
-    "allPublicConstructors": true,
-    "allDeclaredMethods": true,
-    "allPublicMethods": true
-  },
-  {
     "name": "com.quantjumpstock.core.scheduler.ParallelAnalysisJob",
     "allDeclaredConstructors": true,
     "allPublicConstructors": true,

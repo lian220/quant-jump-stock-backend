@@ -17,6 +17,9 @@ import java.util.UUID
  *
  * Vertex AI 예측 요청 및 콜백 처리를 담당하는 Application Service.
  * Controller에서 비즈니스 로직을 분리하여 Hexagonal Architecture 준수.
+ *
+ * 정상 운영: Cloud Scheduler → Vertex AI API 직접 호출
+ * 긴급 수동: Admin API → runPrediction() → Pub/Sub → Data Engine
  */
 @Service
 class VertexAIService(
@@ -31,7 +34,10 @@ class VertexAIService(
     }
 
     /**
-     * Vertex AI 예측 실행 요청
+     * Vertex AI 예측 실행 요청 (Admin 긴급 수동 실행용)
+     *
+     * 정상 운영에서는 Cloud Scheduler가 Vertex AI API를 직접 호출합니다.
+     * 이 메서드는 긴급 수동 실행이 필요할 때만 사용합니다.
      *
      * @return 예측 요청 결과 (requestId, threadTs 포함)
      */
@@ -40,11 +46,10 @@ class VertexAIService(
         val timestamp = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
         val mode = if (fineTune) "Fine-tuning" else "Full Training"
 
-        logger.info("🚀 Vertex AI 예측 요청 (Pub/Sub 발행) - 모드: $mode")
+        logger.info("🚀 Vertex AI 예측 요청 (Pub/Sub 발행) - 모드: $mode [Admin 수동 실행]")
         logger.info("Request ID: $requestId")
 
-        // 알림 시작 → threadTs 획득
-        val threadTs = notificationPort.notifyJobStarted(requestId, vertexAIConfig.jobName)
+        // Slack 시작 알림은 predict_optimized.py에서 직접 전송 (이중 발송 방지)
 
         // 학습 모드 환경변수
         val envVars = hashMapOf("FINE_TUNE_MODE" to fineTune.toString())
@@ -54,7 +59,6 @@ class VertexAIService(
             timestamp = timestamp,
             source = "core-api",
             requestId = requestId,
-            threadTs = threadTs,
             envVars = envVars
         )
 
@@ -65,7 +69,7 @@ class VertexAIService(
         return VertexAIPredictionResult(
             success = true,
             requestId = requestId,
-            threadTs = threadTs,
+            threadTs = null,
             message = "Vertex AI 예측 요청이 전송되었습니다 (Pub/Sub) - 모드: $mode"
         )
     }
