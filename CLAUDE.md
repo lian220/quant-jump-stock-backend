@@ -198,6 +198,25 @@ class EntityName(
 - 영속성 어노테이션 사용 금지 (순수 Kotlin 클래스)
 - 비즈니스 로직은 도메인 모델에 포함
 
+### Python Lazy Import 규칙 (Data Engine)
+- Cold Start 최적화를 위해 무거운 패키지(예: `google-cloud-aiplatform`)를 함수/메서드 내부에서 lazy import 가능
+- **단, 모듈 스코프에서 사용하는 타입(반환 타입, except 블록 등)은 반드시 모듈 레벨에서 import 할 것**
+- 예: `JobResult`를 `except` 블록에서 사용하면 모듈 상단에 `from ... import JobResult` 필수
+```python
+# ✅ 올바른 패턴
+from adapter.output.gcp.vertexai_service import JobResult  # 모듈 레벨 (except에서 사용)
+
+class Service:
+    def __init__(self):
+        from adapter.output.gcp.vertexai_service import VertexAIService  # lazy import OK (무거운 패키지)
+
+# ❌ 잘못된 패턴 - CI 테스트 실패 원인
+class Service:
+    def method(self):
+        except ValueError:
+            return JobResult(...)  # NameError! 모듈 레벨 import 없음
+```
+
 ## 외부 연동
 
 | 서비스 | 용도 | 설정 위치 |

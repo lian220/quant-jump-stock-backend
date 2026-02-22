@@ -43,7 +43,7 @@ QuantIQ는 4가지 분석 방식을 독립적으로 운영하며, 향후 **Compo
 
 ## 일일 분석 타임라인 (KST)
 
-```
+```text
 22:00  경제 데이터 수집 + Vertex AI 예측  (EconomicDataUpdate2JobAdapter)
        ├─ [1단계] FRED + Yahoo Finance → daily_stock_data
        └─ [2단계] Transformer Fine-tuning → stock_predictions
