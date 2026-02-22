@@ -9,7 +9,7 @@
 QuantIQ의 분석 파이프라인은 **Core(Spring Boot) → Pub/Sub → Data Engine(Python)** 구조로 동작한다.
 Quartz 스케줄러가 정해진 시간에 Job을 실행하면, Pub/Sub을 통해 Data Engine이 실제 분석을 수행하고 결과를 MongoDB에 저장한다.
 
-```
+```text
 ┌─────────────────┐    Pub/Sub     ┌───────────────────────┐     MongoDB
 │  Core (Kotlin)  │ ─────────────→ │  Data Engine (Python) │ ──────────→
 │  Quartz Jobs    │  토픽별 요청   │  Pub/Sub Handlers     │  결과 저장

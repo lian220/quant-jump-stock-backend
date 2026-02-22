@@ -3,6 +3,7 @@ package com.quantjumpstock.core.adapter.output.persistence.jpa
 import com.quantjumpstock.core.domain.notification.model.NotificationPriority
 import com.quantjumpstock.core.domain.notification.model.NotificationType
 import jakarta.persistence.*
+import org.hibernate.annotations.CreationTimestamp
 import java.time.LocalDateTime
 
 @Entity
@@ -38,6 +39,7 @@ class NotificationEntity(
     @Column(name = "is_read", nullable = false)
     var isRead: Boolean = false,
 
+    @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
-    val createdAt: LocalDateTime = LocalDateTime.now()
+    val createdAt: LocalDateTime? = null
 )

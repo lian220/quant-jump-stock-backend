@@ -763,20 +763,11 @@ class VertexAIHandler(MessageHandler):
             mode = "Fine-tuning" if fine_tune_mode == "true" else "Full Training"
             elapsed = f"{time.time() - start_time:.1f}초"
 
-            SlackNotifier._post_message(
-                channel=SlackNotifier._get_scheduler_channel(),
-                webhook_url=SlackNotifier._get_scheduler_webhook(),
-                text=f"📤 Vertex AI Job 제출 완료 ({mode})",
-                attachments=[{
-                    "color": "#0099cc",
-                    "title": f"Job 제출 완료 - {mode}",
-                    "fields": [
-                        {"title": "Job Name", "value": result.job_name or "N/A", "short": True},
-                        {"title": "소요 시간", "value": elapsed, "short": True},
-                        {"title": "Status", "value": "⏳ GPU 할당 대기 중...", "short": True},
-                    ]
-                }],
+            SlackNotifier.notify_job_submitted(
                 thread_ts=thread_ts,
+                job_name=result.job_name or "N/A",
+                mode=mode,
+                elapsed=elapsed,
             )
         except Exception as e:
             logger.warning(f"Slack 답글 발송 실패 (Job은 정상 제출됨): {e}")

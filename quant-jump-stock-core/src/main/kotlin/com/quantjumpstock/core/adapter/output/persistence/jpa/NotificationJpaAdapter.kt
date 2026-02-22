@@ -61,6 +61,6 @@ class NotificationJpaAdapter(
         actionUrl = actionUrl,
         metadata = metadata?.let { objectMapper.writeValueAsString(it) },
         isRead = isRead,
-        createdAt = createdAt ?: java.time.LocalDateTime.now()
+        createdAt = createdAt
     )
 }

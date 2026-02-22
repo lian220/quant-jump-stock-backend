@@ -554,6 +554,25 @@ class SlackNotifier:
         SlackNotifier._post_to_webhook(SlackNotifier._get_scheduler_webhook(), text, attachments=attachments)
 
     @staticmethod
+    def notify_job_submitted(thread_ts: str, job_name: str, mode: str, elapsed: str):
+        """Vertex AI Job 제출 완료 Slack 스레드 답글"""
+        SlackNotifier._post_message(
+            channel=SlackNotifier._get_scheduler_channel(),
+            webhook_url=SlackNotifier._get_scheduler_webhook(),
+            text=f"📤 Vertex AI Job 제출 완료 ({mode})",
+            attachments=[{
+                "color": "#0099cc",
+                "title": f"Job 제출 완료 - {mode}",
+                "fields": [
+                    {"title": "Job Name", "value": job_name or "N/A", "short": True},
+                    {"title": "소요 시간", "value": elapsed, "short": True},
+                    {"title": "Status", "value": "⏳ GPU 할당 대기 중...", "short": True},
+                ]
+            }],
+            thread_ts=thread_ts,
+        )
+
+    @staticmethod
     def notify_buy_candidates(total_analyzed: int, buy_candidates: List, buy_criteria):
         """매수 후보 알림 (종합 리포트로 통합됨)"""
         logger.debug(
