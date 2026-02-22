@@ -222,6 +222,12 @@ class EntityName(
 - 단위 테스트: `cd quant-jump-stock-core && ./gradlew test`
 - 통합 테스트: 사용자 요청 시에만 수행 (플랜 → API → E2E → 결과 보고)
 
+### PR 전 테스트 필수
+- **PR 생성 전 반드시 관련 테스트를 로컬에서 실행하고 통과 확인**
+- Core API: `./gradlew test` (변경된 모듈)
+- Data Engine: `cd quant-jump-stock-data-engine && python -m pytest tests/` (변경된 테스트)
+- 테스트 실패 시 원인 파악 후 수정 → 재실행 → 통과 확인 후 PR 생성
+
 ## 환경 변수
 
 `.env.local` 파일에서 관리 (`.env.example` 참조):

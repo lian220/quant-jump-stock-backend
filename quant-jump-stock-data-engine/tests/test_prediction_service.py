@@ -155,21 +155,22 @@ class TestPredictionService:
         assert result.job_name == "projects/test/jobs/job-123"
         mock_vertexai_service.create_and_run_job.assert_called_once()
 
-    def test_run_prediction_with_env_vars(self, prediction_service, mock_storage_service, mock_vertexai_service):
-        """추가 환경 변수와 함께 예측 Job 실행"""
+    def test_run_prediction_with_fine_tune_mode(self, prediction_service, mock_storage_service, mock_vertexai_service):
+        """FINE_TUNE_MODE 환경 변수와 함께 예측 Job 실행"""
         mock_storage_service.get_latest_package_uri.return_value = "gs://bucket/package.tar.gz"
         mock_vertexai_service.create_and_run_job.return_value = JobResult(
             success=True,
             message="Job 제출 완료"
         )
 
-        custom_env = {"CUSTOM_VAR": "custom_value"}
+        custom_env = {"FINE_TUNE_MODE": "true"}
         result = prediction_service.run_prediction(env_vars=custom_env)
 
         assert result.success is True
         call_args = mock_vertexai_service.create_and_run_job.call_args
         env_vars = call_args.kwargs.get('env_vars') or call_args[1].get('env_vars')
-        assert "CUSTOM_VAR" in env_vars
+        assert "FINE_TUNE_MODE" in env_vars
+        assert env_vars["FINE_TUNE_MODE"] == "true"
 
     def test_run_prediction_with_thread_ts(self, prediction_service, mock_storage_service, mock_vertexai_service):
         """Slack 스레드와 함께 예측 Job 실행"""

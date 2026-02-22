@@ -14,8 +14,35 @@ import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
 import json
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+
+# ============================================
+# FINE_TUNE_MODE / TARGET_DATE 자체 판단
+# (Cloud Scheduler 직접 호출 시 env var 없이 실행 가능)
+# ============================================
+# FINE_TUNE_MODE: env var 우선, 없으면 일요일=Full Training, 그 외=Fine-tuning
+_KST = timezone(timedelta(hours=9))
+_now_kst = datetime.now(_KST)
+
+_fine_tune_env = os.getenv("FINE_TUNE_MODE")
+if _fine_tune_env is not None:
+    FINE_TUNE_MODE = _fine_tune_env.lower() == "true"
+    print(f"📋 FINE_TUNE_MODE: {FINE_TUNE_MODE} (환경변수에서 로드)")
+else:
+    # 일요일(weekday==6) = Full Training, 그 외 = Fine-tuning (KST 기준)
+    FINE_TUNE_MODE = _now_kst.weekday() != 6
+    day_name = ["월", "화", "수", "목", "금", "토", "일"][_now_kst.weekday()]
+    print(f"📋 FINE_TUNE_MODE: {FINE_TUNE_MODE} (자체 판단 - KST {day_name}요일)")
+
+# TARGET_DATE: env var 우선, 없으면 오늘 날짜 (KST 기준)
+_target_date_env = os.getenv("TARGET_DATE")
+if _target_date_env:
+    TARGET_DATE = _target_date_env
+    print(f"📋 TARGET_DATE: {TARGET_DATE} (환경변수에서 로드)")
+else:
+    TARGET_DATE = _now_kst.date().isoformat()
+    print(f"📋 TARGET_DATE: {TARGET_DATE} (자체 판단 - KST 오늘)")
 
 # MongoDB 연결 설정
 from pymongo import MongoClient, UpdateOne
@@ -316,6 +343,53 @@ def global_exception_handler(exc_type, exc_value, exc_tb):
 # 전역 예외 핸들러 설정
 sys.excepthook = global_exception_handler
 print("✅ 전역 에러 핸들러 설정 완료")
+
+# ============================================
+# Slack "시작" 알림 전송
+# ============================================
+_mode_str = "Fine-tuning" if FINE_TUNE_MODE else "Full Training"
+print(f"\n🚀 Vertex AI 예측 작업 시작 알림 전송 (mode={_mode_str}, target_date={TARGET_DATE})")
+if slack_bot_token:
+    try:
+        _start_payload = {
+            "channel": slack_channel,
+            "text": f"🚀 Vertex AI 예측 작업 시작",
+            "attachments": [{
+                "color": "2196f3",
+                "title": "주가 예측 모델 실행 시작",
+                "fields": [
+                    {"title": "Request ID", "value": request_id, "short": True},
+                    {"title": "Mode", "value": _mode_str, "short": True},
+                    {"title": "Target Date", "value": TARGET_DATE, "short": True},
+                ],
+                "footer": "Vertex AI CustomJob",
+                "ts": int(time.time())
+            }]
+        }
+        if slack_thread_ts:
+            _start_payload["thread_ts"] = slack_thread_ts
+        _start_resp = requests.post(
+            "https://slack.com/api/chat.postMessage",
+            json=_start_payload,
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {slack_bot_token}"
+            },
+            timeout=30
+        )
+        _start_result = _start_resp.json()
+        if _start_result.get("ok"):
+            print("✅ Slack 시작 알림 전송 성공")
+            # thread_ts가 없으면 시작 메시지의 ts를 thread_ts로 사용
+            if not slack_thread_ts:
+                slack_thread_ts = _start_result.get("ts")
+                print(f"  → thread_ts 설정: {slack_thread_ts}")
+        else:
+            print(f"⚠️ Slack 시작 알림 오류: {_start_result.get('error')}")
+    except Exception as _e:
+        print(f"⚠️ Slack 시작 알림 전송 실패 (계속 진행): {_e}")
+else:
+    print("⚠️ SLACK_BOT_TOKEN 미설정 - 시작 알림 스킵")
 
 # Supabase에서 데이터 가져오기
 # def get_stock_data_from_db():

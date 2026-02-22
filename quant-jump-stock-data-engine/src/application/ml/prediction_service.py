@@ -81,6 +81,9 @@ class PredictionService:
         """
         ML 패키지를 GCS에 업로드
 
+        Cloud Scheduler 직접 호출을 위해 DB 크레덴셜 + Slack 설정 + Callback URL을
+        스크립트에 환경변수로 주입합니다.
+
         Returns:
             UploadResult
         """
@@ -92,7 +95,27 @@ class PredictionService:
                 message=f"ML 스크립트를 찾을 수 없습니다: {self.ml_script_path}"
             )
 
-        return self.storage_service.upload_package(self.ml_script_path)
+        import os
+        from config.vertex_ai_job_env import VertexAIJobEnvLoader
+
+        # .env.db.prod에서 DB 크레덴셜 로드
+        db_env = VertexAIJobEnvLoader().load()
+
+        # 주입할 환경변수 구성
+        inject_env = {
+            # DB 연결 정보
+            **db_env,
+            # Slack 설정
+            "SLACK_BOT_TOKEN": os.getenv("SLACK_BOT_TOKEN", ""),
+            "SLACK_CHANNEL": os.getenv("SLACK_CHANNEL", "#trading-alerts"),
+        }
+
+        # 빈 값 제거
+        inject_env = {k: v for k, v in inject_env.items() if v}
+
+        logger.info(f"📋 환경변수 {len(inject_env)}개 주입 예정: {list(inject_env.keys())}")
+
+        return self.storage_service.upload_package(self.ml_script_path, inject_env=inject_env)
 
     def get_package_status(self) -> Dict[str, Any]:
         """패키지 상태 조회"""
@@ -121,45 +144,20 @@ class PredictionService:
             # 최신 패키지 URI 조회
             package_uri = self.storage_service.get_latest_package_uri()
 
-            import os
-            from datetime import datetime
-            from config.vertex_ai_job_env import VertexAIJobEnvLoader
+            # DB/Slack/Callback 등은 패키지 업로드 시 스크립트에 주입됨 (os.environ.setdefault)
+            # 여기서는 런타임에 동적으로 바뀌는 값만 전달
+            job_env_vars: Dict[str, str] = {}
 
-            # target_date가 None이면 현재 날짜 사용
-            analysis_date = target_date or datetime.now().strftime("%Y-%m-%d")
+            # Admin에서 강제 지정한 학습 모드 (없으면 스크립트가 요일로 자체 판단)
+            if env_vars and "FINE_TUNE_MODE" in env_vars:
+                job_env_vars["FINE_TUNE_MODE"] = env_vars["FINE_TUNE_MODE"]
 
-            # .env.db.prod에서 DB 환경변수 로드 (프로세스 환경 오염 없음)
-            db_env = VertexAIJobEnvLoader().load()
+            # 분석 기준 날짜 (없으면 스크립트가 오늘 날짜로 자체 판단)
+            if target_date:
+                job_env_vars["TARGET_DATE"] = target_date
 
-            # Core API에서 전달된 학습 모드 설정 (기본: Fine-tuning)
-            fine_tune_mode = env_vars.get("FINE_TUNE_MODE", "true") if env_vars else "true"
-
-            job_env_vars = {
-                # Vertex AI / GCS 설정
-                "VERTEX_AI_MODEL_BUCKET": self.config.bucket_name,
-                "VERTEX_AI_PROJECT_ID": self.config.project_id,
-                # 모델 저장/로드 경로
-                "VERTEX_AI_MODEL_BASE_PATH": "ml-models",
-                # 학습 설정 (Core API에서 전달된 값 우선)
-                "TARGET_DATE": analysis_date,
-                "FINE_TUNE_MODE": fine_tune_mode,
-                "FINE_TUNE_EPOCHS": "5",
-                "FULL_TRAIN_EPOCHS": "50",
-                "FINE_TUNE_LR": "0.00005",
-                "FULL_TRAIN_LR": "0.0001",
-                # DB 연결 정보 (.env.db.prod에서 로드)
-                **db_env,
-                # Slack 설정
-                "SLACK_BOT_TOKEN": os.getenv("SLACK_BOT_TOKEN", ""),
-                "SLACK_CHANNEL": os.getenv("SLACK_CHANNEL", "#trading-alerts"),
-            }
-
-            # 추가 환경 변수 병합
-            if env_vars:
-                job_env_vars.update(env_vars)
-
-            mode = "Fine-tuning" if fine_tune_mode == "true" else "Full Training"
-            logger.info(f"📋 학습 모드: {mode}")
+            mode = job_env_vars.get("FINE_TUNE_MODE", "auto")
+            logger.info(f"📋 학습 모드: {mode} (auto=스크립트 자체 판단)")
 
             return self.vertexai_service.create_and_run_job(
                 package_uri=package_uri,

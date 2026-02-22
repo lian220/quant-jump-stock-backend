@@ -18,7 +18,9 @@ import org.springframework.web.bind.annotation.RestController
 /**
  * Vertex AI Controller (Admin 전용 Input Adapter)
  *
- * 예측 실행, 상태 조회, 취소 등 Admin 전용 엔드포인트.
+ * 정상 운영: Cloud Scheduler → Vertex AI API 직접 호출 (Core API 경유 안 함)
+ * 긴급 수동: 이 컨트롤러를 통해 Pub/Sub → Data Engine → Vertex AI 실행
+ *
  * 콜백 엔드포인트는 VertexAICallbackController에서 처리합니다.
  */
 @Tag(name = "Admin - Vertex AI", description = "Google Vertex AI 예측 모델 관리 (Admin 전용)")
@@ -31,8 +33,10 @@ class AdminVertexAIController(
 
     @PostMapping("/predict")
     @Operation(
-        summary = "Vertex AI 예측 수동 실행",
-        description = "스케줄러 대기 없이 즉시 Vertex AI CustomJob 실행. fineTune=true(기본): Fine-tuning(5 epochs, ~3분), fineTune=false: Full Training(50 epochs, ~20-30분)"
+        summary = "Vertex AI 예측 긴급 수동 실행",
+        description = "정상 운영에서는 Cloud Scheduler가 직접 Vertex AI를 호출합니다. " +
+            "이 엔드포인트는 긴급 수동 실행용이며, Pub/Sub → Data Engine 경로로 실행됩니다. " +
+            "fineTune=true(기본): Fine-tuning, fineTune=false: Full Training"
     )
     @VertexAIJobResponses
     fun runPrediction(
@@ -49,7 +53,7 @@ class AdminVertexAIController(
                 "threadTs" to (result.threadTs ?: ""),
                 "mode" to if (fineTune) "fine-tuning" else "full-training",
                 "estimatedTime" to if (fineTune) "3-5분" else "20-30분",
-                "note" to "실제 실행은 Data Engine에서 처리됩니다"
+                "note" to "실제 실행은 Data Engine에서 처리됩니다 (긴급 수동 실행)"
             ))
         } catch (e: Exception) {
             logger.error("❌ Vertex AI 예측 요청 실패", e)
