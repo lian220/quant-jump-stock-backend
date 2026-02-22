@@ -35,15 +35,19 @@ class VertexAIService(
      *
      * @return 예측 요청 결과 (requestId, threadTs 포함)
      */
-    fun runPrediction(): VertexAIPredictionResult {
+    fun runPrediction(fineTune: Boolean = true): VertexAIPredictionResult {
         val requestId = UUID.randomUUID().toString()
         val timestamp = LocalDateTime.now().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
+        val mode = if (fineTune) "Fine-tuning" else "Full Training"
 
-        logger.info("🚀 Vertex AI 예측 요청 (Pub/Sub 발행)")
+        logger.info("🚀 Vertex AI 예측 요청 (Pub/Sub 발행) - 모드: $mode")
         logger.info("Request ID: $requestId")
 
         // 알림 시작 → threadTs 획득
         val threadTs = notificationPort.notifyJobStarted(requestId, vertexAIConfig.jobName)
+
+        // 학습 모드 환경변수
+        val envVars = hashMapOf("FINE_TUNE_MODE" to fineTune.toString())
 
         // Pub/Sub 메시지 발행 (Data Engine에서 Vertex AI 실행)
         val request = VertexAIPredictionRequest(
@@ -51,7 +55,7 @@ class VertexAIService(
             source = "core-api",
             requestId = requestId,
             threadTs = threadTs,
-            envVars = HashMap()
+            envVars = envVars
         )
 
         messagePublisher.publishVertexAIPredictionRequest(VERTEX_AI_RUN_TOPIC, request)
@@ -62,7 +66,7 @@ class VertexAIService(
             success = true,
             requestId = requestId,
             threadTs = threadTs,
-            message = "Vertex AI 예측 요청이 전송되었습니다 (Pub/Sub)"
+            message = "Vertex AI 예측 요청이 전송되었습니다 (Pub/Sub) - 모드: $mode"
         )
     }
 

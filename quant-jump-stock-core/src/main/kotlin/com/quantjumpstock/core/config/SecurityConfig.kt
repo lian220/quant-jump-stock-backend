@@ -47,6 +47,7 @@ class SecurityConfig(
                                     "/swagger-ui/**",
                                     "/swagger-ui.html",
                                     "/v3/api-docs/**",
+                                    "/api-docs/**",
                                     "/actuator/health",
                                     "/actuator/info",
                                     // 공개 API (인증 없이 조회 가능)

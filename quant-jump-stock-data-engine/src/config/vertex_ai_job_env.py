@@ -27,10 +27,18 @@ class VertexAIJobEnvLoader:
             self._path = Path(env_db_path)
         else:
             # Docker: /config/.env.db.prod (볼륨 마운트)
-            # Local: backend/.env.db.prod (상대경로)
+            # Local: backend/.env.db.prod (data-engine 상위 디렉토리)
             docker_path = Path("/config/.env.db.prod")
-            local_path = Path(__file__).parent.parent.parent / ".env.db.prod"
-            self._path = docker_path if docker_path.exists() else local_path
+            backend_root = Path(__file__).parent.parent.parent.parent
+            local_path = backend_root / ".env.db.prod"
+            # data-engine 내부 파일도 폴백으로 확인
+            de_path = Path(__file__).parent.parent.parent / ".env.db.prod"
+            if docker_path.exists():
+                self._path = docker_path
+            elif local_path.exists() and local_path.stat().st_size > 0:
+                self._path = local_path
+            else:
+                self._path = de_path
 
     def load(self) -> Dict[str, str]:
         """

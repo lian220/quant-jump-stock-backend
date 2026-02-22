@@ -10,6 +10,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.GetMapping
 import org.springframework.web.bind.annotation.PathVariable
 import org.springframework.web.bind.annotation.PostMapping
+import org.springframework.web.bind.annotation.RequestBody
 import org.springframework.web.bind.annotation.RequestMapping
 import org.springframework.web.bind.annotation.RequestParam
 import org.springframework.web.bind.annotation.RestController
@@ -31,19 +32,23 @@ class AdminVertexAIController(
     @PostMapping("/predict")
     @Operation(
         summary = "Vertex AI 예측 수동 실행",
-        description = "스케줄러 대기 없이 즉시 Vertex AI CustomJob 실행"
+        description = "스케줄러 대기 없이 즉시 Vertex AI CustomJob 실행. fineTune=true(기본): Fine-tuning(5 epochs, ~3분), fineTune=false: Full Training(50 epochs, ~25분)"
     )
     @VertexAIJobResponses
-    fun runPrediction(): ResponseEntity<Map<String, Any>> {
+    fun runPrediction(
+        @RequestBody(required = false) body: PredictRequest?
+    ): ResponseEntity<Map<String, Any>> {
         return try {
-            val result = vertexAIService.runPrediction()
+            val fineTune = body?.fineTune ?: true
+            val result = vertexAIService.runPrediction(fineTune = fineTune)
 
             ResponseEntity.ok(mapOf(
                 "success" to result.success,
                 "message" to result.message,
                 "requestId" to result.requestId,
                 "threadTs" to (result.threadTs ?: ""),
-                "estimatedTime" to "3-5분",
+                "mode" to if (fineTune) "fine-tuning" else "full-training",
+                "estimatedTime" to if (fineTune) "3-5분" else "20-30분",
                 "note" to "실제 실행은 Data Engine에서 처리됩니다"
             ))
         } catch (e: Exception) {
@@ -99,3 +104,10 @@ class AdminVertexAIController(
         }
     }
 }
+
+/**
+ * 예측 실행 요청 DTO
+ */
+data class PredictRequest(
+    val fineTune: Boolean = true
+)

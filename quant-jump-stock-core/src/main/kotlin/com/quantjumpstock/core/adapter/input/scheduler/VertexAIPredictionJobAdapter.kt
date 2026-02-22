@@ -7,6 +7,9 @@ import org.quartz.JobExecutionException
 import org.slf4j.LoggerFactory
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty
 import org.springframework.stereotype.Component
+import java.time.DayOfWeek
+import java.time.ZoneId
+import java.time.ZonedDateTime
 
 /**
  * Vertex AI 예측 Job (Input Adapter)
@@ -41,16 +44,20 @@ class VertexAIPredictionJobAdapter(
     override fun execute(context: JobExecutionContext?) {
         try {
             val triggerName = context?.trigger?.key?.name ?: "unknown"
+            val dayOfWeek = ZonedDateTime.now(ZoneId.of("Asia/Seoul")).dayOfWeek
+            val isFullTraining = dayOfWeek == DayOfWeek.SUNDAY
+            val mode = if (isFullTraining) "Full Training (일요일)" else "Fine-tuning ($dayOfWeek)"
+
             logger.info(SEPARATOR)
             logger.info("Vertex AI 주가 예측 시작 (23:45) [Trigger: $triggerName]")
-            logger.info("예상 소요 시간: 30-35분")
+            logger.info("학습 모드: $mode")
+            logger.info("예상 소요 시간: ${if (isFullTraining) "30-35분" else "10-15분"}")
             logger.info(SEPARATOR)
 
-            // Vertex AI 예측 실행 (Pub/Sub 경로)
+            // Vertex AI 예측 실행 (Pub/Sub 경로) - 일요일: Full Training, 월~토: Fine-tuning
             logger.info("Vertex AI 예측 실행 중 (Pub/Sub → Data Engine → Vertex AI)...")
-            val result = vertexAIService.runPrediction()
-            logger.info("✅ Vertex AI 예측 요청 완료: requestId=${result.requestId}")
-            logger.info("   → CustomJob 실행 중... (약 00:15-00:20 완료 예정)")
+            val result = vertexAIService.runPrediction(fineTune = !isFullTraining)
+            logger.info("✅ Vertex AI 예측 요청 완료: requestId=${result.requestId}, 모드=$mode")
 
             logger.info(SEPARATOR)
             logger.info("Vertex AI 예측 Job 완료 (요청 발행)")

@@ -3,6 +3,7 @@ Prediction Application Service
 
 ML 패키지 관리 및 Vertex AI Job 실행을 조율하는 서비스.
 """
+from __future__ import annotations
 
 import logging
 from pathlib import Path
@@ -129,15 +130,22 @@ class PredictionService:
             # .env.db.prod에서 DB 환경변수 로드 (프로세스 환경 오염 없음)
             db_env = VertexAIJobEnvLoader().load()
 
+            # Core API에서 전달된 학습 모드 설정 (기본: Fine-tuning)
+            fine_tune_mode = env_vars.get("FINE_TUNE_MODE", "true") if env_vars else "true"
+
             job_env_vars = {
                 # Vertex AI / GCS 설정
                 "VERTEX_AI_MODEL_BUCKET": self.config.bucket_name,
                 "VERTEX_AI_PROJECT_ID": self.config.project_id,
-                # 학습 설정
+                # 모델 저장/로드 경로
+                "VERTEX_AI_MODEL_BASE_PATH": "ml-models",
+                # 학습 설정 (Core API에서 전달된 값 우선)
                 "TARGET_DATE": analysis_date,
-                "FINE_TUNE_MODE": "true",
+                "FINE_TUNE_MODE": fine_tune_mode,
                 "FINE_TUNE_EPOCHS": "5",
                 "FULL_TRAIN_EPOCHS": "50",
+                "FINE_TUNE_LR": "0.00005",
+                "FULL_TRAIN_LR": "0.0001",
                 # DB 연결 정보 (.env.db.prod에서 로드)
                 **db_env,
                 # Slack 설정
@@ -148,6 +156,9 @@ class PredictionService:
             # 추가 환경 변수 병합
             if env_vars:
                 job_env_vars.update(env_vars)
+
+            mode = "Fine-tuning" if fine_tune_mode == "true" else "Full Training"
+            logger.info(f"📋 학습 모드: {mode}")
 
             return self.vertexai_service.create_and_run_job(
                 package_uri=package_uri,

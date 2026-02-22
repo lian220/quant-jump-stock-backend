@@ -19,22 +19,41 @@ warnings.warn(
     stacklevel=2
 )
 
-# Docker 환경 감지 (/.dockerenv 파일 존재 여부 또는 KUBERNETES_SERVICE_HOST 환경 변수)
+# 환경 감지: Cloud Run (K_SERVICE) 또는 Docker (/.dockerenv)
+is_cloud_run = os.getenv('K_SERVICE') is not None
 is_docker = os.path.exists('/.dockerenv') or os.getenv('KUBERNETES_SERVICE_HOST') is not None
 
-if not is_docker:
-    # 로컬 개발 환경: .env.local 파일 우선 로드
-    env_local_path = Path(__file__).parent.parent.parent / ".env.local"
-    if env_local_path.exists():
-        load_dotenv(env_local_path)
-        print(f"✅ 환경변수 로드: {env_local_path}")
-    else:
-        # Fallback: .env 파일 로드
+if not (is_cloud_run or is_docker):
+    # 로컬 개발 환경: 역순 로드 (override=False)
+    # .env.local → .env.db.local → .env.common 순서로, 이미 설정된 변수는 건드리지 않음
+    # start.sh --dev 에서 export한 환경변수(localhost)가 .env.db.local(Docker호스트)보다 우선
+    backend_root = Path(__file__).parent.parent.parent.parent
+    loaded = False
+    for env_name in [".env.local", ".env.db.local", ".env.common"]:
+        env_path = backend_root / env_name
+        if env_path.exists():
+            load_dotenv(env_path, override=False)
+            loaded = True
+    if not loaded:
         load_dotenv()
-        print("⚠️ .env.local 파일 없음, .env 사용")
+        print("⚠️ .env 파일 없음, 기본 dotenv 사용")
 else:
-    # Docker/Kubernetes 환경: 환경 변수는 이미 주입됨
-    print("✅ Docker 환경 감지: 주입된 환경 변수 사용")
+    # Cloud Run / Docker: Secret Manager 볼륨 마운트에서 .env 파일 로드
+    # 각 시크릿은 별도 서브디렉토리에 마운트됨 (Cloud Run 제약)
+    secret_paths = [
+        Path("/secrets/common/env"),    # qjs-env-common
+        Path("/secrets/db-prod/env"),   # qjs-env-db-prod
+        Path("/secrets/prod/env"),      # qjs-env-prod
+    ]
+    loaded_secrets = False
+    for path in secret_paths:
+        if path.exists():
+            load_dotenv(path, override=False)
+            loaded_secrets = True
+    if loaded_secrets:
+        print("✅ Secret Manager 볼륨 마운트에서 환경 변수 로드 완료")
+    else:
+        print("✅ Docker/Cloud Run 환경 감지: 주입된 환경 변수 사용")
 
 class Settings:
     # MongoDB
@@ -49,7 +68,7 @@ class Settings:
     POSTGRES_PASSWORD = os.getenv("DB_PASSWORD", "")
 
     # APIs
-    FRED_API_KEY = os.getenv("FRED_API_KEY", "aedfbcd8ba091c740281c0bd8ca93b46")
+    FRED_API_KEY = os.getenv("FRED_API_KEY", "")
     ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY", "")
 
     # Slack Settings - config.settings에서 위임 (중복 os.getenv 방지)

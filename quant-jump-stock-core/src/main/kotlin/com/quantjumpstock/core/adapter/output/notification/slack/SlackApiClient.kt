@@ -1,5 +1,6 @@
 package com.quantjumpstock.core.adapter.output.notification.slack
 
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.quantjumpstock.core.infrastructure.util.DateRangeFormatter
 import org.slf4j.LoggerFactory
@@ -461,7 +462,8 @@ class SlackApiClient(
     fun notifyVertexAIJobStarted(requestId: String, jobName: String): String? {
         if (isDisabled()) return null
         if (slackBotToken.isBlank()) {
-            logger.warn("⚠️ Slack Bot Token 없음 - 알림 발송 불가")
+            logger.warn("⚠️ Slack Bot Token 없음 - Webhook으로 fallback")
+            notifyVertexAIJobStartedViaWebhook(requestId, jobName)
             return null
         }
 
@@ -485,18 +487,54 @@ class SlackApiClient(
             )
 
             val response = sendToSlackApi(message)
-            val threadTs = response?.ts
+            logger.info("📋 Slack API 응답: ok=${response?.ok}, ts=${response?.ts}, error=${response?.error}")
 
-            if (threadTs != null) {
-                logger.info("✅ Vertex AI Job 시작 알림 발송 완료: requestId=$requestId, threadTs=$threadTs")
+            if (response?.ok == true && response.ts != null) {
+                logger.info("✅ Vertex AI Job 시작 알림 발송 완료: requestId=$requestId, threadTs=${response.ts}")
+                return response.ts
             } else {
-                logger.warn("⚠️ Slack 메시지 발송 성공하지만 threadTs 없음")
+                logger.warn("⚠️ Slack Bot API 실패 (ok=${response?.ok}, error=${response?.error}) - Webhook으로 fallback")
+                notifyVertexAIJobStartedViaWebhook(requestId, jobName)
+                return null
             }
-
-            return threadTs
         } catch (e: Exception) {
-            logger.error("❌ Vertex AI Job 시작 알림 발송 실패", e)
+            logger.error("❌ Vertex AI Job 시작 알림 발송 실패 - Webhook으로 fallback", e)
+            notifyVertexAIJobStartedViaWebhook(requestId, jobName)
             return null
+        }
+    }
+
+    /**
+     * Vertex AI Job 시작 알림 (Webhook fallback)
+     */
+    private fun notifyVertexAIJobStartedViaWebhook(requestId: String, jobName: String) {
+        if (slackWebhookUrl.isBlank()) {
+            logger.debug("Slack webhook URL not configured, skipping notification")
+            return
+        }
+
+        try {
+            val message = SlackMessage(
+                text = "🚀 Vertex AI 예측 작업 시작",
+                attachments = listOf(
+                    SlackAttachment(
+                        color = "#0099cc",
+                        title = "주가 예측 모델 실행",
+                        text = "Vertex AI CustomJob이 시작되었습니다.",
+                        fields = listOf(
+                            SlackField("Request ID", requestId, true),
+                            SlackField("Job Name", jobName, true),
+                            SlackField("Timestamp", getCurrentTimeKST(), true),
+                            SlackField("Status", "🔄 RUNNING", true)
+                        )
+                    )
+                )
+            )
+
+            sendToSlackWebhook(message)
+            logger.info("✅ Vertex AI Job 시작 알림 발송 완료 (Webhook): requestId=$requestId")
+        } catch (e: Exception) {
+            logger.error("❌ Vertex AI Job 시작 Webhook 알림 발송 실패", e)
         }
     }
 
@@ -680,10 +718,11 @@ data class SlackApiMessage(
 /**
  * Slack API 응답 데이터 클래스
  */
+@JsonIgnoreProperties(ignoreUnknown = true)
 data class SlackApiResponse(
-    val ok: Boolean,
-    val ts: String?,
-    val error: String?
+    val ok: Boolean = false,
+    val ts: String? = null,
+    val error: String? = null
 )
 
 /**

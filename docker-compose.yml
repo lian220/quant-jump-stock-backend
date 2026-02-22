@@ -213,9 +213,11 @@ services:
       SPRING_CLOUD_GCP_PUBSUB_EMULATORHOST: ${PUBSUB_EMULATOR_HOST:-pubsub-emulator:8681}
       PUBSUB_PROJECT_ID: ${PUBSUB_PROJECT_ID:-quantiq-local}
       # Slack - 기본값 비활성화, .env.prod에서 활성화
-      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL_TRADING:-}
-      SLACK_CHANNEL: ${SLACK_CHANNEL:-}
       SLACK_ENABLED: ${SLACK_ENABLED:-false}
+      SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
+      SLACK_CHANNEL: ${SLACK_CHANNEL:-}
+      SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL_SCHEDULER:-}
+      SLACK_WEBHOOK_URL_ERROR: ${SLACK_WEBHOOK_URL_ERROR:-}
       # Vertex AI - .env.common의 GCP_CREDENTIALS_ENCODED로 인증
       VERTEX_AI_ENABLED: ${VERTEX_AI_ENABLED:-false}
       # KIS (Korean Investment & Securities) - Temporary

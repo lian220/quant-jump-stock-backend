@@ -11,24 +11,44 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
 
-def _detect_env_file() -> Optional[str]:
-    """환경에 맞는 .env 파일 경로 반환"""
+def _detect_env_files():
+    """환경에 맞는 .env 파일 경로 반환 (.env.common → .env.local 순서)"""
+    is_cloud_run = os.getenv('K_SERVICE') is not None
     is_docker = os.path.exists('/.dockerenv') or os.getenv('KUBERNETES_SERVICE_HOST') is not None
 
-    if is_docker:
-        return None  # Docker 환경에서는 환경변수 직접 사용
+    if is_cloud_run or is_docker:
+        # Cloud Run / Docker: Secret Manager 볼륨 마운트에서 .env 파일 로드
+        # 각 시크릿은 별도 서브디렉토리에 마운트됨 (Cloud Run 제약)
+        secret_paths = [
+            Path("/secrets/common/env"),    # qjs-env-common
+            Path("/secrets/db-prod/env"),   # qjs-env-db-prod
+            Path("/secrets/prod/env"),      # qjs-env-prod
+        ]
+        files = [str(p) for p in secret_paths if p.exists()]
+        if files:
+            return tuple(files)
+        return None  # 볼륨 마운트 없으면 환경변수 직접 사용 (fallback)
 
-    # 로컬 개발 환경
-    env_local_path = Path(__file__).parent.parent.parent / ".env.local"
-    if env_local_path.exists():
-        return str(env_local_path)
+    # 로컬 개발 환경: .env.common → .env.db.local → .env.local (후자가 오버라이드)
+    backend_root = Path(__file__).parent.parent.parent.parent
+    env_common = backend_root / ".env.common"
+    env_db_local = backend_root / ".env.db.local"
+    env_local = backend_root / ".env.local"
 
-    return None
+    files = []
+    for f in [env_common, env_db_local, env_local]:
+        if f.exists():
+            files.append(str(f))
+
+    return tuple(files) if files else None
+
+
+_env_files = _detect_env_files()
 
 
 class DatabaseSettings(BaseSettings):
     """데이터베이스 설정"""
-    model_config = SettingsConfigDict(env_prefix="", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_env_files, env_prefix="", extra="ignore")
 
     # MongoDB
     mongodb_uri: str = Field(default="mongodb://localhost:27017", alias="MONGODB_URI")
@@ -44,7 +64,7 @@ class DatabaseSettings(BaseSettings):
 
 class PubSubSettings(BaseSettings):
     """Pub/Sub 설정"""
-    model_config = SettingsConfigDict(env_prefix="", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_env_files, env_prefix="", extra="ignore")
 
     project_id: str = Field(default="quantiq-local", alias="PUBSUB_PROJECT_ID")
     emulator_host: str = Field(default="", alias="PUBSUB_EMULATOR_HOST")
@@ -61,7 +81,7 @@ class PubSubSettings(BaseSettings):
 
 class ApiSettings(BaseSettings):
     """외부 API 설정"""
-    model_config = SettingsConfigDict(env_prefix="", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_env_files, env_prefix="", extra="ignore")
 
     fred_api_key: str = Field(default="", alias="FRED_API_KEY")
     alpha_vantage_api_key: str = Field(default="", alias="ALPHA_VANTAGE_API_KEY")
@@ -69,7 +89,7 @@ class ApiSettings(BaseSettings):
 
 class SlackSettings(BaseSettings):
     """Slack 설정 - Bot Token (스레드 답글) + Webhook (fallback)"""
-    model_config = SettingsConfigDict(env_prefix="", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_env_files, env_prefix="", extra="ignore")
 
     # Bot Token (스레드 답글 지원)
     bot_token: str = Field(default="", alias="SLACK_BOT_TOKEN")
@@ -90,7 +110,7 @@ class SlackSettings(BaseSettings):
 
 class GcpSettings(BaseSettings):
     """Vertex AI / GCP 설정"""
-    model_config = SettingsConfigDict(env_prefix="", extra="ignore")
+    model_config = SettingsConfigDict(env_file=_env_files, env_prefix="", extra="ignore")
 
     enabled: bool = Field(default=False, alias="VERTEX_AI_ENABLED")
     project_id: str = Field(default="", alias="VERTEX_AI_PROJECT_ID")
@@ -113,7 +133,7 @@ class GcpSettings(BaseSettings):
 class Settings(BaseSettings):
     """통합 설정"""
     model_config = SettingsConfigDict(
-        env_file=_detect_env_file(),
+        env_file=_env_files,
         env_file_encoding="utf-8",
         extra="ignore"
     )
