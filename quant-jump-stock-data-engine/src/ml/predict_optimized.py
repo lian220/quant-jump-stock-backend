@@ -623,8 +623,8 @@ def get_all_data(collection_name):
                                     result_dict[stock_name] = stock_value
                                     stocks_added += 1
                 
-                # 최소한 날짜와 일부 데이터가 있어야 함
-                if len(result_dict) > 1:  # 날짜 외에 최소 1개 이상의 컬럼
+                # 주식 가격 데이터가 있는 문서만 포함 (주말/공휴일 빈 문서 필터링)
+                if stocks_added > 0:
                     all_data.append(result_dict)
                     processed_count += 1
                 else:
@@ -688,7 +688,7 @@ def build_transformer_with_two_inputs(stock_shape, econ_shape, num_heads, ff_dim
     merged = Dense(128, activation="relu")(merged)
     merged = Dropout(0.2)(merged)
     merged = GlobalAveragePooling1D()(merged)
-    outputs = Dense(target_size)(merged)
+    outputs = Dense(target_size, activation='sigmoid')(merged)
 
     return Model(inputs=[stock_inputs, econ_inputs], outputs=outputs)
 
@@ -885,13 +885,28 @@ if econ_nan_counts.sum() > 0:
     print("NaN이 많은 컬럼 (상위 5개):")
     print(econ_nan_counts.nlargest(5))
 
-# NaN이 있는 경우 추가 처리 (ffill, bfill로 이미 처리했지만 재확인)
-data[target_columns] = data[target_columns].ffill().bfill()
-data[economic_features] = data[economic_features].ffill().bfill()
+# NaN 처리: ffill만 사용 (bfill은 미래 데이터로 과거를 채우므로 시계열 위반)
+data[target_columns] = data[target_columns].ffill()
+data[economic_features] = data[economic_features].ffill()
 
-# 여전히 NaN이 있는 컬럼은 0으로 채우기 (마지막 수단)
-data[target_columns] = data[target_columns].fillna(0)
-data[economic_features] = data[economic_features].fillna(0)
+# 주식 가격 컬럼에 NaN이 남은 행(시작 부분)은 제거 (0으로 채우지 않음)
+before_drop = len(data)
+data = data.dropna(subset=target_columns, how='any')
+data = data.reset_index(drop=True)
+after_drop = len(data)
+if before_drop != after_drop:
+    print(f"주식 NaN 포함 행 {before_drop - after_drop}개 제거 (ffill 후 남은 앞쪽 NaN)")
+
+# 경제 지표는 ffill 후에도 NaN이면 해당 컬럼의 중앙값으로 대체
+econ_nan_remaining = data[economic_features].isna().sum()
+cols_with_nan = econ_nan_remaining[econ_nan_remaining > 0]
+if len(cols_with_nan) > 0:
+    print(f"경제 지표 {len(cols_with_nan)}개 컬럼에 NaN 남아있음 → 중앙값으로 대체")
+    for col in cols_with_nan.index:
+        median_val = data[col].median()
+        na_count = int(cols_with_nan[col])
+        data[col] = data[col].fillna(median_val)
+        print(f"  {col}: {na_count}개 NaN → 중앙값({median_val:.4f})으로 대체")
 
 # 최종 NaN 확인
 final_target_nan = data[target_columns].isna().sum().sum()
@@ -899,7 +914,7 @@ final_econ_nan = data[economic_features].isna().sum().sum()
 if final_target_nan > 0 or final_econ_nan > 0:
     print(f"경고: 여전히 NaN이 남아있습니다. (주식: {final_target_nan}, 경제: {final_econ_nan})")
 else:
-    print("모든 NaN 값이 처리되었습니다.")
+    print(f"모든 NaN 값이 처리되었습니다. (최종 데이터 행 수: {len(data)})")
 
 train_size = int(len(data) * 0.8)
 train_data = data.iloc[:train_size]
