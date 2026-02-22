@@ -688,7 +688,7 @@ def build_transformer_with_two_inputs(stock_shape, econ_shape, num_heads, ff_dim
     merged = Dense(128, activation="relu")(merged)
     merged = Dropout(0.2)(merged)
     merged = GlobalAveragePooling1D()(merged)
-    outputs = Dense(target_size, activation='sigmoid')(merged)
+    outputs = Dense(target_size, activation='softplus')(merged)
 
     return Model(inputs=[stock_inputs, econ_inputs], outputs=outputs)
 
