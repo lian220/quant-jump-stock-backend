@@ -4,10 +4,11 @@ Cloud Function: 뉴스 수집기
 Cloud Scheduler → HTTP 트리거 → 뉴스 수집 → Pub/Sub 발행
 기존 3-hop (Quartz → Pub/Sub → Data Engine) 구조를 1-hop으로 단순화.
 
-환경변수:
-  MONGODB_URI: MongoDB 연결 URI
-  DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD: PostgreSQL 연결 정보
-  GCP_PROJECT_ID: Pub/Sub 발행용 GCP 프로젝트 ID (선택)
+시크릿: 기존 Secret Manager 볼륨 마운트 사용
+  /secrets/common/env  → qjs-env-common
+  /secrets/db-prod/env → qjs-env-db-prod
+  /secrets/prod/env    → qjs-env-prod
+환경변수: GCP_PROJECT_ID (Pub/Sub 발행용, deploy 시 주입)
 """
 
 import json
@@ -15,6 +16,7 @@ import logging
 import os
 import time
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 
 import functions_framework
 import psycopg2.pool
@@ -33,6 +35,34 @@ KST = timezone(timedelta(hours=9))
 # ── 글로벌 인스턴스 (warm 인스턴스 재사용) ──────────────────────
 _service: NewsCollectionService | None = None
 _publisher = None
+_secrets_loaded = False
+
+
+def _load_secrets():
+    """Secret Manager 볼륨 마운트에서 .env 파일 로드 → os.environ에 주입"""
+    global _secrets_loaded
+    if _secrets_loaded:
+        return
+    _secrets_loaded = True
+
+    secret_paths = [
+        Path("/secrets/common/env"),    # qjs-env-common
+        Path("/secrets/db-prod/env"),   # qjs-env-db-prod
+        Path("/secrets/prod/env"),      # qjs-env-prod (후자가 오버라이드)
+    ]
+    for path in secret_paths:
+        if not path.exists():
+            continue
+        for line in path.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key:
+                os.environ.setdefault(key, value)
+        logger.info(f"시크릿 로드: {path}")
 
 
 def _init_service() -> NewsCollectionService:
@@ -40,6 +70,8 @@ def _init_service() -> NewsCollectionService:
     global _service
     if _service is not None:
         return _service
+
+    _load_secrets()
 
     # MongoDB
     mongo_uri = os.environ["MONGODB_URI"]
