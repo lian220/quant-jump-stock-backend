@@ -3,13 +3,14 @@ GCS Storage Service
 
 ML 패키지를 GCS에 업로드하고 관리하는 어댑터.
 """
+from __future__ import annotations
 
 import io
 import tarfile
 import logging
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Dict
 from dataclasses import dataclass
 
 from google.cloud import storage
@@ -55,7 +56,7 @@ class GcsStorageService:
 
         self.bucket = self.client.bucket(bucket_name)
 
-    def upload_package(self, script_path: Path, inject_env: dict[str, str] | None = None) -> UploadResult:
+    def upload_package(self, script_path: Path, inject_env: Optional[Dict[str, str]] = None) -> UploadResult:
         """
         ML 패키지를 GCS에 업로드
 
