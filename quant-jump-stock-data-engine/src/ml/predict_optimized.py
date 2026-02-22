@@ -924,11 +924,13 @@ data_scaled = data.copy()
 stock_scaler = MinMaxScaler()
 econ_scaler = MinMaxScaler()
 
-# 스케일링 수행 (NaN이 없는 상태)
+# 스케일링 수행: 학습 데이터만으로 fit → 전체에 transform (data leakage 방지)
 try:
-    data_scaled[target_columns] = stock_scaler.fit_transform(data[target_columns])
-    data_scaled[economic_features] = econ_scaler.fit_transform(data[economic_features])
-    print("스케일링 완료")
+    stock_scaler.fit(train_data[target_columns])
+    econ_scaler.fit(train_data[economic_features])
+    data_scaled[target_columns] = stock_scaler.transform(data[target_columns])
+    data_scaled[economic_features] = econ_scaler.transform(data[economic_features])
+    print(f"스케일링 완료 (학습 데이터 {train_size}행 기준으로 fit)")
 except Exception as e:
     print(f"스케일링 오류: {e}")
     print("스케일링 전 데이터 상태:")
