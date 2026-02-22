@@ -14,6 +14,7 @@ Cloud Scheduler → HTTP 트리거 → 뉴스 수집 → Pub/Sub 발행
 import json
 import logging
 import os
+import sys
 import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -27,8 +28,13 @@ from adapter.output.external.saveticker_client import SaveTickerClient
 from adapter.output.mongodb.news_repository import MongoNewsRepository
 from adapter.output.postgresql.collector_state_repository import PostgresCollectorStateRepository
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Cloud Functions gen2 (Cloud Run) 로깅: stderr에 직접 출력
+handler = logging.StreamHandler(sys.stderr)
+handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+logger = logging.getLogger("news-collector")
+logger.setLevel(logging.INFO)
+logger.addHandler(handler)
+logger.propagate = False
 
 KST = timezone(timedelta(hours=9))
 
@@ -73,6 +79,14 @@ def _init_service() -> NewsCollectionService:
 
     _load_secrets()
 
+    # 필수 환경변수 검증 — Secret Manager에서 못 읽으면 즉시 실패
+    required_vars = ["MONGODB_URI", "DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"]
+    missing = [v for v in required_vars if not os.environ.get(v)]
+    if missing:
+        raise RuntimeError(f"필수 환경변수 누락 (Secret Manager 볼륨 마운트 확인): {missing}")
+
+    logger.info(f"환경변수 로드 완료: DB_HOST={os.environ['DB_HOST']}, DB_NAME={os.environ['DB_NAME']}")
+
     # MongoDB
     mongo_uri = os.environ["MONGODB_URI"]
     mongo_client = MongoClient(mongo_uri)
@@ -82,11 +96,11 @@ def _init_service() -> NewsCollectionService:
     pg_pool = psycopg2.pool.SimpleConnectionPool(
         minconn=1,
         maxconn=3,
-        host=os.environ.get("DB_HOST", "localhost"),
-        port=int(os.environ.get("DB_PORT", "5432")),
-        dbname=os.environ.get("DB_NAME", "quantiq"),
-        user=os.environ.get("DB_USER", "quantiq_user"),
-        password=os.environ.get("DB_PASSWORD", ""),
+        host=os.environ["DB_HOST"],
+        port=int(os.environ["DB_PORT"]),
+        dbname=os.environ["DB_NAME"],
+        user=os.environ["DB_USER"],
+        password=os.environ["DB_PASSWORD"],
     )
 
     saveticker_client = SaveTickerClient()
