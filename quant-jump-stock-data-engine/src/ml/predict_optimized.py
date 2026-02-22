@@ -91,7 +91,9 @@ pg_host = os.getenv("DB_HOST") or "localhost"
 pg_port = os.getenv("DB_PORT") or "5432"
 pg_database = os.getenv("DB_NAME") or "quantiq"
 pg_user = os.getenv("DB_USER") or "quantiq_user"
-pg_password = os.getenv("DB_PASSWORD") or "quantiq_password"
+pg_password = os.getenv("DB_PASSWORD")
+if not pg_password:
+    raise EnvironmentError("DB_PASSWORD 환경변수가 설정되지 않았습니다.")
 
 def get_postgres_connection():
     """PostgreSQL 연결 생성"""
@@ -2075,20 +2077,18 @@ def evaluate_predictions(data, target_columns, forecast_horizon):
         predicted_col = None
         actual_col = None
         
-        # 정확한 컬럼명 찾기
-        for col_name in data.columns:
-            col_str = str(col_name)
-            # 주식명이 포함되고 Predicted/Actual이 포함된 컬럼 찾기
-            if col in col_str:
-                if '_Predicted' in col_str or 'Predicted' in col_str:
-                    predicted_col = col_name
-                if '_Actual' in col_str or 'Actual' in col_str:
-                    actual_col = col_name
-        
+        # 정확한 컬럼명 매칭 (substring 아닌 exact match)
+        expected_predicted = f"{col}_Predicted"
+        expected_actual = f"{col}_Actual"
+        if expected_predicted in data.columns:
+            predicted_col = expected_predicted
+        if expected_actual in data.columns:
+            actual_col = expected_actual
+
         # Check if the columns exist
         if predicted_col is None or actual_col is None:
             print(f"Skipping {col}: Columns not found in data")
-            print(f"  예상 컬럼명: {col}_Predicted, {col}_Actual")
+            print(f"  예상 컬럼명: {expected_predicted}, {expected_actual}")
             print(f"  실제 유사 컬럼: {[c for c in data.columns if col in str(c)]}")
             continue
         
@@ -2209,16 +2209,14 @@ def analyze_rise_predictions(data, target_columns):
         predicted_col = None
         actual_col = None
         
-        # 정확한 컬럼명 찾기
-        for col_name in data.columns:
-            col_str = str(col_name)
-            # 주식명이 포함되고 Predicted/Actual이 포함된 컬럼 찾기
-            if col in col_str:
-                if '_Predicted' in col_str or 'Predicted' in col_str:
-                    predicted_col = col_name
-                if '_Actual' in col_str or 'Actual' in col_str:
-                    actual_col = col_name
-        
+        # 정확한 컬럼명 매칭 (substring 아닌 exact match)
+        expected_predicted = f"{col}_Predicted"
+        expected_actual = f"{col}_Actual"
+        if expected_predicted in data.columns:
+            predicted_col = expected_predicted
+        if expected_actual in data.columns:
+            actual_col = expected_actual
+
         # 컬럼을 찾지 못한 경우
         if predicted_col is None or actual_col is None:
             results.append({
@@ -2335,7 +2333,7 @@ if len(data) == 0:
 # 2) Target columns (PostgreSQL에서 동적으로 로드)
 target_columns = get_target_columns_from_db()
 
-forecast_horizon = 14  # predicting 14 days ahead
+# forecast_horizon은 1단계에서 이미 정의됨 (line ~781)
 
 # 3) Evaluate predictions
 evaluation_results = evaluate_predictions(data, target_columns, forecast_horizon)
