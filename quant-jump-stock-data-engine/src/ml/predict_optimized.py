@@ -5,10 +5,11 @@ import numpy as np
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import (
-    Input, Dense, Dropout, LayerNormalization, MultiHeadAttention, Add, GlobalAveragePooling1D
+    Input, Dense, Dropout, LayerNormalization, MultiHeadAttention, Add, Concatenate, GlobalAveragePooling1D
 )
 import tensorflow as tf
 from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import EarlyStopping
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
@@ -106,6 +107,40 @@ def get_postgres_connection():
     except Exception as e:
         print(f"❌ PostgreSQL 연결 실패: {e}")
         return None
+
+def get_indicator_key_mappings():
+    """PostgreSQL에서 yfinance_indicators(name→ticker)와 fred_indicators(name→code) 매핑을 가져옵니다."""
+    yfinance_name_to_ticker = {}
+    fred_name_to_code = {}
+    try:
+        conn = get_postgres_connection()
+        if conn is None:
+            return yfinance_name_to_ticker, fred_name_to_code
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            try:
+                cur.execute("SELECT ticker, name FROM yfinance_indicators WHERE is_active = true")
+                for row in cur.fetchall():
+                    ticker = row.get("ticker")
+                    name = row.get("name")
+                    if ticker and name:
+                        yfinance_name_to_ticker[name] = ticker
+                        yfinance_name_to_ticker[ticker] = ticker
+            except Exception as e:
+                print(f"⚠️ 경고: yfinance 키 매핑 조회 실패: {e}")
+            try:
+                cur.execute("SELECT code, name FROM fred_indicators WHERE is_active = true")
+                for row in cur.fetchall():
+                    code = row.get("code")
+                    name = row.get("name")
+                    if code and name:
+                        fred_name_to_code[name] = code
+                        fred_name_to_code[code] = code
+            except Exception as e:
+                print(f"⚠️ 경고: FRED 키 매핑 조회 실패: {e}")
+        conn.close()
+    except Exception as e:
+        print(f"⚠️ 경고: 키 매핑 조회 중 오류: {e}")
+    return yfinance_name_to_ticker, fred_name_to_code
 
 # ============================================
 # Slack 알림 설정 (작업 완료 알림용) - PostgreSQL 체크 전에 정의
@@ -520,6 +555,10 @@ def get_all_data(collection_name):
             print(f"활성화된 종목 샘플 (처음 10개): {list(active_stock_names)[:10]}")
             print(f"활성화된 티커 샘플 (처음 10개): {list(active_tickers)[:10]}")
         
+        # 키 정규화 매핑 로드 (한글 이름 → ticker/code 변환용)
+        yfinance_name_to_ticker, fred_name_to_code = get_indicator_key_mappings()
+        print(f"yfinance 키 매핑: {len(yfinance_name_to_ticker)}개, FRED 키 매핑: {len(fred_name_to_code)}개")
+
         # 2. daily_stock_data 컬렉션에서 모든 데이터 가져오기 (날짜순 정렬)
         print("\n=== daily_stock_data 컬렉션 조회 ===")
         total_docs = db.daily_stock_data.count_documents({})
@@ -564,25 +603,29 @@ def get_all_data(collection_name):
                 result_dict = {"날짜": date_str}
                 
                 # FRED 지표 추가 (키: code, 값: {value, name} 또는 레거시 float)
+                # 키 정규화: 한글 이름 → code로 변환 (예: "기준금리" → "FEDFUNDS")
                 fred_indicators = doc.get("fred_indicators", {})
                 if isinstance(fred_indicators, dict):
                     for key, val in fred_indicators.items():
+                        normalized_key = fred_name_to_code.get(key, key)
                         if isinstance(val, dict):
-                            result_dict[key] = val.get("value")
+                            result_dict[normalized_key] = val.get("value")
                         else:
-                            result_dict[key] = val
+                            result_dict[normalized_key] = val
 
                 # Yahoo Finance 지표 추가 (키: ticker, 값: {close, name, ...} 또는 레거시 float)
+                # 키 정규화: 한글 이름 → ticker로 변환 (예: "S&P 500 지수" → "^GSPC")
                 yfinance_indicators = doc.get("yfinance_indicators", {})
                 if isinstance(yfinance_indicators, dict):
                     for key, val in yfinance_indicators.items():
+                        normalized_key = yfinance_name_to_ticker.get(key, key)
                         if isinstance(val, dict):
                             close_val = val.get("close")
                             if close_val is None:
                                 close_val = val.get("close_price")
-                            result_dict[key] = close_val
+                            result_dict[normalized_key] = close_val
                         else:
-                            result_dict[key] = val
+                            result_dict[normalized_key] = val
                 
                 # 활성화된 종목의 주가 데이터만 추가
                 # stocks 필드는 티커를 키로 사용하므로 티커로 접근
@@ -655,6 +698,23 @@ def get_all_data(collection_name):
         traceback.print_exc()
         raise
 
+# Sinusoidal Positional Encoding (Vaswani et al. 2017)
+# Transformer가 90일 lookback 시퀀스에서 시간 순서를 구분할 수 있도록 위치 정보 제공
+class SinusoidalPositionalEncoding(tf.keras.layers.Layer):
+    def build(self, input_shape):
+        seq_len = input_shape[1]
+        d_model = input_shape[2]
+        positions = np.arange(seq_len)[:, np.newaxis]
+        dims = np.arange(d_model)[np.newaxis, :]
+        angles = positions / np.power(10000, (2 * (dims // 2)) / max(d_model, 1))
+        angles[:, 0::2] = np.sin(angles[:, 0::2])
+        angles[:, 1::2] = np.cos(angles[:, 1::2])
+        self.pos_encoding = tf.constant(angles[np.newaxis, :, :], dtype=tf.float32)
+        super().build(input_shape)
+
+    def call(self, inputs):
+        return inputs + self.pos_encoding
+
 # Transformer Encoder 정의
 def transformer_encoder(inputs, num_heads, ff_dim, dropout=0.1):
     attention_output = MultiHeadAttention(num_heads=num_heads, key_dim=inputs.shape[-1])(inputs, inputs)
@@ -670,25 +730,27 @@ def transformer_encoder(inputs, num_heads, ff_dim, dropout=0.1):
 
     return ffn_output
 
-# Transformer 모델 정의
+# Transformer 모델 정의 (Dual-stream: 주식 + 경제 → Concatenate → 예측)
 def build_transformer_with_two_inputs(stock_shape, econ_shape, num_heads, ff_dim, target_size):
     stock_inputs = Input(shape=stock_shape)
-    stock_encoded = stock_inputs
+    stock_encoded = SinusoidalPositionalEncoding()(stock_inputs)
     for _ in range(4):  # 4개의 Transformer Layer
         stock_encoded = transformer_encoder(stock_encoded, num_heads=num_heads, ff_dim=ff_dim)
     stock_encoded = Dense(64, activation="relu")(stock_encoded)
 
     econ_inputs = Input(shape=econ_shape)
-    econ_encoded = econ_inputs
+    econ_encoded = SinusoidalPositionalEncoding()(econ_inputs)
     for _ in range(4):  # 4개의 Transformer Layer
         econ_encoded = transformer_encoder(econ_encoded, num_heads=num_heads, ff_dim=ff_dim)
     econ_encoded = Dense(64, activation="relu")(econ_encoded)
 
-    merged = Add()([stock_encoded, econ_encoded])
+    # Concatenate: 주식(64) + 경제(64) = 128 차원으로 결합 (Add 대신 정보 보존)
+    merged = Concatenate(axis=-1)([stock_encoded, econ_encoded])
     merged = Dense(128, activation="relu")(merged)
     merged = Dropout(0.2)(merged)
     merged = GlobalAveragePooling1D()(merged)
-    outputs = Dense(target_size, activation='softplus')(merged)
+    # linear: log return 예측이므로 음수/양수 모두 가능해야 함
+    outputs = Dense(target_size, activation='linear')(merged)
 
     return Model(inputs=[stock_inputs, econ_inputs], outputs=outputs)
 
@@ -916,9 +978,29 @@ if final_target_nan > 0 or final_econ_nan > 0:
 else:
     print(f"모든 NaN 값이 처리되었습니다. (최종 데이터 행 수: {len(data)})")
 
+# 경제 지표 1일 lag (미래 정보 유출 방지: t일 예측 시 t-1일까지의 경제 지표만 사용)
+print("\n=== 경제 지표 1일 lag 적용 ===")
+data[economic_features] = data[economic_features].shift(1)
+data = data.iloc[1:].reset_index(drop=True)
+print(f"경제 지표 lag 적용 후 데이터 행 수: {len(data)}")
+
+# train/test split (outlier clipping 전에 먼저 분리 → data leakage 방지)
 train_size = int(len(data) * 0.8)
 train_data = data.iloc[:train_size]
-test_data = data.iloc[train_size:]
+
+# Outlier winsorization: 학습 데이터 통계만 사용하여 전체 데이터 클리핑
+print("\n=== Outlier winsorization (3σ, train-only stats) ===")
+for col in target_columns + economic_features:
+    col_mean = train_data[col].mean()
+    col_std = train_data[col].std()
+    if col_std > 0:
+        lower = col_mean - 3 * col_std
+        upper = col_mean + 3 * col_std
+        clipped = data[col].clip(lower, upper)
+        n_clipped = (data[col] != clipped).sum()
+        if n_clipped > 0:
+            print(f"  {col}: {n_clipped}개 값 클리핑 [{lower:.4f}, {upper:.4f}]")
+        data[col] = clipped
 
 data_scaled = data.copy()
 stock_scaler = MinMaxScaler()
@@ -940,7 +1022,7 @@ except Exception as e:
 
 lookback = 90
 
-# 훈련 데이터 생성
+# 훈련 데이터 생성 (log return 예측: log(future_price / current_price))
 X_stock_train = []
 X_econ_train = []
 y_train = []
@@ -948,10 +1030,15 @@ y_train = []
 for i in range(lookback, len(data_scaled) - forecast_horizon):
     X_stock_seq = data_scaled[target_columns].iloc[i - lookback:i].to_numpy()
     X_econ_seq = data_scaled[economic_features].iloc[i - lookback:i].to_numpy()
-    y_val = data_scaled[target_columns].iloc[i + forecast_horizon - 1].to_numpy()
+    # log return: log(P_{t+h} / P_t) — 원본 가격 기준
+    current_price = data[target_columns].iloc[i - 1].to_numpy()
+    future_price = data[target_columns].iloc[i + forecast_horizon - 1].to_numpy()
+    current_price = np.maximum(current_price, 1e-8)
+    future_price = np.maximum(future_price, 1e-8)
+    log_return = np.log(future_price / current_price)
     X_stock_train.append(X_stock_seq)
     X_econ_train.append(X_econ_seq)
-    y_train.append(y_val)
+    y_train.append(log_return)
 
 X_stock_train = np.array(X_stock_train)
 X_econ_train = np.array(X_econ_train)
@@ -960,14 +1047,17 @@ y_train = np.array(y_train)
 # 전체 예측 데이터 생성: 마지막 날짜까지 포함하여 예측 (미래 실제값 없어도 예측)
 X_stock_full = []
 X_econ_full = []
+base_prices_full = []  # 역변환용 기준 가격
 for i in range(lookback, len(data_scaled)):  # 여기서 forecast_horizon 빼지 않음
     X_stock_seq = data_scaled[target_columns].iloc[i - lookback:i].to_numpy()
     X_econ_seq = data_scaled[economic_features].iloc[i - lookback:i].to_numpy()
     X_stock_full.append(X_stock_seq)
     X_econ_full.append(X_econ_seq)
+    base_prices_full.append(data[target_columns].iloc[i - 1].to_numpy())
 
 X_stock_full = np.array(X_stock_full)
 X_econ_full = np.array(X_econ_full)
+base_prices_full = np.array(base_prices_full)
 
 print("Building Transformer model...")
 stock_shape = (lookback, len(target_columns))
@@ -978,13 +1068,17 @@ model.compile(optimizer=Adam(learning_rate=0.0001), loss='mse', metrics=['mae'])
 model.summary()
 
 print("Training model...")
-history = model.fit([X_stock_train, X_econ_train], y_train, epochs=50, batch_size=32, verbose=1)
+early_stop = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True, verbose=1)
+history = model.fit([X_stock_train, X_econ_train], y_train,
+    epochs=200, batch_size=32, verbose=1, validation_split=0.15, callbacks=[early_stop])
 
 print("Performing full predictions...")
-predicted_prices = model.predict([X_stock_full, X_econ_full], verbose=1)
-predicted_prices_actual = stock_scaler.inverse_transform(predicted_prices)
+# 모델이 예측하는 것은 log return → 원래 가격으로 역변환
+predicted_returns = model.predict([X_stock_full, X_econ_full], verbose=1)
+predicted_returns = np.clip(predicted_returns, -1.0, 1.0)  # exp overflow 방지
+predicted_prices_actual = base_prices_full[:len(predicted_returns)] * np.exp(predicted_returns)
 
-pred_len = len(predicted_prices_actual)
+pred_len = len(predicted_returns)
 
 # 실제로 사용 가능한 데이터 길이 계산
 available_data_len = len(data) - lookback
@@ -2004,9 +2098,9 @@ def evaluate_predictions(data, target_columns, forecast_horizon):
 
         # Retrieve predicted and actual values
         predicted = data[predicted_col]
-        # Shift the actual values by forecast_horizon days
-        # so that today's prediction aligns with actual values 14 days ahead
-        actual = data[actual_col].shift(-forecast_horizon)
+        # Shift the actual values by (forecast_horizon - 1) days
+        # 학습 시 i+forecast_horizon-1 인덱스를 타겟으로 사용했으므로 동일하게 정렬
+        actual = data[actual_col].shift(-(forecast_horizon - 1))
 
         # Use only valid (non-NaN) indices
         valid_idx = ~predicted.isna() & ~actual.isna()
@@ -2021,8 +2115,13 @@ def evaluate_predictions(data, target_columns, forecast_horizon):
         mae = mean_absolute_error(actual, predicted)
         mse = mean_squared_error(actual, predicted)
         rmse = mse ** 0.5
-        mape = (abs((actual - predicted) / actual).mean()) * 100
-        accuracy = 100 - mape
+        # MAPE: actual이 0인 경우 제외하여 division by zero 방지
+        nonzero_mask = actual != 0
+        if nonzero_mask.sum() > 0:
+            mape = (abs((actual[nonzero_mask] - predicted[nonzero_mask]) / actual[nonzero_mask]).mean()) * 100
+        else:
+            mape = np.nan
+        accuracy = 100 - mape if not np.isnan(mape) else np.nan
 
         metrics.append({
             'Stock': col,
@@ -2135,7 +2234,7 @@ def analyze_rise_predictions(data, target_columns):
         predicted_future_price = last_row.get(predicted_col, np.nan)
 
         # Determine rise/fall and rise percentage
-        if pd.notna(last_actual_price) and pd.notna(predicted_future_price):
+        if pd.notna(last_actual_price) and pd.notna(predicted_future_price) and last_actual_price != 0:
             predicted_rise = predicted_future_price > last_actual_price
             rise_probability = ((predicted_future_price - last_actual_price) / last_actual_price) * 100
         else:
@@ -2233,16 +2332,8 @@ if len(data) == 0:
     print("=" * 60)
     exit(1)
 
-# 2) Target columns
-target_columns = [
-    '애플', '마이크로소프트', '아마존', '구글 A', '구글 C', '메타',
-    '테슬라', '엔비디아', '인텔', '마이크론', '브로드컴',
-    '텍사스 인스트루먼트', 'AMD', '어플라이드 머티리얼즈',
-    '셀레스티카', '버티브 홀딩스', '비스트라 에너지', '블룸에너지', '오클로', '팔란티어',
-    '세일즈포스', '오라클', '앱플로빈', '팔로알토 네트웍스', '크라우드 스트라이크',
-    '스노우플레이크', 'TSMC', '크리도 테크놀로지 그룹 홀딩', '로빈후드', '일라이릴리',
-    '월마트', '존슨앤존슨', 'S&P 500 ETF', 'QQQ ETF', 'SOXX ETF'
-]
+# 2) Target columns (PostgreSQL에서 동적으로 로드)
+target_columns = get_target_columns_from_db()
 
 forecast_horizon = 14  # predicting 14 days ahead
 
