@@ -1,7 +1,12 @@
 package com.quantjumpstock.core.scheduler
 
 import com.quantjumpstock.core.adapter.input.scheduler.*
-import org.quartz.*
+import org.quartz.CronScheduleBuilder
+import org.quartz.JobBuilder
+import org.quartz.JobDetail
+import org.quartz.SimpleScheduleBuilder
+import org.quartz.Trigger
+import org.quartz.TriggerBuilder
 import org.springframework.context.annotation.ImportRuntimeHints
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -244,31 +249,10 @@ class QuartzConfig {
     }
 
     // ========================
-    // 8. 뉴스 수집 (매 1분, 시간대별 스킵)
+    // 8. 뉴스 수집 → Cloud Scheduler로 이관됨
     // ========================
-    // 장중(09-15시): 매분, 장전/후(06-08,16-21시): 2분, 심야(22-05시): 5분
-    // Job 내부 shouldRun 로직으로 빈도 조절
-    @Bean
-    fun newsCollectionJobDetail(): JobDetail {
-        return JobBuilder.newJob(NewsCollectionJobAdapter::class.java)
-            .withIdentity("newsCollectionJob")
-            .storeDurably()
-            .build()
-    }
-
-    @Bean
-    fun newsCollectionTrigger(): Trigger {
-        return TriggerBuilder.newTrigger()
-            .forJob(newsCollectionJobDetail())
-            .withIdentity("newsCollectionTrigger")
-            .withSchedule(
-                SimpleScheduleBuilder.simpleSchedule()
-                    .withIntervalInMinutes(1)
-                    .repeatForever()
-                    .withMisfireHandlingInstructionNextWithRemainingCount()
-            )
-            .build()
-    }
+    // Cloud Scheduler → HTTP → Cloud Function(news-collector) 직접 트리거
+    // Quartz Job 제거됨
 
     // ========================
     // 9. 자동 매도 체크 (매 1분)

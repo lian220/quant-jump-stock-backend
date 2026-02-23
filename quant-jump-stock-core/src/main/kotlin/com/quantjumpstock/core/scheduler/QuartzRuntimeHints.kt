@@ -20,7 +20,6 @@ class QuartzRuntimeHints : RuntimeHintsRegistrar {
             CleanupOrdersJobAdapter::class.java,
             EconomicDataUpdateJobAdapter::class.java,
             EconomicDataUpdate2JobAdapter::class.java,
-            NewsCollectionJobAdapter::class.java,
             PortfolioProfitReportJobAdapter::class.java,
             StockRecommendationJobAdapter::class.java,
             ParallelAnalysisJob::class.java,

@@ -7,7 +7,6 @@ import com.quantjumpstock.core.application.backtest.BacktestResultSaveService
 import com.quantjumpstock.core.application.notification.NotificationService
 import com.quantjumpstock.core.domain.notification.model.NotificationPriority
 import com.quantjumpstock.core.domain.notification.model.NotificationType
-import com.quantjumpstock.core.domain.news.port.input.NewsCollectionUseCase
 import com.quantjumpstock.core.domain.port.output.StrategyRepository
 import com.quantjumpstock.core.domain.port.output.UserRepository
 import com.google.cloud.spring.pubsub.core.PubSubTemplate
@@ -30,7 +29,6 @@ class PubSubEventListenerAdapter(
     private val objectMapper: ObjectMapper,
     private val autoTradingService: AutoTradingService,
     private val backtestResultSaveService: BacktestResultSaveService,
-    private val newsCollectionUseCase: NewsCollectionUseCase,
     private val notificationService: NotificationService,
     private val strategyRepository: StrategyRepository,
     private val userRepository: UserRepository
@@ -45,8 +43,6 @@ class PubSubEventListenerAdapter(
         subscribe(EventTopics.TRADING_SIGNAL_DETECTED, ::handleTradingSignalDetected)
         subscribe(EventTopics.BACKTEST_COMPLETED, ::handleBacktestCompleted)
         subscribe(EventTopics.BACKTEST_FAILED, ::handleBacktestFailed)
-        subscribe(EventTopics.NEWS_COLLECTED, ::handleNewsCollected)
-        subscribe(EventTopics.NEWS_COLLECTION_FAILED, ::handleNewsCollectionFailed)
     }
 
     private fun subscribe(topic: String, handler: (String) -> Unit) {
@@ -282,58 +278,6 @@ class PubSubEventListenerAdapter(
             logger.info("✅ 백테스트 실패 결과 저장 완료")
         } catch (e: Exception) {
             logger.error("❌ 백테스트 실패 이벤트 처리 실패: $message", e)
-            throw e
-        }
-    }
-
-    private fun handleNewsCollected(message: String) {
-        logger.info("=".repeat(80))
-        logger.info("📥 뉴스 수집 완료 이벤트 수신")
-        logger.info("=".repeat(80))
-        logger.debug("메시지: $message")
-
-        try {
-            val event = objectMapper.readTree(message)
-            val payload = event.get("payload")
-                ?: throw IllegalArgumentException("뉴스 수집 완료 이벤트에 payload가 없습니다: $message")
-
-            val requestId = payload.get("requestId")?.asText() ?: "unknown"
-            val source = payload.get("source")?.asText() ?: "SAVETICKER"
-            val collectedCount = payload.get("collectedCount")?.asInt() ?: 0
-            val articleIds = payload.get("articleIds")
-                ?.takeIf { it.isArray }
-                ?.map { it.asText() }
-                ?: emptyList()
-
-            logger.info("✅ 뉴스 수집 완료: requestId=$requestId, source=$source, ${collectedCount}건")
-
-            if (articleIds.isNotEmpty()) {
-                newsCollectionUseCase.processCollectedNews(articleIds, source)
-            }
-        } catch (e: Exception) {
-            logger.error("❌ 뉴스 수집 완료 이벤트 처리 실패: $message", e)
-            throw e
-        }
-    }
-
-    private fun handleNewsCollectionFailed(message: String) {
-        logger.warn("=".repeat(80))
-        logger.warn("⚠️ 뉴스 수집 실패 이벤트 수신")
-        logger.warn("=".repeat(80))
-        logger.debug("메시지: $message")
-
-        try {
-            val event = objectMapper.readTree(message)
-            val payload = event.get("payload")
-                ?: throw IllegalArgumentException("뉴스 수집 실패 이벤트에 payload가 없습니다: $message")
-
-            val requestId = payload.get("requestId")?.asText() ?: "unknown"
-            val source = payload.get("source")?.asText() ?: "unknown"
-            val error = payload.get("error")?.asText() ?: "Unknown error"
-
-            logger.warn("❌ 뉴스 수집 실패: requestId=$requestId, source=$source, error=$error")
-        } catch (e: Exception) {
-            logger.error("❌ 뉴스 수집 실패 이벤트 처리 실패: $message", e)
             throw e
         }
     }
