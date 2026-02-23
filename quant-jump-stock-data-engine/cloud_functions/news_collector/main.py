@@ -120,7 +120,7 @@ def _init_service() -> tuple[NewsCollectionService, NewsProcessor]:
         _processor = NewsProcessor(
             mongo_db=db,
             pg_pool=pg_pool,
-            slack_webhook_url=os.environ.get("SLACK_WEBHOOK_URL_TRADING"),
+            slack_webhook_url=os.environ.get("SLACK_WEBHOOK_URL_NEWS"),
         )
         logger.info("서비스 초기화 완료 (cold start)")
         return _service, _processor
