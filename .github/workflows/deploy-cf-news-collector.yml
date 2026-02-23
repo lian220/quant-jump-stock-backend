@@ -1,0 +1,81 @@
+name: Deploy News Collector Cloud Function
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'quant-jump-stock-data-engine/cloud_functions/news_collector/**'
+      - 'quant-jump-stock-data-engine/requirements-cf-news.txt'
+      - 'quant-jump-stock-data-engine/scripts/build_cf_news_collector.sh'
+      - 'quant-jump-stock-data-engine/src/application/news/**'
+      - 'quant-jump-stock-data-engine/src/adapter/output/external/saveticker_client.py'
+      - 'quant-jump-stock-data-engine/src/adapter/output/external/translator.py'
+      - 'quant-jump-stock-data-engine/src/adapter/output/mongodb/news_repository.py'
+      - 'quant-jump-stock-data-engine/src/adapter/output/postgresql/collector_state_repository.py'
+      - 'quant-jump-stock-data-engine/src/domain/news/**'
+      - '.github/workflows/deploy-cf-news-collector.yml'
+      - '!**.md'
+
+env:
+  REGION: asia-northeast3
+  FUNCTION_NAME: news-collector
+  RUNTIME: python311
+  ENTRY_POINT: collect_news
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Build Cloud Function source
+        working-directory: ./quant-jump-stock-data-engine
+        run: |
+          chmod +x scripts/build_cf_news_collector.sh
+          ./scripts/build_cf_news_collector.sh
+
+      - name: Verify imports
+        working-directory: ./quant-jump-stock-data-engine/.build/cf-news-collector
+        run: |
+          pip install -q -r requirements.txt
+          python -c "from main import collect_news; print('Import OK')"
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy Cloud Function
+        run: |
+          gcloud functions deploy ${{ env.FUNCTION_NAME }} \
+            --gen2 \
+            --region=${{ env.REGION }} \
+            --runtime=${{ env.RUNTIME }} \
+            --source=./quant-jump-stock-data-engine/.build/cf-news-collector \
+            --entry-point=${{ env.ENTRY_POINT }} \
+            --trigger-http \
+            --no-allow-unauthenticated \
+            --memory=256Mi \
+            --timeout=120s \
+            --min-instances=0 \
+            --max-instances=1 \
+            --service-account=qjs-data-engine@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com \
+            --set-secrets=/secrets/common/env=qjs-env-common:latest,/secrets/db-prod/env=qjs-env-db-prod:latest,/secrets/prod/env=qjs-env-prod:latest \
+            --set-env-vars=GCP_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Verify Deployment
+        run: |
+          FUNCTION_URL=$(gcloud functions describe ${{ env.FUNCTION_NAME }} \
+            --region=${{ env.REGION }} \
+            --gen2 \
+            --format='value(serviceConfig.uri)')
+          echo "Cloud Function URL: $FUNCTION_URL"
