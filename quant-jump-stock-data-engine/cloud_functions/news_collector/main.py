@@ -67,7 +67,7 @@ def _load_secrets():
             key = key.strip()
             value = value.strip().strip('"').strip("'")
             if key:
-                os.environ.setdefault(key, value)
+                os.environ[key] = value
         logger.info(f"시크릿 로드: {path}")
 
 
@@ -101,6 +101,7 @@ def _init_service() -> NewsCollectionService:
         dbname=os.environ["DB_NAME"],
         user=os.environ["DB_USER"],
         password=os.environ["DB_PASSWORD"],
+        sslmode=os.environ.get("DB_SSLMODE", "require"),
     )
 
     saveticker_client = SaveTickerClient()
@@ -199,7 +200,7 @@ def collect_news(request):
         logger.exception(f"뉴스 수집 실패: {e}")
         error_response = {
             "status": "error",
-            "error": str(e),
+            "error": type(e).__name__,
             "duration_ms": int(duration * 1000),
         }
         return (json.dumps(error_response, ensure_ascii=False), 500, {"Content-Type": "application/json"})
