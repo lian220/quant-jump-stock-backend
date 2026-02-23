@@ -33,7 +33,7 @@ class SaveTickerClient:
     }
     DETAIL_FETCH_DELAY = 0.2  # 상세 API 호출 간 딜레이 (초)
     MAX_ITEMS_PER_COLLECTION = 10  # 1회 수집 최대 기사 수 (Cloud Run 타임아웃 방지)
-    TRANSLATION_WORKERS = 4  # 번역 병렬 스레드 수
+    TRANSLATION_WORKERS = 1  # 번역 스레드 수 (Cloud Function 메모리 절약을 위해 순차 처리)
 
     def __init__(
         self,
