@@ -1,14 +1,12 @@
 """
 Cloud Function: 뉴스 수집기
 
-Cloud Scheduler → HTTP 트리거 → 뉴스 수집 → Pub/Sub 발행
-기존 3-hop (Quartz → Pub/Sub → Data Engine) 구조를 1-hop으로 단순화.
+Cloud Scheduler → HTTP 트리거 → 뉴스 수집 → 스코어링/알림 직접 처리
 
 시크릿: 기존 Secret Manager 볼륨 마운트 사용
   /secrets/common/env  → qjs-env-common
   /secrets/db-prod/env → qjs-env-db-prod
   /secrets/prod/env    → qjs-env-prod
-환경변수: GCP_PROJECT_ID (Pub/Sub 발행용, deploy 시 주입)
 """
 
 import json
@@ -28,6 +26,7 @@ from application.news.news_collection_service import NewsCollectionService
 from adapter.output.external.saveticker_client import SaveTickerClient
 from adapter.output.mongodb.news_repository import MongoNewsRepository
 from adapter.output.postgresql.collector_state_repository import PostgresCollectorStateRepository
+from news_processor import NewsProcessor
 
 # Cloud Functions gen2 (Cloud Run) 로깅: stderr에 직접 출력
 handler = logging.StreamHandler(sys.stderr)
@@ -41,10 +40,9 @@ KST = timezone(timedelta(hours=9))
 
 # ── 글로벌 인스턴스 (warm 인스턴스 재사용) ──────────────────────
 _service: NewsCollectionService | None = None
-_publisher = None
+_processor: NewsProcessor | None = None
 _secrets_loaded = False
 _service_lock = threading.Lock()
-_publisher_lock = threading.Lock()
 
 
 def _load_secrets():
@@ -74,19 +72,19 @@ def _load_secrets():
     _secrets_loaded = True
 
 
-def _init_service() -> NewsCollectionService:
+def _init_service() -> tuple[NewsCollectionService, NewsProcessor]:
     """서비스 초기화 (cold start 시 1회)"""
-    global _service
+    global _service, _processor
     if _service is not None:
-        return _service
+        return _service, _processor
 
     with _service_lock:
         if _service is not None:
-            return _service
+            return _service, _processor
 
         _load_secrets()
 
-        # 필수 환경변수 검증 — Secret Manager에서 못 읽으면 즉시 실패
+        # 필수 환경변수 검증
         required_vars = ["MONGODB_URI", "DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"]
         missing = [v for v in required_vars if not os.environ.get(v)]
         if missing:
@@ -95,8 +93,7 @@ def _init_service() -> NewsCollectionService:
         logger.info(f"환경변수 로드 완료: DB_HOST={os.environ['DB_HOST']}, DB_NAME={os.environ['DB_NAME']}")
 
         # MongoDB
-        mongo_uri = os.environ["MONGODB_URI"]
-        mongo_client = MongoClient(mongo_uri)
+        mongo_client = MongoClient(os.environ["MONGODB_URI"])
         db = mongo_client.get_default_database()
 
         # PostgreSQL connection pool
@@ -120,56 +117,13 @@ def _init_service() -> NewsCollectionService:
             news_repository=news_repo,
             collector_state_repository=state_repo,
         )
-        logger.info("NewsCollectionService initialized (cold start)")
-        return _service
-
-
-def _get_publisher():
-    """Pub/Sub publisher lazy 초기화"""
-    global _publisher
-    if _publisher is not None:
-        return _publisher
-
-    with _publisher_lock:
-        if _publisher is not None:
-            return _publisher
-
-        project_id = os.environ.get("GCP_PROJECT_ID")
-        if not project_id:
-            logger.info("GCP_PROJECT_ID not set - Pub/Sub publish disabled")
-            return None
-
-        try:
-            from google.cloud import pubsub_v1
-            _publisher = pubsub_v1.PublisherClient()
-            return _publisher
-        except Exception as e:
-            logger.warning(f"Pub/Sub publisher 초기화 실패: {e}")
-            return None
-
-
-def _publish_result(result: dict, duration: float) -> None:
-    """수집 결과를 Pub/Sub에 발행"""
-    publisher = _get_publisher()
-    project_id = os.environ.get("GCP_PROJECT_ID")
-    if not publisher or not project_id:
-        return
-
-    topic_path = publisher.topic_path(project_id, "quantiq.news.collected")
-    payload = {
-        "status": "success",
-        "timestamp": datetime.now(KST).isoformat(),
-        "source": result.get("source", "SAVETICKER"),
-        "articleIds": result.get("article_ids", []),
-        "collectedCount": result.get("collected_count", 0),
-        "duration": duration,
-    }
-    try:
-        future = publisher.publish(topic_path, json.dumps(payload).encode("utf-8"))
-        future.result(timeout=10)
-        logger.info(f"Pub/Sub 발행 완료: {result.get('collected_count', 0)}건")
-    except Exception as e:
-        logger.warning(f"Pub/Sub 발행 실패 (수집은 성공): {e}")
+        _processor = NewsProcessor(
+            mongo_db=db,
+            pg_pool=pg_pool,
+            slack_webhook_url=os.environ.get("SLACK_WEBHOOK_URL_TRADING"),
+        )
+        logger.info("서비스 초기화 완료 (cold start)")
+        return _service, _processor
 
 
 @functions_framework.http
@@ -182,24 +136,25 @@ def collect_news(request):
     start_time = time.time()
 
     try:
-        # 요청에서 소스 파라미터 추출
         source = "SAVETICKER"
         if request.is_json:
             body = request.get_json(silent=True) or {}
             source = body.get("source", source)
 
-        service = _init_service()
+        service, processor = _init_service()
         result = service.collect(source=source)
 
+        collected_count = result.get("collected_count", 0)
+        article_ids = result.get("article_ids", [])
+
+        # 수집된 기사 있으면 스코어링 + 인앱 알림 + Slack 직접 처리
+        if collected_count > 0 and article_ids:
+            processor.process(article_ids=article_ids, source=source)
+
         duration = time.time() - start_time
-
-        # 수집 성공 시 Pub/Sub 발행
-        if result.get("collected_count", 0) > 0:
-            _publish_result(result, duration)
-
         response = {
             "status": "success",
-            "collected_count": result.get("collected_count", 0),
+            "collected_count": collected_count,
             "source": source,
             "duration_ms": int(duration * 1000),
         }

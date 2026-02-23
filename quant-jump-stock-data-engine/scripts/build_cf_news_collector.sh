@@ -25,6 +25,7 @@ mkdir -p "$BUILD_DIR"
 
 # ── Cloud Function 엔트리포인트 복사 ──────────────────────
 cp "$PROJECT_ROOT/cloud_functions/news_collector/main.py" "$BUILD_DIR/main.py"
+cp "$PROJECT_ROOT/cloud_functions/news_collector/news_processor.py" "$BUILD_DIR/news_processor.py"
 
 # ── 의존성 파일 복사 ──────────────────────────────────────
 cp "$PROJECT_ROOT/requirements-cf-news.txt" "$BUILD_DIR/requirements.txt"
