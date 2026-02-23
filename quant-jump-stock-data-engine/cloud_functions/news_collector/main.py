@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import sys
+import threading
 import time
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -42,6 +43,8 @@ KST = timezone(timedelta(hours=9))
 _service: NewsCollectionService | None = None
 _publisher = None
 _secrets_loaded = False
+_service_lock = threading.Lock()
+_publisher_lock = threading.Lock()
 
 
 def _load_secrets():
@@ -49,7 +52,6 @@ def _load_secrets():
     global _secrets_loaded
     if _secrets_loaded:
         return
-    _secrets_loaded = True
 
     secret_paths = [
         Path("/secrets/common/env"),    # qjs-env-common
@@ -69,6 +71,7 @@ def _load_secrets():
             if key:
                 os.environ[key] = value
         logger.info(f"시크릿 로드: {path}")
+    _secrets_loaded = True
 
 
 def _init_service() -> NewsCollectionService:
@@ -77,44 +80,48 @@ def _init_service() -> NewsCollectionService:
     if _service is not None:
         return _service
 
-    _load_secrets()
+    with _service_lock:
+        if _service is not None:
+            return _service
 
-    # 필수 환경변수 검증 — Secret Manager에서 못 읽으면 즉시 실패
-    required_vars = ["MONGODB_URI", "DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"]
-    missing = [v for v in required_vars if not os.environ.get(v)]
-    if missing:
-        raise RuntimeError(f"필수 환경변수 누락 (Secret Manager 볼륨 마운트 확인): {missing}")
+        _load_secrets()
 
-    logger.info(f"환경변수 로드 완료: DB_HOST={os.environ['DB_HOST']}, DB_NAME={os.environ['DB_NAME']}")
+        # 필수 환경변수 검증 — Secret Manager에서 못 읽으면 즉시 실패
+        required_vars = ["MONGODB_URI", "DB_HOST", "DB_PORT", "DB_NAME", "DB_USER", "DB_PASSWORD"]
+        missing = [v for v in required_vars if not os.environ.get(v)]
+        if missing:
+            raise RuntimeError(f"필수 환경변수 누락 (Secret Manager 볼륨 마운트 확인): {missing}")
 
-    # MongoDB
-    mongo_uri = os.environ["MONGODB_URI"]
-    mongo_client = MongoClient(mongo_uri)
-    db = mongo_client.get_default_database()
+        logger.info(f"환경변수 로드 완료: DB_HOST={os.environ['DB_HOST']}, DB_NAME={os.environ['DB_NAME']}")
 
-    # PostgreSQL connection pool
-    pg_pool = psycopg2.pool.SimpleConnectionPool(
-        minconn=1,
-        maxconn=3,
-        host=os.environ["DB_HOST"],
-        port=int(os.environ["DB_PORT"]),
-        dbname=os.environ["DB_NAME"],
-        user=os.environ["DB_USER"],
-        password=os.environ["DB_PASSWORD"],
-        sslmode=os.environ.get("DB_SSLMODE", "require"),
-    )
+        # MongoDB
+        mongo_uri = os.environ["MONGODB_URI"]
+        mongo_client = MongoClient(mongo_uri)
+        db = mongo_client.get_default_database()
 
-    saveticker_client = SaveTickerClient()
-    news_repo = MongoNewsRepository(db)
-    state_repo = PostgresCollectorStateRepository(pool=pg_pool)
+        # PostgreSQL connection pool
+        pg_pool = psycopg2.pool.SimpleConnectionPool(
+            minconn=1,
+            maxconn=3,
+            host=os.environ["DB_HOST"],
+            port=int(os.environ["DB_PORT"]),
+            dbname=os.environ["DB_NAME"],
+            user=os.environ["DB_USER"],
+            password=os.environ["DB_PASSWORD"],
+            sslmode=os.environ.get("DB_SSLMODE", "require"),
+        )
 
-    _service = NewsCollectionService(
-        saveticker_client=saveticker_client,
-        news_repository=news_repo,
-        collector_state_repository=state_repo,
-    )
-    logger.info("NewsCollectionService initialized (cold start)")
-    return _service
+        saveticker_client = SaveTickerClient()
+        news_repo = MongoNewsRepository(db)
+        state_repo = PostgresCollectorStateRepository(pool=pg_pool)
+
+        _service = NewsCollectionService(
+            saveticker_client=saveticker_client,
+            news_repository=news_repo,
+            collector_state_repository=state_repo,
+        )
+        logger.info("NewsCollectionService initialized (cold start)")
+        return _service
 
 
 def _get_publisher():
@@ -123,18 +130,22 @@ def _get_publisher():
     if _publisher is not None:
         return _publisher
 
-    project_id = os.environ.get("GCP_PROJECT_ID")
-    if not project_id:
-        logger.info("GCP_PROJECT_ID not set - Pub/Sub publish disabled")
-        return None
+    with _publisher_lock:
+        if _publisher is not None:
+            return _publisher
 
-    try:
-        from google.cloud import pubsub_v1
-        _publisher = pubsub_v1.PublisherClient()
-        return _publisher
-    except Exception as e:
-        logger.warning(f"Pub/Sub publisher 초기화 실패: {e}")
-        return None
+        project_id = os.environ.get("GCP_PROJECT_ID")
+        if not project_id:
+            logger.info("GCP_PROJECT_ID not set - Pub/Sub publish disabled")
+            return None
+
+        try:
+            from google.cloud import pubsub_v1
+            _publisher = pubsub_v1.PublisherClient()
+            return _publisher
+        except Exception as e:
+            logger.warning(f"Pub/Sub publisher 초기화 실패: {e}")
+            return None
 
 
 def _publish_result(result: dict, duration: float) -> None:
@@ -197,7 +208,7 @@ def collect_news(request):
 
     except Exception as e:
         duration = time.time() - start_time
-        logger.exception(f"뉴스 수집 실패: {e}")
+        logger.exception("뉴스 수집 실패")
         error_response = {
             "status": "error",
             "error": type(e).__name__,
