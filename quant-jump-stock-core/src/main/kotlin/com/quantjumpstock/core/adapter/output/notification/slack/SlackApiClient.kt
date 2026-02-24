@@ -30,6 +30,9 @@ class SlackApiClient(
     @Value("\${slack.channel:#trading-alerts}")
     private lateinit var slackChannel: String
 
+    @Value("\${slack.channel-scheduler:}")
+    private lateinit var slackChannelScheduler: String
+
     @Value("\${slack.webhook-url:}")
     private lateinit var slackWebhookUrl: String
 
@@ -243,7 +246,7 @@ class SlackApiClient(
 
         try {
             val message = SlackApiMessage(
-                channel = slackChannel,
+                channel = slackChannelScheduler.ifBlank { slackChannel },
                 text = "📊 기술적 분석 요청",
                 attachments = listOf(
                     SlackAttachment(
@@ -262,15 +265,15 @@ class SlackApiClient(
             )
 
             val response = sendToSlackApi(message)
-            val threadTs = response?.ts
+            logger.info("📋 Slack API 응답: ok=${response?.ok}, ts=${response?.ts}, error=${response?.error}")
 
-            if (threadTs != null) {
-                logger.info("✅ Slack 스레드 루트 생성: requestId=$requestId, threadTs=$threadTs")
+            return if (response?.ok == true && response.ts != null) {
+                logger.info("✅ Slack 스레드 루트 생성: requestId=$requestId, threadTs=${response.ts}")
+                response.ts
             } else {
-                logger.warn("⚠️ Slack 메시지 발송 성공하지만 threadTs 없음")
+                logger.warn("⚠️ Slack Bot API 실패 (ok=${response?.ok}, error=${response?.error}) - threadTs 없음")
+                null
             }
-
-            return threadTs
         } catch (e: Exception) {
             logger.error("❌ Slack API 알림 발송 실패", e)
             return null
@@ -297,7 +300,7 @@ class SlackApiClient(
 
         try {
             val message = SlackApiMessage(
-                channel = slackChannel,
+                channel = slackChannelScheduler.ifBlank { slackChannel },
                 text = "📰 뉴스 감정 분석 요청",
                 attachments = listOf(
                     SlackAttachment(
@@ -316,15 +319,15 @@ class SlackApiClient(
             )
 
             val response = sendToSlackApi(message)
-            val threadTs = response?.ts
+            logger.info("📋 Slack API 응답: ok=${response?.ok}, ts=${response?.ts}, error=${response?.error}")
 
-            if (threadTs != null) {
-                logger.info("✅ Slack 스레드 루트 생성: requestId=$requestId, threadTs=$threadTs")
+            return if (response?.ok == true && response.ts != null) {
+                logger.info("✅ Slack 스레드 루트 생성: requestId=$requestId, threadTs=${response.ts}")
+                response.ts
             } else {
-                logger.warn("⚠️ Slack 메시지 발송 성공하지만 threadTs 없음")
+                logger.warn("⚠️ Slack Bot API 실패 (ok=${response?.ok}, error=${response?.error}) - threadTs 없음")
+                null
             }
-
-            return threadTs
         } catch (e: Exception) {
             logger.error("❌ Slack API 알림 발송 실패", e)
             return null
@@ -351,7 +354,7 @@ class SlackApiClient(
 
         try {
             val message = SlackApiMessage(
-                channel = slackChannel,
+                channel = slackChannelScheduler.ifBlank { slackChannel },
                 text = "🏆 종목 추천 요청",
                 attachments = listOf(
                     SlackAttachment(
@@ -370,15 +373,15 @@ class SlackApiClient(
             )
 
             val response = sendToSlackApi(message)
-            val threadTs = response?.ts
+            logger.info("📋 Slack API 응답: ok=${response?.ok}, ts=${response?.ts}, error=${response?.error}")
 
-            if (threadTs != null) {
-                logger.info("✅ Slack 스레드 루트 생성: requestId=$requestId, threadTs=$threadTs")
+            return if (response?.ok == true && response.ts != null) {
+                logger.info("✅ Slack 스레드 루트 생성: requestId=$requestId, threadTs=${response.ts}")
+                response.ts
             } else {
-                logger.warn("⚠️ Slack 메시지 발송 성공하지만 threadTs 없음")
+                logger.warn("⚠️ Slack Bot API 실패 (ok=${response?.ok}, error=${response?.error}) - threadTs 없음")
+                null
             }
-
-            return threadTs
         } catch (e: Exception) {
             logger.error("❌ Slack API 알림 발송 실패", e)
             return null

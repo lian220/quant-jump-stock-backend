@@ -489,10 +489,18 @@ class StockRecommendationHandler(MessageHandler):
                             {"_id": 0, "ticker": 1, "stock_name": 1, "date": 1,
                              "technical_indicators": 1, "is_recommended": 1}
                         ))
-                    logger.info(f"종합 리포트: 기술적 분석 {len(tech_docs)}개 종목 ({analysis_date})")
+                    logger.info(f"종합 리포트: 기술적 분석 {len(tech_docs)}개 종목 ({analysis_date}), scheduler_thread_ts={message.thread_ts}")
                     # tech_docs 없어도 AI/감정 데이터로 리포트 생성 + Slack 발송
                     report = report_service.generate_report(tech_docs, analysis_date)
-                    SlackNotifier.notify_comprehensive_report(report, thread_ts=message.thread_ts)
+                    # Analysis 채널: 종합 리포트 독립 메시지 (thread 아님)
+                    SlackNotifier.notify_comprehensive_report(report, thread_ts=None)
+                    # Scheduler 채널: 완료 스레드 답글
+                    if message.thread_ts:
+                        candidate_count = len(report.get("buy_candidates", []))
+                        SlackNotifier.send_thread_message(
+                            text=f"✅ 종목 추천 완료 ({analysis_date}) - 추천 {candidate_count}개 | #analysis 채널을 확인하세요",
+                            thread_ts=message.thread_ts,
+                        )
                 except Exception as e:
                     logger.exception(f"종합 리포트 생성/전송 실패 ({analysis_date}): {e}")
 

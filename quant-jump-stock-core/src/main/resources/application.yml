@@ -145,6 +145,8 @@ slack:
   webhook-url-news: ${SLACK_WEBHOOK_URL_NEWS:}
   bot-token: ${SLACK_BOT_TOKEN:}
   channel: ${SLACK_CHANNEL:#trading-alerts}
+  channel-scheduler: ${SLACK_CHANNEL_SCHEDULER:}
+  channel-analysis: ${SLACK_CHANNEL_ANALYSIS:}
 
 # ============================================
 # KIS Configuration (Korean Investment & Securities)

@@ -85,7 +85,10 @@ class SlackNotifier:
                 attachments=attachments,
                 thread_ts=thread_ts,
             )
-            return ts
+            if ts is not None:
+                return ts
+            # 봇 실패 시 Webhook fallback (thread 답글 불가)
+            logger.warning(f"Bot post 실패 (channel={channel}), Webhook fallback으로 전송 (thread_ts 미지원)")
 
         # Webhook fallback (thread_ts 미지원)
         SlackNotifier._post_to_webhook(webhook_url, text, attachments=attachments, blocks=blocks)
