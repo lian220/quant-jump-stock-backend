@@ -4,6 +4,7 @@ import com.quantjumpstock.core.domain.model.prediction.PredictionResult
 import com.quantjumpstock.core.domain.model.stock.StockPriceSnapshot
 import com.quantjumpstock.core.domain.port.output.StockPriceDataPort
 import com.quantjumpstock.core.domain.prediction.port.output.PredictionResultRepositoryPort
+import com.quantjumpstock.core.domain.recommendation.model.RecommendationCriteria
 import org.slf4j.LoggerFactory
 import org.springframework.cache.annotation.Cacheable
 import org.springframework.stereotype.Service
@@ -36,9 +37,9 @@ class RecommendationService(
      *
      * @param date 조회 날짜 (Controller에서 기본값 전날 날짜로 해소)
      * @param minConfidence 최소 신뢰도 (기본값 0.7)
-     *                     Composite Score 기준으로 변환: minConfidence × 4.4 (실제 최대값)
-     *                     Composite Score 최대값 = 0.3×AI(5) + 0.4×Tech(3.5) + 0.3×Sentiment(5) = 4.4
-     *                     예: 0.7 → 3.08점 (B등급 이상)
+     *                     Composite Score 기준으로 변환: minConfidence × MAX_SCORE(7.4)
+     *                     Composite Score 최대값 = 0.3×AI(10) + 0.4×Tech(3.5) + 0.3×Sentiment(10) = 7.4
+     *                     예: 0.7 → 5.18점 (A등급 이상)
      * @return 매수 신호 응답
      */
     @Cacheable(
@@ -48,8 +49,8 @@ class RecommendationService(
     )
     fun getBuySignals(date: LocalDate, minConfidence: Double = 0.7): BuySignalsResponse {
         // Composite Score 기준으로 조회
-        // 실제 최대값: 0.3×5 + 0.4×3.5 + 0.3×5 = 4.4
-        val minCompositeScore = minConfidence * 4.4
+        // 최대값: 0.3×10 + 0.4×3.5 + 0.3×10 = 7.4 (RecommendationCriteria.MAX_SCORE)
+        val minCompositeScore = minConfidence * RecommendationCriteria.MAX_SCORE.toDouble()
 
         logger.info("Fetching buy signals for date={}, minCompositeScore={}", date, minCompositeScore)
 

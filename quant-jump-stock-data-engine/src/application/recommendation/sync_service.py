@@ -4,13 +4,15 @@ RecommendationSyncService - MongoDB → PostgreSQL 동기화
 MongoDB에 저장된 AI 예측, 감정 분석, 기술적 분석 결과를 통합하여
 PostgreSQL prediction_results 테이블에 저장한다.
 
-Composite Score = 0.3 × ai + 0.4 × tech + 0.3 × sentiment (고정 분모=1.0, 최대 4.4)
-  - AI score:        0~5  (rise_probability × 5)
+Composite Score = 0.3 × ai + 0.4 × tech + 0.3 × sentiment (고정 분모=1.0, 최대 ~7.4)
+  - AI score:        0~10  (rise_probability_normalized × 10)
+    * rise_probability_normalized = 0.5 + rise_pct/40  (0%→0.5, +20%→1.0, -20%→0.0)
   - Tech score:      0~3.5 (골든크로스 1.5 + RSI<50 1.0 + MACD매수 1.0)
-  - Sentiment score: 0~5  ((sentiment + 1) / 2 × 5)
-  - 최대값: 0.3×5 + 0.4×3.5 + 0.3×5 = 4.4
+  - Sentiment score: 0~10  ((sentiment + 1) / 2 × 10)
+  - 최대값: 0.3×10 + 0.4×3.5 + 0.3×10 = 3.0 + 1.4 + 3.0 = 7.4
 
-Grade 기준: S≥4.0, A≥3.3, B≥2.5, C≥1.5, D<1.5
+Grade 기준: S≥6.0, A≥4.5, B≥3.0, C≥1.5, D<1.5
+(banbu-stocktrading 원본 기준, rise_prob 25% 기준 composite ≈ 7.5)
 """
 
 import logging
@@ -338,10 +340,10 @@ class RecommendationSyncService:
                 # _fetch_stock_analysis_results와 동일 스케일: 0.5 + rise_pct/40.0
                 rise_probability = max(0.0, min(1.0, 0.5 + ratio * 2.5))
 
-            # AI 점수 계산 (0~5)
+            # AI 점수 계산 (0~10)
             ai_score = self._calculate_ai_score(rise_probability)
 
-            # 감정 점수 계산 (0~5)
+            # 감정 점수 계산 (0~10)
             sentiment_score = self._calculate_sentiment_score(sentiment.get("sentiment_score"))
 
             # 기술적 점수 계산 (0~3.5, 없으면 0)
@@ -442,7 +444,9 @@ class RecommendationSyncService:
         return (weighted_sum / fixed_denominator).quantize(Decimal("0.01"))
 
     def _calculate_ai_score(self, rise_probability: Optional[float]) -> Decimal:
-        """AI 점수 계산: rise_probability × 5 (0~5)"""
+        """AI 점수 계산: rise_probability × 10 (0~10)
+        rise_probability는 0~1 정규화값 (0%→0.5, +20%→1.0, -20%→0.0)
+        """
         if rise_probability is None:
             return Decimal("0")
         try:
@@ -450,14 +454,14 @@ class RecommendationSyncService:
         except Exception:
             logger.warning(f"rise_probability 변환 실패 (값={rise_probability!r}), 0으로 대체")
             return Decimal("0")
-        return value * Decimal("5")
+        return value * Decimal("10")
 
     def _calculate_sentiment_score(self, sentiment: Optional[float]) -> Decimal:
-        """감정 점수 정규화: (sentiment + 1) / 2 × 5 (0~5)"""
+        """감정 점수 정규화: (sentiment + 1) / 2 × 10 (0~10)"""
         if sentiment is None:
             return Decimal("0")
-        # sentiment: -1~1 → normalized: 0~5
-        normalized = (Decimal(str(sentiment)) + Decimal("1")) / Decimal("2") * Decimal("5")
+        # sentiment: -1~1 → normalized: 0~10
+        normalized = (Decimal(str(sentiment)) + Decimal("1")) / Decimal("2") * Decimal("10")
         return normalized.quantize(Decimal("0.01"))
 
     def _calculate_tech_score(self, tech: Dict) -> Decimal:
@@ -486,18 +490,18 @@ class RecommendationSyncService:
         """
         등급 판정: S, A, B, C, D
 
-        Composite Score 최대값 = 0.3×AI(5) + 0.4×Tech(3.5) + 0.3×Sentiment(5) = 4.4
-        S: ≥4.0 (모든 지표 최고 수준)
-        A: ≥3.3 (강한 복합 신호)
-        B: ≥2.5 (중간 수준 신호)
+        Composite Score 최대값 = 0.3×AI(10) + 0.4×Tech(3.5) + 0.3×Sentiment(10) = 7.4
+        S: ≥6.0 (모든 지표 최고 수준)
+        A: ≥4.5 (강한 복합 신호)
+        B: ≥3.0 (중간 수준 신호)
         C: ≥1.5 (약한 신호)
         D: <1.5
         """
-        if composite_score >= Decimal("4.0"):
+        if composite_score >= Decimal("6.0"):
             return "S"
-        elif composite_score >= Decimal("3.3"):
+        elif composite_score >= Decimal("4.5"):
             return "A"
-        elif composite_score >= Decimal("2.5"):
+        elif composite_score >= Decimal("3.0"):
             return "B"
         elif composite_score >= Decimal("1.5"):
             return "C"

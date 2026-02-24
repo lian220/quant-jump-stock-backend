@@ -9,8 +9,9 @@ import java.math.BigDecimal
  *
  * ## 점수 체계 개요
  * ```
- * Composite Score (0~7.5) = AI(30%) + 기술적분석(40%) + 감정분석(30%)
+ * Composite Score (0~7.4) = AI(30%) + 기술적분석(40%) + 감정분석(30%)
  *                         = (0.3 × AI) + (0.4 × Tech) + (0.3 × Sentiment)
+ * 최대값: 0.3×10 + 0.4×3.5 + 0.3×10 = 3.0 + 1.4 + 3.0 = 7.4
  * ```
  *
  * ## 개별 점수 계산 방법
@@ -20,23 +21,12 @@ import java.math.BigDecimal
  * - RSI < 50 (과매도): **1.0점**
  * - MACD 매수 신호: **1.0점**
  *
- * ### 2. AI 예측 점수 (AI Score, 최대 2.5점)
- * - Vertex AI 상승 확률 기반
- * - 현재 미구현 (Phase 6 진행 중)
+ * ### 2. AI 예측 점수 (AI Score, 최대 10점)
+ * - rise_probability_normalized × 10 (0~10)
+ * - rise_probability_normalized = 0.5 + rise_pct/40 (0%→5.0, +20%→10.0, -20%→0.0)
  *
- * ### 3. 감정 분석 점수 (Sentiment Score, 최대 2.5점)
- * - 뉴스 감정 분석 기반
- * - 현재 미구현 (Phase 6 진행 중)
- *
- * ## 현재 상태 (Tech-only)
- * ```
- * Composite Score (현재) = 0.4 × Tech Score
- * 최대 가능 점수 = 0.4 × 3.5 = 1.4점
- * ```
- *
- * 📖 상세 문서: `docs/features/recommendation-scoring-guide.md`
- *
- * 나중에 DB 설정으로 마이그레이션할 수 있도록 준비됨.
+ * ### 3. 감정 분석 점수 (Sentiment Score, 최대 10점)
+ * - (sentiment + 1) / 2 × 10 (sentiment: -1~1 → 0~10)
  */
 object RecommendationCriteria {
 
@@ -75,14 +65,14 @@ object RecommendationCriteria {
     // 3. 추천 기준
     // ═════════════════════════════════════════════════
 
-    /** 최소 추천 점수 (기본값) */
-    val MIN_RECOMMEND_SCORE = BigDecimal("5.25")
+    /** 최소 추천 점수 (기본값: 0.7 × 7.4 ≈ 5.18) */
+    val MIN_RECOMMEND_SCORE = BigDecimal("5.18")
 
-    /** 최대 점수 */
-    val MAX_SCORE = BigDecimal("7.5")
+    /** 최대 점수 (0.3×10 + 0.4×3.5 + 0.3×10 = 7.4) */
+    val MAX_SCORE = BigDecimal("7.4")
 
     /** 기본 최소 신뢰도 (0~1) */
-    const val DEFAULT_MIN_CONFIDENCE = 0.7  // → 5.25점
+    const val DEFAULT_MIN_CONFIDENCE = 0.7  // → 5.18점
 
     // ═════════════════════════════════════════════════
     // 4. 가격 추천 기준
