@@ -137,16 +137,17 @@ services:
       - ${ENV_FILE:-.env.local}
     environment:
       TZ: "Asia/Seoul"
-      # MongoDB - env var 우선, 미설정시 로컬 Docker
-      MONGODB_URI: ${MONGODB_URI:-mongodb://quantiq_user:quantiq_password@mongodb:27017/stock_trading?authSource=admin}
-      # PostgreSQL - env var 우선, 미설정시 로컬 Docker
-      DB_HOST: ${DB_HOST:-postgresql}
-      DB_PORT: ${DB_PORT:-5432}
+      # MongoDB/PostgreSQL - env_file(DB_ENV_FILE)에서 환경별로 로드됨
+      # 여기서 재정의하면 env_file 값을 덮어써서 prod 연결이 안 되는 문제 발생
+      # 로컬: .env.db.local (mongodb:27017, postgresql:5432)
+      # 프로덕션: .env.db.prod (Atlas URI, Supabase)
       # Server Port (Data Engine)
       SERVER_PORT: ${DATA_ENGINE_PORT:-10020}
-      # Pub/Sub (컨테이너 네트워크용 기본값 설정)
-      PUBSUB_EMULATOR_HOST: ${PUBSUB_EMULATOR_HOST:-pubsub-emulator:8681}
-      PUBSUB_PROJECT_ID: ${PUBSUB_PROJECT_ID:-quantiq-local}
+      # Pub/Sub - 로컬 에뮬레이터 고정 (GCP 배포는 Cloud Run에서 별도 설정)
+      # .env.prod의 PUBSUB_PROJECT_ID(GCP 프로젝트 ID)가 호스트 shell에 export되어도
+      # docker-compose는 항상 로컬 에뮬레이터를 사용해야 하므로 고정값으로 설정
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8681
+      PUBSUB_PROJECT_ID: quantiq-local
       # Slack
       SLACK_ENABLED: ${SLACK_ENABLED:-false}
       SLACK_CHANNEL: ${SLACK_CHANNEL:-C0A1XASTLH2}
@@ -193,25 +194,18 @@ services:
       TZ: "Asia/Seoul"
       # Server Port (Core API)
       SERVER_PORT: ${CORE_API_PORT:-10010}
-      # Spring Profile (로컬 기본값)
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE:-local}
-      # PostgreSQL - env var 우선, 미설정시 로컬 Docker
-      SPRING_DATASOURCE_URL: ${SPRING_DATASOURCE_URL:-jdbc:postgresql://${DB_HOST:-postgresql}:${DB_PORT:-5432}/${DB_NAME:-quantiq}}
-      SPRING_DATASOURCE_USERNAME: ${DB_USER:-quantiq_user}
-      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD:-quantiq_password}
-      DB_HOST: ${DB_HOST:-postgresql}
-      DB_PORT: ${DB_PORT:-5432}
-      DB_NAME: ${DB_NAME:-quantiq}
-      DB_USER: ${DB_USER:-quantiq_user}
-      DB_PASSWORD: ${DB_PASSWORD:-quantiq_password}
-      # MongoDB - env var 우선, 미설정시 로컬 Docker
-      SPRING_DATA_MONGODB_URI: ${MONGODB_URI:-mongodb://quantiq_user:quantiq_password@mongodb:27017/stock_trading?authSource=admin}
+      # PostgreSQL/MongoDB - env_file(DB_ENV_FILE)에서 환경별로 로드됨
+      # 여기서 재정의하면 env_file 값을 덮어써서 prod 연결이 안 되는 문제 발생
+      # 로컬: .env.db.local (postgresql:5432, mongodb:27017)
+      # 프로덕션: .env.db.prod (Supabase URI, MongoDB Atlas URI)
       # Messaging: 로컬은 Pub/Sub 사용
       MESSAGING_PROVIDER: "pubsub"
-      # Pub/Sub (컨테이너 네트워크용 기본값 설정)
-      PUBSUB_EMULATOR_HOST: ${PUBSUB_EMULATOR_HOST:-pubsub-emulator:8681}
-      SPRING_CLOUD_GCP_PUBSUB_EMULATORHOST: ${PUBSUB_EMULATOR_HOST:-pubsub-emulator:8681}
-      PUBSUB_PROJECT_ID: ${PUBSUB_PROJECT_ID:-quantiq-local}
+      # Pub/Sub - 로컬 에뮬레이터 고정 (GCP 배포는 Cloud Run에서 별도 설정)
+      # .env.prod의 PUBSUB_PROJECT_ID(GCP 프로젝트 ID)가 호스트 shell에 export되어도
+      # docker-compose는 항상 로컬 에뮬레이터를 사용해야 하므로 고정값으로 설정
+      PUBSUB_EMULATOR_HOST: pubsub-emulator:8681
+      SPRING_CLOUD_GCP_PUBSUB_EMULATORHOST: pubsub-emulator:8681
+      PUBSUB_PROJECT_ID: quantiq-local
       # Slack - 기본값 비활성화, .env.prod에서 활성화
       SLACK_ENABLED: ${SLACK_ENABLED:-false}
       SLACK_BOT_TOKEN: ${SLACK_BOT_TOKEN:-}
