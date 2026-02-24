@@ -4,7 +4,13 @@ RecommendationSyncService - MongoDB → PostgreSQL 동기화
 MongoDB에 저장된 AI 예측, 감정 분석, 기술적 분석 결과를 통합하여
 PostgreSQL prediction_results 테이블에 저장한다.
 
-Composite Score = 0.3 × ai + 0.4 × tech + 0.3 × sentiment (고정 분모=1.0, 최대 ~4.4)
+Composite Score = 0.3 × ai + 0.4 × tech + 0.3 × sentiment (고정 분모=1.0, 최대 4.4)
+  - AI score:        0~5  (rise_probability × 5)
+  - Tech score:      0~3.5 (골든크로스 1.5 + RSI<50 1.0 + MACD매수 1.0)
+  - Sentiment score: 0~5  ((sentiment + 1) / 2 × 5)
+  - 최대값: 0.3×5 + 0.4×3.5 + 0.3×5 = 4.4
+
+Grade 기준: S≥4.0, A≥3.3, B≥2.5, C≥1.5, D<1.5
 """
 
 import logging
@@ -477,12 +483,21 @@ class RecommendationSyncService:
         return count
 
     def _determine_grade(self, composite_score: Decimal) -> str:
-        """등급 판정: S, A, B, C, D"""
-        if composite_score >= Decimal("6.0"):
+        """
+        등급 판정: S, A, B, C, D
+
+        Composite Score 최대값 = 0.3×AI(5) + 0.4×Tech(3.5) + 0.3×Sentiment(5) = 4.4
+        S: ≥4.0 (모든 지표 최고 수준)
+        A: ≥3.3 (강한 복합 신호)
+        B: ≥2.5 (중간 수준 신호)
+        C: ≥1.5 (약한 신호)
+        D: <1.5
+        """
+        if composite_score >= Decimal("4.0"):
             return "S"
-        elif composite_score >= Decimal("4.5"):
+        elif composite_score >= Decimal("3.3"):
             return "A"
-        elif composite_score >= Decimal("3.0"):
+        elif composite_score >= Decimal("2.5"):
             return "B"
         elif composite_score >= Decimal("1.5"):
             return "C"
