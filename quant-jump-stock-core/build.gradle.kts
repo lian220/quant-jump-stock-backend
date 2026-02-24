@@ -51,9 +51,6 @@ dependencies {
     // Connection Pool (Spring Boot BOM 관리)
     implementation("com.zaxxer:HikariCP")
 
-    // Environment variables
-    implementation("io.github.cdimascio:java-dotenv:5.3.1")
-
     // Quartz Scheduler
     implementation("org.springframework.boot:spring-boot-starter-quartz")
 

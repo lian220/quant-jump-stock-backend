@@ -188,7 +188,6 @@ services:
     volumes:
       - ./credentials:/app/credentials
       - ./quant-jump-stock-data-engine:/quant-jump-stock-data-engine
-      - ./.env.prod:/app/.env.prod:ro
       - ./scripts:/scripts
     environment:
       TZ: "Asia/Seoul"
