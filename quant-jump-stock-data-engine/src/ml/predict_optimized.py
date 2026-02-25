@@ -247,28 +247,27 @@ def get_indicator_key_mappings():
         conn = get_postgres_connection(shared=True)
         if conn is None:
             return yfinance_name_to_ticker, fred_name_to_code
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                try:
-                    cur.execute("SELECT ticker, name FROM yfinance_indicators WHERE is_active = true")
-                    for row in cur.fetchall():
-                        ticker = row.get("ticker")
-                        name = row.get("name")
-                        if ticker and name:
-                            yfinance_name_to_ticker[name] = ticker
-                            yfinance_name_to_ticker[ticker] = ticker
-                except Exception as e:
-                    print(f"⚠️ 경고: yfinance 키 매핑 조회 실패: {e}")
-                try:
-                    cur.execute("SELECT code, name FROM fred_indicators WHERE is_active = true")
-                    for row in cur.fetchall():
-                        code = row.get("code")
-                        name = row.get("name")
-                        if code and name:
-                            fred_name_to_code[name] = code
-                            fred_name_to_code[code] = code
-                except Exception as e:
-                    print(f"⚠️ 경고: FRED 키 매핑 조회 실패: {e}")
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            try:
+                cur.execute("SELECT ticker, name FROM yfinance_indicators WHERE is_active = true")
+                for row in cur.fetchall():
+                    ticker = row.get("ticker")
+                    name = row.get("name")
+                    if ticker and name:
+                        yfinance_name_to_ticker[name] = ticker
+                        yfinance_name_to_ticker[ticker] = ticker
+            except Exception as e:
+                print(f"⚠️ 경고: yfinance 키 매핑 조회 실패: {e}")
+            try:
+                cur.execute("SELECT code, name FROM fred_indicators WHERE is_active = true")
+                for row in cur.fetchall():
+                    code = row.get("code")
+                    name = row.get("name")
+                    if code and name:
+                        fred_name_to_code[name] = code
+                        fred_name_to_code[code] = code
+            except Exception as e:
+                print(f"⚠️ 경고: FRED 키 매핑 조회 실패: {e}")
     except Exception as e:
         print(f"⚠️ 경고: 키 매핑 조회 중 오류: {e}")
     return yfinance_name_to_ticker, fred_name_to_code
