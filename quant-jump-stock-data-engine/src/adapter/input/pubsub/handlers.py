@@ -19,7 +19,7 @@ from application.recommendation.sync_service import RecommendationSyncService
 # BacktestCheckpoint, _DEFAULT_BENCHMARK는 BacktestRequestHandler 내부에서 lazy import
 _DEFAULT_BENCHMARK = "SPY"
 from core.database import MongoDB
-from services.comprehensive_report import ComprehensiveReportService
+from services.comprehensive_report import ComprehensiveReportService, DailyDataNotCollectedError
 from services.slack_notifier import SlackNotifier
 from .subscriber import PubSubMessage, NonRetryableError
 
@@ -507,6 +507,9 @@ class StockRecommendationHandler(MessageHandler):
                     # 분석 채널: 종합 리포트 독립 메시지
                     SlackNotifier.notify_comprehensive_report(report, thread_ts=None)
                     logger.info(f"종합 리포트 Slack 발송 완료 ({analysis_date}): 추천 {candidate_count}개, 근접 탈락 {near_miss_count}개")
+                except DailyDataNotCollectedError as e:
+                    logger.error(str(e))
+                    SlackNotifier.notify_daily_data_missing(analysis_date)
                 except Exception as e:
                     logger.exception(f"종합 리포트 생성/전송 실패 ({analysis_date}): {e}")
 

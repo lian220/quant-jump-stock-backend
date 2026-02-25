@@ -14,6 +14,7 @@ from core.config import settings
 from typing import Optional, Dict, List
 
 from adapter.output.slack.bot_client import SlackBotClient
+from config.settings import get_settings
 
 KST = timezone('Asia/Seoul')
 EST = timezone('America/New_York')
@@ -75,6 +76,8 @@ class SlackNotifier:
         if not getattr(settings, 'SLACK_ENABLED', True):
             logger.info("Slack 비활성화 상태 (SLACK_ENABLED=false)")
             return None
+
+        logger.info(f"Slack 발송 시도: channel={channel}, webhook={'설정됨' if webhook_url else '미설정'}")
 
         bot = _get_bot_client()
         if bot.is_available and channel:
@@ -260,6 +263,8 @@ class SlackNotifier:
         summary = report.get("summary", {})
         breakdown = report.get("breakdown", {})
         analysis_date = report.get("analysis_date", "N/A")
+        _settings = get_settings()
+        rsi_threshold = _settings.recommendation.rsi_threshold
 
         avg_composite = summary.get("avg_composite_score", 0)
         avg_rise = summary.get("avg_rise_probability", 0)
@@ -308,7 +313,7 @@ class SlackNotifier:
                     "*세부 분석 결과*\n\n"
                     f"📊 *기술적 지표 분석* ({tech_info.get('count', 0)}개)\n"
                     f"└ {_ticker_summary(tech_info.get('tickers', []), tech_info.get('count', 0))}\n"
-                    f"└ 골든크로스, RSI<70, MACD매수신호\n\n"
+                    f"└ 골든크로스, RSI<{rsi_threshold:.0f}, MACD매수신호\n\n"
                     f"🤖 *AI 주가 예측* ({ai_info.get('count', 0)}개)\n"
                     f"└ {_ticker_summary(ai_info.get('tickers', []), ai_info.get('count', 0))}\n"
                     f"└ 평균 상승률: {ai_info.get('avg_rise', 0):.1f}%\n\n"
@@ -343,7 +348,7 @@ class SlackNotifier:
                 if indicators.get("macd_buy_signal"):
                     signals.append("MACD매수")
                 rsi_val = indicators.get("rsi", 100)
-                if rsi_val < 70:
+                if rsi_val < rsi_threshold:
                     signals.append(f"RSI({rsi_val:.0f})")
                 signal_text = ", ".join(signals) if signals else "없음"
 
@@ -522,6 +527,33 @@ class SlackNotifier:
                 ],
                 "footer": "Quantiq Data Engine",
                 "ts": int(datetime.now(KST).timestamp())
+            }
+        ]
+        SlackNotifier._post_message(
+            channel=SlackNotifier._get_error_channel(),
+            webhook_url=SlackNotifier._get_error_webhook(),
+            text=text,
+            attachments=attachments,
+        )
+
+    @staticmethod
+    def notify_daily_data_missing(analysis_date: str):
+        """경제 데이터 미수집 에러 알림 → 에러 채널"""
+        text = "❌ 종합 리포트 생성 실패"
+        attachments = [
+            {
+                "color": "dc3545",
+                "title": "경제 데이터 미수집",
+                "text": (
+                    f"`daily_stock_data` (date={analysis_date}) 가 존재하지 않습니다.\n"
+                    f"경제 데이터 수집이 선행되어야 종합 리포트를 생성할 수 있습니다."
+                ),
+                "fields": [
+                    {"title": "분석 날짜", "value": analysis_date, "short": True},
+                    {"title": "Timestamp", "value": datetime.now(KST).isoformat(), "short": True},
+                ],
+                "footer": "Quantiq Data Engine",
+                "ts": int(datetime.now(KST).timestamp()),
             }
         ]
         SlackNotifier._post_message(

@@ -141,8 +141,8 @@ class BuyCriteria:
     def filter_candidates(
         self,
         all_results: List[Dict[str, Any]],
-        ai_scores: Dict[str, float] = None,
-        sentiment_scores: Dict[str, float] = None,
+        ai_scores: Dict[str, float] | None = None,
+        sentiment_scores: Dict[str, float] | None = None,
     ) -> List[Dict[str, Any]]:
         """
         전체 분석 결과에서 매수 후보 필터링 + 점수 계산
