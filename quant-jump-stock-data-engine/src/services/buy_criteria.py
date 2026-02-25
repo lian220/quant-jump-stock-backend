@@ -204,9 +204,9 @@ class BuyCriteria:
         self,
         all_results: List[Dict[str, Any]],
         excluded_tickers: set,
-        ai_scores: Dict[str, float] = None,
-        sentiment_scores: Dict[str, float] = None,
-        top_n: int = None,
+        ai_scores: Dict[str, float] | None = None,
+        sentiment_scores: Dict[str, float] | None = None,
+        top_n: int | None = None,
     ) -> List[Dict[str, Any]]:
         """
         필터 미통과 종목 중 composite_score 상위 near-miss 후보 반환.
@@ -240,11 +240,12 @@ class BuyCriteria:
             scores = self.calculate_composite_score(indicators, ai, sentiment)
 
             # 미충족 조건 목록
+            rsi_val = indicators.get("rsi", 100)
             missing = []
             if not indicators.get("golden_cross"):
                 missing.append("골든크로스")
-            if indicators.get("rsi", 100) >= self.rsi_threshold:
-                missing.append(f"RSI({indicators.get('rsi', 0):.0f}≥{self.rsi_threshold:.0f})")
+            if rsi_val >= self.rsi_threshold:
+                missing.append(f"RSI({rsi_val:.0f}≥{self.rsi_threshold:.0f})")
             if not indicators.get("macd_buy_signal"):
                 missing.append("MACD매수")
 
@@ -252,8 +253,8 @@ class BuyCriteria:
             met = []
             if indicators.get("golden_cross"):
                 met.append("골든크로스✓")
-            if indicators.get("rsi", 100) < self.rsi_threshold:
-                met.append(f"RSI({indicators.get('rsi', 0):.0f})✓")
+            if rsi_val < self.rsi_threshold:
+                met.append(f"RSI({rsi_val:.0f})✓")
             if indicators.get("macd_buy_signal"):
                 met.append("MACD매수✓")
 

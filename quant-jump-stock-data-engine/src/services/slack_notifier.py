@@ -343,7 +343,7 @@ class SlackNotifier:
                 if indicators.get("macd_buy_signal"):
                     signals.append("MACD매수")
                 rsi_val = indicators.get("rsi", 100)
-                if rsi_val < 50:
+                if rsi_val < 70:
                     signals.append(f"RSI({rsi_val:.0f})")
                 signal_text = ", ".join(signals) if signals else "없음"
 
@@ -370,21 +370,21 @@ class SlackNotifier:
                 }
             })
 
-        # 아깝게 탈락한 종목 TOP3
+        # 아깝게 탈락한 종목 TOP-N (upstream에서 이미 개수 제한됨)
         near_miss = report.get("near_miss_candidates", [])
         if near_miss:
+            top_n = len(near_miss)
             blocks.append({"type": "divider"})
             blocks.append({
                 "type": "section",
-                "text": {"type": "mrkdwn", "text": "*📊 아깝게 탈락한 종목 TOP3*\n_조건이 거의 충족되어 다음 기회를 노릴 종목_"}
+                "text": {"type": "mrkdwn", "text": f"*📊 아깝게 탈락한 종목 TOP{top_n}*\n_조건이 거의 충족되어 다음 기회를 노릴 종목_"}
             })
-            for i, nm in enumerate(near_miss[:3], 1):
+            for i, nm in enumerate(near_miss, 1):
                 nm_indicators = nm.get("technical_indicators") or nm
                 nm_scores = nm.get("scores", {})
                 nm_ticker = nm.get("ticker", "N/A")
                 nm_name = nm.get("stock_name", nm_ticker)
                 nm_composite = nm_scores.get("composite_score", 0)
-                nm_rsi = nm_indicators.get("rsi", 0)
 
                 missing = nm.get("missing_conditions", [])
                 met = nm.get("met_conditions", [])

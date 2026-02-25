@@ -24,6 +24,7 @@ from domain.strategy.indicators import (
     calculate_rsi,
     calculate_macd,
 )
+from config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -290,9 +291,10 @@ class TechnicalAnalysisApplicationService:
             return None
 
         # 시그널 판단
+        rsi_threshold = get_settings().recommendation.rsi_threshold
         golden_cross = latest_sma20 > latest_sma50
         macd_buy = latest_macd > latest_signal
-        is_recommended = golden_cross and (latest_rsi < 70) and macd_buy
+        is_recommended = golden_cross and (latest_rsi < rsi_threshold) and macd_buy
 
         return TechnicalResult(
             ticker=ticker,
