@@ -39,12 +39,13 @@ class AutoTradingService(
     @Transactional
     fun executeAutoTrading() {
         logger.info("🚀 Starting Auto Trading Execution...")
-        val today = LocalDate.now()
+        // 스케줄러가 00:30(KST)에 실행되므로, 분석 데이터는 전날 날짜로 저장됨
+        val analysisDate = LocalDate.now().minusDays(1)
 
         // 1️⃣ Vertex AI 예측 결과 조회 (MongoDB)
         // 신뢰도 70% 이상인 매수 신호만 조회
-        val predictions = predictionResultRepository.findHighConfidenceBuySignals(today, 0.7)
-        logger.info("✅ Found ${predictions.size} high-confidence buy signals for today ($today)")
+        val predictions = predictionResultRepository.findHighConfidenceBuySignals(analysisDate, 0.7)
+        logger.info("✅ Found ${predictions.size} high-confidence buy signals for analysisDate ($analysisDate)")
 
         if (predictions.isEmpty()) {
             logger.info("❌ No high-confidence buy signals found. Skipping trading.")

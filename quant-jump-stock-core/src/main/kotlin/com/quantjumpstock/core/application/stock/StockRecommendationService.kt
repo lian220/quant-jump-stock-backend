@@ -38,11 +38,12 @@ class StockRecommendationService(
 
     fun getRecommendationsWithSentiment(): List<Map<String, Any>> {
         val aiRecs = getAiRecommendations()
-        val today = LocalDate.now().toString()
+        // 분석 데이터는 전날 날짜로 저장됨
+        val analysisDate = LocalDate.now().minusDays(1).toString()
 
         return aiRecs.mapNotNull { rec ->
             val ticker = rec["ticker"] as String
-            val sentiment = sentimentRepository.findByTickerAndDate(ticker, today)
+            val sentiment = sentimentRepository.findByTickerAndDate(ticker, analysisDate)
             if (sentiment != null && sentiment.averageSentimentScore >= 0.15) {
                 rec + mapOf("sentiment_score" to sentiment.averageSentimentScore)
             } else null
@@ -51,11 +52,12 @@ class StockRecommendationService(
 
     fun getCombinedRecommendations(): List<Map<String, Any>> {
         val withSentiment = getRecommendationsWithSentiment()
-        val today = LocalDate.now().toString()
+        // 분석 데이터는 전날 날짜로 저장됨
+        val analysisDate = LocalDate.now().minusDays(1).toString()
 
         return withSentiment.mapNotNull { rec ->
             val ticker = rec["ticker"] as String
-            val tech = recommendationRepository.findByTickerAndDate(ticker, today)
+            val tech = recommendationRepository.findByTickerAndDate(ticker, analysisDate)
             if (tech != null && tech.isRecommended) {
                 val result = rec.toMutableMap()
                 tech.technicalIndicators?.let { result["technical_indicators"] = it }
