@@ -172,12 +172,14 @@ class RecommendationSyncService:
         """
         AI 예측 데이터 조회 (MongoDB stock_predictions).
         - date 필드가 ISODate(UTC)로 저장되므로 naive datetime exact match + 문자열 $or 사용.
+        - 정확한 날짜에 데이터 없으면 analysis_date 이전 최근 날짜로 fallback (Vertex AI가
+          마지막 데이터 날짜 기준으로 저장하므로 analysis_date와 1~2일 차이날 수 있음).
         - rise_probability 없으면 predicted_price/actual_price로 계산 후 0~1 정규화.
         """
         try:
             dt_date = datetime.strptime(analysis_date, "%Y-%m-%d")
 
-            # naive datetime exact match + 문자열 $or (comprehensive_report.py / _fetch_stock_analysis_results 패턴)
+            # 1차: 정확한 날짜 매칭
             predictions = list(self.mongo_db.stock_predictions.find({
                 "$or": [
                     {"date": dt_date},
@@ -185,8 +187,30 @@ class RecommendationSyncService:
                 ]
             }))
 
+            effective_date = analysis_date
+
+            # 2차: 데이터 없으면 analysis_date 이전 최근 날짜 fallback
+            if not predictions:
+                latest_doc = self.mongo_db.stock_predictions.find_one(
+                    {"date": {"$lte": dt_date}},
+                    sort=[("date", -1)]
+                )
+                if latest_doc:
+                    latest_date = latest_doc["date"]
+                    effective_date = (
+                        latest_date.strftime("%Y-%m-%d")
+                        if isinstance(latest_date, datetime)
+                        else str(latest_date)[:10]
+                    )
+                    predictions = list(self.mongo_db.stock_predictions.find(
+                        {"date": latest_date}
+                    ))
+                    logger.info(
+                        f"[Sync] stock_predictions 날짜 fallback: {analysis_date} → {effective_date}"
+                    )
+
             logger.info(
-                f"[Sync] stock_predictions 조회 date={analysis_date} -> {len(predictions)}건 "
+                f"[Sync] stock_predictions 조회 date={effective_date} -> {len(predictions)}건 "
                 f"(ai_predicted_price/ai_rise_probability 반영용)"
             )
 
