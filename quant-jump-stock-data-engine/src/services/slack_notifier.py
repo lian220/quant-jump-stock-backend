@@ -610,6 +610,91 @@ class SlackNotifier:
         )
 
     @staticmethod
+    def notify_recommendation_start(
+        analysis_dates: list,
+        thread_ts: Optional[str] = None,
+    ) -> Optional[str]:
+        """종목 추천 분석 시작 알림 → 스케줄러 채널"""
+        scheduler_channel = SlackNotifier._get_scheduler_channel()
+        scheduler_webhook = SlackNotifier._get_scheduler_webhook()
+        if not scheduler_channel and not scheduler_webhook:
+            logger.debug("스케줄러 채널 미설정, 추천 시작 알림 생략")
+            return thread_ts
+
+        date_str = (
+            analysis_dates[0]
+            if len(analysis_dates) == 1
+            else f"{analysis_dates[0]} ~ {analysis_dates[-1]}"
+        )
+        text = "📊 종목 추천 분석 시작..."
+        attachments = [
+            {
+                "color": "0099cc",
+                "title": "종목 추천 분석 진행 중",
+                "text": "기술적 분석 + AI 예측 + 감정 분석 종합 중",
+                "fields": [
+                    {"title": "분석 기간", "value": date_str, "short": True},
+                    {"title": "날짜 수", "value": f"{len(analysis_dates)}일", "short": True},
+                ],
+                "footer": "Quantiq Data Engine",
+                "ts": int(datetime.now(KST).timestamp()),
+            }
+        ]
+        ts = SlackNotifier._post_message(
+            channel=scheduler_channel,
+            webhook_url=scheduler_webhook,
+            text=text,
+            attachments=attachments,
+            thread_ts=thread_ts,
+        )
+        return ts or thread_ts
+
+    @staticmethod
+    def notify_recommendation_complete(
+        analysis_date: str,
+        synced_count: int,
+        candidate_count: int,
+        near_miss_count: int,
+        elapsed: float,
+        thread_ts: Optional[str] = None,
+    ) -> None:
+        """종목 추천 완료 알림 → 스케줄러 채널"""
+        scheduler_channel = SlackNotifier._get_scheduler_channel()
+        scheduler_webhook = SlackNotifier._get_scheduler_webhook()
+        if not scheduler_channel and not scheduler_webhook:
+            logger.debug("스케줄러 채널 미설정, 추천 완료 알림 생략")
+            return
+
+        text = "✅ 종목 추천 분석 완료"
+        attachments = [
+            {
+                "color": "28a745",
+                "title": "종목 추천 완료",
+                "fields": [
+                    {"title": "분석 날짜", "value": analysis_date, "short": True},
+                    {"title": "동기화 종목", "value": f"{synced_count}개", "short": True},
+                    {"title": "최종 추천", "value": f"{candidate_count}개", "short": True},
+                    {"title": "근접 탈락", "value": f"{near_miss_count}개", "short": True},
+                    {"title": "소요 시간", "value": f"{elapsed:.1f}초", "short": True},
+                    {
+                        "title": "완료 시각",
+                        "value": datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S"),
+                        "short": True,
+                    },
+                ],
+                "footer": "종합 리포트 → 분석 채널 확인 | Quantiq Data Engine",
+                "ts": int(datetime.now(KST).timestamp()),
+            }
+        ]
+        SlackNotifier._post_message(
+            channel=scheduler_channel,
+            webhook_url=scheduler_webhook,
+            text=text,
+            attachments=attachments,
+            thread_ts=thread_ts,
+        )
+
+    @staticmethod
     def notify_buy_candidates(total_analyzed: int, buy_candidates: List, buy_criteria):
         """매수 후보 알림 (종합 리포트로 통합됨)"""
         logger.debug(
