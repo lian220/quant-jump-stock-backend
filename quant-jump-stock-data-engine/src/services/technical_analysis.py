@@ -132,7 +132,7 @@ class TechnicalAnalysisService:
                 total_analyzed += 1
                 golden_cross = latest_row['sma20'] > latest_row['sma50']
                 macd_buy = latest_row['macd'] > latest_row['signal']
-                is_recommended = golden_cross and (latest_row['rsi'] < 50) and macd_buy
+                is_recommended = golden_cross and (latest_row['rsi'] < 70) and macd_buy
 
                 # recommendation_score 계산 (0~1 가중 평균)
                 rsi_val = latest_row['rsi']

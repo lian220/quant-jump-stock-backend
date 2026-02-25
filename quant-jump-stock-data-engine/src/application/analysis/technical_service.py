@@ -292,7 +292,7 @@ class TechnicalAnalysisApplicationService:
         # 시그널 판단
         golden_cross = latest_sma20 > latest_sma50
         macd_buy = latest_macd > latest_signal
-        is_recommended = golden_cross and (latest_rsi < 50) and macd_buy
+        is_recommended = golden_cross and (latest_rsi < 70) and macd_buy
 
         return TechnicalResult(
             ticker=ticker,

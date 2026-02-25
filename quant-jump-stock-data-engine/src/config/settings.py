@@ -130,6 +130,34 @@ class GcpSettings(BaseSettings):
     )
 
 
+class RecommendationCriteriaSettings(BaseSettings):
+    """종목 추천 기준 설정 — 모든 임계값/가중치를 한 곳에서 관리"""
+    model_config = SettingsConfigDict(env_file=_env_files, env_prefix="", extra="ignore")
+
+    # Composite Score 가중치 (합계 = 1.0)
+    weight_ai: float = Field(default=0.3, alias="RECOMMENDATION_WEIGHT_AI")
+    weight_technical: float = Field(default=0.4, alias="RECOMMENDATION_WEIGHT_TECHNICAL")
+    weight_sentiment: float = Field(default=0.3, alias="RECOMMENDATION_WEIGHT_SENTIMENT")
+
+    # 기술적 점수 개별 가중치 (max 합계 = 3.5)
+    golden_cross_score: float = Field(default=1.5, alias="RECOMMENDATION_GOLDEN_CROSS_SCORE")
+    rsi_below_score: float = Field(default=1.0, alias="RECOMMENDATION_RSI_BELOW_SCORE")
+    macd_buy_score: float = Field(default=1.0, alias="RECOMMENDATION_MACD_BUY_SCORE")
+
+    # RSI 임계값 (이 값 미만이면 기술 점수에 반영)
+    rsi_threshold: float = Field(default=70.0, alias="RECOMMENDATION_RSI_THRESHOLD")
+
+    # 필터 기준
+    min_composite_score: float = Field(default=2.0, alias="RECOMMENDATION_MIN_COMPOSITE_SCORE")
+    min_sentiment_for_relaxed: float = Field(default=0.15, alias="RECOMMENDATION_MIN_SENTIMENT_RELAXED")
+    min_tech_signals_with_sentiment: int = Field(default=2, alias="RECOMMENDATION_MIN_TECH_SIGNALS_WITH_SENTIMENT")
+    min_tech_signals_without_sentiment: int = Field(default=3, alias="RECOMMENDATION_MIN_TECH_SIGNALS_WITHOUT_SENTIMENT")
+
+    # 추천 설정
+    max_stocks_to_recommend: int = Field(default=5, alias="RECOMMENDATION_MAX_STOCKS")
+    near_miss_top_n: int = Field(default=3, alias="RECOMMENDATION_NEAR_MISS_TOP_N")
+
+
 class Settings(BaseSettings):
     """통합 설정"""
     model_config = SettingsConfigDict(
@@ -149,6 +177,7 @@ class Settings(BaseSettings):
     api: ApiSettings = Field(default_factory=ApiSettings)
     slack: SlackSettings = Field(default_factory=SlackSettings)
     gcp: GcpSettings = Field(default_factory=GcpSettings)
+    recommendation: RecommendationCriteriaSettings = Field(default_factory=RecommendationCriteriaSettings)
 
     # 기존 호환성을 위한 플랫 속성들 (deprecated, 점진적 제거 예정)
     @property

@@ -9,6 +9,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone, timedelta
 
 from core.database import MongoDB
+from config.settings import get_settings
 from services.buy_criteria import BuyCriteria
 
 logger = logging.getLogger(__name__)
@@ -52,7 +53,10 @@ class ComprehensiveReportService:
     """기술적 분석 + AI 예측 + 감정 분석 종합 리포트"""
 
     def __init__(self, buy_criteria: Optional[BuyCriteria] = None):
-        self.buy_criteria = buy_criteria or BuyCriteria()
+        if buy_criteria is None:
+            settings = get_settings()
+            buy_criteria = BuyCriteria.from_settings(settings.recommendation)
+        self.buy_criteria = buy_criteria
 
     def load_sentiment_scores(self, analysis_date: str) -> Dict[str, float]:
         """
@@ -210,7 +214,26 @@ class ComprehensiveReportService:
             sentiment_scores=sentiment_scores,
         )
 
-        # 3. 후보에 상세 데이터 추가
+        # 3. 아깝게 탈락한 종목 (near-miss TOP3)
+        excluded_tickers = {c.get("ticker") for c in buy_candidates}
+        near_miss_candidates = self.buy_criteria.get_near_miss_candidates(
+            technical_results,
+            excluded_tickers=excluded_tickers,
+            ai_scores=ai_scores,
+            sentiment_scores=sentiment_scores,
+        )
+        # near-miss에도 AI/감정 상세 데이터 추가
+        for nm in near_miss_candidates:
+            ticker = nm.get("ticker", "")
+            ai_data = ai_predictions.get(ticker, {})
+            nm["ai_prediction"] = {
+                "rise_probability": ai_data.get("rise_probability", 0.0),
+                "predicted_price": ai_data.get("predicted_price"),
+                "current_price": ai_data.get("current_price"),
+            }
+            nm["sentiment_score"] = sentiment_scores.get(ticker, 0.0)
+
+        # 4. 후보에 상세 데이터 추가
         for candidate in buy_candidates:
             ticker = candidate.get("ticker", "")
             # AI 예측 상세
@@ -253,6 +276,7 @@ class ComprehensiveReportService:
             "prediction_count": len(ai_predictions),
             "candidate_count": len(buy_candidates),
             "buy_candidates": buy_candidates,
+            "near_miss_candidates": near_miss_candidates,
             "breakdown": {
                 "technical": {
                     "count": len(tech_recommended),

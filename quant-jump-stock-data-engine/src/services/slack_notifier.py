@@ -308,7 +308,7 @@ class SlackNotifier:
                     "*세부 분석 결과*\n\n"
                     f"📊 *기술적 지표 분석* ({tech_info.get('count', 0)}개)\n"
                     f"└ {_ticker_summary(tech_info.get('tickers', []), tech_info.get('count', 0))}\n"
-                    f"└ 골든크로스, RSI<50, MACD매수신호\n\n"
+                    f"└ 골든크로스, RSI<70, MACD매수신호\n\n"
                     f"🤖 *AI 주가 예측* ({ai_info.get('count', 0)}개)\n"
                     f"└ {_ticker_summary(ai_info.get('tickers', []), ai_info.get('count', 0))}\n"
                     f"└ 평균 상승률: {ai_info.get('avg_rise', 0):.1f}%\n\n"
@@ -369,6 +369,40 @@ class SlackNotifier:
                     "text": "ℹ️ *추천 종목 없음* - 현재 매수 조건을 충족하는 종목이 없습니다."
                 }
             })
+
+        # 아깝게 탈락한 종목 TOP3
+        near_miss = report.get("near_miss_candidates", [])
+        if near_miss:
+            blocks.append({"type": "divider"})
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": "*📊 아깝게 탈락한 종목 TOP3*\n_조건이 거의 충족되어 다음 기회를 노릴 종목_"}
+            })
+            for i, nm in enumerate(near_miss[:3], 1):
+                nm_indicators = nm.get("technical_indicators") or nm
+                nm_scores = nm.get("scores", {})
+                nm_ticker = nm.get("ticker", "N/A")
+                nm_name = nm.get("stock_name", nm_ticker)
+                nm_composite = nm_scores.get("composite_score", 0)
+                nm_rsi = nm_indicators.get("rsi", 0)
+
+                missing = nm.get("missing_conditions", [])
+                met = nm.get("met_conditions", [])
+
+                met_text = ", ".join(met) if met else "없음"
+                missing_text = ", ".join(missing) if missing else "없음"
+
+                blocks.append({
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"*{i}. {nm_name}* (`{nm_ticker}`) — 종합점수: `{nm_composite:.2f}`\n"
+                            f"• ✅ 충족: {met_text}\n"
+                            f"• ❌ 미충족: {missing_text}"
+                        )
+                    }
+                })
 
         blocks.extend([
             {"type": "divider"},

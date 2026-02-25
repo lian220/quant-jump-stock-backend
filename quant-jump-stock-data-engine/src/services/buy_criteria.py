@@ -1,23 +1,25 @@
 """
 BuyCriteria - 매수 기준 설정 및 Composite Score 계산
 
-banbu-stocktrading 매수 기준 객체화:
-  composite_score = 0.3 * ai_score + 0.4 * tech_score + 0.3 * sentiment_score
-  tech_score = 1.5 * golden_cross + 1.0 * (rsi < threshold) + 1.0 * macd_buy  (max 3.5)
+모든 임계값/가중치는 RecommendationCriteriaSettings(config/settings.py)에서 관리.
+BuyCriteria.from_settings()로 생성하면 환경변수(RECOMMENDATION_*)로 제어 가능.
 
-현재 AI예측/감정분석 미통합 → ai_score=0, sentiment_score=0
+  composite_score = weight_ai * ai_score + weight_technical * tech_score + weight_sentiment * sentiment_score
+  tech_score = golden_cross_score * golden_cross + rsi_below_score * (rsi < rsi_threshold) + macd_buy_score * macd_buy
 """
 import logging
-from dataclasses import dataclass, field
-from typing import Dict, Any, List
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Dict, Any, List
+
+if TYPE_CHECKING:
+    from config.settings import RecommendationCriteriaSettings
 
 logger = logging.getLogger(__name__)
 
 
-# TODO: admin에서 BuyCriteria 설정값 DB 관리 (가중치, 임계값, max_stocks 등)
 @dataclass
 class BuyCriteria:
-    """매수 기준 설정 (향후 admin에서 DB로 관리 예정)"""
+    """매수 기준 설정 — RecommendationCriteriaSettings에서 값 주입, 직접 수정 금지"""
 
     # Composite score 가중치
     weight_ai: float = 0.3
@@ -28,16 +30,36 @@ class BuyCriteria:
     golden_cross_score: float = 1.5
     rsi_below_score: float = 1.0
     macd_buy_score: float = 1.0
-    rsi_threshold: float = 50.0
+    rsi_threshold: float = 70.0
 
     # 필터 조건
     min_composite_score: float = 2.0
-    min_sentiment_for_relaxed: float = 0.15  # 감정 >= 0.15이면 기술 2개만 필요
+    min_sentiment_for_relaxed: float = 0.15
     min_tech_signals_with_sentiment: int = 2
     min_tech_signals_without_sentiment: int = 3
 
     # 추천 설정
     max_stocks_to_recommend: int = 5
+    near_miss_top_n: int = 3
+
+    @classmethod
+    def from_settings(cls, settings: "RecommendationCriteriaSettings") -> "BuyCriteria":
+        """RecommendationCriteriaSettings에서 BuyCriteria 생성 (환경변수로 제어)"""
+        return cls(
+            weight_ai=settings.weight_ai,
+            weight_technical=settings.weight_technical,
+            weight_sentiment=settings.weight_sentiment,
+            golden_cross_score=settings.golden_cross_score,
+            rsi_below_score=settings.rsi_below_score,
+            macd_buy_score=settings.macd_buy_score,
+            rsi_threshold=settings.rsi_threshold,
+            min_composite_score=settings.min_composite_score,
+            min_sentiment_for_relaxed=settings.min_sentiment_for_relaxed,
+            min_tech_signals_with_sentiment=settings.min_tech_signals_with_sentiment,
+            min_tech_signals_without_sentiment=settings.min_tech_signals_without_sentiment,
+            max_stocks_to_recommend=settings.max_stocks_to_recommend,
+            near_miss_top_n=settings.near_miss_top_n,
+        )
 
     @staticmethod
     def _get_indicators(stock: Dict[str, Any]) -> Dict[str, Any]:
@@ -177,3 +199,70 @@ class BuyCriteria:
             f"상위 {len(top)}개 선정"
         )
         return top
+
+    def get_near_miss_candidates(
+        self,
+        all_results: List[Dict[str, Any]],
+        excluded_tickers: set,
+        ai_scores: Dict[str, float] = None,
+        sentiment_scores: Dict[str, float] = None,
+        top_n: int = None,
+    ) -> List[Dict[str, Any]]:
+        """
+        필터 미통과 종목 중 composite_score 상위 near-miss 후보 반환.
+
+        Args:
+            all_results: 전체 종목 분석 결과
+            excluded_tickers: 이미 추천된 종목 (제외)
+            ai_scores: AI 예측 점수
+            sentiment_scores: 감정 분석 점수
+            top_n: 반환할 near-miss 개수
+
+        Returns:
+            composite_score DESC 정렬된 near-miss 후보 (미충족 조건 포함)
+        """
+        if ai_scores is None:
+            ai_scores = {}
+        if sentiment_scores is None:
+            sentiment_scores = {}
+        if top_n is None:
+            top_n = self.near_miss_top_n
+
+        near_miss = []
+        for stock in all_results:
+            ticker = stock.get("ticker", "")
+            if ticker in excluded_tickers:
+                continue
+
+            indicators = self._get_indicators(stock)
+            ai = ai_scores.get(ticker, 0.0)
+            sentiment = sentiment_scores.get(ticker, 0.0)
+            scores = self.calculate_composite_score(indicators, ai, sentiment)
+
+            # 미충족 조건 목록
+            missing = []
+            if not indicators.get("golden_cross"):
+                missing.append("골든크로스")
+            if indicators.get("rsi", 100) >= self.rsi_threshold:
+                missing.append(f"RSI({indicators.get('rsi', 0):.0f}≥{self.rsi_threshold:.0f})")
+            if not indicators.get("macd_buy_signal"):
+                missing.append("MACD매수")
+
+            # 충족 조건 목록
+            met = []
+            if indicators.get("golden_cross"):
+                met.append("골든크로스✓")
+            if indicators.get("rsi", 100) < self.rsi_threshold:
+                met.append(f"RSI({indicators.get('rsi', 0):.0f})✓")
+            if indicators.get("macd_buy_signal"):
+                met.append("MACD매수✓")
+
+            near_miss.append({
+                **stock,
+                "scores": scores,
+                "missing_conditions": missing,
+                "met_conditions": met,
+            })
+
+        near_miss.sort(key=lambda x: x["scores"]["composite_score"], reverse=True)
+        return near_miss[:top_n]
