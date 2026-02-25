@@ -306,7 +306,11 @@ class RecommendationSyncService:
 
     def _fetch_current_prices(self, analysis_date: str) -> Dict[str, float]:
         """
-        현재가 조회 (MongoDB daily_stock_data)
+        기준가 조회 (MongoDB daily_stock_data)
+
+        analysis_date 당일 데이터가 없거나 stocks가 비어 있을 경우
+        (장중 partial bar 필터링 후 당일 데이터 미수집 상태),
+        analysis_date 이전 가장 최근 거래일 종가를 fallback으로 사용합니다.
 
         Args:
             analysis_date: 분석 날짜 (YYYY-MM-DD)
@@ -315,23 +319,44 @@ class RecommendationSyncService:
             {ticker: close_price} 딕셔너리
         """
         try:
-            # daily_stock_data에서 해당 날짜 데이터 조회
+            def _extract_prices(doc) -> Dict[str, float]:
+                prices = {}
+                for ticker, stock_data in doc.get("stocks", {}).items():
+                    if "close" in stock_data:
+                        prices[ticker] = float(stock_data["close"])
+                return prices
+
+            # 1차: analysis_date 당일 데이터 조회
             daily_data = self.mongo_db.daily_stock_data.find_one({"date": analysis_date})
 
-            if not daily_data or "stocks" not in daily_data:
-                logger.warning(f"⚠️ [Sync] 일별 데이터 없음 (date={analysis_date})")
+            if daily_data and daily_data.get("stocks"):
+                prices = _extract_prices(daily_data)
+                if prices:
+                    logger.info(f"[Sync] 기준가 조회 완료 (date={analysis_date}, 종목수={len(prices)})")
+                    return prices
+
+            # 2차: fallback — analysis_date 이전 가장 최근 거래일 종가 사용
+            logger.warning(
+                f"⚠️ [Sync] {analysis_date} stocks 없음 → 직전 거래일 종가로 fallback"
+            )
+            fallback_doc = self.mongo_db.daily_stock_data.find_one(
+                {"date": {"$lt": analysis_date}, "stocks": {"$exists": True, "$ne": {}}},
+                sort=[("date", -1)]
+            )
+
+            if not fallback_doc:
+                logger.warning(f"⚠️ [Sync] fallback 데이터도 없음 (date<{analysis_date})")
                 return {}
 
-            # stocks 딕셔너리에서 close 가격 추출
-            prices = {}
-            for ticker, stock_data in daily_data["stocks"].items():
-                if "close" in stock_data:
-                    prices[ticker] = float(stock_data["close"])
-
+            prices = _extract_prices(fallback_doc)
+            fallback_date = fallback_doc.get("date", "unknown")
+            logger.info(
+                f"[Sync] 기준가 fallback 완료 (fallback_date={fallback_date}, 종목수={len(prices)})"
+            )
             return prices
 
         except Exception as e:
-            logger.warning(f"현재가 조회 실패: {e}")
+            logger.warning(f"기준가 조회 실패: {e}")
             return {}
 
     def _merge_analysis_data(

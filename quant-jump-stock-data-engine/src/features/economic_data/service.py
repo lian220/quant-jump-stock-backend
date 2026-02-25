@@ -295,6 +295,10 @@ class EconomicDataService:
             start_date: 시작 날짜
             end_date: 종료 날짜
             stock_obj: 재사용할 yf.Ticker 인스턴스 (없으면 새로 생성)
+
+        Note:
+            당일 데이터는 장중 partial bar일 수 있으므로 제외합니다.
+            기술적 분석은 완성된 종가(close) 기준으로 계산해야 합니다.
         """
         try:
             stock = stock_obj or yf.Ticker(ticker)
@@ -304,6 +308,15 @@ class EconomicDataService:
             df = stock.history(start=start_date, end=end_date_exclusive, interval="1d")
 
             if df is None or df.empty:
+                return None
+
+            # 당일 partial bar 제거: 장중에 수집하면 미완성 일봉이 포함될 수 있음
+            # 완성된 종가만 기술적 분석에 사용해야 하므로 오늘 이후 날짜 제외
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            df.index = pd.to_datetime(df.index)
+            df = df[df.index.strftime("%Y-%m-%d") < today_str]
+
+            if df.empty:
                 return None
 
             return df
