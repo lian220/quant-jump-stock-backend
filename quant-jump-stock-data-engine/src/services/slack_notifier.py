@@ -14,6 +14,7 @@ from core.config import settings
 from typing import Optional, Dict, List
 
 from adapter.output.slack.bot_client import SlackBotClient
+from config.settings import get_settings
 
 KST = timezone('Asia/Seoul')
 EST = timezone('America/New_York')
@@ -75,6 +76,8 @@ class SlackNotifier:
         if not getattr(settings, 'SLACK_ENABLED', True):
             logger.info("Slack 비활성화 상태 (SLACK_ENABLED=false)")
             return None
+
+        logger.info(f"Slack 발송 시도: channel={channel}, webhook={'설정됨' if webhook_url else '미설정'}")
 
         bot = _get_bot_client()
         if bot.is_available and channel:
@@ -260,6 +263,8 @@ class SlackNotifier:
         summary = report.get("summary", {})
         breakdown = report.get("breakdown", {})
         analysis_date = report.get("analysis_date", "N/A")
+        _settings = get_settings()
+        rsi_threshold = _settings.recommendation.rsi_threshold
 
         avg_composite = summary.get("avg_composite_score", 0)
         avg_rise = summary.get("avg_rise_probability", 0)
@@ -308,7 +313,7 @@ class SlackNotifier:
                     "*세부 분석 결과*\n\n"
                     f"📊 *기술적 지표 분석* ({tech_info.get('count', 0)}개)\n"
                     f"└ {_ticker_summary(tech_info.get('tickers', []), tech_info.get('count', 0))}\n"
-                    f"└ 골든크로스, RSI<50, MACD매수신호\n\n"
+                    f"└ 골든크로스, RSI<{rsi_threshold:.0f}, MACD매수신호\n\n"
                     f"🤖 *AI 주가 예측* ({ai_info.get('count', 0)}개)\n"
                     f"└ {_ticker_summary(ai_info.get('tickers', []), ai_info.get('count', 0))}\n"
                     f"└ 평균 상승률: {ai_info.get('avg_rise', 0):.1f}%\n\n"
@@ -343,7 +348,7 @@ class SlackNotifier:
                 if indicators.get("macd_buy_signal"):
                     signals.append("MACD매수")
                 rsi_val = indicators.get("rsi", 100)
-                if rsi_val < 50:
+                if rsi_val < rsi_threshold:
                     signals.append(f"RSI({rsi_val:.0f})")
                 signal_text = ", ".join(signals) if signals else "없음"
 
@@ -369,6 +374,40 @@ class SlackNotifier:
                     "text": "ℹ️ *추천 종목 없음* - 현재 매수 조건을 충족하는 종목이 없습니다."
                 }
             })
+
+        # 아깝게 탈락한 종목 TOP-N (upstream에서 이미 개수 제한됨)
+        near_miss = report.get("near_miss_candidates", [])
+        if near_miss:
+            top_n = len(near_miss)
+            blocks.append({"type": "divider"})
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": f"*📊 아깝게 탈락한 종목 TOP{top_n}*\n_조건이 거의 충족되어 다음 기회를 노릴 종목_"}
+            })
+            for i, nm in enumerate(near_miss, 1):
+                nm_indicators = nm.get("technical_indicators") or nm
+                nm_scores = nm.get("scores", {})
+                nm_ticker = nm.get("ticker", "N/A")
+                nm_name = nm.get("stock_name", nm_ticker)
+                nm_composite = nm_scores.get("composite_score", 0)
+
+                missing = nm.get("missing_conditions", [])
+                met = nm.get("met_conditions", [])
+
+                met_text = ", ".join(met) if met else "없음"
+                missing_text = ", ".join(missing) if missing else "없음"
+
+                blocks.append({
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": (
+                            f"*{i}. {nm_name}* (`{nm_ticker}`) — 종합점수: `{nm_composite:.2f}`\n"
+                            f"• ✅ 충족: {met_text}\n"
+                            f"• ❌ 미충족: {missing_text}"
+                        )
+                    }
+                })
 
         blocks.extend([
             {"type": "divider"},
@@ -498,6 +537,33 @@ class SlackNotifier:
         )
 
     @staticmethod
+    def notify_daily_data_missing(analysis_date: str):
+        """경제 데이터 미수집 에러 알림 → 에러 채널"""
+        text = "❌ 종합 리포트 생성 실패"
+        attachments = [
+            {
+                "color": "dc3545",
+                "title": "경제 데이터 미수집",
+                "text": (
+                    f"`daily_stock_data` (date={analysis_date}) 가 존재하지 않습니다.\n"
+                    f"경제 데이터 수집이 선행되어야 종합 리포트를 생성할 수 있습니다."
+                ),
+                "fields": [
+                    {"title": "분석 날짜", "value": analysis_date, "short": True},
+                    {"title": "Timestamp", "value": datetime.now(KST).isoformat(), "short": True},
+                ],
+                "footer": "Quantiq Data Engine",
+                "ts": int(datetime.now(KST).timestamp()),
+            }
+        ]
+        SlackNotifier._post_message(
+            channel=SlackNotifier._get_error_channel(),
+            webhook_url=SlackNotifier._get_error_webhook(),
+            text=text,
+            attachments=attachments,
+        )
+
+    @staticmethod
     def send_thread_message(text: str, thread_ts: str, channel: Optional[str] = None):
         """스레드 답글 전송"""
         if not thread_ts:
@@ -572,6 +638,91 @@ class SlackNotifier:
                     {"title": "Status", "value": "⏳ GPU 할당 대기 중...", "short": True},
                 ]
             }],
+            thread_ts=thread_ts,
+        )
+
+    @staticmethod
+    def notify_recommendation_start(
+        analysis_dates: list,
+        thread_ts: Optional[str] = None,
+    ) -> Optional[str]:
+        """종목 추천 분석 시작 알림 → 스케줄러 채널"""
+        scheduler_channel = SlackNotifier._get_scheduler_channel()
+        scheduler_webhook = SlackNotifier._get_scheduler_webhook()
+        if not scheduler_channel and not scheduler_webhook:
+            logger.debug("스케줄러 채널 미설정, 추천 시작 알림 생략")
+            return thread_ts
+
+        date_str = (
+            analysis_dates[0]
+            if len(analysis_dates) == 1
+            else f"{analysis_dates[0]} ~ {analysis_dates[-1]}"
+        )
+        text = "📊 종목 추천 분석 시작..."
+        attachments = [
+            {
+                "color": "0099cc",
+                "title": "종목 추천 분석 진행 중",
+                "text": "기술적 분석 + AI 예측 + 감정 분석 종합 중",
+                "fields": [
+                    {"title": "분석 기간", "value": date_str, "short": True},
+                    {"title": "날짜 수", "value": f"{len(analysis_dates)}일", "short": True},
+                ],
+                "footer": "Quantiq Data Engine",
+                "ts": int(datetime.now(KST).timestamp()),
+            }
+        ]
+        ts = SlackNotifier._post_message(
+            channel=scheduler_channel,
+            webhook_url=scheduler_webhook,
+            text=text,
+            attachments=attachments,
+            thread_ts=thread_ts,
+        )
+        return ts or thread_ts
+
+    @staticmethod
+    def notify_recommendation_complete(
+        analysis_date: str,
+        synced_count: int,
+        candidate_count: int,
+        near_miss_count: int,
+        elapsed: float,
+        thread_ts: Optional[str] = None,
+    ) -> None:
+        """종목 추천 완료 알림 → 스케줄러 채널"""
+        scheduler_channel = SlackNotifier._get_scheduler_channel()
+        scheduler_webhook = SlackNotifier._get_scheduler_webhook()
+        if not scheduler_channel and not scheduler_webhook:
+            logger.debug("스케줄러 채널 미설정, 추천 완료 알림 생략")
+            return
+
+        text = "✅ 종목 추천 분석 완료"
+        attachments = [
+            {
+                "color": "28a745",
+                "title": "종목 추천 완료",
+                "fields": [
+                    {"title": "분석 날짜", "value": analysis_date, "short": True},
+                    {"title": "동기화 종목", "value": f"{synced_count}개", "short": True},
+                    {"title": "최종 추천", "value": f"{candidate_count}개", "short": True},
+                    {"title": "근접 탈락", "value": f"{near_miss_count}개", "short": True},
+                    {"title": "소요 시간", "value": f"{elapsed:.1f}초", "short": True},
+                    {
+                        "title": "완료 시각",
+                        "value": datetime.now(KST).strftime("%Y-%m-%d %H:%M:%S"),
+                        "short": True,
+                    },
+                ],
+                "footer": "종합 리포트 → 분석 채널 확인 | Quantiq Data Engine",
+                "ts": int(datetime.now(KST).timestamp()),
+            }
+        ]
+        SlackNotifier._post_message(
+            channel=scheduler_channel,
+            webhook_url=scheduler_webhook,
+            text=text,
+            attachments=attachments,
             thread_ts=thread_ts,
         )
 

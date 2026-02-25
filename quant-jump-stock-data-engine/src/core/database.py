@@ -1,3 +1,4 @@
+import os
 from pymongo import MongoClient, ASCENDING, DESCENDING
 import psycopg2
 import psycopg2.extras
@@ -75,15 +76,20 @@ class PostgreSQL:
 
     @classmethod
     def get_pool(cls):
-        """ThreadedConnectionPool 싱글톤 반환 (minconn=1, maxconn=4)"""
+        """ThreadedConnectionPool 싱글톤 반환"""
         if cls._connection_pool is None:
             try:
+                try:
+                    minconn = int(os.getenv("PG_POOL_MIN_CONN", "1"))
+                    maxconn = int(os.getenv("PG_POOL_MAX_CONN", "4"))
+                except (ValueError, TypeError):
+                    minconn, maxconn = 1, 4
                 cls._connection_pool = psycopg2.pool.ThreadedConnectionPool(
-                    minconn=1,
-                    maxconn=4,
+                    minconn=minconn,
+                    maxconn=maxconn,
                     **cls.get_connection_params()
                 )
-                logger.info("PostgreSQL ThreadedConnectionPool created (min=1, max=4)")
+                logger.info(f"PostgreSQL ThreadedConnectionPool created (min={minconn}, max={maxconn})")
             except Exception as e:
                 logger.error(f"Failed to create PostgreSQL connection pool: {e}")
                 raise

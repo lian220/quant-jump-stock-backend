@@ -13,6 +13,7 @@ from tensorflow.keras.callbacks import EarlyStopping
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
+import atexit
 import json
 from datetime import datetime, timedelta, timezone, date
 from sklearn.metrics import mean_absolute_error, mean_squared_error
@@ -35,14 +36,16 @@ else:
     day_name = ["월", "화", "수", "목", "금", "토", "일"][_now_kst.weekday()]
     print(f"📋 FINE_TUNE_MODE: {FINE_TUNE_MODE} (자체 판단 - KST {day_name}요일)")
 
-# TARGET_DATE: env var 우선, 없으면 오늘 날짜 (KST 기준)
+# TARGET_DATE: env var 우선, 없으면 MongoDB daily_stock_data 최신 date 사용
+# (데이터 수집 시 당일 partial bar를 제외하므로 "마지막 완성된 미국 거래일"이 최신)
 _target_date_env = os.getenv("TARGET_DATE")
 if _target_date_env:
     TARGET_DATE = _target_date_env
     print(f"📋 TARGET_DATE: {TARGET_DATE} (환경변수에서 로드)")
 else:
-    TARGET_DATE = _now_kst.date().isoformat()
-    print(f"📋 TARGET_DATE: {TARGET_DATE} (자체 판단 - KST 오늘)")
+    # MongoDB 연결 후 아래에서 재결정 (placeholder)
+    TARGET_DATE = None
+    print(f"📋 TARGET_DATE: MongoDB 최신 date에서 결정 예정")
 
 # MongoDB 연결 설정
 from pymongo import MongoClient, UpdateOne
@@ -107,6 +110,28 @@ except Exception as e:
     db = None
     mongodb_client = None
 
+# TARGET_DATE 결정: MongoDB daily_stock_data의 실제 최신 date 사용
+# (데이터 수집 시 당일 partial bar를 제외하므로 "마지막 완성된 미국 거래일"이 최신)
+if TARGET_DATE is None:
+    if db is not None:
+        try:
+            _latest_doc = db.daily_stock_data.find_one(
+                sort=[("date", -1)],
+                projection={"date": 1, "_id": 0}
+            )
+            if _latest_doc and _latest_doc.get("date"):
+                TARGET_DATE = str(_latest_doc["date"])[:10]  # "YYYY-MM-DD"
+                print(f"📋 TARGET_DATE: {TARGET_DATE} (MongoDB daily_stock_data 최신 date)")
+            else:
+                TARGET_DATE = _now_kst.date().isoformat()
+                print(f"⚠️ TARGET_DATE: {TARGET_DATE} (daily_stock_data 비어있음 → KST 오늘 fallback)")
+        except Exception as _e:
+            TARGET_DATE = _now_kst.date().isoformat()
+            print(f"⚠️ TARGET_DATE: {TARGET_DATE} (MongoDB 조회 실패 → KST 오늘 fallback: {_e})")
+    else:
+        TARGET_DATE = _now_kst.date().isoformat()
+        print(f"⚠️ TARGET_DATE: {TARGET_DATE} (MongoDB 연결 없음 → KST 오늘 fallback)")
+
 # ============================================
 # PostgreSQL 연결 설정 (stocks, indicators 조회용)
 # ============================================
@@ -122,8 +147,48 @@ pg_password = os.getenv("DB_PASSWORD")
 if not pg_password:
     raise EnvironmentError("DB_PASSWORD 환경변수가 설정되지 않았습니다.")
 
-def get_postgres_connection():
-    """PostgreSQL 연결 생성"""
+_pg_shared_conn = None
+
+def _cleanup_shared_conn():
+    global _pg_shared_conn
+    if _pg_shared_conn is not None:
+        try:
+            _pg_shared_conn.close()
+        except Exception:
+            pass
+
+atexit.register(_cleanup_shared_conn)
+
+def get_postgres_connection(shared=False):
+    """PostgreSQL 연결 생성.
+    shared=True: 스크립트 전체에서 재사용하는 단일 연결 반환 (close 금지).
+    shared=False: 새 연결 생성 (호출자가 close 책임).
+    Supabase Session pooler의 제한된 pool_size를 절약하기 위해 shared=True 권장.
+    """
+    global _pg_shared_conn
+    if shared:
+        if _pg_shared_conn is not None:
+            try:
+                with _pg_shared_conn.cursor() as _hc:
+                    _hc.execute("SELECT 1")
+                return _pg_shared_conn
+            except Exception:
+                try:
+                    _pg_shared_conn.close()
+                except Exception:
+                    pass
+                _pg_shared_conn = None
+        try:
+            _pg_shared_conn = psycopg2.connect(
+                host=pg_host, port=pg_port, database=pg_database,
+                user=pg_user, password=pg_password
+            )
+            _pg_shared_conn.autocommit = True
+            return _pg_shared_conn
+        except Exception as e:
+            print(f"❌ PostgreSQL 연결 실패: {e}")
+            return None
+    # shared=False: 기존 동작 (새 연결)
     try:
         conn = psycopg2.connect(
             host=pg_host,
@@ -137,38 +202,72 @@ def get_postgres_connection():
         print(f"❌ PostgreSQL 연결 실패: {e}")
         return None
 
+# ── 캐시된 ticker 매핑 (DRY: 여러 함수에서 재사용) ──
+_stock_ticker_cache = None
+
+def get_stock_ticker_mappings():
+    """PostgreSQL stocks 테이블에서 stock_name↔ticker 매핑을 캐시하여 반환.
+    Returns: (stock_to_ticker, ticker_to_stock) 두 dict.
+    stock_to_ticker는 대소문자/공백 변형도 포함하여 fuzzy 매칭 지원.
+    """
+    global _stock_ticker_cache
+    if _stock_ticker_cache is not None:
+        return _stock_ticker_cache
+
+    stock_to_ticker = {}
+    ticker_to_stock = {}
+    pg_conn = get_postgres_connection(shared=True)
+    if pg_conn:
+        with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT stock_name, ticker FROM stocks WHERE is_active = true")
+            for row in cur.fetchall():
+                name, ticker = row.get("stock_name"), row.get("ticker")
+                if name and ticker:
+                    stock_to_ticker[name] = ticker
+                    stock_to_ticker[name.lower()] = ticker
+                    stock_to_ticker[name.upper()] = ticker
+                    no_space = name.replace(" ", "")
+                    if no_space != name:
+                        stock_to_ticker[no_space] = ticker
+                    ticker_to_stock[ticker] = name
+        # shared=True이므로 close하지 않음
+        unique_tickers = len(set(stock_to_ticker.values()))
+        print(f"[캐시] ticker 매핑 로드: {unique_tickers}개 종목, {len(stock_to_ticker)}개 변형")
+
+    if stock_to_ticker:
+        _stock_ticker_cache = (stock_to_ticker, ticker_to_stock)
+    # DB 연결 실패 시 캐시하지 않음 (다음 호출 시 재시도)
+    return (stock_to_ticker, ticker_to_stock)
+
 def get_indicator_key_mappings():
     """PostgreSQL에서 yfinance_indicators(name→ticker)와 fred_indicators(name→code) 매핑을 가져옵니다."""
     yfinance_name_to_ticker = {}
     fred_name_to_code = {}
     try:
-        conn = get_postgres_connection()
+        conn = get_postgres_connection(shared=True)
         if conn is None:
             return yfinance_name_to_ticker, fred_name_to_code
-        try:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                try:
-                    cur.execute("SELECT ticker, name FROM yfinance_indicators WHERE is_active = true")
-                    for row in cur.fetchall():
-                        ticker = row.get("ticker")
-                        name = row.get("name")
-                        if ticker and name:
-                            yfinance_name_to_ticker[name] = ticker
-                            yfinance_name_to_ticker[ticker] = ticker
-                except Exception as e:
-                    print(f"⚠️ 경고: yfinance 키 매핑 조회 실패: {e}")
-                try:
-                    cur.execute("SELECT code, name FROM fred_indicators WHERE is_active = true")
-                    for row in cur.fetchall():
-                        code = row.get("code")
-                        name = row.get("name")
-                        if code and name:
-                            fred_name_to_code[name] = code
-                            fred_name_to_code[code] = code
-                except Exception as e:
-                    print(f"⚠️ 경고: FRED 키 매핑 조회 실패: {e}")
-        finally:
-            conn.close()
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            try:
+                cur.execute("SELECT ticker, name FROM yfinance_indicators WHERE is_active = true")
+                for row in cur.fetchall():
+                    ticker = row.get("ticker")
+                    name = row.get("name")
+                    if ticker and name:
+                        yfinance_name_to_ticker[name] = ticker
+                        yfinance_name_to_ticker[ticker] = ticker
+            except Exception as e:
+                print(f"⚠️ 경고: yfinance 키 매핑 조회 실패: {e}")
+            try:
+                cur.execute("SELECT code, name FROM fred_indicators WHERE is_active = true")
+                for row in cur.fetchall():
+                    code = row.get("code")
+                    name = row.get("name")
+                    if code and name:
+                        fred_name_to_code[name] = code
+                        fred_name_to_code[code] = code
+            except Exception as e:
+                print(f"⚠️ 경고: FRED 키 매핑 조회 실패: {e}")
     except Exception as e:
         print(f"⚠️ 경고: 키 매핑 조회 중 오류: {e}")
     return yfinance_name_to_ticker, fred_name_to_code
@@ -288,10 +387,10 @@ if not os.getenv("DB_HOST"):
     exit(1)
 
 try:
-    pg_conn = get_postgres_connection()
+    pg_conn = get_postgres_connection(shared=True)
     if pg_conn:
         print(f"✅ PostgreSQL 연결 성공: {pg_host}:{pg_port}/{pg_database}")
-        pg_conn.close()
+        # shared 연결이므로 close하지 않음 — 스크립트 전체에서 재사용
         pg_connection_available = True
     else:
         raise Exception("PostgreSQL 연결 객체가 None입니다.")
@@ -613,14 +712,14 @@ def get_all_data(collection_name):
     try:
         # 1. PostgreSQL stocks 테이블에서 활성화된 종목 목록 가져오기
         print("\n=== 활성화된 종목 조회 (PostgreSQL) ===")
-        pg_conn = get_postgres_connection()
+        pg_conn = get_postgres_connection(shared=True)
         if pg_conn is None:
             raise ValueError("PostgreSQL 연결이 없습니다.")
 
         with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT ticker, stock_name FROM stocks WHERE is_active = true")
             active_stocks = cur.fetchall()
-        pg_conn.close()
+        # shared 연결이므로 close하지 않음
 
         active_stock_names = {stock["stock_name"] for stock in active_stocks if stock.get("stock_name")}
         # 티커 목록과 매핑 생성 (stocks 필드는 티커를 키로 사용)
@@ -865,7 +964,7 @@ forecast_horizon = 14  # 예측 기간 (14일 후를 예측)
 def get_target_columns_from_db():
     """PostgreSQL stocks 테이블에서 활성화된 주식명 목록을 가져옵니다."""
     try:
-        conn = get_postgres_connection()
+        conn = get_postgres_connection(shared=True)
         if conn is None:
             print("⚠️ 경고: PostgreSQL 연결이 없습니다.")
             print("⚠️ 경고: 하드코딩된 기본 주식 목록을 사용합니다. DB 연결을 확인하세요.")
@@ -875,7 +974,7 @@ def get_target_columns_from_db():
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute("SELECT stock_name, is_etf FROM stocks WHERE is_active = true")
             active_stocks = cur.fetchall()
-        conn.close()
+        # shared 연결이므로 close하지 않음
 
         if not active_stocks:
             print("⚠️ 경고: PostgreSQL stocks 테이블에서 활성화된 주식을 찾을 수 없습니다.")
@@ -919,7 +1018,7 @@ def get_economic_features_from_postgres():
         list: 활성화된 모든 지표 이름 목록
     """
     try:
-        conn = get_postgres_connection()
+        conn = get_postgres_connection(shared=True)
         if conn is None:
             print("⚠️ 경고: PostgreSQL 연결이 없습니다. 빈 목록을 반환합니다.")
             return []
@@ -944,8 +1043,7 @@ def get_economic_features_from_postgres():
                 print(f"Yahoo Finance 지표 {len(yfinance_list)}개 로드")
             except Exception as e:
                 print(f"⚠️ 경고: yfinance_indicators 조회 실패: {e}")
-
-        conn.close()
+        # shared 연결이므로 close하지 않음
 
         print(f"PostgreSQL에서 경제 지표 총 {len(all_indicators)}개 로드 완료")
         if len(all_indicators) > 0:
@@ -1071,6 +1169,10 @@ print(f"경제 지표 lag 적용 후 데이터 행 수: {len(data)}")
 train_size = int(len(data) * 0.8)
 train_data = data.iloc[:train_size]
 
+# ★ 긴급 수정: winsorization 전에 원본 가격 보존 (inverse transform용)
+# winsorization은 모델 입력 스케일링에만 영향, base_prices는 원본 사용해야 함
+original_prices = data[target_columns].copy()
+
 # Outlier winsorization: 학습 데이터 통계만 사용하여 전체 데이터 클리핑
 print("\n=== Outlier winsorization (3σ, train-only stats) ===")
 for col in target_columns + economic_features:
@@ -1084,6 +1186,9 @@ for col in target_columns + economic_features:
         if n_clipped > 0:
             print(f"  {col}: {n_clipped}개 값 클리핑 [{lower:.4f}, {upper:.4f}]")
         data[col] = clipped
+
+# ★ Issue #4: winsorization 후 train_data를 명시적으로 재파생 (pandas view 의존 제거)
+train_data = data.iloc[:train_size]
 
 data_scaled = data.copy()
 stock_scaler = MinMaxScaler()
@@ -1110,12 +1215,15 @@ X_stock_train = []
 X_econ_train = []
 y_train = []
 
-for i in range(lookback, len(data_scaled) - forecast_horizon):
+# ★ Issue #5: 학습 데이터만 사용 (train_size까지). 테스트 데이터 누수 방지.
+for i in range(lookback, train_size - forecast_horizon):
     X_stock_seq = data_scaled[target_columns].iloc[i - lookback:i].to_numpy()
     X_econ_seq = data_scaled[economic_features].iloc[i - lookback:i].to_numpy()
-    # log return: log(P_{t+h} / P_t) — 원본 가격 기준
-    current_price = data[target_columns].iloc[i - 1].to_numpy()
-    future_price = data[target_columns].iloc[i + forecast_horizon - 1].to_numpy()
+    # log return: log(P_{t+h} / P_t) — winsorization 전 원본 가격 기준
+    # ★ Issue #7 참고: i-1은 lookback window의 마지막 관측 가격 (모델이 실제로 "보는" 마지막 날).
+    #   future = i + forecast_horizon - 1이므로 거리 = (i+fh-1) - (i-1) = fh (정확히 forecast_horizon일).
+    current_price = original_prices.iloc[i - 1].to_numpy()
+    future_price = original_prices.iloc[i + forecast_horizon - 1].to_numpy()
     current_price = np.maximum(current_price, 1e-8)
     future_price = np.maximum(future_price, 1e-8)
     log_return = np.log(future_price / current_price)
@@ -1127,6 +1235,22 @@ X_stock_train = np.array(X_stock_train)
 X_econ_train = np.array(X_econ_train)
 y_train = np.array(y_train)
 
+# ★ Issue #1: 최소 데이터 길이 가드 — 학습 샘플이 너무 적으면 조기 중단
+MIN_TRAIN_SAMPLES = 50
+if len(y_train) < MIN_TRAIN_SAMPLES:
+    raise ValueError(
+        f"학습 샘플 부족: {len(y_train)}개 (최소 {MIN_TRAIN_SAMPLES}개 필요). "
+        f"데이터 행수={len(data)}, lookback={lookback}, forecast_horizon={forecast_horizon}, "
+        f"train_size={train_size}"
+    )
+effective_train_size = int(len(y_train) * 0.85)  # validation_split=0.15 적용 후
+if effective_train_size < 32:
+    raise ValueError(
+        f"유효 학습 셋({effective_train_size})이 batch_size(32)보다 작습니다. "
+        f"총 샘플={len(y_train)}, 15% val split 후={effective_train_size}"
+    )
+print(f"학습 샘플: {len(y_train)}개 (유효 학습: {effective_train_size}, 검증: {len(y_train) - effective_train_size})")
+
 # 전체 예측 데이터 생성: 마지막 날짜까지 포함하여 예측 (미래 실제값 없어도 예측)
 X_stock_full = []
 X_econ_full = []
@@ -1136,7 +1260,7 @@ for i in range(lookback, len(data_scaled)):  # 여기서 forecast_horizon 빼지
     X_econ_seq = data_scaled[economic_features].iloc[i - lookback:i].to_numpy()
     X_stock_full.append(X_stock_seq)
     X_econ_full.append(X_econ_seq)
-    base_prices_full.append(data[target_columns].iloc[i - 1].to_numpy())
+    base_prices_full.append(original_prices.iloc[i - 1].to_numpy())
 
 X_stock_full = np.array(X_stock_full)
 X_econ_full = np.array(X_econ_full)
@@ -1152,13 +1276,28 @@ model.summary()
 
 print("Training model...")
 early_stop = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True, verbose=1)
-history = model.fit([X_stock_train, X_econ_train], y_train,
-    epochs=200, batch_size=32, verbose=1, validation_split=0.15, callbacks=[early_stop])
+
+# ★ Issue #6: 명시적 시간순 validation split (Keras validation_split 대체)
+# validation_split=0.15는 마지막 15%를 사용하므로 시계열에 적합하지만,
+# 명시적으로 분리하여 의도를 명확히 하고 shuffle 가능성 제거
+val_size = max(1, int(len(X_stock_train) * 0.15))
+X_stock_val = X_stock_train[-val_size:]
+X_econ_val = X_econ_train[-val_size:]
+y_val = y_train[-val_size:]
+X_stock_train_fit = X_stock_train[:-val_size]
+X_econ_train_fit = X_econ_train[:-val_size]
+y_train_fit = y_train[:-val_size]
+print(f"학습/검증 분리: train={len(y_train_fit)}, val={len(y_val)}")
+
+history = model.fit([X_stock_train_fit, X_econ_train_fit], y_train_fit,
+    epochs=200, batch_size=32, verbose=1,
+    validation_data=([X_stock_val, X_econ_val], y_val),
+    callbacks=[early_stop])
 
 print("Performing full predictions...")
 # 모델이 예측하는 것은 log return → 원래 가격으로 역변환
 predicted_returns = model.predict([X_stock_full, X_econ_full], verbose=1)
-predicted_returns = np.clip(predicted_returns, -1.0, 1.0)  # exp overflow 방지
+predicted_returns = np.clip(predicted_returns, -0.5, 0.5)  # 14일 기준 ±50% 제한 (exp overflow 방지)
 predicted_prices_actual = base_prices_full[:len(predicted_returns)] * np.exp(predicted_returns)
 
 pred_len = len(predicted_returns)
@@ -1251,8 +1390,8 @@ elif len(today_dates) < actual_pred_len:
 print(f"생성된 날짜 범위: {pd.to_datetime(today_dates[0]).strftime('%Y-%m-%d')} ~ {pd.to_datetime(today_dates[-1]).strftime('%Y-%m-%d')}")
 print(f"생성된 날짜 개수: {len(today_dates)} (예상: {actual_pred_len})")
 
-# 오늘 실제 주가 (실제 데이터가 있는 범위만)
-actual_full = data[target_columns].iloc[lookback : lookback + actual_pred_len].values
+# 오늘 실제 주가 (winsorization 전 원본 가격 사용)
+actual_full = original_prices.iloc[lookback : lookback + actual_pred_len].values
 
 # 예측 실행 날짜가 데이터베이스의 마지막 날짜보다 이후인 경우
 # 실제 주가는 데이터베이스의 마지막 날짜까지만 있고, 이후 날짜는 NaN으로 채움
@@ -1299,16 +1438,14 @@ for idx, col in enumerate(target_columns):
     if np.isnan(pred_values).any():
         nan_count = np.isnan(pred_values).sum()
         print(f"경고: {col}_Predicted에 {nan_count}개의 NaN이 있습니다.")
-        # NaN을 0으로 채우거나 이전 값으로 보간
+        # Predicted NaN만 보간 (모델 출력이므로 채워야 함)
         pred_series = pd.Series(pred_values)
         pred_values = pred_series.ffill().bfill().fillna(0).values
-    
+
+    # ★ Issue #8: Actual NaN은 채우지 않음 (미래 날짜는 실제 가격이 없는 게 정상)
     if np.isnan(actual_values).any():
         nan_count = np.isnan(actual_values).sum()
-        print(f"경고: {col}_Actual에 {nan_count}개의 NaN이 있습니다.")
-        # NaN을 0으로 채우거나 이전 값으로 보간
-        actual_series = pd.Series(actual_values)
-        actual_values = actual_series.ffill().bfill().fillna(0).values
+        print(f"INFO: {col}_Actual에 {nan_count}개의 NaN (미래 날짜, 실제 가격 미확정)")
     
     result_data[f'{col}_Predicted'] = pred_values
     result_data[f'{col}_Actual'] = actual_values
@@ -1359,27 +1496,27 @@ if final_nan_count > 0:
         print(f"  - {col}: {nan_count}/{total_count}개 ({nan_count/total_count*100:.1f}%)")
     
     print("\nNaN 값을 처리하는 중...")
-    # Predicted 컬럼의 NaN은 이전 예측값으로 채우거나 평균값으로 채우기
+    # Predicted 컬럼의 NaN만 보간 (모델 출력이므로 채워야 함)
     for col in predicted_cols:
         if result_data[col].isna().any():
-            # 먼저 ffill, bfill 시도
             result_data[col] = result_data[col].ffill().bfill()
-            # 여전히 NaN이면 평균값으로 채우기
             if result_data[col].isna().any():
                 col_mean = result_data[col].mean()
                 if pd.notna(col_mean):
                     result_data[col] = result_data[col].fillna(col_mean)
                 else:
-                    # 평균도 없으면 0으로
                     result_data[col] = result_data[col].fillna(0)
-    
-    # Actual 컬럼의 NaN도 처리
-    for col in actual_cols:
-        if result_data[col].isna().any():
-            result_data[col] = result_data[col].ffill().bfill().fillna(0)
-    
-    # 최종적으로 남은 NaN은 모두 0으로
-    result_data = result_data.fillna(0)
+
+    # ★ Issue #8+9: Actual 컬럼 NaN은 그대로 유지 (미래 날짜는 실제 가격 없음이 정상)
+    # MongoDB에 null로 저장되어 "가격 미확정"과 "가격 0"을 구분 가능
+    actual_nan_total = sum(result_data[col].isna().sum() for col in actual_cols)
+    if actual_nan_total > 0:
+        print(f"INFO: Actual 컬럼 NaN {actual_nan_total}개 유지 (미래 날짜 실제 가격 미확정)")
+
+    # Predicted 외 기타 컬럼(날짜 등)만 처리
+    for col in result_data.columns:
+        if '_Predicted' not in col and '_Actual' not in col and col != '날짜':
+            result_data[col] = result_data[col].fillna(0)
     
     # 최종 확인
     remaining_nan = result_data.isna().sum().sum()
@@ -1426,15 +1563,21 @@ def save_predictions_to_db(result_df):
                     sample_val = result_df[col].iloc[0]
                     print(f"  ✓ {col}: {valid_count}개 유효값, 샘플: {sample_val}")
         
-        # NaN/inf 값 처리
+        # ★ Issue #9: NaN/inf 처리 — Actual 컬럼은 None 유지 (null로 DB 저장)
         result_df_clean = result_df.copy()
-        
+        result_df_clean = result_df_clean.replace([np.inf, -np.inf], np.nan)
+
         nan_count_before = result_df_clean.isna().sum().sum()
         if nan_count_before > 0:
-            print(f"⚠️ 경고: {nan_count_before}개의 NaN이 발견되었습니다. 0으로 채웁니다.")
-            result_df_clean = result_df_clean.fillna(0)
-        
-        result_df_clean = result_df_clean.replace([np.inf, -np.inf], 0)
+            # Predicted 컬럼만 0으로 채움, Actual은 None(null) 유지
+            for col in result_df_clean.columns:
+                if '_Predicted' in col:
+                    result_df_clean[col] = result_df_clean[col].fillna(0)
+                elif '_Actual' in col:
+                    pass  # NaN → None (to_dict에서 자동 변환)
+                elif col != '날짜':
+                    result_df_clean[col] = result_df_clean[col].fillna(0)
+            print(f"NaN 처리: Predicted→0, Actual→null 유지 (총 {nan_count_before}개)")
         
         records = result_df_clean.to_dict('records')
         print(f"저장할 레코드 수: {len(records)}")
@@ -1454,34 +1597,21 @@ def save_predictions_to_db(result_df):
             try:
                 from datetime import datetime
                 
-                # 주식명 -> 티커 매핑 생성 (PostgreSQL stocks 테이블에서)
-                stock_to_ticker_map = {}
-                try:
-                    pg_conn = get_postgres_connection()
-                    if pg_conn:
-                        with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
-                            cur.execute("SELECT stock_name, ticker FROM stocks WHERE is_active = true")
-                            stocks = cur.fetchall()
-                        pg_conn.close()
-                        for stock in stocks:
-                            stock_name = stock.get("stock_name")
-                            ticker = stock.get("ticker")
-                            if stock_name and ticker:
-                                stock_to_ticker_map[stock_name] = ticker
-                        print(f"주식명 -> 티커 매핑 {len(stock_to_ticker_map)}개 생성 완료 (PostgreSQL)")
-                    else:
-                        print("⚠️ PostgreSQL 연결 실패, 매핑 생성 불가")
-                except Exception as map_error:
-                    print(f"⚠️ 주식명 -> 티커 매핑 생성 실패: {str(map_error)}")
-                
+                # ★ Issue #2+11: 캐시된 매핑 사용 (fuzzy 매칭 포함, DRY)
+                stock_to_ticker_map, _ = get_stock_ticker_mappings()
+                print(f"주식명 -> 티커 매핑: {len(set(stock_to_ticker_map.values()))}개 종목 (캐시)")
+
                 # 날짜별로 그룹화하여 저장
                 date_predictions = {}  # {날짜: {티커: {predicted_price, actual_price}}}
-                
+                # ★ Issue #3: 매핑 실패 시 로깅
+                skipped_no_ticker = 0
+                skipped_stocks_set = set()
+
                 for record in records:
                     date_str = record.get('날짜')
                     if not date_str:
                         continue
-                    
+
                     # 날짜 형식 변환
                     if isinstance(date_str, str):
                         try:
@@ -1493,29 +1623,41 @@ def save_predictions_to_db(result_df):
                         date_str = date_str.strftime('%Y-%m-%d')
                     else:
                         continue
-                    
+
                     if date_str not in date_predictions:
                         date_predictions[date_str] = {}
-                    
+
                     # Predicted와 Actual 컬럼 찾기
                     for col_name, value in record.items():
                         if '_Predicted' in col_name:
                             stock_name = col_name.replace('_Predicted', '')
                             ticker = stock_to_ticker_map.get(stock_name)
-                            
-                            if ticker:
-                                if ticker not in date_predictions[date_str]:
-                                    date_predictions[date_str][ticker] = {}
-                                date_predictions[date_str][ticker]['predicted_price'] = float(value) if value is not None else None
-                        
+
+                            if not ticker:
+                                if stock_name not in skipped_stocks_set:
+                                    skipped_stocks_set.add(stock_name)
+                                    skipped_no_ticker += 1
+                                continue
+                            if ticker not in date_predictions[date_str]:
+                                date_predictions[date_str][ticker] = {}
+                            date_predictions[date_str][ticker]['predicted_price'] = float(value) if value is not None else None
+
                         elif '_Actual' in col_name:
                             stock_name = col_name.replace('_Actual', '')
                             ticker = stock_to_ticker_map.get(stock_name)
-                            
-                            if ticker:
-                                if ticker not in date_predictions[date_str]:
-                                    date_predictions[date_str][ticker] = {}
-                                date_predictions[date_str][ticker]['actual_price'] = float(value) if value is not None else None
+
+                            if not ticker:
+                                continue
+                            if ticker not in date_predictions[date_str]:
+                                date_predictions[date_str][ticker] = {}
+                            # ★ Issue #9: actual_price가 NaN/None이면 null 저장 (0 아님)
+                            actual_val = None
+                            if value is not None and not (isinstance(value, float) and np.isnan(value)):
+                                actual_val = float(value)
+                            date_predictions[date_str][ticker]['actual_price'] = actual_val
+
+                if skipped_no_ticker > 0:
+                    print(f"⚠️ 티커 매핑 실패로 {skipped_no_ticker}개 종목 skip: {list(skipped_stocks_set)[:10]}")
                 
                 # 1. daily_stock_data.predictions 필드에 저장 (날짜별 통합) - Bulk Write 사용
                 print(f"MongoDB daily_stock_data에 {len(date_predictions)}개 날짜의 예측 데이터 저장 중...")
@@ -1736,25 +1878,9 @@ def get_predictions_from_db(chunk_size=1000):
                 print("경고: stock_predictions 컬렉션이 비어있습니다.")
                 return pd.DataFrame()
         
-        # PostgreSQL stocks 테이블에서 티커 -> 주식명 매핑 생성
-        ticker_to_name = {}
-        try:
-            pg_conn = get_postgres_connection()
-            if pg_conn:
-                with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
-                    cur.execute("SELECT ticker, stock_name FROM stocks WHERE is_active = true")
-                    stocks = cur.fetchall()
-                pg_conn.close()
-                for stock in stocks:
-                    ticker = stock.get("ticker")
-                    stock_name = stock.get("stock_name")
-                    if ticker and stock_name:
-                        ticker_to_name[ticker] = stock_name
-                print(f"티커 -> 주식명 매핑 {len(ticker_to_name)}개 생성 완료 (PostgreSQL)")
-            else:
-                print("⚠️ PostgreSQL 연결 실패, 매핑 생성 불가")
-        except Exception as e:
-            print(f"⚠️ 티커 -> 주식명 매핑 생성 실패: {e}")
+        # ★ Issue #11: 캐시된 매핑 사용 (DRY)
+        _, ticker_to_name = get_stock_ticker_mappings()
+        print(f"티커 -> 주식명 매핑: {len(ticker_to_name)}개 (캐시)")
         
         def _to_datetime(value):
             if value is None:
@@ -1932,39 +2058,22 @@ def save_analysis_to_db(result_df):
             try:
                 from datetime import datetime
                 
-                # 주식명 -> 티커 매핑 생성 (PostgreSQL stocks 테이블에서)
-                stock_to_ticker_map = {}
-                try:
-                    pg_conn = get_postgres_connection()
-                    if pg_conn:
-                        with pg_conn.cursor(cursor_factory=RealDictCursor) as cur:
-                            cur.execute("SELECT stock_name, ticker FROM stocks WHERE is_active = true")
-                            stocks = cur.fetchall()
-                        pg_conn.close()
-                        for stock in stocks:
-                            stock_name = stock.get("stock_name")
-                            ticker = stock.get("ticker")
-                            if stock_name and ticker:
-                                # 정확한 매칭
-                                stock_to_ticker_map[stock_name] = ticker
-                                # 대소문자 무시 매칭 (추가)
-                                stock_to_ticker_map[stock_name.lower()] = ticker
-                                stock_to_ticker_map[stock_name.upper()] = ticker
-                                # 공백 제거 매칭 (추가)
-                                stock_name_no_space = stock_name.replace(" ", "")
-                                if stock_name_no_space != stock_name:
-                                    stock_to_ticker_map[stock_name_no_space] = ticker
-                        unique_tickers = len(set(stock_to_ticker_map.values()))
-                        print(f"주식명 -> 티커 매핑 {unique_tickers}개 종목, {len(stock_to_ticker_map)}개 변형 매핑 생성 완료 (PostgreSQL)")
-                    else:
-                        print("⚠️ PostgreSQL 연결 실패, 매핑 생성 불가")
-                except Exception as map_error:
-                    print(f"⚠️ 주식명 -> 티커 매핑 생성 실패: {str(map_error)}")
-                
-                # 오늘 날짜로 저장 (분석 기준일)
-                today_str = datetime.now().strftime('%Y-%m-%d')
-                today_obj = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+                # ★ Issue #11: 캐시된 매핑 사용 (DRY)
+                stock_to_ticker_map, _ = get_stock_ticker_mappings()
+                print(f"주식명 -> 티커 매핑: {len(set(stock_to_ticker_map.values()))}개 종목 (캐시)")
+
+                # 분석 기준일: TARGET_DATE 사용 (핸들러가 넘긴 날짜 또는 KST 오늘)
+                today_str = TARGET_DATE
+                today_obj = datetime.strptime(TARGET_DATE, '%Y-%m-%d')
                 now_utc = datetime.now(timezone.utc)
+
+                # daily_stock_data에 해당 날짜 데이터 존재 검증
+                _daily_check = db.daily_stock_data.find_one({"date": today_str})
+                if not _daily_check or not _daily_check.get("stocks"):
+                    raise ValueError(
+                        f"daily_stock_data 없음 (date={today_str}). "
+                        f"경제 데이터 수집이 선행되어야 합니다."
+                    )
                 
                 # 레코드를 한 번만 순회하면서 두 컬렉션에 필요한 데이터 모두 준비 (성능 최적화)
                 print(f"MongoDB stock_analysis_results 컬렉션 및 daily_stock_data.analysis 필드에 분석 데이터 저장 중...")
@@ -2222,11 +2331,15 @@ def evaluate_predictions(data, target_columns, forecast_horizon):
 ###############################
 # (2) Future Rise Analysis
 ###############################
-def analyze_rise_predictions(data, target_columns):
+def analyze_rise_predictions(data, target_columns, current_prices=None):
     """
     This function looks at the last row of the DataFrame (most recent date),
     compares actual vs. predicted values, and calculates rise/fall information
     and rise probability in percentage.
+
+    Args:
+        current_prices: dict {stock_name: current_close_price} — daily_stock_data에서 가져온 현재가.
+                        actual_price가 0/NaN일 때 fallback으로 사용.
     """
     # 데이터 유효성 검사
     if data is None:
@@ -2312,8 +2425,14 @@ def analyze_rise_predictions(data, target_columns):
         last_actual_price = last_row.get(actual_col, np.nan)
         predicted_future_price = last_row.get(predicted_col, np.nan)
 
+        # actual_price가 0 또는 NaN이면 daily_stock_data 현재가로 fallback
+        if (not pd.notna(last_actual_price) or last_actual_price == 0) and current_prices:
+            fallback_price = current_prices.get(col, 0)
+            if fallback_price and fallback_price > 0:
+                last_actual_price = fallback_price
+
         # Determine rise/fall and rise percentage
-        if pd.notna(last_actual_price) and pd.notna(predicted_future_price) and last_actual_price != 0:
+        if pd.notna(last_actual_price) and pd.notna(predicted_future_price) and last_actual_price > 0:
             predicted_rise = predicted_future_price > last_actual_price
             rise_probability = ((predicted_future_price - last_actual_price) / last_actual_price) * 100
         else:
@@ -2421,8 +2540,28 @@ evaluation_results = evaluate_predictions(data, target_columns, forecast_horizon
 print("============ Evaluation Results ============")
 print(evaluation_results)
 
-# 4) Analyze future rise
-rise_results = analyze_rise_predictions(data, target_columns)
+# 4) Analyze future rise — daily_stock_data에서 현재가 로드 (rise_probability fallback용)
+# ★ Issue #11: 캐시된 매핑 사용 (DRY) + ticker→종목명 키 변환
+_current_prices = {}
+try:
+    _, _ticker_to_name = get_stock_ticker_mappings()  # 캐시된 매핑
+
+    _daily_doc = db.daily_stock_data.find_one({"date": TARGET_DATE}) or db.daily_stock_data.find_one(sort=[("date", -1)])
+    if _daily_doc and _daily_doc.get("stocks"):
+        for _ticker, _sdata in _daily_doc["stocks"].items():
+            _close = _sdata.get("close_price") or _sdata.get("close", 0)
+            if _close and _close > 0:
+                # 종목명 키로 저장 (target_columns와 일치시킴)
+                _stock_name = _ticker_to_name.get(_ticker)
+                if _stock_name:
+                    _current_prices[_stock_name] = _close
+                # ticker 키도 보관
+                _current_prices[_ticker] = _close
+        print(f"현재가 로드 완료: {len(_current_prices)}항목 (date={_daily_doc.get('date')})")
+except Exception as _e:
+    print(f"⚠️ 현재가 로드 실패 (rise_probability에 영향): {_e}")
+
+rise_results = analyze_rise_predictions(data, target_columns, current_prices=_current_prices)
 print("============ Rise Predictions ============")
 print(rise_results)
 

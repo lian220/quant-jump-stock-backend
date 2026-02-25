@@ -9,22 +9,39 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone, timedelta
 
 from core.database import MongoDB
+from config.settings import get_settings
 from services.buy_criteria import BuyCriteria
 
 logger = logging.getLogger(__name__)
+
+# Slack 리포트에 표시되는 AI 예측 데이터의 최대 허용 지연일 (14일 예측 horizon의 절반)
+_MAX_PREDICTION_LOOKBACK_DAYS = 7
+
+
+class DailyDataNotCollectedError(Exception):
+    """분석 날짜에 해당하는 daily_stock_data가 수집되지 않았을 때 발생"""
+
+    def __init__(self, analysis_date: str):
+        self.analysis_date = analysis_date
+        super().__init__(
+            f"daily_stock_data 없음 (date={analysis_date}). "
+            f"경제 데이터 수집이 선행되어야 합니다."
+        )
 
 
 def _query_stock_predictions_by_date(db, analysis_date: str, target_date: datetime):
     """
     stock_predictions 컬렉션에서 해당 분석일 문서 조회.
     MongoDB date가 ISODate(UTC)로 저장된 경우를 위해 여러 쿼리 시도.
+    정확한 날짜에 데이터가 없으면 analysis_date 이전 최근 날짜로 fallback.
     """
+    projection = {"_id": 0, "ticker": 1, "predicted_price": 1, "actual_price": 1}
+
     # 1) Naive UTC 당일 범위
     start_utc = datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0)
     end_utc = start_utc + timedelta(days=1)
     preds = list(db.stock_predictions.find(
-        {"date": {"$gte": start_utc, "$lt": end_utc}},
-        {"_id": 0, "ticker": 1, "predicted_price": 1, "actual_price": 1},
+        {"date": {"$gte": start_utc, "$lt": end_utc}}, projection,
     ))
     if preds:
         return preds
@@ -32,19 +49,39 @@ def _query_stock_predictions_by_date(db, analysis_date: str, target_date: dateti
     start_utc_tz = start_utc.replace(tzinfo=timezone.utc)
     end_utc_tz = end_utc.replace(tzinfo=timezone.utc)
     preds = list(db.stock_predictions.find(
-        {"date": {"$gte": start_utc_tz, "$lt": end_utc_tz}},
-        {"_id": 0, "ticker": 1, "predicted_price": 1, "actual_price": 1},
+        {"date": {"$gte": start_utc_tz, "$lt": end_utc_tz}}, projection,
     ))
     if preds:
         return preds
     # 3) 문자열 날짜
-    preds = list(db.stock_predictions.find(
-        {"date": analysis_date},
-        {"_id": 0, "ticker": 1, "predicted_price": 1, "actual_price": 1},
-    ))
+    preds = list(db.stock_predictions.find({"date": analysis_date}, projection))
     if preds:
         return preds
-    # Strategy 1~3으로 충분, $expr는 인덱스 미사용으로 풀스캔 유발
+
+    # 4) Fallback: analysis_date 이전 최근 날짜 (최대 _MAX_PREDICTION_LOOKBACK_DAYS일)
+    min_date = start_utc - timedelta(days=_MAX_PREDICTION_LOOKBACK_DAYS)
+    latest_doc = db.stock_predictions.find_one(
+        {"date": {"$gte": min_date, "$lte": start_utc}},
+        sort=[("date", -1)],
+    )
+    if latest_doc:
+        fallback_date = latest_doc["date"]
+        fallback_label = (
+            fallback_date.strftime("%Y-%m-%d")
+            if isinstance(fallback_date, datetime)
+            else str(fallback_date)[:10]
+        )
+        preds = list(db.stock_predictions.find({"date": fallback_date}, projection))
+        if preds:
+            logger.info(
+                f"stock_predictions 날짜 fallback: {analysis_date} → {fallback_label} ({len(preds)}건)"
+            )
+            return preds
+        else:
+            logger.warning(
+                f"stock_predictions {_MAX_PREDICTION_LOOKBACK_DAYS}일 이내 데이터 없음 (기준: {analysis_date})"
+            )
+
     return []
 
 
@@ -52,7 +89,10 @@ class ComprehensiveReportService:
     """기술적 분석 + AI 예측 + 감정 분석 종합 리포트"""
 
     def __init__(self, buy_criteria: Optional[BuyCriteria] = None):
-        self.buy_criteria = buy_criteria or BuyCriteria()
+        if buy_criteria is None:
+            settings = get_settings()
+            buy_criteria = BuyCriteria.from_settings(settings.recommendation)
+        self.buy_criteria = buy_criteria
 
     def load_sentiment_scores(self, analysis_date: str) -> Dict[str, float]:
         """
@@ -99,14 +139,16 @@ class ComprehensiveReportService:
             target_date = datetime.strptime(analysis_date_str, "%Y-%m-%d")
         target_date_str = target_date.strftime("%Y-%m-%dT00:00:00.000Z")
 
-        # 1. 분석일의 종가 로드
+        # 1. 분석일의 종가 로드 (해당 날짜 데이터 필수 — 없으면 수집 미완료)
         daily_doc = db.daily_stock_data.find_one({"date": analysis_date_str})
+        if not daily_doc or not daily_doc.get("stocks"):
+            raise DailyDataNotCollectedError(analysis_date_str)
+
         current_prices = {}
-        if daily_doc and daily_doc.get("stocks"):
-            for ticker, val in daily_doc["stocks"].items():
-                price = val if isinstance(val, (int, float)) else val.get("close_price")
-                if price:
-                    current_prices[ticker] = float(price)
+        for ticker, val in daily_doc["stocks"].items():
+            price = val if isinstance(val, (int, float)) else val.get("close_price")
+            if price:
+                current_prices[ticker] = float(price)
 
         result = {}
 
@@ -114,6 +156,29 @@ class ComprehensiveReportService:
         analysis_docs = list(db.stock_analysis_results.find({
             "$or": [{"date": target_date}, {"date": target_date_str}]
         }))
+
+        # Fallback: 정확한 날짜에 없으면 이전 최근 날짜 (최대 _MAX_PREDICTION_LOOKBACK_DAYS일)
+        if not analysis_docs:
+            min_lookback = target_date - timedelta(days=_MAX_PREDICTION_LOOKBACK_DAYS)
+            latest = db.stock_analysis_results.find_one(
+                {"date": {"$gte": min_lookback, "$lte": target_date}},
+                sort=[("date", -1)],
+            )
+            if latest:
+                fallback_date = latest["date"]
+                analysis_docs = list(db.stock_analysis_results.find({"date": fallback_date}))
+                fallback_label = (
+                    fallback_date.strftime("%Y-%m-%d")
+                    if isinstance(fallback_date, datetime)
+                    else str(fallback_date)[:10]
+                )
+                logger.info(
+                    f"stock_analysis_results 날짜 fallback: {analysis_date_str} → {fallback_label} ({len(analysis_docs)}건)"
+                )
+            else:
+                logger.warning(
+                    f"stock_analysis_results {_MAX_PREDICTION_LOOKBACK_DAYS}일 이내 데이터 없음 (기준: {analysis_date_str})"
+                )
 
         for doc in analysis_docs:
             ticker = doc.get("ticker")
@@ -210,7 +275,26 @@ class ComprehensiveReportService:
             sentiment_scores=sentiment_scores,
         )
 
-        # 3. 후보에 상세 데이터 추가
+        # 3. 아깝게 탈락한 종목 (near-miss TOP3)
+        excluded_tickers = {c.get("ticker") for c in buy_candidates}
+        near_miss_candidates = self.buy_criteria.get_near_miss_candidates(
+            technical_results,
+            excluded_tickers=excluded_tickers,
+            ai_scores=ai_scores,
+            sentiment_scores=sentiment_scores,
+        )
+        # near-miss에도 AI/감정 상세 데이터 추가
+        for nm in near_miss_candidates:
+            ticker = nm.get("ticker", "")
+            ai_data = ai_predictions.get(ticker, {})
+            nm["ai_prediction"] = {
+                "rise_probability": ai_data.get("rise_probability", 0.0),
+                "predicted_price": ai_data.get("predicted_price"),
+                "current_price": ai_data.get("current_price"),
+            }
+            nm["sentiment_score"] = sentiment_scores.get(ticker, 0.0)
+
+        # 4. 후보에 상세 데이터 추가
         for candidate in buy_candidates:
             ticker = candidate.get("ticker", "")
             # AI 예측 상세
@@ -253,6 +337,7 @@ class ComprehensiveReportService:
             "prediction_count": len(ai_predictions),
             "candidate_count": len(buy_candidates),
             "buy_candidates": buy_candidates,
+            "near_miss_candidates": near_miss_candidates,
             "breakdown": {
                 "technical": {
                     "count": len(tech_recommended),

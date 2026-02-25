@@ -19,7 +19,7 @@ from application.recommendation.sync_service import RecommendationSyncService
 # BacktestCheckpoint, _DEFAULT_BENCHMARK는 BacktestRequestHandler 내부에서 lazy import
 _DEFAULT_BENCHMARK = "SPY"
 from core.database import MongoDB
-from services.comprehensive_report import ComprehensiveReportService
+from services.comprehensive_report import ComprehensiveReportService, DailyDataNotCollectedError
 from services.slack_notifier import SlackNotifier
 from .subscriber import PubSubMessage, NonRetryableError
 
@@ -456,8 +456,15 @@ class StockRecommendationHandler(MessageHandler):
             analysis_dates = self._resolve_analysis_dates(message.start_date, message.end_date)
             logger.info(f"종목 추천 처리 날짜 수: {len(analysis_dates)}일 ({analysis_dates[0]} ~ {analysis_dates[-1]})")
 
+            # 스케줄러 채널: 시작 알림 (thread_ts 반환 시 이후 완료 메시지에 사용)
+            thread_ts = SlackNotifier.notify_recommendation_start(
+                analysis_dates, thread_ts=message.thread_ts
+            )
+
             total_synced_count = 0
             sync_results = []
+            total_candidate_count = 0
+            total_near_miss_count = 0
 
             report_db = MongoDB.get_db()
             report_service = ComprehensiveReportService()
@@ -489,20 +496,33 @@ class StockRecommendationHandler(MessageHandler):
                             {"_id": 0, "ticker": 1, "stock_name": 1, "date": 1,
                              "technical_indicators": 1, "is_recommended": 1}
                         ))
-                    logger.info(f"종합 리포트: 기술적 분석 {len(tech_docs)}개 종목 ({analysis_date}), scheduler_thread_ts={message.thread_ts}")
+                    logger.info(f"종합 리포트: 기술적 분석 {len(tech_docs)}개 종목 ({analysis_date})")
                     # tech_docs 없어도 AI/감정 데이터로 리포트 생성 + Slack 발송
                     report = report_service.generate_report(tech_docs, analysis_date)
-                    # Analysis 채널: 종합 리포트 독립 메시지 (thread 아님)
+                    candidate_count = len(report.get("buy_candidates", []))
+                    near_miss_count = len(report.get("near_miss_candidates", []))
+                    total_candidate_count += candidate_count
+                    total_near_miss_count += near_miss_count
+
+                    # 분석 채널: 종합 리포트 독립 메시지
                     SlackNotifier.notify_comprehensive_report(report, thread_ts=None)
-                    # Scheduler 채널: 완료 스레드 답글
-                    if message.thread_ts:
-                        candidate_count = len(report.get("buy_candidates", []))
-                        SlackNotifier.send_thread_message(
-                            text=f"✅ 종목 추천 완료 ({analysis_date}) - 추천 {candidate_count}개 | #analysis 채널을 확인하세요",
-                            thread_ts=message.thread_ts,
-                        )
+                    logger.info(f"종합 리포트 Slack 발송 완료 ({analysis_date}): 추천 {candidate_count}개, 근접 탈락 {near_miss_count}개")
+                except DailyDataNotCollectedError as e:
+                    logger.error(str(e))
+                    SlackNotifier.notify_daily_data_missing(analysis_date)
                 except Exception as e:
                     logger.exception(f"종합 리포트 생성/전송 실패 ({analysis_date}): {e}")
+
+            # 스케줄러 채널: 완료 알림
+            elapsed = time.time() - start_time
+            SlackNotifier.notify_recommendation_complete(
+                analysis_date=analysis_dates[-1],
+                synced_count=total_synced_count,
+                candidate_count=total_candidate_count,
+                near_miss_count=total_near_miss_count,
+                elapsed=elapsed,
+                thread_ts=thread_ts,
+            )
 
             self._log_success("종목 추천", start_time)
 
