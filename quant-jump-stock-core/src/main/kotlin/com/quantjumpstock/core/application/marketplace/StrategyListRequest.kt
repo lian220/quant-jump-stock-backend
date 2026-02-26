@@ -19,8 +19,8 @@ data class StrategyListRequest(
     @Parameter(description = "최대 MDD (%)")
     val maxMdd: BigDecimal? = null,
 
-    @Parameter(description = "정렬 기준 (subscribers, cagr, sharpe, recent)", example = "subscribers")
-    val sortBy: String? = "subscribers",
+    @Parameter(description = "정렬 기준 (subscribers, cagr, sharpe, recent)", example = "cagr")
+    val sortBy: String? = "cagr",
 
     @Parameter(description = "페이지 번호 (0부터 시작)", example = "0")
     val page: Int = 0,

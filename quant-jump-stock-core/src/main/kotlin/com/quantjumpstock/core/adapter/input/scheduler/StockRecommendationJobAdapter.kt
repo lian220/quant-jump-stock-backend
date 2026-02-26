@@ -43,7 +43,7 @@ class StockRecommendationJobAdapter(
                 .get(3, TimeUnit.MINUTES)
 
             // 스케줄러 완료 후 캐시 evict → 다음 조회 시 최신 데이터 반영
-            listOf("buySignals", "recentPredictions", "tickerPredictions", "marketplaceStrategies", "strategyDetail")
+            listOf("buySignals", "recentPredictions", "predictionStats", "tickerPredictions", "marketplaceStrategies", "strategyDetail")
                 .forEach { cacheName ->
                     cacheManager.getCache(cacheName)?.clear()
                     logger.info("🗑️ $cacheName 캐시 초기화 완료")

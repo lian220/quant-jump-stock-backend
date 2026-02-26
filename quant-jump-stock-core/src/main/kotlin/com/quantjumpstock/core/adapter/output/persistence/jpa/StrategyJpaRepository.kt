@@ -176,29 +176,34 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
         pageable: Pageable
     ): Page<StrategyEntity>
 
-    // Marketplace: CAGR로 정렬된 전략 조회
+    // Marketplace: CAGR로 정렬된 전략 조회 (백테스트 없는 전략도 포함, CAGR=0으로 취급)
     @EntityGraph(value = "Strategy.withBacktestResults", type = EntityGraph.EntityGraphType.LOAD)
     @Query("""
-        SELECT DISTINCT s FROM StrategyEntity s
+        SELECT s FROM StrategyEntity s
         WHERE s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE')
         AND (:categoryCode IS NULL OR s.category.code = :categoryCode)
-        AND EXISTS (
+        AND (:minCagr IS NULL OR EXISTS (
             SELECT 1 FROM BacktestResultEntity br2
-            WHERE br2.strategy = s AND br2.status = 'COMPLETED'
-            AND (:minCagr IS NULL OR br2.cagr >= :minCagr)
-            AND (:maxMdd IS NULL OR br2.mdd <= :maxMdd)
-        )
+            WHERE br2.strategy = s AND br2.status = 'COMPLETED' AND br2.cagr >= :minCagr
+        ))
+        AND (:maxMdd IS NULL OR EXISTS (
+            SELECT 1 FROM BacktestResultEntity br4
+            WHERE br4.strategy = s AND br4.status = 'COMPLETED' AND br4.mdd <= :maxMdd
+        ))
+        ORDER BY (SELECT COALESCE(MAX(br3.cagr), 0) FROM BacktestResultEntity br3 WHERE br3.strategy = s AND br3.status = 'COMPLETED') DESC
     """,
     countQuery = """
         SELECT COUNT(DISTINCT s) FROM StrategyEntity s
         WHERE s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE')
         AND (:categoryCode IS NULL OR s.category.code = :categoryCode)
-        AND EXISTS (
+        AND (:minCagr IS NULL OR EXISTS (
             SELECT 1 FROM BacktestResultEntity br
-            WHERE br.strategy = s AND br.status = 'COMPLETED'
-            AND (:minCagr IS NULL OR br.cagr >= :minCagr)
-            AND (:maxMdd IS NULL OR br.mdd <= :maxMdd)
-        )
+            WHERE br.strategy = s AND br.status = 'COMPLETED' AND br.cagr >= :minCagr
+        ))
+        AND (:maxMdd IS NULL OR EXISTS (
+            SELECT 1 FROM BacktestResultEntity br
+            WHERE br.strategy = s AND br.status = 'COMPLETED' AND br.mdd <= :maxMdd
+        ))
     """)
     fun findMarketplaceStrategiesByCagr(
         categoryCode: String?,
@@ -207,31 +212,34 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
         pageable: Pageable
     ): Page<StrategyEntity>
 
-    // Marketplace: Sharpe Ratio로 정렬된 전략 조회
+    // Marketplace: Sharpe Ratio로 정렬된 전략 조회 (백테스트 없는 전략도 포함, Sharpe=0으로 취급)
     @EntityGraph(value = "Strategy.withBacktestResults", type = EntityGraph.EntityGraphType.LOAD)
     @Query("""
-        SELECT DISTINCT s FROM StrategyEntity s
+        SELECT s FROM StrategyEntity s
         WHERE s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE')
         AND (:categoryCode IS NULL OR s.category.code = :categoryCode)
-        AND EXISTS (
+        AND (:minCagr IS NULL OR EXISTS (
             SELECT 1 FROM BacktestResultEntity br2
-            WHERE br2.strategy = s AND br2.status = 'COMPLETED'
-            AND br2.sharpeRatio IS NOT NULL
-            AND (:minCagr IS NULL OR br2.cagr >= :minCagr)
-            AND (:maxMdd IS NULL OR br2.mdd <= :maxMdd)
-        )
+            WHERE br2.strategy = s AND br2.status = 'COMPLETED' AND br2.cagr >= :minCagr
+        ))
+        AND (:maxMdd IS NULL OR EXISTS (
+            SELECT 1 FROM BacktestResultEntity br4
+            WHERE br4.strategy = s AND br4.status = 'COMPLETED' AND br4.mdd <= :maxMdd
+        ))
+        ORDER BY (SELECT COALESCE(MAX(br3.sharpeRatio), 0) FROM BacktestResultEntity br3 WHERE br3.strategy = s AND br3.status = 'COMPLETED') DESC
     """,
     countQuery = """
         SELECT COUNT(DISTINCT s) FROM StrategyEntity s
         WHERE s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE')
         AND (:categoryCode IS NULL OR s.category.code = :categoryCode)
-        AND EXISTS (
+        AND (:minCagr IS NULL OR EXISTS (
             SELECT 1 FROM BacktestResultEntity br
-            WHERE br.strategy = s AND br.status = 'COMPLETED'
-            AND br.sharpeRatio IS NOT NULL
-            AND (:minCagr IS NULL OR br.cagr >= :minCagr)
-            AND (:maxMdd IS NULL OR br.mdd <= :maxMdd)
-        )
+            WHERE br.strategy = s AND br.status = 'COMPLETED' AND br.cagr >= :minCagr
+        ))
+        AND (:maxMdd IS NULL OR EXISTS (
+            SELECT 1 FROM BacktestResultEntity br
+            WHERE br.strategy = s AND br.status = 'COMPLETED' AND br.mdd <= :maxMdd
+        ))
     """)
     fun findMarketplaceStrategiesBySharpe(
         categoryCode: String?,

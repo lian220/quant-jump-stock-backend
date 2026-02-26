@@ -24,6 +24,7 @@ class CacheConfig {
                 buildCache("marketplaceStrategies", 6, TimeUnit.HOURS, 500),
                 buildCache("strategyDetail", 6, TimeUnit.HOURS, 200),
                 buildCache("recentPredictions", 6, TimeUnit.HOURS, 20),
+                buildCache("predictionStats", 6, TimeUnit.HOURS, 10),
                 buildCache("tickerPredictions", 6, TimeUnit.HOURS, 200),
                 buildCache("tierConfigurations", 24, TimeUnit.HOURS, 10),
             )

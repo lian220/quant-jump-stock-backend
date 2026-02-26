@@ -5,6 +5,7 @@ import org.quartz.Job
 import org.quartz.JobExecutionContext
 import org.quartz.JobExecutionException
 import org.slf4j.LoggerFactory
+import org.springframework.cache.CacheManager
 import org.springframework.stereotype.Component
 
 /**
@@ -17,7 +18,8 @@ import org.springframework.stereotype.Component
  */
 @Component
 class CanonicalBacktestJobAdapter(
-    private val canonicalBacktestService: CanonicalBacktestService
+    private val canonicalBacktestService: CanonicalBacktestService,
+    private val cacheManager: CacheManager
 ) : Job {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
@@ -29,6 +31,12 @@ class CanonicalBacktestJobAdapter(
             logger.info("=".repeat(80))
 
             canonicalBacktestService.refreshAllCanonicalBacktests()
+
+            // 백테스트 갱신 후 전략 캐시 초기화 → 다음 조회 시 최신 데이터 반영
+            listOf("marketplaceStrategies", "strategyDetail").forEach { cacheName ->
+                cacheManager.getCache(cacheName)?.clear()
+                logger.info("🗑️ $cacheName 캐시 초기화 완료")
+            }
 
             logger.info("Canonical 백테스트 갱신 완료")
             logger.info("=".repeat(80))
