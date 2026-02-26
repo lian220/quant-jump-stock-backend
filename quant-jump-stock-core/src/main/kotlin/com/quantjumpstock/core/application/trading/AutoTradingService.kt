@@ -3,11 +3,11 @@ package com.quantjumpstock.core.application.trading
 import com.quantjumpstock.core.domain.model.backtest.UniverseType
 import com.quantjumpstock.core.domain.port.output.StrategyDefaultStockRepository
 import com.quantjumpstock.core.domain.port.output.StrategySubscriptionRepository
-import com.quantjumpstock.core.domain.model.prediction.VertexAIPredictionResult
+import com.quantjumpstock.core.domain.model.prediction.PredictionResult
 import com.quantjumpstock.core.domain.model.trading.*
 import com.quantjumpstock.core.domain.model.user.User
 import com.quantjumpstock.core.domain.port.output.AccountRepository
-import com.quantjumpstock.core.domain.port.output.VertexAIPredictionResultRepository
+import com.quantjumpstock.core.domain.prediction.port.output.PredictionResultRepositoryPort
 import com.quantjumpstock.core.domain.port.output.TradeRepository
 import com.quantjumpstock.core.domain.port.output.TradeSignalExecutedRepository
 import com.quantjumpstock.core.domain.port.output.TradingConfigRepository
@@ -25,7 +25,7 @@ import org.springframework.transaction.annotation.Transactional
 class AutoTradingService(
     private val userRepository: UserRepository,
     private val tradingConfigRepository: TradingConfigRepository,
-    private val predictionResultRepository: VertexAIPredictionResultRepository,
+    private val predictionResultRepository: PredictionResultRepositoryPort,
     private val tradeRepository: TradeRepository,
     private val tradeSignalExecutedRepository: TradeSignalExecutedRepository,
     private val accountRepository: AccountRepository,
@@ -39,12 +39,13 @@ class AutoTradingService(
     @Transactional
     fun executeAutoTrading() {
         logger.info("🚀 Starting Auto Trading Execution...")
-        val today = LocalDate.now()
+        // 스케줄러가 00:30(KST)에 실행되므로, 분석 데이터는 전날 날짜로 저장됨
+        val analysisDate = LocalDate.now().minusDays(1)
 
-        // 1️⃣ Vertex AI 예측 결과 조회 (MongoDB)
-        // 신뢰도 70% 이상인 매수 신호만 조회
-        val predictions = predictionResultRepository.findHighConfidenceBuySignals(today, 0.7)
-        logger.info("✅ Found ${predictions.size} high-confidence buy signals for today ($today)")
+        // 1️⃣ 예측 결과 조회 (PostgreSQL - Composite Score 기반)
+        // Composite Score 2.0 이상인 매수 신호 조회
+        val predictions = predictionResultRepository.findHighConfidenceBuySignals(analysisDate, 2.0)
+        logger.info("✅ Found ${predictions.size} high-confidence buy signals for analysisDate ($analysisDate)")
 
         if (predictions.isEmpty()) {
             logger.info("❌ No high-confidence buy signals found. Skipping trading.")
@@ -53,7 +54,7 @@ class AutoTradingService(
 
         // 예측 결과 로깅
         predictions.forEach { prediction ->
-            logger.info("📊 ${prediction.symbol}: Price=${prediction.predictedPrice}, Confidence=${prediction.confidence}, Change=${prediction.predictedChangePercent}%")
+            logger.info("📊 ${prediction.ticker}: Price=${prediction.aiPredictedPrice}, CompositeScore=${prediction.compositeScore}, Grade=${prediction.compositeGrade}")
         }
 
         // 2️⃣ 활성 사용자 조회 (최적화된 쿼리 - PostgreSQL)
@@ -90,7 +91,7 @@ class AutoTradingService(
                 // 4️⃣ 거래 실행
                 val maxStocks = tradingConfig.maxStocksToBuy
                 val maxAmountPerStock = tradingConfig.maxAmountPerStock
-                val minConfidence = tradingConfig.getMinConfidenceAsDecimal()
+                val minCompositeScore = tradingConfig.minCompositeScore.toDouble()
 
                 // SCRUM-349: 유니버스 기반 종목 필터셋 조회
                 val universeTickerFilter = resolveUniverseTickerFilter(userId)
@@ -98,11 +99,11 @@ class AutoTradingService(
                     logger.info("🌐 Universe filter active for user ${user.userId}: ${universeTickerFilter.size} tickers allowed")
                 }
 
-                // Vertex AI 예측 결과를 신뢰도 + 유니버스 필터링 후 상위 N개 선택
+                // 예측 결과를 Composite Score + 유니버스 필터링 후 상위 N개 선택
                 val targetPredictions = predictions
-                    .filter { it.confidence >= minConfidence }
-                    .filter { universeTickerFilter == null || it.symbol in universeTickerFilter }
-                    .sortedByDescending { it.confidence }
+                    .filter { it.compositeScore.toDouble() >= minCompositeScore }
+                    .filter { universeTickerFilter == null || it.ticker in universeTickerFilter }
+                    .sortedByDescending { it.compositeScore }
                     .take(maxStocks)
 
                 logger.info("📊 Target stocks after filtering: ${targetPredictions.size}")
@@ -111,9 +112,9 @@ class AutoTradingService(
 
                 targetPredictions.forEach predictionLoop@{ prediction ->
                     try {
-                        val ticker = prediction.symbol
-                        val price = prediction.predictedPrice.toBigDecimal()
-                        val predictionId = prediction.id ?: return@predictionLoop
+                        val ticker = prediction.ticker
+                        val price = prediction.aiPredictedPrice ?: return@predictionLoop
+                        val predictionId = "${prediction.ticker}_${prediction.analysisDate}"
 
                         // 이미 오늘 같은 종목 거래했는지 확인
                         val recentTrades = tradeRepository.findRecentTrades(
@@ -125,7 +126,7 @@ class AutoTradingService(
                         )
                         if (recentTrades.isNotEmpty()) {
                             logger.info("⏭️ Skipping $ticker - already has pending order")
-                            recordSignalExecution(userId, predictionId, ticker, prediction.confidence * 100, ExecutionDecision.SKIPPED, "Already has pending order", null)
+                            recordSignalExecution(userId, predictionId, ticker, prediction.compositeScore.toDouble(), ExecutionDecision.SKIPPED, "Already has pending order", null)
                             totalTradesSkipped++
                             return@predictionLoop
                         }
@@ -134,7 +135,7 @@ class AutoTradingService(
                         val orderAmount = maxAmountPerStock.min(cashRemaining)
                         if (orderAmount < price) {
                             logger.info("⚠️ Insufficient funds for $ticker (need $price, have $orderAmount)")
-                            recordSignalExecution(userId, predictionId, ticker, prediction.confidence * 100, ExecutionDecision.SKIPPED, "Insufficient funds", null)
+                            recordSignalExecution(userId, predictionId, ticker, prediction.compositeScore.toDouble(), ExecutionDecision.SKIPPED, "Insufficient funds", null)
                             totalTradesSkipped++
                             return@predictionLoop
                         }
@@ -143,7 +144,7 @@ class AutoTradingService(
                         val quantity = orderAmount.divide(price, 0, RoundingMode.DOWN).toInt()
                         if (quantity <= 0) {
                             logger.warn("⚠️ Calculated quantity is 0 for $ticker")
-                            recordSignalExecution(userId, predictionId, ticker, prediction.confidence * 100, ExecutionDecision.SKIPPED, "Quantity would be 0", null)
+                            recordSignalExecution(userId, predictionId, ticker, prediction.compositeScore.toDouble(), ExecutionDecision.SKIPPED, "Quantity would be 0", null)
                             totalTradesSkipped++
                             return@predictionLoop
                         }
@@ -158,7 +159,7 @@ class AutoTradingService(
                         }
                         if (lockedAccount == null) {
                             logger.warn("⚠️ Failed to lock cash for $ticker")
-                            recordSignalExecution(userId, predictionId, ticker, prediction.confidence * 100, ExecutionDecision.FAILED, "Failed to lock cash", null)
+                            recordSignalExecution(userId, predictionId, ticker, prediction.compositeScore.toDouble(), ExecutionDecision.FAILED, "Failed to lock cash", null)
                             totalTradesSkipped++
                             return@predictionLoop
                         }
@@ -201,7 +202,7 @@ class AutoTradingService(
                                 val errorMsg = orderResult["msg1"] as? String ?: "Unknown error"
                                 logger.error("❌ KIS order failed: $ticker - $errorMsg")
 
-                                recordSignalExecution(userId, predictionId, ticker, prediction.confidence * 100, ExecutionDecision.FAILED, "KIS API error: $errorMsg", savedTrade.id)
+                                recordSignalExecution(userId, predictionId, ticker, prediction.compositeScore.toDouble(), ExecutionDecision.FAILED, "KIS API error: $errorMsg", savedTrade.id)
                                 totalTradesSkipped++
                                 return@predictionLoop
                             }
@@ -211,20 +212,20 @@ class AutoTradingService(
                             tradeRepository.save(failedTrade)
                             accountRepository.save(lockedAccount.unlockCash(totalAmount))
 
-                            recordSignalExecution(userId, predictionId, ticker, prediction.confidence * 100, ExecutionDecision.FAILED, "Exception: ${e.message}", savedTrade.id)
+                            recordSignalExecution(userId, predictionId, ticker, prediction.compositeScore.toDouble(), ExecutionDecision.FAILED, "Exception: ${e.message}", savedTrade.id)
                             totalTradesSkipped++
                             return@predictionLoop
                         }
 
                         // 8️⃣ 신호 실행 로그 기록
-                        recordSignalExecution(userId, predictionId, ticker, prediction.confidence * 100, ExecutionDecision.EXECUTED, null, savedTrade.id)
+                        recordSignalExecution(userId, predictionId, ticker, prediction.compositeScore.toDouble(), ExecutionDecision.EXECUTED, null, savedTrade.id)
 
-                        logger.info("✅ Created BUY order: $ticker x$quantity @ $price = $totalAmount (Confidence: ${prediction.confidence})")
+                        logger.info("✅ Created BUY order: $ticker x$quantity @ $price = $totalAmount (CompositeScore: ${prediction.compositeScore})")
                         totalTradesCreated++
                         cashRemaining = cashRemaining - totalAmount
 
                     } catch (e: Exception) {
-                        logger.error("❌ Error processing prediction for ${prediction.symbol}", e)
+                        logger.error("❌ Error processing prediction for ${prediction.ticker}", e)
                     }
                 }
 
