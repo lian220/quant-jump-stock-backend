@@ -42,8 +42,8 @@ class MarketplaceController(
             - maxMdd: 최대 MDD (%) - 예: -20.0
 
             정렬 옵션:
-            - subscribers: 구독자 수 (기본값)
-            - cagr: CAGR (높은 순)
+            - cagr: CAGR 수익률순 (기본값)
+            - subscribers: 구독자 수
             - sharpe: 샤프 비율 (높은 순)
             - recent: 최신순
 
@@ -62,8 +62,8 @@ class MarketplaceController(
         @Parameter(description = "최대 MDD (%)", example = "-20.0")
         @RequestParam(required = false) maxMdd: BigDecimal?,
 
-        @Parameter(description = "정렬 기준 (subscribers, cagr, sharpe, recent)", example = "subscribers")
-        @RequestParam(required = false, defaultValue = "subscribers") sortBy: String?,
+        @Parameter(description = "정렬 기준 (cagr, subscribers, sharpe, recent)", example = "cagr")
+        @RequestParam(required = false, defaultValue = "cagr") sortBy: String?,
 
         @Parameter(description = "페이지 번호 (0부터 시작)", example = "0")
         @RequestParam(required = false, defaultValue = "0") page: Int,

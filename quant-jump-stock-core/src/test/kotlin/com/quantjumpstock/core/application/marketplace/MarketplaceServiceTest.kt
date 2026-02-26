@@ -216,11 +216,11 @@ class MarketplaceServiceTest {
     @Test
     @DisplayName("백테스트 결과가 포함된 응답 검증")
     fun testGetPublicStrategies_BacktestResultIncluded() {
-        // Given
+        // Given - 기본 sortBy가 "cagr"이므로 findMarketplaceStrategiesByCagr mock 설정
         val request = StrategyListRequest()
         val page = PageImpl(listOf(testStrategy), PageRequest.of(0, 20), 1)
 
-        whenever(marketplaceRepository.findMarketplaceStrategies(isNull(), isNull(), isNull(), any()))
+        whenever(marketplaceRepository.findMarketplaceStrategiesByCagr(isNull(), isNull(), isNull(), any()))
             .thenReturn(page)
 
         // When
@@ -240,11 +240,11 @@ class MarketplaceServiceTest {
     @Test
     @DisplayName("페이징 정보 검증")
     fun testGetPublicStrategies_PaginationInfo() {
-        // Given
+        // Given - 기본 sortBy가 "cagr"이므로 findMarketplaceStrategiesByCagr mock 설정
         val request = StrategyListRequest(page = 1, size = 10)
         val page = PageImpl(listOf(testStrategy), PageRequest.of(1, 10), 25)
 
-        whenever(marketplaceRepository.findMarketplaceStrategies(isNull(), isNull(), isNull(), any()))
+        whenever(marketplaceRepository.findMarketplaceStrategiesByCagr(isNull(), isNull(), isNull(), any()))
             .thenReturn(page)
 
         // When

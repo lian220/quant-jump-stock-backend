@@ -19,8 +19,8 @@ data class StrategyListRequest(
     @Parameter(description = "최대 MDD (%)")
     val maxMdd: BigDecimal? = null,
 
-    @Parameter(description = "정렬 기준 (subscribers, cagr, sharpe, recent)", example = "subscribers")
-    val sortBy: String? = "subscribers",
+    @Parameter(description = "정렬 기준 (subscribers, cagr, sharpe, recent)", example = "cagr")
+    val sortBy: String? = "cagr",
 
     @Parameter(description = "페이지 번호 (0부터 시작)", example = "0")
     val page: Int = 0,
@@ -36,7 +36,7 @@ data class StrategyListRequest(
             "cagr" -> Sort.unsorted() // 백테스트 결과에서 정렬
             "sharpe" -> Sort.unsorted() // 백테스트 결과에서 정렬
             "recent" -> Sort.by(Sort.Direction.DESC, "createdAt")
-            else -> Sort.by(Sort.Direction.DESC, "subscriberCount")
+            else -> Sort.unsorted() // 기본값 cagr → JPQL ORDER BY 사용
         }
         return PageRequest.of(page, size, sort)
     }

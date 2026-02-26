@@ -5,6 +5,7 @@ import com.quantjumpstock.core.domain.model.stock.StockPriceSnapshot
 import com.quantjumpstock.core.domain.port.output.StockPriceDataPort
 import com.quantjumpstock.core.domain.prediction.port.output.PredictionResultRepositoryPort
 import org.slf4j.LoggerFactory
+import org.springframework.cache.CacheManager
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -15,11 +16,16 @@ import java.time.LocalDate
  *
  * Composite Score 기반 통합 예측 결과 조회 비즈니스 로직.
  * PredictionResultRepositoryPort를 통해 PostgreSQL에 접근 (Hexagonal Architecture).
+ *
+ * 캐싱: Caffeine 수동 캐싱 (GraalVM Native Image SpEL 호환)
+ * - buySignals: 6시간 TTL, StockRecommendationJob(00:20) 완료 시 초기화
+ * - recentPredictions: 6시간 TTL, 동일 시점 초기화
  */
 @Service
 class PredictionService(
     private val predictionResultRepository: PredictionResultRepositoryPort,
-    private val stockPriceDataPort: StockPriceDataPort
+    private val stockPriceDataPort: StockPriceDataPort,
+    private val cacheManager: CacheManager
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
@@ -45,18 +51,24 @@ class PredictionService(
      * 가장 최근 데이터가 있는 날짜의 결과를 반환.
      */
     fun getLatestPredictions(): PredictionListResponse {
+        // 캐시 확인
+        val cache = cacheManager.getCache("recentPredictions")
+        cache?.get("latest", PredictionListResponse::class.java)?.let { return it }
+
         val latestDate = predictionResultRepository.findLatestAnalysisDate()
             ?: LocalDate.now()
 
         val predictions = predictionResultRepository.findByDate(latestDate)
         val priceMap = loadPricesSafely(predictions.map { it.ticker }.distinct())
 
-        return PredictionListResponse(
+        val result = PredictionListResponse(
             success = true,
             count = predictions.size,
             fromDate = latestDate,
             predictions = predictions.map { it.toBuySignalDto(priceMap[it.ticker]) }
         )
+        cache?.put("latest", result)
+        return result
     }
 
     /**
@@ -67,7 +79,14 @@ class PredictionService(
      * @return 매수 신호 응답
      */
     fun getBuySignals(date: LocalDate? = null, minConfidence: Double = 0.0): BuySignalsResponse {
-        // 날짜 결정: 지정된 날짜 > 최신 데이터 날짜 > 어제
+        val cache = cacheManager.getCache("buySignals")
+
+        // date가 null(프론트 기본 호출)이면 DB 조회 없이 고정 키로 캐시 체크
+        // date가 지정되면 날짜별 캐시 키 사용
+        val cacheKey = "${date ?: "latest"}:${minConfidence}"
+        cache?.get(cacheKey, BuySignalsResponse::class.java)?.let { return it }
+
+        // 캐시 미스: 날짜 결정 후 DB 조회
         val targetDate = date
             ?: predictionResultRepository.findLatestAnalysisDate()
             ?: LocalDate.now().minusDays(1)
@@ -75,7 +94,7 @@ class PredictionService(
         // Composite Score 기준으로 변환 (0~1 → 0~7.5)
         val minCompositeScore = minConfidence * 7.5
 
-        logger.info("📊 매수 신호 조회: date=$targetDate, minCompositeScore=$minCompositeScore")
+        logger.info("📊 매수 신호 조회 (캐시 미스): date=$targetDate, minCompositeScore=$minCompositeScore")
 
         val buySignals = predictionResultRepository.findHighConfidenceBuySignals(
             targetDate,
@@ -83,13 +102,15 @@ class PredictionService(
         )
         val priceMap = loadPricesSafely(buySignals.map { it.ticker }.distinct())
 
-        return BuySignalsResponse(
+        val result = BuySignalsResponse(
             success = true,
             date = targetDate,
             minConfidence = minConfidence,
             count = buySignals.size,
             buySignals = buySignals.map { it.toBuySignalDto(priceMap[it.ticker]) }
         )
+        cache?.put(cacheKey, result)
+        return result
     }
 
     /**
@@ -127,16 +148,22 @@ class PredictionService(
      * 예측 통계 조회
      */
     fun getPredictionStats(days: Int): PredictionStatsResponse {
+        // 캐시 확인
+        val cache = cacheManager.getCache("predictionStats")
+        cache?.get(days, PredictionStatsResponse::class.java)?.let { return it }
+
         val fromDate = LocalDate.now().minusDays(days.toLong())
         val predictions = predictionResultRepository.findRecentPredictions(fromDate)
 
         val stats = calculateStats(predictions)
 
-        return PredictionStatsResponse(
+        val result = PredictionStatsResponse(
             success = true,
             period = "${fromDate} ~ ${LocalDate.now()}",
             stats = stats
         )
+        cache?.put(days, result)
+        return result
     }
 
     /**
