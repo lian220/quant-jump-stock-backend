@@ -330,6 +330,14 @@ class ComprehensiveReportService:
             c for c in buy_candidates if c["sentiment_score"] >= 0.15
         ]
 
+        # 등급별 요약 (RecommendationGrade enum → label 문자열로 변환)
+        grade_summary = {}
+        for c in buy_candidates:
+            g = c.get("grade")
+            if g:
+                label = g.label if hasattr(g, "label") else str(g)
+                grade_summary[label] = grade_summary.get(label, 0) + 1
+
         report = {
             "analysis_date": analysis_date,
             "total_analyzed": len(technical_results),
@@ -338,6 +346,7 @@ class ComprehensiveReportService:
             "candidate_count": len(buy_candidates),
             "buy_candidates": buy_candidates,
             "near_miss_candidates": near_miss_candidates,
+            "grade_summary": grade_summary,
             "breakdown": {
                 "technical": {
                     "count": len(tech_recommended),

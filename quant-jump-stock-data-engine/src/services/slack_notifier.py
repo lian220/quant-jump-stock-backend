@@ -15,6 +15,7 @@ from typing import Optional, Dict, List
 
 from adapter.output.slack.bot_client import SlackBotClient
 from config.settings import get_settings
+from domain.recommendation.composite_grade import RecommendationGrade
 
 KST = timezone('Asia/Seoul')
 EST = timezone('America/New_York')
@@ -326,9 +327,18 @@ class SlackNotifier:
         blocks.append({"type": "divider"})
 
         if candidate_count > 0:
+            # 등급별 요약
+            grade_summary = report.get("grade_summary", {})
+            grade_lines = []
+            for g in RecommendationGrade:
+                count = grade_summary.get(g.label, 0)
+                if count > 0:
+                    grade_lines.append(f"{g.emoji} {g.label}: {count}개")
+            grade_text = " | ".join(grade_lines) if grade_lines else ""
+
             blocks.append({
                 "type": "section",
-                "text": {"type": "mrkdwn", "text": f"*🏆 TOP {min(candidate_count, 5)} 추천 종목*"}
+                "text": {"type": "mrkdwn", "text": f"*🏆 추천 종목 현황*\n{grade_text}"}
             })
 
             for i, rec in enumerate(candidates[:5], 1):
@@ -337,6 +347,10 @@ class SlackNotifier:
                 ticker = rec.get("ticker", "N/A")
                 stock_name = rec.get("stock_name", ticker)
                 composite = scores.get("composite_score", 0)
+                confidence = scores.get("confidence", 0)
+                grade = rec.get("grade")
+                grade_emoji = grade.emoji if hasattr(grade, "emoji") else "⚪"
+                grade_label = grade.label if hasattr(grade, "label") else str(grade)
 
                 ai_pred = rec.get("ai_prediction", {})
                 rise_prob = ai_pred.get("rise_probability", 0)
@@ -360,8 +374,8 @@ class SlackNotifier:
                     "text": {
                         "type": "mrkdwn",
                         "text": (
-                            f"*{i}. {stock_name}* (`{ticker}`)\n"
-                            f"• 종합점수: `{composite:.2f}` | 상승확률: `{rise_str}` | 감정: `{sent_str}`\n"
+                            f"*{grade_emoji} {i}. {stock_name}* (`{ticker}`) — {grade_label}\n"
+                            f"• 종합점수: `{composite:.2f}` (신뢰도: {confidence:.0%}) | 상승확률: `{rise_str}` | 감정: `{sent_str}`\n"
                             f"• 기술신호: {signal_text}"
                         )
                     }
@@ -428,13 +442,8 @@ class SlackNotifier:
             f"{candidate_count}개 추천, 평균 종합 {avg_composite:.2f}"
         )
 
-        SlackNotifier._post_message(
-            channel=analysis_channel,
-            webhook_url=webhook_url,
-            text=fallback_text,
-            blocks=blocks,
-            thread_ts=thread_ts,
-        )
+        # 종합 분석 리포트는 Webhook으로만 발송 (채널 라우팅이 Webhook URL에 내장)
+        SlackNotifier._post_to_webhook(webhook_url, fallback_text, blocks=blocks)
 
     # ============================================================
     # 뉴스 수집
