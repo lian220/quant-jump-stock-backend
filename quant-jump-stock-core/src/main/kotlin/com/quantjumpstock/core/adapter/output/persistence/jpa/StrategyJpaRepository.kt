@@ -143,7 +143,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     // Marketplace: 필터링 및 정렬이 적용된 공개 전략 조회
     @EntityGraph(value = "Strategy.withBacktestResults", type = EntityGraph.EntityGraphType.LOAD)
     @Query("""
-        SELECT DISTINCT s FROM StrategyEntity s
+        SELECT s FROM StrategyEntity s
         WHERE s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE')
         AND (:categoryCode IS NULL OR s.category.code = :categoryCode)
         AND (:minCagr IS NULL OR EXISTS (
@@ -179,7 +179,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     // Marketplace: CAGR로 정렬된 전략 조회 (백테스트 없는 전략도 포함, CAGR=0으로 취급)
     @EntityGraph(value = "Strategy.withBacktestResults", type = EntityGraph.EntityGraphType.LOAD)
     @Query("""
-        SELECT DISTINCT s FROM StrategyEntity s
+        SELECT s FROM StrategyEntity s
         WHERE s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE')
         AND (:categoryCode IS NULL OR s.category.code = :categoryCode)
         AND (:minCagr IS NULL OR EXISTS (
@@ -217,7 +217,7 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
     // Marketplace: Sharpe Ratio로 정렬된 전략 조회 (백테스트 없는 전략도 포함, Sharpe=0으로 취급)
     @EntityGraph(value = "Strategy.withBacktestResults", type = EntityGraph.EntityGraphType.LOAD)
     @Query("""
-        SELECT DISTINCT s FROM StrategyEntity s
+        SELECT s FROM StrategyEntity s
         WHERE s.isPublic = true AND s.status IN ('PUBLISHED', 'ACTIVE')
         AND (:categoryCode IS NULL OR s.category.code = :categoryCode)
         AND (:minCagr IS NULL OR EXISTS (
