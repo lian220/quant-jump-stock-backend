@@ -91,7 +91,7 @@ class AutoTradingService(
                 // 4️⃣ 거래 실행
                 val maxStocks = tradingConfig.maxStocksToBuy
                 val maxAmountPerStock = tradingConfig.maxAmountPerStock
-                val minConfidence = tradingConfig.getMinConfidenceAsDecimal()
+                val minCompositeScore = tradingConfig.minCompositeScore.toDouble()
 
                 // SCRUM-349: 유니버스 기반 종목 필터셋 조회
                 val universeTickerFilter = resolveUniverseTickerFilter(userId)
@@ -101,7 +101,7 @@ class AutoTradingService(
 
                 // 예측 결과를 Composite Score + 유니버스 필터링 후 상위 N개 선택
                 val targetPredictions = predictions
-                    .filter { it.compositeScore.toDouble() >= minConfidence }
+                    .filter { it.compositeScore.toDouble() >= minCompositeScore }
                     .filter { universeTickerFilter == null || it.ticker in universeTickerFilter }
                     .sortedByDescending { it.compositeScore }
                     .take(maxStocks)
