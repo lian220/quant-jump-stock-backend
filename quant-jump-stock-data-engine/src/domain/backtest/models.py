@@ -251,7 +251,8 @@ class Portfolio:
         price: Decimal,
         quantity: Optional[int] = None,
         exit_reason: ExitReason = ExitReason.STRATEGY_SIGNAL,
-        commission: Decimal = Decimal("0")
+        commission: Decimal = Decimal("0"),
+        tax: Decimal = Decimal("0")
     ) -> Optional[Trade]:
         """
         포지션 청산 (매도)
@@ -263,6 +264,7 @@ class Portfolio:
             quantity: 매도 수량 (None이면 전량 매도)
             exit_reason: 청산 사유
             commission: 수수료
+            tax: 증권거래세
 
         Returns:
             Trade 기록, 또는 None (포지션 없음)
@@ -275,13 +277,13 @@ class Portfolio:
         sell_quantity = quantity if quantity is not None else position.quantity
         sell_quantity = min(sell_quantity, position.quantity)
 
-        # 실현 손익 계산
-        amount = price * sell_quantity - commission
+        # 실현 손익 계산 (수수료 + 세금 차감)
+        amount = price * sell_quantity - commission - tax
         cost_basis_sold = position.entry_price * sell_quantity
         realized_pnl = amount - cost_basis_sold
         realized_pnl_pct = ((price / position.entry_price) - 1) * 100
 
-        # 현금 추가
+        # 현금 추가 (세금 차감된 순수익)
         self.cash += amount
 
         # 포지션 업데이트

@@ -123,6 +123,11 @@ class BacktestEngine:
         self._total_slippage: Decimal = Decimal("0")
         self._total_tax: Decimal = Decimal("0")
 
+        # Whipsaw 방지: 모든 청산 후 쿨다운 (종목별 재진입 금지 날짜)
+        self._cooldown_until: Dict[str, date] = {}
+        self._cooldown_days: int = 5  # 청산 후 5거래일 재진입 금지
+        self._min_holding_days: int = 5  # 최소 보유 기간 (매수 후 N일간 전략 매도 금지)
+
         # 벤치마크 데이터 (단일 - 하위호환)
         self._benchmark_data: Optional[pd.DataFrame] = None
         self._benchmark_values: List[Decimal] = []
@@ -282,6 +287,14 @@ class BacktestEngine:
         if used_indicators & fundamental_indicators:
             kwargs["include_fundamentals"] = True
 
+        # FRED 경제지표 감지
+        fred_indicators = {
+            IndicatorType.TREASURY_10Y.value,
+            IndicatorType.T10Y2Y.value,
+        }
+        if used_indicators & fred_indicators:
+            kwargs["include_fred"] = True
+
         return kwargs
 
     def set_preloaded_data(
@@ -400,12 +413,20 @@ class BacktestEngine:
         self._portfolio.current_date = current_date
 
         # 3. 리스크 체크 (Stop Loss / Take Profit)
+        # 최소 보유 기간 이후에만 리스크 청산 허용 (stop loss 즉시 발동 방지)
         risk_exits = self._risk_manager.check_risk_exits(
             self._portfolio, current_prices, current_date
         )
 
-        # 4. 리스크 기반 청산 실행
+        # 4. 리스크 기반 청산 실행 + 쿨다운 등록
         for exit_result in risk_exits:
+            # 최소 보유 기간 체크: 매수 직후 stop loss 발동 방지
+            if exit_result.symbol in self._portfolio.positions:
+                pos = self._portfolio.positions[exit_result.symbol]
+                days_held = (current_date - pos.entry_date).days
+                if days_held < self._min_holding_days:
+                    continue
+
             price = current_prices.get(exit_result.symbol)
             if price:
                 self._execute_sell(
@@ -414,11 +435,21 @@ class BacktestEngine:
                     price,
                     exit_result.reason
                 )
+                # Whipsaw 방지: 리스크 청산된 종목에 쿨다운 적용
+                self._cooldown_until[exit_result.symbol] = current_date
 
-        # 5. 전략 시그널 처리
+        # 5. 만료된 쿨다운 정리
+        expired = [
+            sym for sym, cooldown_start in self._cooldown_until.items()
+            if (current_date - cooldown_start).days > self._cooldown_days
+        ]
+        for sym in expired:
+            del self._cooldown_until[sym]
+
+        # 6. 전략 시그널 처리
         self._process_signals(strategy, current_date, current_prices)
 
-        # 6. 수익 곡선 업데이트
+        # 7. 수익 곡선 업데이트
         self._update_equity_curve(current_date)
 
     def _get_prices_at_date(self, target_date: date) -> Dict[str, Decimal]:
@@ -508,10 +539,18 @@ class BacktestEngine:
                     if signal_type == "buy":
                         self._execute_buy(symbol, current_date, price)
                     elif signal_type == "sell":
+                        # 최소 보유 기간 체크: 매수 후 N일 미만이면 전략 매도 금지
+                        if symbol in self._portfolio.positions:
+                            pos = self._portfolio.positions[symbol]
+                            days_held = (current_date - pos.entry_date).days
+                            if days_held < self._min_holding_days:
+                                continue
                         self._execute_sell(
                             symbol, current_date, price,
                             ExitReason.STRATEGY_SIGNAL
                         )
+                        # 전략 매도 후에도 쿨다운 적용 (whipsaw 방지)
+                        self._cooldown_until[symbol] = current_date
 
             except Exception as e:
                 logger.debug(f"Signal processing error for {symbol}: {e}")
@@ -526,6 +565,16 @@ class BacktestEngine:
         # 이미 보유 중이면 스킵
         if symbol in self._portfolio.positions:
             return
+
+        # Whipsaw 방지: 쿨다운 중인 종목은 매수 금지
+        if symbol in self._cooldown_until:
+            cooldown_start = self._cooldown_until[symbol]
+            if (trade_date - cooldown_start).days <= self._cooldown_days:
+                logger.debug(
+                    f"[COOLDOWN] {symbol}: 리스크 청산 후 쿨다운 중 "
+                    f"({cooldown_start} ~ {self._cooldown_days}일)"
+                )
+                return
 
         # 최대 포지션 수 체크
         if self._portfolio.position_count >= self.config.max_positions:
@@ -586,13 +635,14 @@ class BacktestEngine:
         self._total_slippage += cost.slippage
         self._total_tax += cost.tax
 
-        # 매도 실행 (슬리피지 반영 체결가)
+        # 매도 실행 (슬리피지 반영 체결가, 세금 포함)
         trade = self._portfolio.close_position(
             symbol=symbol,
             trade_date=trade_date,
             price=cost.execution_price,
             exit_reason=exit_reason,
-            commission=cost.commission
+            commission=cost.commission,
+            tax=cost.tax
         )
 
         if trade:

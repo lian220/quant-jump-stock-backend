@@ -1,0 +1,274 @@
+{
+  "test_config": {
+    "period": "2021-01-01 ~ 2026-02-25",
+    "symbols": [
+      "AAPL",
+      "NVDA",
+      "TSLA",
+      "MSFT",
+      "GOOGL",
+      "AMZN",
+      "META",
+      "JNJ",
+      "AMAT",
+      "INTC"
+    ],
+    "initial_capital": 100000,
+    "num_runs": 3
+  },
+  "results": {
+    "rsi_oversold": {
+      "runs": [
+        {
+          "total_return": 4184.56,
+          "total_trades": 365,
+          "win_rate": 64.9,
+          "mdd": -20.45,
+          "sharpe": 3.03,
+          "cagr": 107.33,
+          "avg_holding_days": 14.0,
+          "profit_factor": 2.75,
+          "stop_loss_count": 125,
+          "take_profit_count": 85
+        },
+        {
+          "total_return": 4184.56,
+          "total_trades": 365,
+          "win_rate": 64.9,
+          "mdd": -20.45,
+          "sharpe": 3.03,
+          "cagr": 107.33,
+          "avg_holding_days": 14.0,
+          "profit_factor": 2.75,
+          "stop_loss_count": 125,
+          "take_profit_count": 85
+        },
+        {
+          "total_return": 4184.56,
+          "total_trades": 365,
+          "win_rate": 64.9,
+          "mdd": -20.45,
+          "sharpe": 3.03,
+          "cagr": 107.33,
+          "avg_holding_days": 14.0,
+          "profit_factor": 2.75,
+          "stop_loss_count": 125,
+          "take_profit_count": 85
+        }
+      ],
+      "name": "RSI 과매도 v2 (기준)",
+      "is_new": false
+    },
+    "scalping_rsi": {
+      "runs": [
+        {
+          "total_return": 145.23,
+          "total_trades": 234,
+          "win_rate": 57.7,
+          "mdd": -20.2,
+          "sharpe": 0.78,
+          "cagr": 19.01,
+          "avg_holding_days": 6.4,
+          "profit_factor": 1.83,
+          "stop_loss_count": 99,
+          "take_profit_count": 132
+        },
+        {
+          "total_return": 145.23,
+          "total_trades": 234,
+          "win_rate": 57.7,
+          "mdd": -20.2,
+          "sharpe": 0.78,
+          "cagr": 19.01,
+          "avg_holding_days": 6.4,
+          "profit_factor": 1.83,
+          "stop_loss_count": 99,
+          "take_profit_count": 132
+        },
+        {
+          "total_return": 145.23,
+          "total_trades": 234,
+          "win_rate": 57.7,
+          "mdd": -20.2,
+          "sharpe": 0.78,
+          "cagr": 19.01,
+          "avg_holding_days": 6.4,
+          "profit_factor": 1.83,
+          "stop_loss_count": 99,
+          "take_profit_count": 132
+        }
+      ],
+      "name": "RSI 스캘핑 (기준)",
+      "is_new": false
+    },
+    "rsi_macd_combo": {
+      "runs": [
+        {
+          "total_return": 98.99,
+          "total_trades": 115,
+          "win_rate": 68.7,
+          "mdd": -14.01,
+          "sharpe": 0.56,
+          "cagr": 14.28,
+          "avg_holding_days": 11.5,
+          "profit_factor": 2.09,
+          "stop_loss_count": 27,
+          "take_profit_count": 6
+        },
+        {
+          "total_return": 98.99,
+          "total_trades": 115,
+          "win_rate": 68.7,
+          "mdd": -14.01,
+          "sharpe": 0.56,
+          "cagr": 14.28,
+          "avg_holding_days": 11.5,
+          "profit_factor": 2.09,
+          "stop_loss_count": 27,
+          "take_profit_count": 6
+        },
+        {
+          "total_return": 98.99,
+          "total_trades": 115,
+          "win_rate": 68.7,
+          "mdd": -14.01,
+          "sharpe": 0.56,
+          "cagr": 14.28,
+          "avg_holding_days": 11.5,
+          "profit_factor": 2.09,
+          "stop_loss_count": 27,
+          "take_profit_count": 6
+        }
+      ],
+      "name": "RSI+MACD 복합",
+      "is_new": true
+    },
+    "golden_cross_rsi": {
+      "runs": [
+        {
+          "total_return": 67.63,
+          "total_trades": 78,
+          "win_rate": 41.0,
+          "mdd": -18.22,
+          "sharpe": 0.37,
+          "cagr": 10.54,
+          "avg_holding_days": 27.8,
+          "profit_factor": 1.74,
+          "stop_loss_count": 15,
+          "take_profit_count": 13
+        },
+        {
+          "total_return": 67.63,
+          "total_trades": 78,
+          "win_rate": 41.0,
+          "mdd": -18.22,
+          "sharpe": 0.37,
+          "cagr": 10.54,
+          "avg_holding_days": 27.8,
+          "profit_factor": 1.74,
+          "stop_loss_count": 15,
+          "take_profit_count": 13
+        },
+        {
+          "total_return": 67.63,
+          "total_trades": 78,
+          "win_rate": 41.0,
+          "mdd": -18.22,
+          "sharpe": 0.37,
+          "cagr": 10.54,
+          "avg_holding_days": 27.8,
+          "profit_factor": 1.74,
+          "stop_loss_count": 15,
+          "take_profit_count": 13
+        }
+      ],
+      "name": "골든크로스+RSI",
+      "is_new": true
+    },
+    "bollinger_rsi_bounce": {
+      "runs": [
+        {
+          "total_return": 0.0,
+          "total_trades": 0,
+          "win_rate": 0.0,
+          "mdd": 0.0,
+          "sharpe": 0.0,
+          "cagr": 0.0,
+          "avg_holding_days": 0.0,
+          "profit_factor": 0.0,
+          "stop_loss_count": 0,
+          "take_profit_count": 0
+        },
+        {
+          "total_return": 0.0,
+          "total_trades": 0,
+          "win_rate": 0.0,
+          "mdd": 0.0,
+          "sharpe": 0.0,
+          "cagr": 0.0,
+          "avg_holding_days": 0.0,
+          "profit_factor": 0.0,
+          "stop_loss_count": 0,
+          "take_profit_count": 0
+        },
+        {
+          "total_return": 0.0,
+          "total_trades": 0,
+          "win_rate": 0.0,
+          "mdd": 0.0,
+          "sharpe": 0.0,
+          "cagr": 0.0,
+          "avg_holding_days": 0.0,
+          "profit_factor": 0.0,
+          "stop_loss_count": 0,
+          "take_profit_count": 0
+        }
+      ],
+      "name": "볼린저+RSI 반등",
+      "is_new": true
+    },
+    "macd_hist_reversal": {
+      "runs": [
+        {
+          "total_return": -94.64,
+          "total_trades": 240,
+          "win_rate": 12.5,
+          "mdd": -95.01,
+          "sharpe": -2.0,
+          "cagr": -43.33,
+          "avg_holding_days": 11.4,
+          "profit_factor": 0.13,
+          "stop_loss_count": 69,
+          "take_profit_count": 4
+        },
+        {
+          "total_return": -94.64,
+          "total_trades": 240,
+          "win_rate": 12.5,
+          "mdd": -95.01,
+          "sharpe": -2.0,
+          "cagr": -43.33,
+          "avg_holding_days": 11.4,
+          "profit_factor": 0.13,
+          "stop_loss_count": 69,
+          "take_profit_count": 4
+        },
+        {
+          "total_return": -94.64,
+          "total_trades": 240,
+          "win_rate": 12.5,
+          "mdd": -95.01,
+          "sharpe": -2.0,
+          "cagr": -43.33,
+          "avg_holding_days": 11.4,
+          "profit_factor": 0.13,
+          "stop_loss_count": 69,
+          "take_profit_count": 4
+        }
+      ],
+      "name": "MACD Hist 반전",
+      "is_new": true
+    }
+  },
+  "determinism": "ALL_PASS"
+}
