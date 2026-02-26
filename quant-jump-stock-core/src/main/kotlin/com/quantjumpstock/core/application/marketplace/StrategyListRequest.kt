@@ -36,7 +36,7 @@ data class StrategyListRequest(
             "cagr" -> Sort.unsorted() // 백테스트 결과에서 정렬
             "sharpe" -> Sort.unsorted() // 백테스트 결과에서 정렬
             "recent" -> Sort.by(Sort.Direction.DESC, "createdAt")
-            else -> Sort.by(Sort.Direction.DESC, "subscriberCount")
+            else -> Sort.unsorted() // 기본값 cagr → JPQL ORDER BY 사용
         }
         return PageRequest.of(page, size, sort)
     }

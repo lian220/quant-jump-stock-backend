@@ -34,8 +34,13 @@ class CanonicalBacktestJobAdapter(
 
             // 백테스트 갱신 후 전략 캐시 초기화 → 다음 조회 시 최신 데이터 반영
             listOf("marketplaceStrategies", "strategyDetail").forEach { cacheName ->
-                cacheManager.getCache(cacheName)?.clear()
-                logger.info("🗑️ $cacheName 캐시 초기화 완료")
+                val cache = cacheManager.getCache(cacheName)
+                if (cache != null) {
+                    cache.clear()
+                    logger.info("🗑️ $cacheName 캐시 초기화 완료")
+                } else {
+                    logger.warn("⚠️ $cacheName 캐시를 찾지 못해 초기화 건너뜀")
+                }
             }
 
             logger.info("Canonical 백테스트 갱신 완료")

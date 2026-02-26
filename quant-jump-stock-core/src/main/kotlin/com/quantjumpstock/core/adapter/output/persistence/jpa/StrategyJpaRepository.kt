@@ -190,7 +190,9 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
             SELECT 1 FROM BacktestResultEntity br4
             WHERE br4.strategy = s AND br4.status = 'COMPLETED' AND br4.mdd <= :maxMdd
         ))
-        ORDER BY (SELECT COALESCE(MAX(br3.cagr), 0) FROM BacktestResultEntity br3 WHERE br3.strategy = s AND br3.status = 'COMPLETED') DESC
+        ORDER BY (SELECT COALESCE(MAX(br3.cagr), 0) FROM BacktestResultEntity br3 WHERE br3.strategy = s AND br3.status = 'COMPLETED') DESC,
+                 s.subscriberCount DESC,
+                 s.id DESC
     """,
     countQuery = """
         SELECT COUNT(DISTINCT s) FROM StrategyEntity s
@@ -226,7 +228,9 @@ interface StrategyJpaRepository : JpaRepository<StrategyEntity, Long> {
             SELECT 1 FROM BacktestResultEntity br4
             WHERE br4.strategy = s AND br4.status = 'COMPLETED' AND br4.mdd <= :maxMdd
         ))
-        ORDER BY (SELECT COALESCE(MAX(br3.sharpeRatio), 0) FROM BacktestResultEntity br3 WHERE br3.strategy = s AND br3.status = 'COMPLETED') DESC
+        ORDER BY (SELECT COALESCE(MAX(br3.sharpeRatio), 0) FROM BacktestResultEntity br3 WHERE br3.strategy = s AND br3.status = 'COMPLETED') DESC,
+                 s.subscriberCount DESC,
+                 s.id DESC
     """,
     countQuery = """
         SELECT COUNT(DISTINCT s) FROM StrategyEntity s
