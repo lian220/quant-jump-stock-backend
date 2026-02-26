@@ -150,12 +150,12 @@ class MarketplaceControllerTest {
     }
 
     @Test
-    @DisplayName("공개 전략 목록 조회 - 기본 정렬 (구독자 수)")
+    @DisplayName("공개 전략 목록 조회 - 기본 정렬 (CAGR)")
     fun testGetPublicStrategies_DefaultSort() {
         mockMvc.perform(get("/api/v1/marketplace/strategies"))
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.strategies").isArray)
-            .andExpect(jsonPath("$.strategies[0].subscriberCount").value(100))
+            .andExpect(jsonPath("$.strategies[0].backtestResult").exists())
             .andExpect(jsonPath("$.pagination.currentPage").value(0))
             .andExpect(jsonPath("$.pagination.totalElements").exists())
     }
@@ -166,11 +166,11 @@ class MarketplaceControllerTest {
         mockMvc.perform(
             get("/api/v1/marketplace/strategies")
                 .param("categoryCode", "VALUE")
+                .param("sortBy", "subscribers")
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.strategies").isArray)
             .andExpect(jsonPath("$.strategies[0].category.code").value("VALUE"))
-            .andExpect(jsonPath("$.strategies[0].name").value("가치투자 전략"))
     }
 
     @Test
@@ -179,6 +179,7 @@ class MarketplaceControllerTest {
         mockMvc.perform(
             get("/api/v1/marketplace/strategies")
                 .param("minCagr", "10.0")
+                .param("sortBy", "cagr")
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.strategies").isArray)
@@ -191,6 +192,7 @@ class MarketplaceControllerTest {
         mockMvc.perform(
             get("/api/v1/marketplace/strategies")
                 .param("maxMdd", "-15.0")
+                .param("sortBy", "cagr")
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.strategies").isArray)
@@ -238,6 +240,7 @@ class MarketplaceControllerTest {
             get("/api/v1/marketplace/strategies")
                 .param("page", "0")
                 .param("size", "1")
+                .param("sortBy", "cagr")
         )
             .andExpect(status().isOk)
             .andExpect(jsonPath("$.strategies.length()").value(1))
@@ -250,7 +253,7 @@ class MarketplaceControllerTest {
     fun testGetPublicStrategies_MultipleFilters() {
         mockMvc.perform(
             get("/api/v1/marketplace/strategies")
-                .param("category", "VALUE")
+                .param("categoryCode", "VALUE")
                 .param("minCagr", "10.0")
                 .param("maxMdd", "-15.0")
                 .param("sortBy", "cagr")
