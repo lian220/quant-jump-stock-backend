@@ -22,6 +22,7 @@ from decimal import Decimal
 from psycopg2.extras import execute_values
 
 from core.database import MongoDB, PostgreSQL
+from domain.recommendation.composite_grade import CompositeGrade
 
 logger = logging.getLogger(__name__)
 
@@ -474,23 +475,24 @@ class RecommendationSyncService:
         has_tech: bool = True,
     ) -> Decimal:
         """
-        Composite Score 계산 (누락 지표 제외 가중 평균).
-        AI/감정/기술 모두 선택 사항이며, 있는 지표만 가중 평균에 포함.
+        Composite Score 계산 (동적 가중치 재분배).
+        부재 데이터 소스의 가중치를 가용 소스에 비례 분배하여 합계 = 1.0 유지.
+        e.g., 감정 부재: AI 0.3->0.43, Tech 0.4->0.57 (합 0.7->1.0)
         """
-        # 고정 분모 사용: 누락된 지표는 0점으로 기여 (Kotlin 측과 동일 방식)
-        weighted_sum = Decimal("0")
+        active = []
         if has_tech:
-            weighted_sum += self.weight_tech * tech_score
+            active.append((self.weight_tech, tech_score))
         if has_ai:
-            weighted_sum += self.weight_ai * ai_score
+            active.append((self.weight_ai, ai_score))
         if has_sentiment:
-            weighted_sum += self.weight_sentiment * sentiment_score
+            active.append((self.weight_sentiment, sentiment_score))
 
-        fixed_denominator = self.weight_ai + self.weight_sentiment + self.weight_tech
-        if fixed_denominator == 0:
+        if not active:
             return Decimal("0")
 
-        return (weighted_sum / fixed_denominator).quantize(Decimal("0.01"))
+        total_weight = sum(w for w, _ in active)
+        weighted_sum = sum((w / total_weight) * s for w, s in active)
+        return weighted_sum.quantize(Decimal("0.01"))
 
     def _calculate_ai_score(self, rise_probability: Optional[float]) -> Decimal:
         """AI 점수 계산: rise_probability × 10 (0~10)
@@ -536,26 +538,8 @@ class RecommendationSyncService:
         return count
 
     def _determine_grade(self, composite_score: Decimal) -> str:
-        """
-        등급 판정: S, A, B, C, D
-
-        Composite Score 최대값 = 0.3×AI(10) + 0.4×Tech(3.5) + 0.3×Sentiment(10) = 7.4
-        S: ≥6.0 (모든 지표 최고 수준)
-        A: ≥4.5 (강한 복합 신호)
-        B: ≥3.0 (중간 수준 신호)
-        C: ≥1.5 (약한 신호)
-        D: <1.5
-        """
-        if composite_score >= Decimal("6.0"):
-            return "S"
-        elif composite_score >= Decimal("4.5"):
-            return "A"
-        elif composite_score >= Decimal("3.0"):
-            return "B"
-        elif composite_score >= Decimal("1.5"):
-            return "C"
-        else:
-            return "D"
+        """등급 판정: S, A, B, C, D (CompositeGrade enum 사용)"""
+        return CompositeGrade.from_score(composite_score).name
 
     def _generate_recommendation_reason(
         self,
