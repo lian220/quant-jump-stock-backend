@@ -149,6 +149,24 @@ private fun PredictionResult.toBuySignalDto(priceSnapshot: StockPriceSnapshot? =
         upsidePercent
     }
 
+    fun normalize(score: BigDecimal, max: BigDecimal): Int =
+        score.divide(max, 4, RoundingMode.HALF_UP)
+            .multiply(BigDecimal(100))
+            .toInt()
+            .coerceIn(0, 100)
+
+    val hasAi = aiScore.compareTo(BigDecimal.ZERO) != 0
+    val hasSentiment = sentimentNormalizedScore.compareTo(BigDecimal.ZERO) != 0
+    val hasTech = techScore.compareTo(BigDecimal.ZERO) != 0
+    val weights = mutableListOf<Pair<BigDecimal, BigDecimal>>()
+    if (hasTech) weights.add(RecommendationCriteria.WEIGHT_TECH to RecommendationCriteria.MAX_TECH_SCORE)
+    if (hasAi) weights.add(RecommendationCriteria.WEIGHT_AI to RecommendationCriteria.MAX_AI_SCORE)
+    if (hasSentiment) weights.add(RecommendationCriteria.WEIGHT_SENTIMENT to RecommendationCriteria.MAX_SENTIMENT_SCORE)
+    val totalWeight = weights.sumOf { it.first }
+    val compositeMax = if (totalWeight > BigDecimal.ZERO)
+        weights.sumOf { (w, mx) -> w.divide(totalWeight, 4, RoundingMode.HALF_UP) * mx }
+    else RecommendationCriteria.MAX_SCORE
+
     return BuySignalDto(
         ticker = ticker,
         stockName = stockName,
@@ -158,6 +176,10 @@ private fun PredictionResult.toBuySignalDto(priceSnapshot: StockPriceSnapshot? =
         aiScore = aiScore,
         techScore = techScore,
         sentimentScore = sentimentNormalizedScore,
+        techScoreDisplay = normalize(techScore, RecommendationCriteria.MAX_TECH_SCORE),
+        aiScoreDisplay = normalize(aiScore, RecommendationCriteria.MAX_AI_SCORE),
+        sentimentScoreDisplay = normalize(sentimentNormalizedScore, RecommendationCriteria.MAX_SENTIMENT_SCORE),
+        compositeScoreDisplay = normalize(compositeScore, compositeMax),
         isRecommended = isRecommended,
         recommendationReason = recommendationReason,
         currentPrice = enrichedCurrentPrice,
@@ -190,6 +212,11 @@ data class BuySignalDto(
     val aiScore: java.math.BigDecimal,
     val techScore: java.math.BigDecimal,
     val sentimentScore: java.math.BigDecimal,
+    // 정규화 점수 (0-100): 프론트엔드에서 바로 사용
+    val techScoreDisplay: Int = 0,
+    val aiScoreDisplay: Int = 0,
+    val sentimentScoreDisplay: Int = 0,
+    val compositeScoreDisplay: Int = 0,
     val isRecommended: Boolean,
     val recommendationReason: String?,
     val currentPrice: java.math.BigDecimal?,

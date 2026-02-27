@@ -156,6 +156,9 @@ services:
       VERTEX_AI_CREDENTIALS_PATH: "/app/credentials/vertex-ai-key.json"
       # ML Scripts path
       ML_SCRIPTS_DIR: "/scripts/ml"
+      # PostgreSQL Pool Size (Supabase Session 모드 연결 수 제한 대응)
+      PG_POOL_MAX_CONN: 2
+      PG_POOL_MIN_CONN: 1
     volumes:
       - ./quant-jump-stock-data-engine:/app
       - ./credentials:/app/credentials
@@ -221,6 +224,9 @@ services:
       DB_READ_SOURCE: "rdb"
       # Data Engine (컨테이너 네트워크용)
       DATA_ENGINE_BASE_URL: "http://quant-jump-stock-data-engine:${DATA_ENGINE_PORT:-10020}"
+      # HikariCP Pool Size (Supabase Session 모드 연결 수 제한 대응)
+      HIKARI_MAX_POOL_SIZE: 2
+      HIKARI_MIN_IDLE: 1
       # JVM Heap Settings
       JAVA_OPTS: "-Xmx768m -Xms512m -XX:MaxMetaspaceSize=256m"
     deploy:

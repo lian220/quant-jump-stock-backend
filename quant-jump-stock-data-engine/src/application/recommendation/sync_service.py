@@ -260,30 +260,34 @@ class RecommendationSyncService:
             return {}
 
     def _fetch_technical_analysis(self, analysis_date: str) -> Dict[str, Dict]:
-        """기술적 분석 데이터 조회 (MongoDB stock_recommendations). date 필드 문자열/ISODate 둘 다 매칭."""
+        """
+        기술적 분석 데이터 조회 (MongoDB stock_recommendations).
+        date 필드 문자열/ISODate 둘 다 매칭.
+        데이터 없으면 analysis_date 이전 최근 날짜로 fallback.
+        """
         try:
             dt_date = datetime.strptime(analysis_date, "%Y-%m-%d")
-            start_utc = datetime(dt_date.year, dt_date.month, dt_date.day, 0, 0, 0)
-            end_utc = start_utc + timedelta(days=1)
+            recommendations = self._query_recommendations_by_date(dt_date, analysis_date)
 
-            recommendations = list(self.mongo_db.stock_recommendations.find(
-                {"date": {"$gte": start_utc, "$lt": end_utc}}
-            ))
+            # fallback: 데이터 없으면 이전 최근 날짜 조회
             if not recommendations:
-                recommendations = list(self.mongo_db.stock_recommendations.find(
-                    {"date": analysis_date}
-                ))
-            if not recommendations:
-                y, m, d = dt_date.year, dt_date.month, dt_date.day
-                recommendations = list(self.mongo_db.stock_recommendations.find({
-                    "$expr": {
-                        "$and": [
-                            {"$eq": [{"$year": "$date"}, y]},
-                            {"$eq": [{"$month": "$date"}, m]},
-                            {"$eq": [{"$dayOfMonth": "$date"}, d]},
-                        ]
-                    }
-                }))
+                fallback_doc = self.mongo_db.stock_recommendations.find_one(
+                    {"date": {"$lt": analysis_date}, "ticker": {"$exists": True}},
+                    sort=[("date", -1)]
+                )
+                if fallback_doc:
+                    fallback_date = fallback_doc.get("date")
+                    if isinstance(fallback_date, datetime):
+                        fallback_date_str = fallback_date.strftime("%Y-%m-%d")
+                    else:
+                        fallback_date_str = str(fallback_date)[:10]
+                    recommendations = list(self.mongo_db.stock_recommendations.find(
+                        {"date": fallback_date}
+                    ))
+                    logger.info(
+                        f"[Sync] stock_recommendations 날짜 fallback: {analysis_date} → {fallback_date_str} "
+                        f"({len(recommendations)}건)"
+                    )
 
             results = {}
             for rec in recommendations:
@@ -308,6 +312,31 @@ class RecommendationSyncService:
         except Exception as e:
             logger.warning(f"기술적 분석 조회 실패: {e}")
             return {}
+
+    def _query_recommendations_by_date(self, dt_date: datetime, date_str: str) -> list:
+        """날짜별 stock_recommendations 조회 (ISODate, 문자열, $expr 순서)"""
+        start_utc = datetime(dt_date.year, dt_date.month, dt_date.day, 0, 0, 0)
+        end_utc = start_utc + timedelta(days=1)
+
+        recommendations = list(self.mongo_db.stock_recommendations.find(
+            {"date": {"$gte": start_utc, "$lt": end_utc}}
+        ))
+        if not recommendations:
+            recommendations = list(self.mongo_db.stock_recommendations.find(
+                {"date": date_str}
+            ))
+        if not recommendations:
+            y, m, d = dt_date.year, dt_date.month, dt_date.day
+            recommendations = list(self.mongo_db.stock_recommendations.find({
+                "$expr": {
+                    "$and": [
+                        {"$eq": [{"$year": "$date"}, y]},
+                        {"$eq": [{"$month": "$date"}, m]},
+                        {"$eq": [{"$dayOfMonth": "$date"}, d]},
+                    ]
+                }
+            }))
+        return recommendations
 
     def _fetch_current_prices(self, analysis_date: str) -> Dict[str, float]:
         """

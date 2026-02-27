@@ -512,6 +512,7 @@ class StockRecommendationHandler(MessageHandler):
                     SlackNotifier.notify_daily_data_missing(analysis_date)
                 except Exception as e:
                     logger.exception(f"종합 리포트 생성/전송 실패 ({analysis_date}): {e}")
+                    SlackNotifier.notify_report_generation_error(analysis_date, str(e))
 
             # 스케줄러 채널: 완료 알림
             elapsed = time.time() - start_time

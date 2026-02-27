@@ -4,6 +4,7 @@ import com.quantjumpstock.core.domain.model.prediction.PredictionResult
 import com.quantjumpstock.core.domain.model.stock.StockPriceSnapshot
 import com.quantjumpstock.core.domain.port.output.StockPriceDataPort
 import com.quantjumpstock.core.domain.prediction.port.output.PredictionResultRepositoryPort
+import com.quantjumpstock.core.domain.recommendation.model.RecommendationCriteria
 import org.slf4j.LoggerFactory
 import org.springframework.cache.CacheManager
 import org.springframework.stereotype.Service
@@ -223,6 +224,24 @@ fun PredictionResult.toBuySignalDto(priceSnapshot: StockPriceSnapshot? = null): 
         upsidePercent
     }
 
+    fun normalize(score: BigDecimal, max: BigDecimal): Int =
+        score.divide(max, 4, RoundingMode.HALF_UP)
+            .multiply(BigDecimal(100))
+            .toInt()
+            .coerceIn(0, 100)
+
+    val hasAi = aiScore.compareTo(BigDecimal.ZERO) != 0
+    val hasSentiment = sentimentNormalizedScore.compareTo(BigDecimal.ZERO) != 0
+    val hasTech = techScore.compareTo(BigDecimal.ZERO) != 0
+    val weights = mutableListOf<Pair<BigDecimal, BigDecimal>>()
+    if (hasTech) weights.add(RecommendationCriteria.WEIGHT_TECH to RecommendationCriteria.MAX_TECH_SCORE)
+    if (hasAi) weights.add(RecommendationCriteria.WEIGHT_AI to RecommendationCriteria.MAX_AI_SCORE)
+    if (hasSentiment) weights.add(RecommendationCriteria.WEIGHT_SENTIMENT to RecommendationCriteria.MAX_SENTIMENT_SCORE)
+    val totalWeight = weights.sumOf { it.first }
+    val compositeMax = if (totalWeight > BigDecimal.ZERO)
+        weights.sumOf { (w, mx) -> w.divide(totalWeight, 4, RoundingMode.HALF_UP) * mx }
+    else RecommendationCriteria.MAX_SCORE
+
     return mapOf(
         "ticker" to ticker,
         "stockName" to stockName,
@@ -232,6 +251,11 @@ fun PredictionResult.toBuySignalDto(priceSnapshot: StockPriceSnapshot? = null): 
         "aiScore" to aiScore.toDouble(),
         "techScore" to techScore.toDouble(),
         "sentimentScore" to sentimentNormalizedScore.toDouble(),
+        // 정규화 점수 (0-100)
+        "techScoreDisplay" to normalize(techScore, RecommendationCriteria.MAX_TECH_SCORE),
+        "aiScoreDisplay" to normalize(aiScore, RecommendationCriteria.MAX_AI_SCORE),
+        "sentimentScoreDisplay" to normalize(sentimentNormalizedScore, RecommendationCriteria.MAX_SENTIMENT_SCORE),
+        "compositeScoreDisplay" to normalize(compositeScore, compositeMax),
         "isRecommended" to isRecommended,
         "recommendationReason" to recommendationReason,
         "currentPrice" to enrichedCurrentPrice?.toDouble(),

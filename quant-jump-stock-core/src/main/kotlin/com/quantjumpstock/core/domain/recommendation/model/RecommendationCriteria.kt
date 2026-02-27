@@ -71,6 +71,19 @@ object RecommendationCriteria {
     /** 최대 점수 (0.3×10 + 0.4×3.5 + 0.3×10 = 7.4) */
     val MAX_SCORE = BigDecimal("7.4")
 
+    // ═════════════════════════════════════════════════
+    // 개별 점수 최대값
+    // ═════════════════════════════════════════════════
+
+    /** 기술적 분석 최대 점수 (골든크로스 1.5 + RSI 1.0 + MACD 1.0) */
+    val MAX_TECH_SCORE = BigDecimal("3.5")
+
+    /** AI 예측 최대 점수 (rise_probability_normalized × 10) */
+    val MAX_AI_SCORE = BigDecimal("10")
+
+    /** 감정 분석 최대 점수 ((sentiment+1)/2 × 10) */
+    val MAX_SENTIMENT_SCORE = BigDecimal("10")
+
     /** 기본 최소 신뢰도 (0~1) */
     const val DEFAULT_MIN_CONFIDENCE = 0.7  // → 5.18점
 
