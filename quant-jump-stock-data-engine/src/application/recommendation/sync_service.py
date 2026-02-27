@@ -4,10 +4,11 @@ RecommendationSyncService - MongoDB → PostgreSQL 동기화
 MongoDB에 저장된 AI 예측, 감정 분석, 기술적 분석 결과를 통합하여
 PostgreSQL prediction_results 테이블에 저장한다.
 
-Composite Score = 0.3 × ai + 0.4 × tech + 0.3 × sentiment (고정 분모=1.0, 최대 ~7.4)
+Composite Score = 0.3 × ai + 0.4 × tech + 0.3 × sentiment (동적 가중치 재분배, 최대 ~7.4)
   - AI score:        0~10  (rise_probability_normalized × 10)
     * rise_probability_normalized = 0.5 + rise_pct/40  (0%→0.5, +20%→1.0, -20%→0.0)
-  - Tech score:      0~3.5 (골든크로스 1.5 + RSI<50 1.0 + MACD매수 1.0)
+  - Tech score:      0~3.5 (골든크로스 1.5 + RSI<threshold 1.0 + MACD매수 1.0)
+    * RSI threshold: RecommendationCriteriaSettings.rsi_threshold (기본 70)
   - Sentiment score: 0~10  ((sentiment + 1) / 2 × 10)
   - 최대값: 0.3×10 + 0.4×3.5 + 0.3×10 = 3.0 + 1.4 + 3.0 = 7.4
 
@@ -22,6 +23,7 @@ from decimal import Decimal
 from psycopg2.extras import execute_values
 
 from core.database import MongoDB, PostgreSQL
+from config.settings import RecommendationCriteriaSettings
 from domain.recommendation.composite_grade import CompositeGrade
 
 logger = logging.getLogger(__name__)
@@ -32,10 +34,12 @@ class RecommendationSyncService:
 
     def __init__(self):
         self.mongo_db = MongoDB.get_db()
-        # Composite Score 가중치
-        self.weight_ai = Decimal("0.3")
-        self.weight_tech = Decimal("0.4")
-        self.weight_sentiment = Decimal("0.3")
+        # settings에서 가중치/임계값 로드
+        self._settings = RecommendationCriteriaSettings()
+        self.weight_ai = Decimal(str(self._settings.weight_ai))
+        self.weight_tech = Decimal(str(self._settings.weight_technical))
+        self.weight_sentiment = Decimal(str(self._settings.weight_sentiment))
+        self.rsi_threshold = self._settings.rsi_threshold
 
     def sync_latest_recommendations(self, analysis_date: str) -> Dict[str, Any]:
         """
@@ -516,11 +520,11 @@ class RecommendationSyncService:
         return normalized.quantize(Decimal("0.01"))
 
     def _calculate_tech_score(self, tech: Dict) -> Decimal:
-        """기술적 점수 계산: 1.5×골든크로스 + 1.0×RSI<50 + 1.0×MACD매수 (0~3.5)"""
+        """기술적 점수 계산: 1.5×골든크로스 + 1.0×RSI<threshold + 1.0×MACD매수 (0~3.5)"""
         score = Decimal("0")
         if tech.get("golden_cross"):
             score += Decimal("1.5")
-        if tech.get("rsi") and tech["rsi"] < 50:
+        if tech.get("rsi") and tech["rsi"] < self.rsi_threshold:
             score += Decimal("1.0")
         if tech.get("macd_buy_signal"):
             score += Decimal("1.0")
@@ -531,7 +535,7 @@ class RecommendationSyncService:
         count = 0
         if tech.get("golden_cross"):
             count += 1
-        if tech.get("rsi") and tech["rsi"] < 50:
+        if tech.get("rsi") and tech["rsi"] < self.rsi_threshold:
             count += 1
         if tech.get("macd_buy_signal"):
             count += 1
