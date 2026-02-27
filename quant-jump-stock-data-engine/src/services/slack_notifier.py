@@ -573,6 +573,30 @@ class SlackNotifier:
         )
 
     @staticmethod
+    def notify_report_generation_error(analysis_date: str, error: str):
+        """종합 리포트 생성/전송 실패 알림 → 에러 채널"""
+        text = "❌ 종합 리포트 생성 실패"
+        attachments = [
+            {
+                "color": "dc3545",
+                "title": "리포트 생성 오류",
+                "text": f"종합 리포트 생성/전송 중 오류가 발생했습니다.\n```{error[:500]}```",
+                "fields": [
+                    {"title": "분석 날짜", "value": analysis_date, "short": True},
+                    {"title": "Timestamp", "value": datetime.now(KST).isoformat(), "short": True},
+                ],
+                "footer": "Quantiq Data Engine",
+                "ts": int(datetime.now(KST).timestamp()),
+            }
+        ]
+        SlackNotifier._post_message(
+            channel=SlackNotifier._get_error_channel(),
+            webhook_url=SlackNotifier._get_error_webhook(),
+            text=text,
+            attachments=attachments,
+        )
+
+    @staticmethod
     def send_thread_message(text: str, thread_ts: str, channel: Optional[str] = None):
         """스레드 답글 전송"""
         if not thread_ts:
