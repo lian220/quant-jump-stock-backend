@@ -35,11 +35,11 @@ QuantIQ는 4가지 분석 방식을 독립적으로 운영하며, 향후 **Compo
 
 | # | 기능 | 트리거 | Pub/Sub 토픽 | MongoDB 컬렉션 | 문서 |
 |---|------|--------|------------|----------------|------|
-| 1 | 경제 데이터 수집 | evening-pipeline 23:40 (체이닝 1단계) | `economic-data-update-request` | `daily_stock_data` | **[데이터수집.md](../features/데이터수집.md)** |
-| 2 | 기술적 분석 | 체이닝 2단계 (수집 완료 시 자동) | `analysis-technical-request` | `stock_recommendations` | **[기술적분석.md](./technical/기술적분석.md)** |
-| 3 | 뉴스 감정 분석 | 체이닝 2단계 (수집 완료 시 자동) | `analysis-sentiment-request` | `sentiment_analysis` | **[뉴스감정분석.md](./sentiment/뉴스감정분석.md)** |
-| 4 | AI 예측 (Vertex AI) | 체이닝 3단계 (기술적 분석 완료 시 자동) | `vertex-ai-run-request` | `stock_predictions` | **[인공지능분석.md](./ai/인공지능분석.md)** |
-| 5 | 종목 추천 | stock-recommendation 00:20 (standalone) | `analysis-recommendation-request` | `stock_recommendations` | — |
+| 1 | 경제 데이터 수집 | evening-pipeline 23:40 (체이닝 1단계) | `economic.data.update.request` | `daily_stock_data` | **[데이터수집.md](../features/데이터수집.md)** |
+| 2 | 기술적 분석 | 체이닝 2단계 (수집 완료 시 자동) | `analysis.technical.request` | `stock_recommendations` | **[기술적분석.md](./technical/기술적분석.md)** |
+| 3 | 뉴스 감정 분석 | 체이닝 2단계 (수집 완료 시 자동) | `analysis.sentiment.request` | `sentiment_analysis` | **[뉴스감정분석.md](./sentiment/뉴스감정분석.md)** |
+| 4 | AI 예측 (Vertex AI) | 체이닝 3단계 (기술적 분석 완료 시 자동) | `vertex.ai.run.request` | `stock_predictions` | **[인공지능분석.md](./ai/인공지능분석.md)** |
+| 5 | 종목 추천 | stock-recommendation 00:20 (standalone) | `analysis.recommendation.request` | `stock_recommendations` | — |
 
 ---
 
