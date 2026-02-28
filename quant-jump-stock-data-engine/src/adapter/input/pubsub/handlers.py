@@ -185,9 +185,10 @@ class EconomicDataHandler(MessageHandler):
                 if message.source == "pipeline":
                     try:
                         logger.info("🔗 [Pipeline] 경제데이터 완료 → 기술적+감정 분석 트리거")
+                        pipeline_rid = message.request_id if message.request_id.startswith("pipe-") else f"pipe-{message.request_id}"
                         chain_payload = {
                             "source": "pipeline",
-                            "requestId": f"pipe-{message.request_id}",
+                            "requestId": pipeline_rid,
                             "startDate": result.get("start_date"),
                             "endDate": result.get("end_date"),
                         }
@@ -296,9 +297,10 @@ class TechnicalAnalysisHandler(MessageHandler):
                 if message.source == "pipeline":
                     try:
                         logger.info("🔗 [Pipeline] 기술적 분석 완료 → Vertex AI 예측 트리거")
+                        pipeline_rid = message.request_id if message.request_id.startswith("pipe-") else f"pipe-{message.request_id}"
                         self.publisher.publish("TRIGGER_VERTEX_AI_PREDICTION", {
                             "source": "pipeline",
-                            "requestId": f"pipe-{message.request_id}",
+                            "requestId": pipeline_rid,
                         })
                     except Exception as chain_err:
                         logger.warning(f"⚠️ [Pipeline] Vertex AI 트리거 발행 실패 (분석은 성공): {chain_err}")

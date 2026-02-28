@@ -54,6 +54,9 @@ class CoreCacheClient:
                 f"Core API 연결 불가 ({self._evict_url}) — 캐시 eviction 스킵"
             )
             return False
-        except Exception as e:
-            logger.warning(f"Core 캐시 eviction 오류: {e}")
+        except ValueError as e:
+            logger.warning(f"Core 캐시 eviction 응답 파싱 오류: {e}")
+            return False
+        except requests.exceptions.RequestException as e:
+            logger.warning(f"Core 캐시 eviction 요청 오류: {e}")
             return False

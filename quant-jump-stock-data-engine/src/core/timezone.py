@@ -26,11 +26,17 @@ def latest_complete_bar_date() -> date:
 
     - 5PM ET 이후: 오늘 바 완성 -> 오늘 반환
     - 5PM ET 이전: 오늘 바 미완성 -> 어제 반환
+    - 주말(토/일)이면 직전 금요일로 롤백
     """
     now = now_et()
     if now.hour >= _MARKET_CLOSE_BUFFER_HOUR:
-        return now.date()
-    return (now - timedelta(days=1)).date()
+        candidate = now.date()
+    else:
+        candidate = (now - timedelta(days=1)).date()
+    # 주말 롤백: 토(5) → 금, 일(6) → 금
+    while candidate.weekday() >= 5:
+        candidate -= timedelta(days=1)
+    return candidate
 
 
 def latest_complete_bar_date_str() -> str:
