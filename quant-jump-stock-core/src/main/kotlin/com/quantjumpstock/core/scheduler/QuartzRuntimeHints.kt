@@ -18,11 +18,7 @@ class QuartzRuntimeHints : RuntimeHintsRegistrar {
             AutoBuyJobAdapter::class.java,
             AutoSellJobAdapter::class.java,
             CleanupOrdersJobAdapter::class.java,
-            EconomicDataUpdateJobAdapter::class.java,
-            EconomicDataUpdate2JobAdapter::class.java,
             PortfolioProfitReportJobAdapter::class.java,
-            StockRecommendationJobAdapter::class.java,
-            ParallelAnalysisJob::class.java,
             CanonicalBacktestJobAdapter::class.java,
             BacktestCleanupJobAdapter::class.java,
         )

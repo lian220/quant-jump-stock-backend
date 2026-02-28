@@ -30,10 +30,10 @@ class EconomicDataManagementService(
     private val logger = LoggerFactory.getLogger(this::class.java)
     private val kst = ZoneId.of("Asia/Seoul")
 
-    override fun triggerEconomicDataUpdate(startDate: String?, endDate: String?): CompletableFuture<String> {
+    override fun triggerEconomicDataUpdate(startDate: String?, endDate: String?, source: String): CompletableFuture<String> {
         return try {
             val dateInfo = formatDateRange(startDate, endDate)
-            logger.info("경제 데이터 업데이트 요청 시작 ($dateInfo)")
+            logger.info("경제 데이터 업데이트 요청 시작 ($dateInfo, source=$source)")
 
             val requestId = UUID.randomUUID().toString()
 
@@ -48,7 +48,7 @@ class EconomicDataManagementService(
             // threadTs와 날짜 범위를 포함한 요청 생성
             val request = EconomicDataUpdateRequest(
                 timestamp = ZonedDateTime.now(kst).toString(),
-                source = "quartz_scheduler",
+                source = source,
                 requestId = requestId,
                 threadTs = threadTs,
                 startDate = startDate,

@@ -11,6 +11,7 @@ from collections import defaultdict
 
 from .repository import EconomicDataRepository
 from core.config import settings
+from core.timezone import latest_complete_bar_date_str
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ class EconomicDataService:
         Returns:
             (start_date_str, end_date_str) 튜플
         """
-        today_str = datetime.now().strftime("%Y-%m-%d")
+        today_str = latest_complete_bar_date_str()
 
         # end_date 결정
         if end_date:
@@ -311,10 +312,10 @@ class EconomicDataService:
                 return None
 
             # 당일 partial bar 제거: 장중에 수집하면 미완성 일봉이 포함될 수 있음
-            # 완성된 종가만 기술적 분석에 사용해야 하므로 오늘 이후 날짜 제외
-            today_str = datetime.now().strftime("%Y-%m-%d")
+            # 완성된 종가만 기술적 분석에 사용해야 하므로 cutoff 이후 날짜 제외
+            cutoff_str = latest_complete_bar_date_str()
             df.index = pd.to_datetime(df.index)
-            df = df[df.index.strftime("%Y-%m-%d") < today_str]
+            df = df[df.index.strftime("%Y-%m-%d") <= cutoff_str]
 
             if df.empty:
                 return None

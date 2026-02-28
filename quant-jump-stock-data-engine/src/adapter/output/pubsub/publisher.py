@@ -87,7 +87,14 @@ class PubSubPublisherAdapter:
         Core API EventTopics (EventSchema.kt)와 동기화된 토픽명 사용.
         """
         topic_mapping = {
-            # 경제 데이터 (Core API EventTopics 기준)
+            # ── 파이프라인 체이닝 (핸들러 → 다음 단계 트리거) ──
+            "TRIGGER_ECONOMIC_DATA": "economic.data.update.request",
+            "TRIGGER_TECHNICAL_ANALYSIS": "analysis.technical.request",
+            "TRIGGER_SENTIMENT_ANALYSIS": "analysis.sentiment.request",
+            "TRIGGER_VERTEX_AI_PREDICTION": "vertex.ai.run.request",
+
+            # ── 완료/실패 이벤트 (Core API EventTopics 기준) ──
+            # 경제 데이터
             "ECONOMIC_DATA_UPDATED": "quantiq.economic.data.updated",
             "ECONOMIC_DATA_UPDATE_FAILED": "quantiq.economic.data.sync.failed",
             # 분석 완료 (기술적/감정 분석 모두 동일 토픽으로 발행)

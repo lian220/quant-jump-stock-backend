@@ -172,6 +172,13 @@ class RecommendationCriteriaSettings(BaseSettings):
         return self
 
 
+class CoreApiSettings(BaseSettings):
+    """Core API 서버 설정 (캐시 eviction 등 내부 통신)"""
+    model_config = SettingsConfigDict(env_file=_env_files, env_prefix="", extra="ignore")
+
+    base_url: str = Field(default="http://localhost:10010", alias="CORE_API_URL")
+
+
 class Settings(BaseSettings):
     """통합 설정"""
     model_config = SettingsConfigDict(
@@ -192,6 +199,7 @@ class Settings(BaseSettings):
     slack: SlackSettings = Field(default_factory=SlackSettings)
     gcp: GcpSettings = Field(default_factory=GcpSettings)
     recommendation: RecommendationCriteriaSettings = Field(default_factory=RecommendationCriteriaSettings)
+    core_api: CoreApiSettings = Field(default_factory=CoreApiSettings)
 
     # 기존 호환성을 위한 플랫 속성들 (deprecated, 점진적 제거 예정)
     @property

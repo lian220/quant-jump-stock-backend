@@ -25,10 +25,10 @@ class AnalysisManagementService(
     private val logger = LoggerFactory.getLogger(this::class.java)
     private val kst = ZoneId.of("Asia/Seoul")
 
-    override fun triggerTechnicalAnalysis(startDate: String?, endDate: String?): CompletableFuture<String> {
+    override fun triggerTechnicalAnalysis(startDate: String?, endDate: String?, source: String): CompletableFuture<String> {
         return try {
             val dateInfo = formatDateRange(startDate, endDate)
-            logger.info("기술적 분석 요청 시작 ($dateInfo)")
+            logger.info("기술적 분석 요청 시작 ($dateInfo, source=$source)")
 
             val requestId = UUID.randomUUID().toString()
 
@@ -43,7 +43,7 @@ class AnalysisManagementService(
             // threadTs와 날짜 범위를 포함한 요청 생성
             val request = AnalysisRequest(
                 timestamp = ZonedDateTime.now(kst).toString(),
-                source = "quartz_scheduler",
+                source = source,
                 requestId = requestId,
                 threadTs = threadTs,
                 analysisType = "TECHNICAL",
@@ -74,10 +74,10 @@ class AnalysisManagementService(
         }
     }
 
-    override fun triggerSentimentAnalysis(startDate: String?, endDate: String?): CompletableFuture<String> {
+    override fun triggerSentimentAnalysis(startDate: String?, endDate: String?, source: String): CompletableFuture<String> {
         return try {
             val dateInfo = formatDateRange(startDate, endDate)
-            logger.info("뉴스 감정 분석 요청 시작 ($dateInfo)")
+            logger.info("뉴스 감정 분석 요청 시작 ($dateInfo, source=$source)")
 
             val requestId = UUID.randomUUID().toString()
 
@@ -92,7 +92,7 @@ class AnalysisManagementService(
             // threadTs와 날짜 범위를 포함한 요청 생성
             val request = AnalysisRequest(
                 timestamp = ZonedDateTime.now(kst).toString(),
-                source = "quartz_scheduler",
+                source = source,
                 requestId = requestId,
                 threadTs = threadTs,
                 analysisType = "SENTIMENT",
@@ -123,10 +123,10 @@ class AnalysisManagementService(
         }
     }
 
-    override fun triggerStockRecommendation(startDate: String?, endDate: String?): CompletableFuture<String> {
+    override fun triggerStockRecommendation(startDate: String?, endDate: String?, source: String): CompletableFuture<String> {
         return try {
             val dateInfo = formatDateRange(startDate, endDate)
-            logger.info("종목 추천 요청 시작 ($dateInfo)")
+            logger.info("종목 추천 요청 시작 ($dateInfo, source=$source)")
 
             val requestId = UUID.randomUUID().toString()
 
@@ -141,7 +141,7 @@ class AnalysisManagementService(
             // threadTs와 날짜 범위를 포함한 요청 생성
             val request = AnalysisRequest(
                 timestamp = ZonedDateTime.now(kst).toString(),
-                source = "quartz_scheduler",
+                source = source,
                 requestId = requestId,
                 threadTs = threadTs,
                 analysisType = "RECOMMENDATION",

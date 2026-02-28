@@ -231,11 +231,6 @@ object EventTopics {
     const val BACKTEST_COMPLETED = "quantiq.backtest.completed"
     const val BACKTEST_FAILED = "quantiq.backtest.failed"
 
-    // News
-    const val NEWS_COLLECTION_REQUEST = "quantiq.news.collection.request"
-    const val NEWS_COLLECTED = "quantiq.news.collected"
-    const val NEWS_COLLECTION_FAILED = "quantiq.news.collection.failed"
-
     // Legacy (backward compatibility)
     @Deprecated("Use ANALYSIS_REQUEST instead")
     const val LEGACY_ANALYSIS_REQUEST = "quantiq.analysis.request"
