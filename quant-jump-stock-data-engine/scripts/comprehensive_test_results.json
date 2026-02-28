@@ -1,6 +1,6 @@
 {
   "test_name": "comprehensive_v56_v57_test",
-  "test_date": "2026-02-26",
+  "test_date": "2026-02-28",
   "config": {
     "period": "2021-01-01 ~ 2026-02-25",
     "symbols": [
@@ -22,7 +22,7 @@
     "rsi_oversold": {
       "runs": [
         {
-          "total_return": 4184.56,
+          "total_return": 4184.54,
           "total_trades": 365,
           "win_rate": 64.9,
           "mdd": -20.45,
@@ -34,7 +34,7 @@
           "take_profit_count": 85
         },
         {
-          "total_return": 4184.56,
+          "total_return": 4184.54,
           "total_trades": 365,
           "win_rate": 64.9,
           "mdd": -20.45,
@@ -46,7 +46,7 @@
           "take_profit_count": 85
         },
         {
-          "total_return": 4184.56,
+          "total_return": 4184.54,
           "total_trades": 365,
           "win_rate": 64.9,
           "mdd": -20.45,
@@ -64,7 +64,7 @@
     "scalping_rsi": {
       "runs": [
         {
-          "total_return": 145.23,
+          "total_return": 145.24,
           "total_trades": 234,
           "win_rate": 57.7,
           "mdd": -20.2,
@@ -76,7 +76,7 @@
           "take_profit_count": 132
         },
         {
-          "total_return": 145.23,
+          "total_return": 145.24,
           "total_trades": 234,
           "win_rate": 57.7,
           "mdd": -20.2,
@@ -88,7 +88,7 @@
           "take_profit_count": 132
         },
         {
-          "total_return": 145.23,
+          "total_return": 145.24,
           "total_trades": 234,
           "win_rate": 57.7,
           "mdd": -20.2,
@@ -106,36 +106,36 @@
     "rsi_macd_combo": {
       "runs": [
         {
-          "total_return": 137.9,
+          "total_return": 137.91,
           "total_trades": 107,
           "win_rate": 67.3,
           "mdd": -18.28,
           "sharpe": 0.47,
-          "cagr": 18.31,
+          "cagr": 18.32,
           "avg_holding_days": 34.3,
           "profit_factor": 2.17,
           "stop_loss_count": 30,
           "take_profit_count": 12
         },
         {
-          "total_return": 137.9,
+          "total_return": 137.91,
           "total_trades": 107,
           "win_rate": 67.3,
           "mdd": -18.28,
           "sharpe": 0.47,
-          "cagr": 18.31,
+          "cagr": 18.32,
           "avg_holding_days": 34.3,
           "profit_factor": 2.17,
           "stop_loss_count": 30,
           "take_profit_count": 12
         },
         {
-          "total_return": 137.9,
+          "total_return": 137.91,
           "total_trades": 107,
           "win_rate": 67.3,
           "mdd": -18.28,
           "sharpe": 0.47,
-          "cagr": 18.31,
+          "cagr": 18.32,
           "avg_holding_days": 34.3,
           "profit_factor": 2.17,
           "stop_loss_count": 30,
@@ -148,7 +148,7 @@
     "rate_linked_allocation": {
       "runs": [
         {
-          "total_return": 99.52,
+          "total_return": 99.5,
           "total_trades": 99,
           "win_rate": 43.4,
           "mdd": -32.04,
@@ -160,7 +160,7 @@
           "take_profit_count": 40
         },
         {
-          "total_return": 99.52,
+          "total_return": 99.5,
           "total_trades": 99,
           "win_rate": 43.4,
           "mdd": -32.04,
@@ -172,7 +172,7 @@
           "take_profit_count": 40
         },
         {
-          "total_return": 99.52,
+          "total_return": 99.5,
           "total_trades": 99,
           "win_rate": 43.4,
           "mdd": -32.04,
@@ -190,7 +190,7 @@
     "golden_cross_rsi": {
       "runs": [
         {
-          "total_return": 67.63,
+          "total_return": 67.62,
           "total_trades": 78,
           "win_rate": 41.0,
           "mdd": -18.22,
@@ -202,7 +202,7 @@
           "take_profit_count": 13
         },
         {
-          "total_return": 67.63,
+          "total_return": 67.62,
           "total_trades": 78,
           "win_rate": 41.0,
           "mdd": -18.22,
@@ -214,7 +214,7 @@
           "take_profit_count": 13
         },
         {
-          "total_return": 67.63,
+          "total_return": 67.62,
           "total_trades": 78,
           "win_rate": 41.0,
           "mdd": -18.22,
@@ -232,36 +232,36 @@
     "golden_cross": {
       "runs": [
         {
-          "total_return": 10.33,
+          "total_return": 10.32,
           "total_trades": 139,
           "win_rate": 36.7,
           "mdd": -37.79,
           "sharpe": -0.04,
-          "cagr": 1.93,
+          "cagr": 1.92,
           "avg_holding_days": 30.0,
           "profit_factor": 1.06,
           "stop_loss_count": 44,
           "take_profit_count": 25
         },
         {
-          "total_return": 10.33,
+          "total_return": 10.32,
           "total_trades": 139,
           "win_rate": 36.7,
           "mdd": -37.79,
           "sharpe": -0.04,
-          "cagr": 1.93,
+          "cagr": 1.92,
           "avg_holding_days": 30.0,
           "profit_factor": 1.06,
           "stop_loss_count": 44,
           "take_profit_count": 25
         },
         {
-          "total_return": 10.33,
+          "total_return": 10.32,
           "total_trades": 139,
           "win_rate": 36.7,
           "mdd": -37.79,
           "sharpe": -0.04,
-          "cagr": 1.93,
+          "cagr": 1.92,
           "avg_holding_days": 30.0,
           "profit_factor": 1.06,
           "stop_loss_count": 44,
@@ -484,7 +484,7 @@
     "triple_screen": {
       "runs": [
         {
-          "total_return": -16.36,
+          "total_return": -16.37,
           "total_trades": 155,
           "win_rate": 31.0,
           "mdd": -55.85,
@@ -496,7 +496,7 @@
           "take_profit_count": 23
         },
         {
-          "total_return": -16.36,
+          "total_return": -16.37,
           "total_trades": 155,
           "win_rate": 31.0,
           "mdd": -55.85,
@@ -508,7 +508,7 @@
           "take_profit_count": 23
         },
         {
-          "total_return": -16.36,
+          "total_return": -16.37,
           "total_trades": 155,
           "win_rate": 31.0,
           "mdd": -55.85,
