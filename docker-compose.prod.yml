@@ -51,8 +51,15 @@ services:
       - SPRING_QUARTZ_JOB_STORE_TYPE=memory
       - SPRING_FLYWAY_BASELINE_ON_MIGRATE=true
       - SPRING_FLYWAY_VALIDATE_ON_MIGRATE=false
-      # Pub/Sub: 에뮬레이터 비활성화 → 실제 GCP gRPC 연결
-      - PUBSUB_EMULATOR_HOST=
+      # Pub/Sub: PUBSUB_CREDENTIALS_ENCODED 미설정 → ADC 사용 (VM SA: lian-web)
+      # GCP_CREDENTIALS_ENCODED(vertex-ai-service SA)와 분리하여 인증 실패 격리
+    healthcheck:
+      # liveness만 체크 — 외부 의존성(Pub/Sub) 실패가 컨테이너 재시작을 유발하지 않도록
+      test: ["CMD-SHELL", "curl -sf http://localhost:10010/actuator/health/liveness || exit 1"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
     expose:
       - "10010"
     deploy:

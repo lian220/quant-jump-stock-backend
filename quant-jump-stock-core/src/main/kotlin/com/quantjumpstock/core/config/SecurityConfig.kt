@@ -49,6 +49,7 @@ class SecurityConfig(
                                     "/v3/api-docs/**",
                                     "/api-docs/**",
                                     "/actuator/health",
+                                    "/actuator/health/**",
                                     "/actuator/info",
                                     // 공개 API (인증 없이 조회 가능)
                                     "/api/v1/stocks/**",
