@@ -58,7 +58,9 @@ class SecurityConfig(
                                     "/api/v1/news/**",
                                     "/api/v1/benchmarks/**",
                                     "/api/v1/categories/**",
-                                    "/api/v1/stats/**"
+                                    "/api/v1/stats/**",
+                                    // 내부 서비스 API (Data Engine → Core 캐시 eviction)
+                                    "/api/v1/internal/cache/evict"
                             )
                             .permitAll()
                             .anyRequest()

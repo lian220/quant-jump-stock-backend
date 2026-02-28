@@ -13,8 +13,9 @@ interface EconomicDataUseCase {
      *
      * @param startDate 수집 시작 날짜 (YYYY-MM-DD). null이면 Data Engine이 마지막 수집일+1부터 결정
      * @param endDate 수집 종료 날짜 (YYYY-MM-DD). null이면 오늘
+     * @param source 요청 출처 ("standalone" | "pipeline"). standalone=단독실행, pipeline=체이닝
      */
-    fun triggerEconomicDataUpdate(startDate: String? = null, endDate: String? = null): CompletableFuture<String>
+    fun triggerEconomicDataUpdate(startDate: String? = null, endDate: String? = null, source: String = "standalone"): CompletableFuture<String>
 
     /**
      * REST API를 통한 경제 데이터 업데이트 (대안 구현)

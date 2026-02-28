@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 import logging
 from core.database import MongoDB, PostgreSQL
 from config.settings import get_settings
+from core.timezone import latest_complete_bar_date_str
 
 logger = logging.getLogger(__name__)
 
@@ -62,11 +63,11 @@ class TechnicalAnalysisService:
             end_date_str = target_date
             analysis_date = target_date
         else:
-            # No target_date specified, use current date
-            end_dt = datetime.now()
+            # No target_date specified, use latest complete bar date (ET timezone)
+            end_date_str = latest_complete_bar_date_str()
+            end_dt = datetime.strptime(end_date_str, "%Y-%m-%d")
             start_dt = end_dt - timedelta(days=self.lookback_days)
             start_date_str = start_dt.strftime("%Y-%m-%d")
-            end_date_str = end_dt.strftime("%Y-%m-%d")
             analysis_date = end_date_str
 
         # Fetch daily data

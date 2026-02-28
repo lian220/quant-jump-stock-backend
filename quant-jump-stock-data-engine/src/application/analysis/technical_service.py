@@ -25,6 +25,7 @@ from domain.strategy.indicators import (
     calculate_macd,
 )
 from config.settings import get_settings
+from core.timezone import latest_complete_bar_date_str
 
 logger = logging.getLogger(__name__)
 
@@ -109,8 +110,8 @@ class TechnicalAnalysisApplicationService:
                     target_dt = datetime.strptime(target_date, "%Y-%m-%d")
                     analysis_date = target_date
                 else:
-                    target_dt = datetime.now()
-                    analysis_date = target_dt.strftime("%Y-%m-%d")
+                    analysis_date = latest_complete_bar_date_str()
+                    target_dt = datetime.strptime(analysis_date, "%Y-%m-%d")
 
                 data_start_dt = target_dt - timedelta(days=self.lookback_days)
                 query_start_date = data_start_dt.strftime("%Y-%m-%d")

@@ -50,6 +50,7 @@ class PubSubMessage:
     target_date: Optional[str] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
+    source: str = "standalone"  # "standalone" | "pipeline"
 
 
 class PubSubSubscriberAdapter:
@@ -91,6 +92,7 @@ class PubSubSubscriberAdapter:
                 target_date=payload.get("targetDate"),
                 start_date=payload.get("startDate"),
                 end_date=payload.get("endDate"),
+                source=payload.get("source", "standalone"),
             )
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse message: {e}")

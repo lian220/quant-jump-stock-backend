@@ -14,6 +14,7 @@ from datetime import datetime, date, timedelta
 from pytz import timezone
 
 from application.recommendation.sync_service import RecommendationSyncService
+from core.timezone import latest_complete_bar_date, latest_complete_bar_date_str
 
 # Cold Start 최적화: application.backtest.service → pandas/numpy 전체 로드
 # BacktestCheckpoint, _DEFAULT_BENCHMARK는 BacktestRequestHandler 내부에서 lazy import
@@ -180,6 +181,22 @@ class EconomicDataHandler(MessageHandler):
                     "duration": elapsed
                 })
 
+                # 파이프라인 체이닝: source="pipeline"이면 분석 단계 자동 트리거
+                if message.source == "pipeline":
+                    try:
+                        logger.info("🔗 [Pipeline] 경제데이터 완료 → 기술적+감정 분석 트리거")
+                        pipeline_rid = message.request_id if message.request_id.startswith("pipe-") else f"pipe-{message.request_id}"
+                        chain_payload = {
+                            "source": "pipeline",
+                            "requestId": pipeline_rid,
+                            "startDate": result.get("start_date"),
+                            "endDate": result.get("end_date"),
+                        }
+                        self.publisher.publish("TRIGGER_TECHNICAL_ANALYSIS", chain_payload)
+                        self.publisher.publish("TRIGGER_SENTIMENT_ANALYSIS", chain_payload)
+                    except Exception as chain_err:
+                        logger.error(f"❌ [Pipeline] 분석 트리거 발행 실패: {chain_err}")
+
         except (ValueError, KeyError, TypeError) as e:
             self._log_error("경제 데이터 수집 (재시도 불가 - 데이터 오류)", e)
 
@@ -250,7 +267,7 @@ class TechnicalAnalysisHandler(MessageHandler):
 
                 # 결과에서 날짜를 추출하지 못하면 기존 단일 날짜 fallback
                 if not analyzed_dates:
-                    analyzed_dates = [message.end_date or message.start_date or date.today().isoformat()]
+                    analyzed_dates = [message.end_date or message.start_date or latest_complete_bar_date_str()]
 
                 total_synced = 0
                 for analysis_date in analyzed_dates:
@@ -275,6 +292,18 @@ class TechnicalAnalysisHandler(MessageHandler):
                     "duration": time.time() - start_time,
                     "result": result
                 })
+
+                # 파이프라인 체이닝: source="pipeline"이면 Vertex AI 트리거
+                if message.source == "pipeline":
+                    try:
+                        logger.info("🔗 [Pipeline] 기술적 분석 완료 → Vertex AI 예측 트리거")
+                        pipeline_rid = message.request_id if message.request_id.startswith("pipe-") else f"pipe-{message.request_id}"
+                        self.publisher.publish("TRIGGER_VERTEX_AI_PREDICTION", {
+                            "source": "pipeline",
+                            "requestId": pipeline_rid,
+                        })
+                    except Exception as chain_err:
+                        logger.warning(f"⚠️ [Pipeline] Vertex AI 트리거 발행 실패 (분석은 성공): {chain_err}")
 
         except (ValueError, KeyError, TypeError) as e:
             self._log_error("기술적 분석 (재시도 불가 - 데이터 오류)", e)
@@ -404,9 +433,11 @@ class StockRecommendationHandler(MessageHandler):
 
     def __init__(
         self,
-        publisher: Optional[EventPublisherProtocol] = None
+        publisher: Optional[EventPublisherProtocol] = None,
+        cache_client: Optional['CoreCacheClient'] = None,
     ):
         self.publisher = publisher
+        self.cache_client = cache_client
 
     @property
     def topic(self) -> str:
@@ -423,7 +454,7 @@ class StockRecommendationHandler(MessageHandler):
         end_date: Optional[str]
     ) -> list[str]:
         """요청 파라미터를 실제 처리할 분석 날짜 목록으로 변환"""
-        today = date.today()
+        today = latest_complete_bar_date()
 
         if start_date and end_date:
             start = self._parse_date(start_date)
@@ -525,6 +556,10 @@ class StockRecommendationHandler(MessageHandler):
                 thread_ts=thread_ts,
             )
 
+            # Core API 캐시 eviction (best-effort)
+            if self.cache_client:
+                self.cache_client.evict_prediction_caches()
+
             self._log_success("종목 추천", start_time)
 
             if self.publisher:
@@ -613,62 +648,6 @@ class StrategyExecutionHandler(MessageHandler):
                     "timestamp": datetime.now(KST).isoformat(),
                     "requestId": message.request_id,
                     "error": str(e)
-                })
-            raise
-
-
-class NewsCollectionServiceProtocol(Protocol):
-    """뉴스 수집 서비스 프로토콜"""
-    def collect(self, source: str = "SAVETICKER") -> dict:
-        ...
-
-
-class NewsCollectionHandler(MessageHandler):
-    """뉴스 수집 핸들러 (Data Engine에서 수집 실행)"""
-
-    def __init__(
-        self,
-        service: NewsCollectionServiceProtocol,
-        publisher: Optional[EventPublisherProtocol] = None,
-    ):
-        self.service = service
-        self.publisher = publisher
-
-    @property
-    def topic(self) -> str:
-        return "quantiq.news.collection.request"
-
-    def handle(self, message: PubSubMessage) -> None:
-        start_time = self._log_start(message, "뉴스 수집 요청")
-
-        source = message.payload.get("source", "SAVETICKER")
-
-        try:
-            result = self.service.collect(source=source)
-
-            self._log_success("뉴스 수집", start_time)
-
-            if self.publisher:
-                self.publisher.publish("NEWS_COLLECTED", {
-                    "status": "success",
-                    "timestamp": datetime.now(KST).isoformat(),
-                    "requestId": message.request_id,
-                    "source": source,
-                    "articleIds": result.get("article_ids", []),
-                    "collectedCount": result.get("collected_count", 0),
-                    "duration": time.time() - start_time,
-                })
-
-        except Exception as e:
-            self._log_error("뉴스 수집", e)
-
-            if self.publisher:
-                self.publisher.publish("NEWS_COLLECTION_FAILED", {
-                    "status": "failed",
-                    "timestamp": datetime.now(KST).isoformat(),
-                    "requestId": message.request_id,
-                    "source": source,
-                    "error": str(e),
                 })
             raise
 

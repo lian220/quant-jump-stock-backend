@@ -45,7 +45,6 @@ from adapter.input.pubsub.handlers import (
     StrategyExecutionHandler,
     VertexAIHandler,
     BacktestRequestHandler,
-    NewsCollectionHandler,
 )
 from adapter.input.rest import ml_router
 from adapter.input.rest import analysis_router
@@ -58,6 +57,7 @@ from adapter.output.mongodb.analysis_repository import (
     MongoAnalysisResultRepository,
 )
 from adapter.output.slack import SlackAnalysisNotifierAdapter
+from adapter.output.core_api import CoreCacheClient
 
 # Heavy 패키지(pandas, numpy, yfinance) Cold Start 최적화:
 # EconomicDataService, RecommendationService, TechnicalAnalysisApplicationService,
@@ -101,7 +101,6 @@ def read_root():
             "strategy.execution.request",
             "vertex.ai.run.request",
             "quantiq.backtest.request",
-            "quantiq.news.collection.request",
         ],
         "timestamp": datetime.now(KST).isoformat()
     }
@@ -275,8 +274,12 @@ def _init_services():
         notifier=analysis_notifier,
         publisher=pubsub_publisher
     )
+    # Core API 캐시 클라이언트
+    cache_client = CoreCacheClient(base_url=settings.core_api.base_url)
+
     recommendation_handler = StockRecommendationHandler(
-        publisher=pubsub_publisher
+        publisher=pubsub_publisher,
+        cache_client=cache_client,
     )
 
     # 백테스트 핸들러
@@ -291,22 +294,22 @@ def _init_services():
         publisher=pubsub_publisher
     )
 
-    # Vertex AI 핸들러 (GCP 활성화 시)
+    # Vertex AI 핸들러 (VERTEX_AI_ENABLED 환경변수로 제어)
     vertexai_handler = None
-    if settings.gcp.enabled:
+    if settings.gcp.enabled:  # VERTEX_AI_ENABLED
         # 필수 설정 검증
         missing = []
         if not settings.gcp.project_id:
             missing.append("VERTEX_AI_PROJECT_ID")
         if not settings.gcp.model_bucket:
-            missing.append("VERTEX_AI_MODEL_BUCKET")
+            missing.append("VERTEX_AI_BUCKET_NAME")
         if not settings.gcp.region:
             missing.append("VERTEX_AI_REGION")
 
         if missing:
             logger.warning(f"Vertex AI 필수 설정 누락: {', '.join(missing)} — Vertex AI 비활성화")
         else:
-            logger.info("Vertex AI enabled - initializing services...")
+            logger.info("Vertex AI enabled (VERTEX_AI_ENABLED=true) - initializing services...")
             try:
                 from application.ml.prediction_service import PredictionService, GcpConfig
                 gcp_config = GcpConfig(
@@ -331,26 +334,7 @@ def _init_services():
             except Exception as e:
                 logger.exception(f"Failed to initialize Vertex AI services: {e}")
     else:
-        logger.info("GCP disabled - Vertex AI services not available")
-
-    # 뉴스 수집 서비스 초기화
-    from adapter.output.external.saveticker_client import SaveTickerClient
-    from adapter.output.mongodb.news_repository import MongoNewsRepository
-    from adapter.output.postgresql.collector_state_repository import PostgresCollectorStateRepository
-    from application.news.news_collection_service import NewsCollectionService
-
-    saveticker_client = SaveTickerClient()
-    news_mongo_repository = MongoNewsRepository(db)
-    collector_state_repository = PostgresCollectorStateRepository(pool=pg_pool)
-    news_collection_service = NewsCollectionService(
-        saveticker_client=saveticker_client,
-        news_repository=news_mongo_repository,
-        collector_state_repository=collector_state_repository,
-    )
-    news_collection_handler = NewsCollectionHandler(
-        service=news_collection_service,
-        publisher=pubsub_publisher,
-    )
+        logger.info("Vertex AI disabled (VERTEX_AI_ENABLED=false)")
 
     # 핸들러 맵 구성
     handlers_map = {
@@ -359,10 +343,14 @@ def _init_services():
         sentiment_handler.topic: sentiment_handler.handle,
         recommendation_handler.topic: recommendation_handler.handle,
         backtest_handler.topic: backtest_handler.handle,
-        news_collection_handler.topic: news_collection_handler.handle,
     }
     if vertexai_handler:
         handlers_map[vertexai_handler.topic] = vertexai_handler.handle
+    else:
+        # VERTEX_AI_ENABLED=false 여도 토픽 구독 → 파이프라인 체이닝 메시지 ACK 처리
+        async def _vertex_ai_noop(message):
+            logger.info(f"⏭️ Vertex AI 비활성화 — 메시지 스킵 (request={message.request_id})")
+        handlers_map["vertex.ai.run.request"] = _vertex_ai_noop
 
     return handlers_map, pubsub_publisher
 
@@ -381,7 +369,10 @@ def main():
 
 
 def _run_push_mode():
-    """Push 모드: Cloud Run용 — FastAPI가 메인, Pub/Sub push 엔드포인트로 메시지 수신"""
+    """Push 모드: Cloud Run용 — FastAPI가 메인, Pub/Sub push 엔드포인트로 메시지 수신
+
+    Cloud Scheduler가 Pub/Sub 메시지를 직접 발행하여 파이프라인 트리거.
+    """
     logger.info("Starting in PUSH mode (Cloud Run)")
 
     # 서비스 초기화
@@ -403,7 +394,7 @@ def _run_push_mode():
 
 
 def _run_pull_mode():
-    """Pull 모드: VM/로컬용 — Streaming pull이 메인, API는 별도 스레드"""
+    """Pull 모드: VM/로컬용 — Streaming pull (Cloud Scheduler가 파이프라인 트리거)"""
     logger.info("Starting in PULL mode (VM/Local)")
 
     # API 서버 시작 (별도 스레드)

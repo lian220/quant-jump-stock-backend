@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from core.database import MongoDB, PostgreSQL
 from core.config import settings
 from core.api_key_rotator import AlphaVantageKeyRotator
+from core.timezone import latest_complete_bar_date_str
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +42,7 @@ class SentimentAnalysisService:
             
         # 2. Date Setup
         if not start_date:
-            start_date = datetime.now().strftime('%Y-%m-%d')
+            start_date = latest_complete_bar_date_str()
         
         start_date_dt = datetime.strptime(start_date, '%Y-%m-%d')
         time_from = (start_date_dt - timedelta(days=3)).strftime("%Y%m%dT0000")

@@ -17,6 +17,7 @@ import atexit
 import json
 from datetime import datetime, timedelta, timezone, date
 from sklearn.metrics import mean_absolute_error, mean_squared_error
+from core.timezone import latest_complete_bar_date
 
 # ============================================
 # FINE_TUNE_MODE / TARGET_DATE 자체 판단
@@ -1320,8 +1321,8 @@ predicted_prices_actual = predicted_prices_actual[:actual_pred_len]
 last_data_date = pd.to_datetime(data['날짜'].iloc[-1])
 print(f"데이터베이스의 마지막 날짜: {last_data_date.strftime('%Y-%m-%d')}")
 
-# 예측을 실행하는 날짜 (오늘 날짜)
-prediction_date = datetime.now().date()
+# 예측을 실행하는 날짜 (마지막 완성된 거래일 기준)
+prediction_date = latest_complete_bar_date()
 print(f"예측 실행 날짜: {prediction_date.strftime('%Y-%m-%d')}")
 
 # 날짜 생성: 예측 실행 날짜를 기준으로 날짜 범위 생성

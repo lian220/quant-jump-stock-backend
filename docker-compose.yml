@@ -151,11 +151,12 @@ services:
       # Slack
       SLACK_ENABLED: ${SLACK_ENABLED:-false}
       SLACK_CHANNEL: ${SLACK_CHANNEL:-C0A1XASTLH2}
-      # Google Cloud
-      VERTEX_AI_ENABLED: ${VERTEX_AI_ENABLED:-false}
+      # Google Cloud — VERTEX_AI_ENABLED는 .env.common에서 로드 (environment에서 재정의 X)
       VERTEX_AI_CREDENTIALS_PATH: "/app/credentials/vertex-ai-key.json"
       # ML Scripts path
       ML_SCRIPTS_DIR: "/scripts/ml"
+      # Core API (컨테이너 네트워크용 — 캐시 eviction 콜백)
+      CORE_API_URL: "http://quant-jump-stock-core:${CORE_API_PORT:-10010}"
       # PostgreSQL Pool Size (Supabase Session 모드 연결 수 제한 대응)
       PG_POOL_MAX_CONN: 2
       PG_POOL_MIN_CONN: 1
@@ -214,8 +215,7 @@ services:
       SLACK_CHANNEL: ${SLACK_CHANNEL:-}
       SLACK_WEBHOOK_URL: ${SLACK_WEBHOOK_URL_SCHEDULER:-}
       SLACK_WEBHOOK_URL_ERROR: ${SLACK_WEBHOOK_URL_ERROR:-}
-      # Vertex AI - .env.common의 GCP_CREDENTIALS_ENCODED로 인증
-      VERTEX_AI_ENABLED: ${VERTEX_AI_ENABLED:-false}
+      # Vertex AI — VERTEX_AI_ENABLED는 .env.common에서 로드 (environment에서 재정의 X)
       # KIS (Korean Investment & Securities) - Temporary
       KIS_APP_KEY: "test_app_key"
       KIS_APP_SECRET: "test_app_secret"
