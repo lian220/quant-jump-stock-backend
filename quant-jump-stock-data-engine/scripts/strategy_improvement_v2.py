@@ -304,164 +304,170 @@ ALREADY_V2 = {
 
 SYMBOLS = ["AAPL", "NVDA", "TSLA", "MSFT", "GOOGL", "AMZN", "META", "JNJ", "AMAT", "INTC"]
 
-# =====================================================================
-# 실행
-# =====================================================================
-loader = MongoDataLoader(uri=os.environ["MONGODB_URI"])
-config = BacktestConfig(
-    start_date=date(2021, 1, 1), end_date=date(2026, 2, 25),
-    initial_capital=Decimal("100000"), tickers=SYMBOLS,
-    commission_rate=Decimal("0.00015"), tax_rate=Decimal("0.0023"),
-    slippage_rate=Decimal("0.001"), max_positions=5, position_size_pct=Decimal("0.2"),
-    benchmark_ticker="SPY",
-)
+def main():
+    # =====================================================================
+    # 실행
+    # =====================================================================
+    loader = MongoDataLoader(uri=os.environ["MONGODB_URI"])
+    try:
+        config = BacktestConfig(
+            start_date=date(2021, 1, 1), end_date=date(2026, 2, 25),
+            initial_capital=Decimal("100000"), tickers=SYMBOLS,
+            commission_rate=Decimal("0.00015"), tax_rate=Decimal("0.0023"),
+            slippage_rate=Decimal("0.001"), max_positions=5, position_size_pct=Decimal("0.2"),
+            benchmark_ticker="SPY",
+        )
 
-print("=" * 140)
-print("전략 개선 v2 백테스트 (엔진 수정 포함)")
-print("핵심 수정: 리스크 매니저에도 최소 보유 기간 적용 (stop loss 즉시 발동 방지)")
-print("기간: 2021-01-01 ~ 2026-02-25 | 종목: %d개 | 자본: $100,000" % len(SYMBOLS))
-print("=" * 140)
+        print("=" * 140)
+        print("전략 개선 v2 백테스트 (엔진 수정 포함)")
+        print("핵심 수정: 리스크 매니저에도 최소 보유 기간 적용 (stop loss 즉시 발동 방지)")
+        print("기간: 2021-01-01 ~ 2026-02-25 | 종목: %d개 | 자본: $100,000" % len(SYMBOLS))
+        print("=" * 140)
 
-# 1. v1 vs v2 비교 대상 전략
-print("\n[PHASE 1] v1 vs v2 비교 테스트 (7개 전략)")
-print("-" * 140)
-print("%-4s %-28s | %10s | %6s | %7s | %8s | %7s | %8s" % (
-    "#", "전략명", "수익률", "거래수", "승률", "MDD", "Sharpe", "CAGR"
-))
-print("-" * 140)
+        # 1. v1 vs v2 비교 대상 전략
+        print("\n[PHASE 1] v1 vs v2 비교 테스트 (7개 전략)")
+        print("-" * 140)
+        print("%-4s %-28s | %10s | %6s | %7s | %8s | %7s | %8s" % (
+            "#", "전략명", "수익률", "거래수", "승률", "MDD", "Sharpe", "CAGR"
+        ))
+        print("-" * 140)
 
-comparison_results = {}
-for sid in STRATEGIES_V1.keys():
-    v1_def = StrategyDefinition(**STRATEGIES_V1[sid])
-    v2_def = StrategyDefinition(**STRATEGIES_V2[sid])
+        comparison_results = {}
+        for sid in STRATEGIES_V1.keys():
+            v1_def = StrategyDefinition(**STRATEGIES_V1[sid])
+            v2_def = StrategyDefinition(**STRATEGIES_V2[sid])
 
-    e1 = BacktestEngine(data_loader=loader, config=config)
-    r1 = e1.run(v1_def)
+            e1 = BacktestEngine(data_loader=loader, config=config)
+            r1 = e1.run(v1_def)
 
-    e2 = BacktestEngine(data_loader=loader, config=config)
-    r2 = e2.run(v2_def)
+            e2 = BacktestEngine(data_loader=loader, config=config)
+            r2 = e2.run(v2_def)
 
-    comparison_results[sid] = {
-        "v1": {"return": float(r1.total_return), "trades": r1.total_trades,
-               "win_rate": float(r1.win_rate) if r1.win_rate else 0,
-               "mdd": float(r1.mdd) if r1.mdd else 0,
-               "sharpe": float(r1.sharpe_ratio) if r1.sharpe_ratio else 0,
-               "cagr": float(r1.cagr) if r1.cagr else 0},
-        "v2": {"return": float(r2.total_return), "trades": r2.total_trades,
-               "win_rate": float(r2.win_rate) if r2.win_rate else 0,
-               "mdd": float(r2.mdd) if r2.mdd else 0,
-               "sharpe": float(r2.sharpe_ratio) if r2.sharpe_ratio else 0,
-               "cagr": float(r2.cagr) if r2.cagr else 0},
-    }
+            comparison_results[sid] = {
+                "v1": {"return": float(r1.total_return), "trades": r1.total_trades,
+                       "win_rate": float(r1.win_rate) if r1.win_rate else 0,
+                       "mdd": float(r1.mdd) if r1.mdd else 0,
+                       "sharpe": float(r1.sharpe_ratio) if r1.sharpe_ratio else 0,
+                       "cagr": float(r1.cagr) if r1.cagr else 0},
+                "v2": {"return": float(r2.total_return), "trades": r2.total_trades,
+                       "win_rate": float(r2.win_rate) if r2.win_rate else 0,
+                       "mdd": float(r2.mdd) if r2.mdd else 0,
+                       "sharpe": float(r2.sharpe_ratio) if r2.sharpe_ratio else 0,
+                       "cagr": float(r2.cagr) if r2.cagr else 0},
+            }
 
-    delta = comparison_results[sid]["v2"]["return"] - comparison_results[sid]["v1"]["return"]
-    v1 = comparison_results[sid]["v1"]
-    v2 = comparison_results[sid]["v2"]
+            delta = comparison_results[sid]["v2"]["return"] - comparison_results[sid]["v1"]["return"]
+            v1 = comparison_results[sid]["v1"]
+            v2 = comparison_results[sid]["v2"]
 
-    print("  v1 %-25s | %9.2f%% | %6d | %6.1f%% | %7.2f%% | %7.2f | %7.2f%%" % (
-        STRATEGIES_V1[sid]["name"], v1["return"], v1["trades"], v1["win_rate"], v1["mdd"], v1["sharpe"], v1["cagr"]))
-    arrow = "▲" if delta > 0 else "▼" if delta < 0 else "="
-    print("  v2 %-25s | %9.2f%% | %6d | %6.1f%% | %7.2f%% | %7.2f | %7.2f%%  %s %+.2f%%p" % (
-        STRATEGIES_V2[sid]["name"], v2["return"], v2["trades"], v2["win_rate"], v2["mdd"], v2["sharpe"], v2["cagr"], arrow, delta))
-    print()
+            print("  v1 %-25s | %9.2f%% | %6d | %6.1f%% | %7.2f%% | %7.2f | %7.2f%%" % (
+                STRATEGIES_V1[sid]["name"], v1["return"], v1["trades"], v1["win_rate"], v1["mdd"], v1["sharpe"], v1["cagr"]))
+            arrow = "▲" if delta > 0 else "▼" if delta < 0 else "="
+            print("  v2 %-25s | %9.2f%% | %6d | %6.1f%% | %7.2f%% | %7.2f | %7.2f%%  %s %+.2f%%p" % (
+                STRATEGIES_V2[sid]["name"], v2["return"], v2["trades"], v2["win_rate"], v2["mdd"], v2["sharpe"], v2["cagr"], arrow, delta))
+            print()
 
-# 2. 이미 확정된 전략 (기존 v2 + 엔진 수정 효과)
-print("\n[PHASE 2] 기존 확정 전략 재테스트 (5개, 엔진 수정 효과 확인)")
-print("-" * 140)
-print("%-4s %-28s | %10s | %6s | %7s | %8s | %7s | %8s" % (
-    "#", "전략명", "수익률", "거래수", "승률", "MDD", "Sharpe", "CAGR"
-))
-print("-" * 140)
+        # 2. 이미 확정된 전략 (기존 v2 + 엔진 수정 효과)
+        print("\n[PHASE 2] 기존 확정 전략 재테스트 (5개, 엔진 수정 효과 확인)")
+        print("-" * 140)
+        print("%-4s %-28s | %10s | %6s | %7s | %8s | %7s | %8s" % (
+            "#", "전략명", "수익률", "거래수", "승률", "MDD", "Sharpe", "CAGR"
+        ))
+        print("-" * 140)
 
-existing_results = {}
-for sid, sdict in ALREADY_V2.items():
-    strategy = StrategyDefinition(**sdict)
-    engine = BacktestEngine(data_loader=loader, config=config)
-    r = engine.run(strategy)
-    existing_results[sid] = {
-        "return": float(r.total_return), "trades": r.total_trades,
-        "win_rate": float(r.win_rate) if r.win_rate else 0,
-        "mdd": float(r.mdd) if r.mdd else 0,
-        "sharpe": float(r.sharpe_ratio) if r.sharpe_ratio else 0,
-        "cagr": float(r.cagr) if r.cagr else 0,
-    }
-    er = existing_results[sid]
-    print("  %-28s | %9.2f%% | %6d | %6.1f%% | %7.2f%% | %7.2f | %7.2f%%" % (
-        sdict["name"], er["return"], er["trades"], er["win_rate"], er["mdd"], er["sharpe"], er["cagr"]))
+        existing_results = {}
+        for sid, sdict in ALREADY_V2.items():
+            strategy = StrategyDefinition(**sdict)
+            engine = BacktestEngine(data_loader=loader, config=config)
+            r = engine.run(strategy)
+            existing_results[sid] = {
+                "return": float(r.total_return), "trades": r.total_trades,
+                "win_rate": float(r.win_rate) if r.win_rate else 0,
+                "mdd": float(r.mdd) if r.mdd else 0,
+                "sharpe": float(r.sharpe_ratio) if r.sharpe_ratio else 0,
+                "cagr": float(r.cagr) if r.cagr else 0,
+            }
+            er = existing_results[sid]
+            print("  %-28s | %9.2f%% | %6d | %6.1f%% | %7.2f%% | %7.2f | %7.2f%%" % (
+                sdict["name"], er["return"], er["trades"], er["win_rate"], er["mdd"], er["sharpe"], er["cagr"]))
 
-# 3. 전체 결과 요약 (v2 기준)
-print("\n\n" + "=" * 140)
-print("전체 결과 요약 (v2 기준, 수익률 순)")
-print("=" * 140)
-print("%-4s %-28s | %10s | %6s | %7s | %8s | %7s | %8s | %s" % (
-    "#", "전략명", "수익률", "거래수", "승률", "MDD", "Sharpe", "CAGR", "판정"
-))
-print("-" * 140)
+        # 3. 전체 결과 요약 (v2 기준)
+        print("\n\n" + "=" * 140)
+        print("전체 결과 요약 (v2 기준, 수익률 순)")
+        print("=" * 140)
+        print("%-4s %-28s | %10s | %6s | %7s | %8s | %7s | %8s | %s" % (
+            "#", "전략명", "수익률", "거래수", "승률", "MDD", "Sharpe", "CAGR", "판정"
+        ))
+        print("-" * 140)
 
-all_v2 = {}
-for sid, res in comparison_results.items():
-    all_v2[sid] = res["v2"]
-    all_v2[sid]["name"] = STRATEGIES_V2[sid]["name"]
-for sid, res in existing_results.items():
-    all_v2[sid] = res
-    all_v2[sid]["name"] = ALREADY_V2[sid]["name"]
+        all_v2 = {}
+        for sid, res in comparison_results.items():
+            all_v2[sid] = res["v2"]
+            all_v2[sid]["name"] = STRATEGIES_V2[sid]["name"]
+        for sid, res in existing_results.items():
+            all_v2[sid] = res
+            all_v2[sid]["name"] = ALREADY_V2[sid]["name"]
 
-sorted_v2 = sorted(all_v2.items(), key=lambda x: x[1]["return"], reverse=True)
-for idx, (sid, r) in enumerate(sorted_v2, 1):
-    if r["return"] > 20:
-        grade = "A"
-    elif r["return"] > 0:
-        grade = "B"
-    elif r["return"] > -20:
-        grade = "C"
-    elif r["trades"] == 0:
-        grade = "N/A"
-    else:
-        grade = "F"
-    print("%-4d %-28s | %9.2f%% | %6d | %6.1f%% | %7.2f%% | %7.2f | %7.2f%% | %s" % (
-        idx, r["name"], r["return"], r["trades"], r["win_rate"], r["mdd"], r["sharpe"], r["cagr"], grade))
+        sorted_v2 = sorted(all_v2.items(), key=lambda x: x[1]["return"], reverse=True)
+        for idx, (sid, r) in enumerate(sorted_v2, 1):
+            if r["return"] > 20:
+                grade = "A"
+            elif r["return"] > 0:
+                grade = "B"
+            elif r["return"] > -20:
+                grade = "C"
+            elif r["trades"] == 0:
+                grade = "N/A"
+            else:
+                grade = "F"
+            print("%-4d %-28s | %9.2f%% | %6d | %6.1f%% | %7.2f%% | %7.2f | %7.2f%% | %s" % (
+                idx, r["name"], r["return"], r["trades"], r["win_rate"], r["mdd"], r["sharpe"], r["cagr"], grade))
 
-# 4. 결정론 검증 (v2 전략 3회 반복)
-print("\n\n[PHASE 3] 결정론 검증 (v2 전략 2회 추가 실행)")
-print("-" * 80)
+        # 4. 결정론 검증 (v2 전략 3회 반복)
+        print("\n\n[PHASE 3] 결정론 검증 (v2 전략 2회 추가 실행)")
+        print("-" * 80)
 
-all_det_pass = True
-for sid, sdict in {**STRATEGIES_V2, **ALREADY_V2}.items():
-    strategy = StrategyDefinition(**sdict)
-    returns = [all_v2[sid]["return"]]
-    for _ in range(2):
-        engine = BacktestEngine(data_loader=loader, config=config)
-        r = engine.run(strategy)
-        returns.append(round(float(r.total_return), 2))
-    det_ok = len(set([round(r, 2) for r in returns])) == 1
-    if not det_ok:
-        all_det_pass = False
-        print("  FAIL %-25s : %s" % (sdict["name"], returns))
+        all_det_pass = True
+        for sid, sdict in {**STRATEGIES_V2, **ALREADY_V2}.items():
+            strategy = StrategyDefinition(**sdict)
+            returns = [all_v2[sid]["return"]]
+            for _ in range(2):
+                engine = BacktestEngine(data_loader=loader, config=config)
+                r = engine.run(strategy)
+                returns.append(round(float(r.total_return), 2))
+            det_ok = len(set([round(r, 2) for r in returns])) == 1
+            if not det_ok:
+                all_det_pass = False
+                print("  FAIL %-25s : %s" % (sdict["name"], returns))
 
-if all_det_pass:
-    print("  전체 PASS - 12개 전략 x 3회 = 모두 동일 결과")
+        if all_det_pass:
+            print("  전체 PASS - 12개 전략 x 3회 = 모두 동일 결과")
 
-# 5. JSON 저장
-output = {
-    "test_config": {
-        "period": "2021-01-01 ~ 2026-02-25",
-        "symbols": SYMBOLS,
-        "initial_capital": 100000,
-        "engine_changes": [
-            "리스크 매니저에도 최소 보유 기간 적용 (stop loss 즉시 발동 방지)",
-            "쿨다운 5일, 최소 보유 5일 유지",
-        ]
-    },
-    "v1_vs_v2_comparison": comparison_results,
-    "existing_v2_results": existing_results,
-    "all_v2_ranking": {sid: r for sid, r in sorted_v2},
-    "determinism": "ALL_PASS" if all_det_pass else "SOME_FAIL",
-}
+        # 5. JSON 저장
+        output = {
+            "test_config": {
+                "period": "2021-01-01 ~ 2026-02-25",
+                "symbols": SYMBOLS,
+                "initial_capital": 100000,
+                "engine_changes": [
+                    "리스크 매니저에도 최소 보유 기간 적용 (stop loss 즉시 발동 방지)",
+                    "쿨다운 5일, 최소 보유 5일 유지",
+                ]
+            },
+            "v1_vs_v2_comparison": comparison_results,
+            "existing_v2_results": existing_results,
+            "all_v2_ranking": {sid: r for sid, r in sorted_v2},
+            "determinism": "ALL_PASS" if all_det_pass else "SOME_FAIL",
+        }
 
-out_path = Path(__file__).resolve().parent / "strategy_improvement_v2_results.json"
-with open(out_path, "w", encoding="utf-8") as f:
-    json.dump(output, f, ensure_ascii=False, indent=2, default=str)
-print(f"\n결과 저장: {out_path}")
+        out_path = Path(__file__).resolve().parent / "strategy_improvement_v2_results.json"
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(output, f, ensure_ascii=False, indent=2, default=str)
+        print(f"\n결과 저장: {out_path}")
+    finally:
+        loader.close()
+    print("완료.")
 
-loader.close()
-print("완료.")
+
+if __name__ == "__main__":
+    main()

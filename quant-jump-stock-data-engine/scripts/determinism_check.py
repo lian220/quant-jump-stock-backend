@@ -96,40 +96,46 @@ prev_results = {
     "triple_screen_original": 0.52,
 }
 
-loader = MongoDataLoader(uri=os.environ["MONGODB_URI"])
+def main():
+    loader = MongoDataLoader(uri=os.environ["MONGODB_URI"])
+    try:
+        print("=" * 70)
+        print("결정론 검증: 이전 실행 결과와 재실행 결과 비교")
+        print("=" * 70)
+        print("%-35s %10s %10s %6s" % ("전략", "이전", "재실행", "판정"))
+        print("-" * 70)
 
-print("=" * 70)
-print("결정론 검증: 이전 실행 결과와 재실행 결과 비교")
-print("=" * 70)
-print("%-35s %10s %10s %6s" % ("전략", "이전", "재실행", "판정"))
-print("-" * 70)
+        all_match = True
+        for sid, sdict in strategies.items():
+            strategy = StrategyDefinition(**sdict)
+            config = BacktestConfig(
+                start_date=date(2025, 9, 1), end_date=date(2026, 2, 25),
+                initial_capital=Decimal("100000"), tickers=SYMBOLS,
+                commission_rate=Decimal("0.00015"), tax_rate=Decimal("0.0023"),
+                slippage_rate=Decimal("0.001"), max_positions=5, position_size_pct=Decimal("0.2"),
+                benchmark_ticker="SPY",
+            )
+            engine = BacktestEngine(data_loader=loader, config=config)
+            r = engine.run(strategy)
+            ret = round(float(r.total_return), 2)
+            p = prev_results.get(sid)
+            if p is not None and ret == p:
+                match = "PASS"
+            elif p is not None:
+                match = "FAIL"
+                all_match = False
+            else:
+                match = "N/A"
+            print("%-35s %10s %10.2f %6s" % (sdict["name"], str(p), ret, match))
 
-all_match = True
-for sid, sdict in strategies.items():
-    strategy = StrategyDefinition(**sdict)
-    config = BacktestConfig(
-        start_date=date(2025, 9, 1), end_date=date(2026, 2, 25),
-        initial_capital=Decimal("100000"), tickers=SYMBOLS,
-        commission_rate=Decimal("0.00015"), tax_rate=Decimal("0.0023"),
-        slippage_rate=Decimal("0.001"), max_positions=5, position_size_pct=Decimal("0.2"),
-        benchmark_ticker="SPY",
-    )
-    engine = BacktestEngine(data_loader=loader, config=config)
-    r = engine.run(strategy)
-    ret = round(float(r.total_return), 2)
-    p = prev_results.get(sid)
-    if p is not None and ret == p:
-        match = "PASS"
-    elif p is not None:
-        match = "FAIL"
-        all_match = False
-    else:
-        match = "N/A"
-    print("%-35s %10s %10.2f %6s" % (sdict["name"], str(p), ret, match))
+        print("-" * 70)
+        if all_match:
+            print("결과: PASS - 모든 전략 이전 실행과 동일 결과 (결정론적)")
+        else:
+            print("결과: FAIL - 불일치 발견!")
+    finally:
+        loader.close()
 
-print("-" * 70)
-if all_match:
-    print("결과: PASS - 모든 전략 이전 실행과 동일 결과 (결정론적)")
-else:
-    print("결과: FAIL - 불일치 발견!")
-loader.close()
+
+if __name__ == "__main__":
+    main()

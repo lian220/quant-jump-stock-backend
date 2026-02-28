@@ -16,6 +16,7 @@ import logging
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from urllib.parse import urlparse
 
 # src를 PYTHONPATH에 추가
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
@@ -477,96 +478,101 @@ def main():
         print("❌ MONGODB_URI not found in environment")
         sys.exit(1)
 
-    print(f"[MongoDB] Connecting... (URI prefix: {uri[:30]}...)")
+    parsed = urlparse(uri)
+    safe_host = parsed.hostname or "unknown"
+    safe_port = f":{parsed.port}" if parsed.port else ""
+    print(f"[MongoDB] Connecting... (host: {safe_host}{safe_port})")
 
     data_loader = MongoDataLoader(uri=uri)
 
-    # 데이터 범위 확인
-    min_date, max_date, count = data_loader.get_date_range()
-    print(f"[Data] Range: {min_date} ~ {max_date}, {count} days")
+    try:
+        # 데이터 범위 확인
+        min_date, max_date, count = data_loader.get_date_range()
+        print(f"[Data] Range: {min_date} ~ {max_date}, {count} days")
 
-    # 백테스트 기간: 최근 6개월 (감성/추천 데이터가 있는 기간)
-    start = date(2025, 9, 1)
-    end = date(2026, 2, 25)
-    print(f"[Backtest] Period: {start} ~ {end}")
-    print(f"[Backtest] Symbols: {TEST_SYMBOLS}")
+        # 백테스트 기간: 최근 6개월 (감성/추천 데이터가 있는 기간)
+        start = date(2025, 9, 1)
+        end = date(2026, 2, 25)
+        print(f"[Backtest] Period: {start} ~ {end}")
+        print(f"[Backtest] Symbols: {TEST_SYMBOLS}")
 
-    all_results = []
+        all_results = []
 
-    # --- 기존 전략 실행 ---
-    print("\n>>> 기존(원본) 전략 백테스트 실행 중...")
-    for key, strategy_dict in ORIGINAL_STRATEGIES.items():
-        try:
-            logger.info(f"Running: {strategy_dict['name']}")
-            result = run_single_backtest(strategy_dict, data_loader, start, end, TEST_SYMBOLS)
-            all_results.append(result)
-            print(f"  ✅ {strategy_dict['name']}: {result['total_return']:.1f}% ({result['total_trades']} trades)")
-        except Exception as e:
-            print(f"  ❌ {strategy_dict['name']}: {e}")
-            all_results.append({
-                "strategy_id": strategy_dict["strategy_id"],
-                "strategy_name": strategy_dict["name"],
-                "total_return": 0, "cagr": None, "mdd": None,
-                "sharpe_ratio": None, "sortino_ratio": None, "win_rate": None,
-                "total_trades": 0, "profit_factor": None, "avg_holding_days": None,
-                "final_value": 100000, "benchmark_return": None, "alpha": None,
-                "error": str(e), "stop_loss_count": 0, "take_profit_count": 0,
-                "trailing_stop_count": 0,
-            })
+        # --- 기존 전략 실행 ---
+        print("\n>>> 기존(원본) 전략 백테스트 실행 중...")
+        for key, strategy_dict in ORIGINAL_STRATEGIES.items():
+            try:
+                logger.info(f"Running: {strategy_dict['name']}")
+                result = run_single_backtest(strategy_dict, data_loader, start, end, TEST_SYMBOLS)
+                all_results.append(result)
+                print(f"  ✅ {strategy_dict['name']}: {result['total_return']:.1f}% ({result['total_trades']} trades)")
+            except Exception as e:
+                print(f"  ❌ {strategy_dict['name']}: {e}")
+                all_results.append({
+                    "strategy_id": strategy_dict["strategy_id"],
+                    "strategy_name": strategy_dict["name"],
+                    "total_return": 0, "cagr": None, "mdd": None,
+                    "sharpe_ratio": None, "sortino_ratio": None, "win_rate": None,
+                    "total_trades": 0, "profit_factor": None, "avg_holding_days": None,
+                    "final_value": 100000, "benchmark_return": None, "alpha": None,
+                    "error": str(e), "stop_loss_count": 0, "take_profit_count": 0,
+                    "trailing_stop_count": 0,
+                })
 
-    # --- 검증 반영 전략 실행 ---
-    print("\n>>> 검증 데이터 반영 전략 백테스트 실행 중...")
-    for key, strategy_dict in VALIDATED_STRATEGIES.items():
-        try:
-            logger.info(f"Running: {strategy_dict['name']}")
-            result = run_single_backtest(strategy_dict, data_loader, start, end, TEST_SYMBOLS)
-            all_results.append(result)
-            print(f"  ✅ {strategy_dict['name']}: {result['total_return']:.1f}% ({result['total_trades']} trades)")
-        except Exception as e:
-            print(f"  ❌ {strategy_dict['name']}: {e}")
-            all_results.append({
-                "strategy_id": strategy_dict["strategy_id"],
-                "strategy_name": strategy_dict["name"],
-                "total_return": 0, "cagr": None, "mdd": None,
-                "sharpe_ratio": None, "sortino_ratio": None, "win_rate": None,
-                "total_trades": 0, "profit_factor": None, "avg_holding_days": None,
-                "final_value": 100000, "benchmark_return": None, "alpha": None,
-                "error": str(e), "stop_loss_count": 0, "take_profit_count": 0,
-                "trailing_stop_count": 0,
-            })
+        # --- 검증 반영 전략 실행 ---
+        print("\n>>> 검증 데이터 반영 전략 백테스트 실행 중...")
+        for key, strategy_dict in VALIDATED_STRATEGIES.items():
+            try:
+                logger.info(f"Running: {strategy_dict['name']}")
+                result = run_single_backtest(strategy_dict, data_loader, start, end, TEST_SYMBOLS)
+                all_results.append(result)
+                print(f"  ✅ {strategy_dict['name']}: {result['total_return']:.1f}% ({result['total_trades']} trades)")
+            except Exception as e:
+                print(f"  ❌ {strategy_dict['name']}: {e}")
+                all_results.append({
+                    "strategy_id": strategy_dict["strategy_id"],
+                    "strategy_name": strategy_dict["name"],
+                    "total_return": 0, "cagr": None, "mdd": None,
+                    "sharpe_ratio": None, "sortino_ratio": None, "win_rate": None,
+                    "total_trades": 0, "profit_factor": None, "avg_holding_days": None,
+                    "final_value": 100000, "benchmark_return": None, "alpha": None,
+                    "error": str(e), "stop_loss_count": 0, "take_profit_count": 0,
+                    "trailing_stop_count": 0,
+                })
 
-    # --- 비교 테이블 출력 ---
-    print_comparison_table(all_results)
+        # --- 비교 테이블 출력 ---
+        print_comparison_table(all_results)
 
-    # --- 원본 vs 검증 쌍별 비교 ---
-    print("\n>>> 원본 vs 검증 전략 비교:")
-    pairs = [
-        ("rsi_oversold_original", "rsi_oversold_v2", "RSI 과매도"),
-        ("trend_following_original", "trend_following_fred_v2", "추세 추종"),
-        ("triple_screen_original", "triple_screen_sentiment_v2", "트리플 스크린"),
-        ("mean_reversion_original", "mean_reversion_v2", "평균 회귀"),
-    ]
+        # --- 원본 vs 검증 쌍별 비교 ---
+        print("\n>>> 원본 vs 검증 전략 비교:")
+        pairs = [
+            ("rsi_oversold_original", "rsi_oversold_v2", "RSI 과매도"),
+            ("trend_following_original", "trend_following_fred_v2", "추세 추종"),
+            ("triple_screen_original", "triple_screen_sentiment_v2", "트리플 스크린"),
+            ("mean_reversion_original", "mean_reversion_v2", "평균 회귀"),
+        ]
 
-    results_map = {r["strategy_id"]: r for r in all_results}
-    for orig_id, val_id, label in pairs:
-        orig = results_map.get(orig_id, {})
-        val = results_map.get(val_id, {})
-        o_ret = orig.get("total_return", 0)
-        v_ret = val.get("total_return", 0)
-        diff = v_ret - o_ret
-        sign = "+" if diff >= 0 else ""
-        o_trades = orig.get("total_trades", 0)
-        v_trades = val.get("total_trades", 0)
-        print(f"  {label:<15}: 원본 {o_ret:+.1f}% ({o_trades}t) → 검증 {v_ret:+.1f}% ({v_trades}t) | 차이: {sign}{diff:.1f}%p")
+        results_map = {r["strategy_id"]: r for r in all_results}
+        for orig_id, val_id, label in pairs:
+            orig = results_map.get(orig_id, {})
+            val = results_map.get(val_id, {})
+            o_ret = orig.get("total_return", 0)
+            v_ret = val.get("total_return", 0)
+            diff = v_ret - o_ret
+            sign = "+" if diff >= 0 else ""
+            o_trades = orig.get("total_trades", 0)
+            v_trades = val.get("total_trades", 0)
+            print(f"  {label:<15}: 원본 {o_ret:+.1f}% ({o_trades}t) → 검증 {v_ret:+.1f}% ({v_trades}t) | 차이: {sign}{diff:.1f}%p")
 
-    # --- JSON 결과 저장 ---
-    output_path = Path(__file__).resolve().parent.parent.parent / "docs" / "analysis" / "백테스트_검증결과.json"
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(output_path, "w", encoding="utf-8") as f:
-        json.dump(all_results, f, ensure_ascii=False, indent=2, default=str)
-    print(f"\n[Output] 결과 저장: {output_path}")
+        # --- JSON 결과 저장 ---
+        output_path = Path(__file__).resolve().parent.parent.parent / "docs" / "analysis" / "백테스트_검증결과.json"
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        with open(output_path, "w", encoding="utf-8") as f:
+            json.dump(all_results, f, ensure_ascii=False, indent=2, default=str)
+        print(f"\n[Output] 결과 저장: {output_path}")
+    finally:
+        data_loader.close()
 
-    data_loader.close()
     print("\n완료.")
 
 

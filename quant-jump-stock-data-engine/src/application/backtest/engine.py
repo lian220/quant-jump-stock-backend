@@ -23,6 +23,7 @@ Backtest Engine
     result = engine.run(strategy)
 """
 
+import bisect
 import logging
 import time
 from dataclasses import dataclass, field
@@ -126,7 +127,10 @@ class BacktestEngine:
         # Whipsaw 방지: 모든 청산 후 쿨다운 (종목별 재진입 금지 날짜)
         self._cooldown_until: Dict[str, date] = {}
         self._cooldown_days: int = 5  # 청산 후 5거래일 재진입 금지
-        self._min_holding_days: int = 5  # 최소 보유 기간 (매수 후 N일간 전략 매도 금지)
+        self._min_holding_days: int = 5  # 최소 보유 기간 (매수 후 N거래일간 전략 매도 금지)
+
+        # 거래일 캐시 (bisect O(log n) 카운팅용)
+        self._trading_dates_sorted: List[date] = []
 
         # 벤치마크 데이터 (단일 - 하위호환)
         self._benchmark_data: Optional[pd.DataFrame] = None
@@ -165,8 +169,12 @@ class BacktestEngine:
                     strategy, "No data loaded for any symbol"
                 )
 
-            # 3. 거래일 목록 생성
+            # 3. 크로스-심볼 지표 계산 (per_sector_ratio, momentum_3m ranking)
+            self._compute_cross_symbol_indicators(strategy)
+
+            # 4. 거래일 목록 생성
             trading_dates = self._get_trading_dates()
+            self._trading_dates_sorted = trading_dates  # already sorted
 
             if not trading_dates:
                 return self._create_error_result(
@@ -179,14 +187,14 @@ class BacktestEngine:
                 f"{len(self.config.tickers)} symbols"
             )
 
-            # 4. 지표 사전 계산 (O(n²) → O(n) 최적화)
+            # 5. 지표 사전 계산 (O(n²) → O(n) 최적화)
             self._precompute_indicators(strategy)
 
-            # 5. 일별 시뮬레이션
+            # 6. 일별 시뮬레이션
             for current_date in trading_dates:
                 self._process_day(strategy, current_date)
 
-            # 6. 결과 생성
+            # 7. 결과 생성
             execution_time = time.time() - start_time
             result = self._create_result(strategy, execution_time)
 
@@ -243,6 +251,12 @@ class BacktestEngine:
         self._benchmark_data = None
         self._benchmark_values = []  # List of (date, Decimal) tuples for date-alignment
         self._benchmark_first_close = None
+        # Whipsaw 방지 상태 리셋
+        self._cooldown_until = {}
+
+        # 거래일 캐시 (trading days 카운트용, bisect O(log n))
+        self._trading_dates_sorted: List[date] = []
+
         # SCRUM-337: 다중 벤치마크 리셋
         self._multi_benchmark_data = {}
         self._multi_benchmark_values = {}
@@ -283,9 +297,14 @@ class BacktestEngine:
             IndicatorType.DIVIDEND_YIELD.value,
             IndicatorType.ROE.value, IndicatorType.EARNINGS_GROWTH.value,
             IndicatorType.DEBT_TO_EQUITY.value, IndicatorType.FORWARD_PE.value,
+            IndicatorType.PER_SECTOR_RATIO.value,
         }
         if used_indicators & fundamental_indicators:
             kwargs["include_fundamentals"] = True
+
+        # per_sector_ratio는 섹터 정보도 필요
+        if IndicatorType.PER_SECTOR_RATIO.value in used_indicators:
+            kwargs["include_sector"] = True
 
         # FRED 경제지표 감지
         fred_indicators = {
@@ -396,6 +415,149 @@ class BacktestEngine:
 
         return sorted(filtered_dates)
 
+    def _count_trading_days(self, from_date: date, to_date: date) -> int:
+        """두 날짜 사이의 거래일 수 (from_date 제외, to_date 포함), O(log n)"""
+        if not self._trading_dates_sorted:
+            return (to_date - from_date).days  # fallback: 캘린더일
+        left = bisect.bisect_right(self._trading_dates_sorted, from_date)
+        right = bisect.bisect_right(self._trading_dates_sorted, to_date)
+        return right - left
+
+    def _compute_cross_symbol_indicators(self, strategy: StrategyDefinition) -> None:
+        """
+        크로스-심볼 지표 계산 (per_sector_ratio, momentum_3m ranking)
+
+        개별 심볼 DataFrame에 새 컬럼을 주입하여 이후 interpreter가
+        기존 파이프라인으로 처리할 수 있도록 합니다.
+        """
+        from domain.strategy.models import IndicatorType
+
+        used_indicators = set()
+        for rule in strategy.rules:
+            for condition in rule.conditions:
+                used_indicators.add(condition.indicator.value)
+
+        if IndicatorType.PER_SECTOR_RATIO.value in used_indicators:
+            self._compute_per_sector_ratio()
+
+        if IndicatorType.MOMENTUM_3M.value in used_indicators:
+            self._compute_momentum_ranking(strategy)
+
+    def _compute_per_sector_ratio(self) -> None:
+        """
+        섹터별 평균 PER 대비 개별 종목 PER 비율 계산
+
+        각 날짜에 대해:
+        1. 같은 섹터의 모든 종목 PER 평균 계산
+        2. 개별 종목 PER / 섹터 평균 PER = per_sector_ratio 컬럼 주입
+        """
+        if not self._data:
+            return
+
+        # 모든 심볼에 per_sector_ratio 컬럼 초기화 (interpreter 경고 방지)
+        for symbol in self._data:
+            self._data[symbol]["per_sector_ratio"] = float('nan')
+
+        # 모든 심볼의 날짜 합집합
+        all_dates = set()
+        for df in self._data.values():
+            all_dates.update(df.index)
+        all_dates = sorted(all_dates)
+
+        computed_count = 0
+        for target_date in all_dates:
+            # 해당 날짜의 섹터별 PER 수집
+            sector_pers: Dict[str, List[float]] = {}
+            symbol_info: Dict[str, tuple] = {}  # symbol → (sector, per)
+
+            for symbol, df in self._data.items():
+                if target_date not in df.index:
+                    continue
+                row = df.loc[target_date]
+                per_val = row.get("per") if "per" in df.columns else None
+                sector_val = row.get("sector") if "sector" in df.columns else "Unknown"
+
+                if per_val is not None and pd.notna(per_val) and per_val > 0:
+                    sector = str(sector_val) if pd.notna(sector_val) else "Unknown"
+                    sector_pers.setdefault(sector, []).append(float(per_val))
+                    symbol_info[symbol] = (sector, float(per_val))
+
+            if not symbol_info:
+                continue
+
+            # 섹터 평균 PER 계산
+            sector_avg: Dict[str, float] = {}
+            for sector, pers in sector_pers.items():
+                sector_avg[sector] = sum(pers) / len(pers)
+
+            # 각 심볼 DataFrame에 per_sector_ratio 주입
+            for symbol, (sector, per_val) in symbol_info.items():
+                avg = sector_avg.get(sector)
+                if avg and avg > 0:
+                    self._data[symbol].loc[target_date, "per_sector_ratio"] = per_val / avg
+                    computed_count += 1
+
+        # NaN을 forward-fill (일별 펀더멘탈 데이터 갭 보정)
+        for symbol in self._data:
+            self._data[symbol]["per_sector_ratio"] = (
+                self._data[symbol]["per_sector_ratio"].ffill()
+            )
+
+        logger.info(f"Computed per_sector_ratio: {computed_count} data points")
+
+    def _compute_momentum_ranking(self, strategy: StrategyDefinition) -> None:
+        """
+        날짜별 3개월 모멘텀 랭킹 → momentum_3m_top_n 컬럼 주입
+
+        각 날짜에 대해:
+        1. 모든 심볼의 3개월 수익률 계산
+        2. 상위 N개 심볼 선별
+        3. 해당 심볼의 DataFrame에 momentum_3m_top_n = 1.0 주입
+        """
+        if not self._data:
+            return
+
+        # 전략에서 top_n 파라미터 추출
+        top_n = 5  # 기본값
+        for rule in strategy.rules:
+            for condition in rule.conditions:
+                if condition.indicator.value == "momentum_3m":
+                    top_n = condition.params.get("top_n", condition.params.get("rank", 5))
+                    break
+
+        period = 63  # ~3개월 거래일
+
+        # 모든 심볼의 3개월 수익률 계산
+        momentum_series: Dict[str, pd.Series] = {}
+        for symbol, df in self._data.items():
+            if not df.empty and "close" in df.columns:
+                mom = (df["close"] / df["close"].shift(period) - 1) * 100
+                momentum_series[symbol] = mom
+
+        if not momentum_series:
+            return
+
+        # 모멘텀 DataFrame 생성 (심볼 × 날짜)
+        momentum_df = pd.DataFrame(momentum_series)
+
+        # 날짜별 랭킹 계산 (ascending=False → 높은 모멘텀이 rank 1)
+        # rank 값이 top_n 이하인 심볼만 True
+        for symbol in self._data:
+            if "momentum_3m_top_n" not in self._data[symbol].columns:
+                self._data[symbol]["momentum_3m_top_n"] = 0.0
+
+        for target_date in momentum_df.index:
+            row = momentum_df.loc[target_date].dropna()
+            if row.empty:
+                continue
+            # 상위 N개 심볼 선별
+            top_symbols = row.nlargest(min(top_n, len(row))).index.tolist()
+            for symbol in top_symbols:
+                if symbol in self._data and target_date in self._data[symbol].index:
+                    self._data[symbol].loc[target_date, "momentum_3m_top_n"] = 1.0
+
+        logger.info(f"Computed momentum_3m ranking (top_n={top_n}) for all symbols")
+
     def _process_day(
         self,
         strategy: StrategyDefinition,
@@ -423,8 +585,8 @@ class BacktestEngine:
             # 최소 보유 기간 체크: 매수 직후 stop loss 발동 방지
             if exit_result.symbol in self._portfolio.positions:
                 pos = self._portfolio.positions[exit_result.symbol]
-                days_held = (current_date - pos.entry_date).days
-                if days_held < self._min_holding_days:
+                trading_days_held = self._count_trading_days(pos.entry_date, current_date)
+                if trading_days_held < self._min_holding_days:
                     continue
 
             price = current_prices.get(exit_result.symbol)
@@ -441,7 +603,7 @@ class BacktestEngine:
         # 5. 만료된 쿨다운 정리
         expired = [
             sym for sym, cooldown_start in self._cooldown_until.items()
-            if (current_date - cooldown_start).days > self._cooldown_days
+            if self._count_trading_days(cooldown_start, current_date) > self._cooldown_days
         ]
         for sym in expired:
             del self._cooldown_until[sym]
@@ -539,12 +701,14 @@ class BacktestEngine:
                     if signal_type == "buy":
                         self._execute_buy(symbol, current_date, price)
                     elif signal_type == "sell":
-                        # 최소 보유 기간 체크: 매수 후 N일 미만이면 전략 매도 금지
-                        if symbol in self._portfolio.positions:
-                            pos = self._portfolio.positions[symbol]
-                            days_held = (current_date - pos.entry_date).days
-                            if days_held < self._min_holding_days:
-                                continue
+                        # 포지션 없으면 매도 스킵
+                        if symbol not in self._portfolio.positions:
+                            continue
+                        # 최소 보유 기간 체크: 매수 후 N거래일 미만이면 전략 매도 금지
+                        pos = self._portfolio.positions[symbol]
+                        trading_days_held = self._count_trading_days(pos.entry_date, current_date)
+                        if trading_days_held < self._min_holding_days:
+                            continue
                         self._execute_sell(
                             symbol, current_date, price,
                             ExitReason.STRATEGY_SIGNAL
@@ -569,10 +733,10 @@ class BacktestEngine:
         # Whipsaw 방지: 쿨다운 중인 종목은 매수 금지
         if symbol in self._cooldown_until:
             cooldown_start = self._cooldown_until[symbol]
-            if (trade_date - cooldown_start).days <= self._cooldown_days:
+            if self._count_trading_days(cooldown_start, trade_date) <= self._cooldown_days:
                 logger.debug(
                     f"[COOLDOWN] {symbol}: 리스크 청산 후 쿨다운 중 "
-                    f"({cooldown_start} ~ {self._cooldown_days}일)"
+                    f"({cooldown_start} ~ {self._cooldown_days}거래일)"
                 )
                 return
 

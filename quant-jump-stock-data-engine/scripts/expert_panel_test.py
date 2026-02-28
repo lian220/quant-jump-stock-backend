@@ -239,212 +239,215 @@ def extract_daily_returns(result):
 
 def main():
     loader = MongoDataLoader(uri=os.environ["MONGODB_URI"])
-    config = make_config()
+    try:
+        config = make_config()
 
-    print("=" * 130)
-    print("전문가 패널 제안 전략 백테스트")
-    print(f"기간: {START} ~ {END} | 종목: {len(SYMBOLS)}개 | 자본: ${INITIAL_CAPITAL:,} | 반복: {NUM_RUNS}회")
-    print("=" * 130)
+        print("=" * 130)
+        print("전문가 패널 제안 전략 백테스트")
+        print(f"기간: {START} ~ {END} | 종목: {len(SYMBOLS)}개 | 자본: ${INITIAL_CAPITAL:,} | 반복: {NUM_RUNS}회")
+        print("=" * 130)
 
-    # =================================================================
-    # Phase 1: 전략 백테스트 (결정론 3회 반복)
-    # =================================================================
-    print(f"\n{'='*130}")
-    print(f"Phase 1: 전략 백테스트 (신규 {len(NEW_KEYS)} + 기준 {len(REF_KEYS)} = {len(NEW_KEYS)+len(REF_KEYS)}개)")
-    print(f"{'='*130}")
+        # =================================================================
+        # Phase 1: 전략 백테스트 (결정론 3회 반복)
+        # =================================================================
+        print(f"\n{'='*130}")
+        print(f"Phase 1: 전략 백테스트 (신규 {len(NEW_KEYS)} + 기준 {len(REF_KEYS)} = {len(NEW_KEYS)+len(REF_KEYS)}개)")
+        print(f"{'='*130}")
 
-    all_results = {}
-    all_daily_returns = {}
+        all_results = {}
+        all_daily_returns = {}
 
-    for key in NEW_KEYS + REF_KEYS:
-        sdict = STRATEGIES[key]
-        tag = "NEW" if key in NEW_KEYS else "REF"
-        sd = StrategyDefinition(**sdict)
+        for key in NEW_KEYS + REF_KEYS:
+            sdict = STRATEGIES[key]
+            tag = "NEW" if key in NEW_KEYS else "REF"
+            sd = StrategyDefinition(**sdict)
 
-        runs = []
-        for run_idx in range(NUM_RUNS):
+            runs = []
+            for run_idx in range(NUM_RUNS):
+                try:
+                    engine = BacktestEngine(data_loader=loader, config=config)
+                    r = engine.run(sd)
+                    rd = {
+                        "return_pct": safe_float(r.total_return),
+                        "cagr": safe_float(r.cagr),
+                        "mdd": safe_float(r.mdd),
+                        "sharpe": safe_float(r.sharpe_ratio),
+                        "pf": safe_float(r.profit_factor),
+                        "win_rate": safe_float(r.win_rate),
+                        "trades": r.total_trades,
+                        "avg_holding": safe_float(r.avg_holding_days),
+                        "sl_count": r.stop_loss_count or 0,
+                        "tp_count": r.take_profit_count or 0,
+                    }
+                    runs.append(rd)
+                    if run_idx == 0:
+                        all_daily_returns[key] = extract_daily_returns(r)
+                except Exception as e:
+                    print(f"  [{tag}] ERROR {sdict['name']}: {e}")
+                    runs.append(None)
+
+            valid = [r for r in runs if r]
+            if len(valid) >= 2:
+                det_pass = all(abs(valid[0]["return_pct"] - r["return_pct"]) < 0.01 for r in valid[1:])
+            else:
+                det_pass = len(valid) == 1
+
+            if valid:
+                m = valid[0]
+                g = grade(m["cagr"], m["mdd"], m["pf"], m["win_rate"], m["trades"])
+                det_str = "PASS" if det_pass else "FAIL"
+                all_results[key] = {"metrics": m, "grade": g, "det": det_str, "name": sdict["name"], "tag": tag}
+
+                print(f"  [{det_str}] {g:>3s} [{tag}] {sdict['name']:<35s}"
+                      f" | {m['return_pct']:>10.2f}% | {m['trades']:>3d} trades | {m['win_rate']:>5.1f}% win"
+                      f" | MDD {m['mdd']:>8.2f}% | Sharpe {m['sharpe']:>6.2f}"
+                      f" | CAGR {m['cagr']:>8.2f}% | PF {m['pf']:>5.2f}"
+                      f" | SL:{m['sl_count']} TP:{m['tp_count']} | {m['avg_holding']:.1f}d")
+            else:
+                print(f"  [FAIL] --- [{tag}] {sdict['name']}: 모든 실행 실패")
+
+        # =================================================================
+        # Phase 2: 거래비용 스트레스 테스트 (0.3% round-trip)
+        # =================================================================
+        print(f"\n{'='*130}")
+        print("Phase 2: 거래비용 스트레스 테스트 (0.15% commission + 0.15% tax = 0.3% round-trip)")
+        print(f"{'='*130}")
+
+        stress_config = make_config(commission=Decimal("0.0015"), tax=Decimal("0.0015"))
+        stress_keys = ["rsi_sma200_macd", "rsi_macd_sma200_45", "rsi_macd_combo", "rsi_oversold_v2"]
+
+        for key in stress_keys:
+            sdict = STRATEGIES[key]
+            sd = StrategyDefinition(**sdict)
             try:
-                engine = BacktestEngine(data_loader=loader, config=config)
+                engine = BacktestEngine(data_loader=loader, config=stress_config)
                 r = engine.run(sd)
-                rd = {
-                    "return_pct": safe_float(r.total_return),
-                    "cagr": safe_float(r.cagr),
-                    "mdd": safe_float(r.mdd),
-                    "sharpe": safe_float(r.sharpe_ratio),
-                    "pf": safe_float(r.profit_factor),
-                    "win_rate": safe_float(r.win_rate),
-                    "trades": r.total_trades,
-                    "avg_holding": safe_float(r.avg_holding_days),
-                    "sl_count": r.stop_loss_count or 0,
-                    "tp_count": r.take_profit_count or 0,
-                }
-                runs.append(rd)
-                if run_idx == 0:
-                    all_daily_returns[key] = extract_daily_returns(r)
+                stress_ret = safe_float(r.total_return)
+                stress_cagr = safe_float(r.cagr)
+                stress_pf = safe_float(r.profit_factor)
+                orig_ret = all_results.get(key, {}).get("metrics", {}).get("return_pct", 0)
+                diff = stress_ret - orig_ret
+                print(f"  {sdict['name']:<35s}"
+                      f" | 기본: {orig_ret:>10.2f}% → 스트레스: {stress_ret:>10.2f}% (차이: {diff:>+8.2f}%)"
+                      f" | CAGR {stress_cagr:>8.2f}% | PF {stress_pf:>5.2f}")
             except Exception as e:
-                print(f"  [{tag}] ERROR {sdict['name']}: {e}")
-                runs.append(None)
+                print(f"  {sdict['name']:<35s} | ERROR: {e}")
 
-        valid = [r for r in runs if r]
-        if len(valid) >= 2:
-            det_pass = all(abs(valid[0]["return_pct"] - r["return_pct"]) < 0.01 for r in valid[1:])
-        else:
-            det_pass = len(valid) == 1
+        # =================================================================
+        # Phase 3: 전략 간 상관관계 분석
+        # =================================================================
+        print(f"\n{'='*130}")
+        print("Phase 3: 전략 간 일별 수익률 상관관계 (피어슨)")
+        print(f"{'='*130}")
 
-        if valid:
-            m = valid[0]
-            g = grade(m["cagr"], m["mdd"], m["pf"], m["win_rate"], m["trades"])
-            det_str = "PASS" if det_pass else "FAIL"
-            all_results[key] = {"metrics": m, "grade": g, "det": det_str, "name": sdict["name"], "tag": tag}
+        corr_keys = [k for k in NEW_KEYS + REF_KEYS if k in all_daily_returns and len(all_daily_returns[k]) > 30]
 
-            print(f"  [{det_str}] {g:>3s} [{tag}] {sdict['name']:<35s}"
-                  f" | {m['return_pct']:>10.2f}% | {m['trades']:>3d} trades | {m['win_rate']:>5.1f}% win"
-                  f" | MDD {m['mdd']:>8.2f}% | Sharpe {m['sharpe']:>6.2f}"
-                  f" | CAGR {m['cagr']:>8.2f}% | PF {m['pf']:>5.2f}"
-                  f" | SL:{m['sl_count']} TP:{m['tp_count']} | {m['avg_holding']:.1f}d")
-        else:
-            print(f"  [FAIL] --- [{tag}] {sdict['name']}: 모든 실행 실패")
-
-    # =================================================================
-    # Phase 2: 거래비용 스트레스 테스트 (0.3% round-trip)
-    # =================================================================
-    print(f"\n{'='*130}")
-    print("Phase 2: 거래비용 스트레스 테스트 (0.15% commission + 0.15% tax = 0.3% round-trip)")
-    print(f"{'='*130}")
-
-    stress_config = make_config(commission=Decimal("0.0015"), tax=Decimal("0.0015"))
-    stress_keys = ["rsi_sma200_macd", "rsi_macd_sma200_45", "rsi_macd_combo", "rsi_oversold_v2"]
-
-    for key in stress_keys:
-        sdict = STRATEGIES[key]
-        sd = StrategyDefinition(**sdict)
-        try:
-            engine = BacktestEngine(data_loader=loader, config=stress_config)
-            r = engine.run(sd)
-            stress_ret = safe_float(r.total_return)
-            stress_cagr = safe_float(r.cagr)
-            stress_pf = safe_float(r.profit_factor)
-            orig_ret = all_results.get(key, {}).get("metrics", {}).get("return_pct", 0)
-            diff = stress_ret - orig_ret
-            print(f"  {sdict['name']:<35s}"
-                  f" | 기본: {orig_ret:>10.2f}% → 스트레스: {stress_ret:>10.2f}% (차이: {diff:>+8.2f}%)"
-                  f" | CAGR {stress_cagr:>8.2f}% | PF {stress_pf:>5.2f}")
-        except Exception as e:
-            print(f"  {sdict['name']:<35s} | ERROR: {e}")
-
-    # =================================================================
-    # Phase 3: 전략 간 상관관계 분석
-    # =================================================================
-    print(f"\n{'='*130}")
-    print("Phase 3: 전략 간 일별 수익률 상관관계 (피어슨)")
-    print(f"{'='*130}")
-
-    corr_keys = [k for k in NEW_KEYS + REF_KEYS if k in all_daily_returns and len(all_daily_returns[k]) > 30]
-
-    if len(corr_keys) >= 2:
-        # 헤더
-        print(f"\n{'':>37s}", end="")
-        for k in corr_keys:
-            short = STRATEGIES[k]["name"][:8]
-            print(f" {short:>10s}", end="")
-        print()
-
-        corr_matrix = {}
-        for k1 in corr_keys:
-            name = STRATEGIES[k1]["name"][:35]
-            print(f"  {name:<35s}", end="")
-            for k2 in corr_keys:
-                corr = pearson_corr(all_daily_returns[k1], all_daily_returns[k2])
-                corr_matrix[(k1, k2)] = corr
-                if math.isnan(corr):
-                    print(f" {'N/A':>10s}", end="")
-                else:
-                    print(f" {corr:>10.4f}", end="")
+        if len(corr_keys) >= 2:
+            # 헤더
+            print(f"\n{'':>37s}", end="")
+            for k in corr_keys:
+                short = STRATEGIES[k]["name"][:8]
+                print(f" {short:>10s}", end="")
             print()
 
-        # 높은 상관관계
-        print(f"\n  ⚠️  높은 상관관계 (|r| > 0.7):")
-        warned = set()
-        for i, k1 in enumerate(corr_keys):
-            for j, k2 in enumerate(corr_keys):
-                if i >= j: continue
-                corr = corr_matrix.get((k1, k2), float('nan'))
-                if not math.isnan(corr) and abs(corr) > 0.7:
-                    pair = tuple(sorted([k1, k2]))
-                    if pair not in warned:
-                        warned.add(pair)
-                        print(f"    {STRATEGIES[k1]['name']} ↔ {STRATEGIES[k2]['name']}: r={corr:.4f}")
-        if not warned:
-            print("    없음 (모든 전략 쌍 |r| < 0.7)")
+            corr_matrix = {}
+            for k1 in corr_keys:
+                name = STRATEGIES[k1]["name"][:35]
+                print(f"  {name:<35s}", end="")
+                for k2 in corr_keys:
+                    corr = pearson_corr(all_daily_returns[k1], all_daily_returns[k2])
+                    corr_matrix[(k1, k2)] = corr
+                    if math.isnan(corr):
+                        print(f" {'N/A':>10s}", end="")
+                    else:
+                        print(f" {corr:>10.4f}", end="")
+                print()
 
-        # 낮은 상관관계
-        print(f"\n  ✅  낮은 상관관계 (|r| < 0.3) - 분산 효과:")
-        good = set()
-        for i, k1 in enumerate(corr_keys):
-            for j, k2 in enumerate(corr_keys):
-                if i >= j: continue
-                corr = corr_matrix.get((k1, k2), float('nan'))
-                if not math.isnan(corr) and abs(corr) < 0.3:
-                    pair = tuple(sorted([k1, k2]))
-                    if pair not in good:
-                        good.add(pair)
-                        print(f"    {STRATEGIES[k1]['name']} ↔ {STRATEGIES[k2]['name']}: r={corr:.4f}")
-        if not good:
-            print("    없음")
-    else:
-        print("  데이터 부족")
+            # 높은 상관관계
+            print(f"\n  ⚠️  높은 상관관계 (|r| > 0.7):")
+            warned = set()
+            for i, k1 in enumerate(corr_keys):
+                for j, k2 in enumerate(corr_keys):
+                    if i >= j: continue
+                    corr = corr_matrix.get((k1, k2), float('nan'))
+                    if not math.isnan(corr) and abs(corr) > 0.7:
+                        pair = tuple(sorted([k1, k2]))
+                        if pair not in warned:
+                            warned.add(pair)
+                            print(f"    {STRATEGIES[k1]['name']} ↔ {STRATEGIES[k2]['name']}: r={corr:.4f}")
+            if not warned:
+                print("    없음 (모든 전략 쌍 |r| < 0.7)")
 
-    # =================================================================
-    # Phase 4: 종합 순위
-    # =================================================================
-    print(f"\n{'='*130}")
-    print("Phase 4: 종합 순위 (수익률 순)")
-    print(f"{'='*130}")
-
-    sorted_res = sorted(all_results.items(), key=lambda x: x[1]["metrics"]["return_pct"], reverse=True)
-    print(f"{'#':>2s} {'등급':>4s} {'DET':>4s} {'TAG':>4s} {'전략명':<35s} | {'수익률':>10s} | {'거래':>5s} | {'승률':>6s} | {'MDD':>8s} | {'Sharpe':>7s} | {'CAGR':>8s} | {'PF':>6s} | {'보유':>6s}")
-    print("-" * 130)
-
-    for rank, (key, data) in enumerate(sorted_res, 1):
-        m = data["metrics"]
-        print(f"{rank:>2d} {data['grade']:>4s} {data['det']:>4s} {data['tag']:>4s} {data['name']:<35s}"
-              f" | {m['return_pct']:>10.2f}% | {m['trades']:>5d} | {m['win_rate']:>5.1f}% | {m['mdd']:>7.2f}%"
-              f" | {m['sharpe']:>7.2f} | {m['cagr']:>7.2f}% | {m['pf']:>5.2f} | {m['avg_holding']:>5.1f}d")
-
-    # =================================================================
-    # Phase 5: 데드존 폭 vs 성과
-    # =================================================================
-    print(f"\n{'='*130}")
-    print("Phase 5: 데드존 폭 vs 성과 분석")
-    print(f"{'='*130}")
-
-    deadzone_data = [
-        ("RSI 과매도 v2 (42→60)", 18, "rsi_oversold_v2"),
-        ("RSI+MACD+SMA200 RSI45 (45→65)", 20, "rsi_macd_sma200_45"),
-        ("RSI+MACD (42→65)", 23, "rsi_macd_combo"),
-        ("RSI+SMA200+MACD (35→70)", 35, "rsi_sma200_macd"),
-        ("RSI+MACD+SMA200 RSI35 (35→70)", 35, "rsi_macd_sma200_35"),
-        ("초광폭 데드존 (30→75)", 45, "ultra_wide_deadzone"),
-    ]
-
-    print(f"  {'전략':<35s} | {'데드존':>6s} | {'CAGR':>8s} | {'PF':>6s} | {'승률':>6s} | {'거래':>5s} | {'MDD':>8s}")
-    print(f"  {'-'*95}")
-    for name, dz, key in sorted(deadzone_data, key=lambda x: x[1]):
-        if key in all_results:
-            m = all_results[key]["metrics"]
-            print(f"  {name:<35s} | {dz:>4d}pt | {m['cagr']:>7.2f}% | {m['pf']:>5.2f} | {m['win_rate']:>5.1f}% | {m['trades']:>5d} | {m['mdd']:>7.2f}%")
+            # 낮은 상관관계
+            print(f"\n  ✅  낮은 상관관계 (|r| < 0.3) - 분산 효과:")
+            good = set()
+            for i, k1 in enumerate(corr_keys):
+                for j, k2 in enumerate(corr_keys):
+                    if i >= j: continue
+                    corr = corr_matrix.get((k1, k2), float('nan'))
+                    if not math.isnan(corr) and abs(corr) < 0.3:
+                        pair = tuple(sorted([k1, k2]))
+                        if pair not in good:
+                            good.add(pair)
+                            print(f"    {STRATEGIES[k1]['name']} ↔ {STRATEGIES[k2]['name']}: r={corr:.4f}")
+            if not good:
+                print("    없음")
         else:
-            print(f"  {name:<35s} | {dz:>4d}pt | (데이터 없음)")
+            print("  데이터 부족")
 
-    # JSON 저장
-    save_data = {
-        "test_config": {"period": f"{START} ~ {END}", "stocks": SYMBOLS, "initial_capital": float(INITIAL_CAPITAL), "runs": NUM_RUNS},
-        "results": {k: {"name": v["name"], "grade": v["grade"], "det": v["det"], "tag": v["tag"], **v["metrics"]} for k, v in all_results.items()},
-    }
-    out_path = Path(__file__).parent / "expert_panel_results.json"
-    with open(out_path, "w", encoding="utf-8") as f:
-        json.dump(save_data, f, ensure_ascii=False, indent=2)
-    print(f"\n결과 저장: {out_path}")
+        # =================================================================
+        # Phase 4: 종합 순위
+        # =================================================================
+        print(f"\n{'='*130}")
+        print("Phase 4: 종합 순위 (수익률 순)")
+        print(f"{'='*130}")
+
+        sorted_res = sorted(all_results.items(), key=lambda x: x[1]["metrics"]["return_pct"], reverse=True)
+        print(f"{'#':>2s} {'등급':>4s} {'DET':>4s} {'TAG':>4s} {'전략명':<35s} | {'수익률':>10s} | {'거래':>5s} | {'승률':>6s} | {'MDD':>8s} | {'Sharpe':>7s} | {'CAGR':>8s} | {'PF':>6s} | {'보유':>6s}")
+        print("-" * 130)
+
+        for rank, (key, data) in enumerate(sorted_res, 1):
+            m = data["metrics"]
+            print(f"{rank:>2d} {data['grade']:>4s} {data['det']:>4s} {data['tag']:>4s} {data['name']:<35s}"
+                  f" | {m['return_pct']:>10.2f}% | {m['trades']:>5d} | {m['win_rate']:>5.1f}% | {m['mdd']:>7.2f}%"
+                  f" | {m['sharpe']:>7.2f} | {m['cagr']:>7.2f}% | {m['pf']:>5.2f} | {m['avg_holding']:>5.1f}d")
+
+        # =================================================================
+        # Phase 5: 데드존 폭 vs 성과
+        # =================================================================
+        print(f"\n{'='*130}")
+        print("Phase 5: 데드존 폭 vs 성과 분석")
+        print(f"{'='*130}")
+
+        deadzone_data = [
+            ("RSI 과매도 v2 (42→60)", 18, "rsi_oversold_v2"),
+            ("RSI+MACD+SMA200 RSI45 (45→65)", 20, "rsi_macd_sma200_45"),
+            ("RSI+MACD (42→65)", 23, "rsi_macd_combo"),
+            ("RSI+SMA200+MACD (35→70)", 35, "rsi_sma200_macd"),
+            ("RSI+MACD+SMA200 RSI35 (35→70)", 35, "rsi_macd_sma200_35"),
+            ("초광폭 데드존 (30→75)", 45, "ultra_wide_deadzone"),
+        ]
+
+        print(f"  {'전략':<35s} | {'데드존':>6s} | {'CAGR':>8s} | {'PF':>6s} | {'승률':>6s} | {'거래':>5s} | {'MDD':>8s}")
+        print(f"  {'-'*95}")
+        for name, dz, key in sorted(deadzone_data, key=lambda x: x[1]):
+            if key in all_results:
+                m = all_results[key]["metrics"]
+                print(f"  {name:<35s} | {dz:>4d}pt | {m['cagr']:>7.2f}% | {m['pf']:>5.2f} | {m['win_rate']:>5.1f}% | {m['trades']:>5d} | {m['mdd']:>7.2f}%")
+            else:
+                print(f"  {name:<35s} | {dz:>4d}pt | (데이터 없음)")
+
+        # JSON 저장
+        save_data = {
+            "test_config": {"period": f"{START} ~ {END}", "stocks": SYMBOLS, "initial_capital": float(INITIAL_CAPITAL), "runs": NUM_RUNS},
+            "results": {k: {"name": v["name"], "grade": v["grade"], "det": v["det"], "tag": v["tag"], **v["metrics"]} for k, v in all_results.items()},
+        }
+        out_path = Path(__file__).parent / "expert_panel_results.json"
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(save_data, f, ensure_ascii=False, indent=2)
+        print(f"\n결과 저장: {out_path}")
+    finally:
+        loader.close()
     print("완료.")
 
 

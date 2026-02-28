@@ -157,105 +157,113 @@ BASELINE = {
 SYMBOLS = ["AAPL", "NVDA", "TSLA", "MSFT", "GOOGL", "AMZN", "META", "JNJ", "AMAT", "INTC"]
 NUM_RUNS = 3
 
-loader = MongoDataLoader(uri=os.environ["MONGODB_URI"])
-config = BacktestConfig(
-    start_date=date(2021, 1, 1), end_date=date(2026, 2, 25),
-    initial_capital=Decimal("100000"), tickers=SYMBOLS,
-    commission_rate=Decimal("0.00015"), tax_rate=Decimal("0.0023"),
-    slippage_rate=Decimal("0.001"), max_positions=5, position_size_pct=Decimal("0.2"),
-    benchmark_ticker="SPY",
-)
 
-print("=" * 140)
-print("전문가 피드백 최적화 Iteration 3-2")
-print("기간: 2021-01-01 ~ 2026-02-25 | 종목: %d개 | 자본: $100,000 | 반복: %d회" % (len(SYMBOLS), NUM_RUNS))
-print("=" * 140)
+def main():
+    loader = MongoDataLoader(uri=os.environ["MONGODB_URI"])
+    try:
+        config = BacktestConfig(
+            start_date=date(2021, 1, 1), end_date=date(2026, 2, 25),
+            initial_capital=Decimal("100000"), tickers=SYMBOLS,
+            commission_rate=Decimal("0.00015"), tax_rate=Decimal("0.0023"),
+            slippage_rate=Decimal("0.001"), max_positions=5, position_size_pct=Decimal("0.2"),
+            benchmark_ticker="SPY",
+        )
 
-all_results = {}
+        print("=" * 140)
+        print("전문가 피드백 최적화 Iteration 3-2")
+        print("기간: 2021-01-01 ~ 2026-02-25 | 종목: %d개 | 자본: $100,000 | 반복: %d회" % (len(SYMBOLS), NUM_RUNS))
+        print("=" * 140)
 
-def run_strategy(sid, sdict, is_baseline=False):
-    strategy = StrategyDefinition(**sdict)
-    runs = []
-    for _ in range(NUM_RUNS):
-        engine = BacktestEngine(data_loader=loader, config=config)
-        r = engine.run(strategy)
-        run_data = {
-            "total_return": round(float(r.total_return), 2),
-            "total_trades": r.total_trades,
-            "win_rate": round(float(r.win_rate), 1) if r.win_rate else 0.0,
-            "mdd": round(float(r.mdd), 2) if r.mdd else 0.0,
-            "sharpe": round(float(r.sharpe_ratio), 2) if r.sharpe_ratio else 0.0,
-            "cagr": round(float(r.cagr), 2) if r.cagr else 0.0,
-            "avg_holding_days": round(float(r.avg_holding_days), 1) if r.avg_holding_days else 0.0,
-            "profit_factor": round(float(r.profit_factor), 2) if r.profit_factor else 0.0,
-            "stop_loss_count": r.stop_loss_count or 0,
-            "take_profit_count": r.take_profit_count or 0,
+        all_results = {}
+
+        def run_strategy(sid, sdict, is_baseline=False):
+            strategy = StrategyDefinition(**sdict)
+            runs = []
+            for _ in range(NUM_RUNS):
+                engine = BacktestEngine(data_loader=loader, config=config)
+                r = engine.run(strategy)
+                run_data = {
+                    "total_return": round(float(r.total_return), 2),
+                    "total_trades": r.total_trades,
+                    "win_rate": round(float(r.win_rate), 1) if r.win_rate else 0.0,
+                    "mdd": round(float(r.mdd), 2) if r.mdd else 0.0,
+                    "sharpe": round(float(r.sharpe_ratio), 2) if r.sharpe_ratio else 0.0,
+                    "cagr": round(float(r.cagr), 2) if r.cagr else 0.0,
+                    "avg_holding_days": round(float(r.avg_holding_days), 1) if r.avg_holding_days else 0.0,
+                    "profit_factor": round(float(r.profit_factor), 2) if r.profit_factor else 0.0,
+                    "stop_loss_count": r.stop_loss_count or 0,
+                    "take_profit_count": r.take_profit_count or 0,
+                }
+                runs.append(run_data)
+            all_results[sid] = {"runs": runs, "name": sdict["name"], "is_baseline": is_baseline}
+            det = "PASS" if all(r["total_return"] == runs[0]["total_return"] for r in runs) else "FAIL"
+            r = runs[0]
+            print("  [%s] %-30s | %9.2f%% | %4d trades | %5.1f%% win | MDD %7.2f%% | Sharpe %6.2f | CAGR %7.2f%% | SL:%d TP:%d | PF:%.2f | Avg %4.1fd" % (
+                det, sdict["name"], r["total_return"], r["total_trades"], r["win_rate"], r["mdd"],
+                r["sharpe"], r["cagr"], r["stop_loss_count"], r["take_profit_count"], r["profit_factor"], r["avg_holding_days"]))
+
+        print("\n[최적화 전략]")
+        print("-" * 140)
+        for sid, sdict in STRATEGIES.items():
+            run_strategy(sid, sdict)
+
+        print("\n[기준선]")
+        print("-" * 140)
+        for sid, sdict in BASELINE.items():
+            run_strategy(sid, sdict, is_baseline=True)
+
+        # 종합 비교
+        print("\n\n" + "=" * 140)
+        print("종합 비교 (수익률 순)")
+        print("=" * 140)
+        sorted_results = sorted(all_results.items(), key=lambda x: x[1]["runs"][0]["total_return"], reverse=True)
+        for idx, (sid, data) in enumerate(sorted_results, 1):
+            r = data["runs"][0]
+            det_ok = all(run["total_return"] == r["total_return"] for run in data["runs"])
+            marker = "REF" if data["is_baseline"] else "OPT"
+            print("%-3d [%s] %-28s | %9.2f%% | %5d | %5.1f%% | %7.2f%% | %6.2f | %7.2f%% | %5.2f | %s" % (
+                idx, marker, data["name"], r["total_return"], r["total_trades"],
+                r["win_rate"], r["mdd"], r["sharpe"], r["cagr"], r["profit_factor"],
+                "PASS" if det_ok else "FAIL"))
+
+        # v1 → 개선 직접 비교
+        print("\n" + "=" * 140)
+        print("직접 비교")
+        print("=" * 140)
+        pairs = [
+            ("rsi_macd_v1", "rsi_macd_widen_dz", "RSI+MACD: v1 → 데드존 확대 (58→65)"),
+            ("rsi_macd_v1", "rsi_macd_sl10", "RSI+MACD: v1 → SL10%+TP25%"),
+            ("rsi_macd_v1", "rsi_macd_trailing", "RSI+MACD: v1 → 데드존+TS"),
+            ("rsi_macd_v1", "rsi_macd_sma200_loose", "RSI+MACD: v1 → SMA200+RSI45"),
+            ("golden_cross_rsi_v1", "golden_cross_rsi_ts", "골든크로스+RSI: v1 → +TS"),
+        ]
+        for base, new, label in pairs:
+            if base in all_results and new in all_results:
+                b = all_results[base]["runs"][0]
+                n = all_results[new]["runs"][0]
+                diff = n["total_return"] - b["total_return"]
+                wr_diff = n["win_rate"] - b["win_rate"]
+                print("  %s" % label)
+                print("    수익률: %+.2f%% → %+.2f%% (%+.2f%%p)  승률: %.1f%% → %.1f%% (%+.1f%%p)  거래: %d → %d" % (
+                    b["total_return"], n["total_return"], diff, b["win_rate"], n["win_rate"], wr_diff, b["total_trades"], n["total_trades"]))
+
+        # JSON 저장
+        out_path = Path(__file__).resolve().parent / "expert_improved_v2_results.json"
+        output = {
+            "test_name": "expert_improved_iteration3_2",
+            "results": {sid: data for sid, data in sorted_results},
+            "determinism": "ALL_PASS" if all(
+                all(run["total_return"] == data["runs"][0]["total_return"] for run in data["runs"])
+                for data in all_results.values()
+            ) else "SOME_FAIL",
         }
-        runs.append(run_data)
-    all_results[sid] = {"runs": runs, "name": sdict["name"], "is_baseline": is_baseline}
-    det = "PASS" if all(r["total_return"] == runs[0]["total_return"] for r in runs) else "FAIL"
-    r = runs[0]
-    print("  [%s] %-30s | %9.2f%% | %4d trades | %5.1f%% win | MDD %7.2f%% | Sharpe %6.2f | CAGR %7.2f%% | SL:%d TP:%d | PF:%.2f | Avg %4.1fd" % (
-        det, sdict["name"], r["total_return"], r["total_trades"], r["win_rate"], r["mdd"],
-        r["sharpe"], r["cagr"], r["stop_loss_count"], r["take_profit_count"], r["profit_factor"], r["avg_holding_days"]))
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(output, f, ensure_ascii=False, indent=2, default=str)
+        print(f"\n결과 저장: {out_path}")
+    finally:
+        loader.close()
+    print("완료.")
 
-print("\n[최적화 전략]")
-print("-" * 140)
-for sid, sdict in STRATEGIES.items():
-    run_strategy(sid, sdict)
 
-print("\n[기준선]")
-print("-" * 140)
-for sid, sdict in BASELINE.items():
-    run_strategy(sid, sdict, is_baseline=True)
-
-# 종합 비교
-print("\n\n" + "=" * 140)
-print("종합 비교 (수익률 순)")
-print("=" * 140)
-sorted_results = sorted(all_results.items(), key=lambda x: x[1]["runs"][0]["total_return"], reverse=True)
-for idx, (sid, data) in enumerate(sorted_results, 1):
-    r = data["runs"][0]
-    det_ok = all(run["total_return"] == r["total_return"] for run in data["runs"])
-    marker = "REF" if data["is_baseline"] else "OPT"
-    print("%-3d [%s] %-28s | %9.2f%% | %5d | %5.1f%% | %7.2f%% | %6.2f | %7.2f%% | %5.2f | %s" % (
-        idx, marker, data["name"], r["total_return"], r["total_trades"],
-        r["win_rate"], r["mdd"], r["sharpe"], r["cagr"], r["profit_factor"],
-        "PASS" if det_ok else "FAIL"))
-
-# v1 → 개선 직접 비교
-print("\n" + "=" * 140)
-print("직접 비교")
-print("=" * 140)
-pairs = [
-    ("rsi_macd_v1", "rsi_macd_widen_dz", "RSI+MACD: v1 → 데드존 확대 (58→65)"),
-    ("rsi_macd_v1", "rsi_macd_sl10", "RSI+MACD: v1 → SL10%+TP25%"),
-    ("rsi_macd_v1", "rsi_macd_trailing", "RSI+MACD: v1 → 데드존+TS"),
-    ("rsi_macd_v1", "rsi_macd_sma200_loose", "RSI+MACD: v1 → SMA200+RSI45"),
-    ("golden_cross_rsi_v1", "golden_cross_rsi_ts", "골든크로스+RSI: v1 → +TS"),
-]
-for base, new, label in pairs:
-    if base in all_results and new in all_results:
-        b = all_results[base]["runs"][0]
-        n = all_results[new]["runs"][0]
-        diff = n["total_return"] - b["total_return"]
-        wr_diff = n["win_rate"] - b["win_rate"]
-        print("  %s" % label)
-        print("    수익률: %+.2f%% → %+.2f%% (%+.2f%%p)  승률: %.1f%% → %.1f%% (%+.1f%%p)  거래: %d → %d" % (
-            b["total_return"], n["total_return"], diff, b["win_rate"], n["win_rate"], wr_diff, b["total_trades"], n["total_trades"]))
-
-# JSON 저장
-out_path = Path(__file__).resolve().parent / "expert_improved_v2_results.json"
-output = {
-    "test_name": "expert_improved_iteration3_2",
-    "results": {sid: data for sid, data in sorted_results},
-    "determinism": "ALL_PASS" if all(
-        all(run["total_return"] == data["runs"][0]["total_return"] for run in data["runs"])
-        for data in all_results.values()
-    ) else "SOME_FAIL",
-}
-with open(out_path, "w", encoding="utf-8") as f:
-    json.dump(output, f, ensure_ascii=False, indent=2, default=str)
-print(f"\n결과 저장: {out_path}")
-loader.close()
-print("완료.")
+if __name__ == "__main__":
+    main()

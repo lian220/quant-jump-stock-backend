@@ -204,124 +204,133 @@ SKIPPED = {
 SYMBOLS = ["AAPL", "NVDA", "TSLA", "MSFT", "GOOGL", "AMZN", "META", "JNJ", "AMAT", "INTC"]
 NUM_RUNS = 3
 
-# =====================================================================
-# 실행
-# =====================================================================
-loader = MongoDataLoader(uri=os.environ["MONGODB_URI"])
-config = BacktestConfig(
-    start_date=date(2021, 1, 1), end_date=date(2026, 2, 25),
-    initial_capital=Decimal("100000"), tickers=SYMBOLS,
-    commission_rate=Decimal("0.00015"), tax_rate=Decimal("0.0023"),
-    slippage_rate=Decimal("0.001"), max_positions=5, position_size_pct=Decimal("0.2"),
-    benchmark_ticker="SPY",
-)
+def main():
+    # =====================================================================
+    # 실행
+    # =====================================================================
+    loader = MongoDataLoader(uri=os.environ["MONGODB_URI"])
+    try:
+        config = BacktestConfig(
+            start_date=date(2021, 1, 1), end_date=date(2026, 2, 25),
+            initial_capital=Decimal("100000"), tickers=SYMBOLS,
+            commission_rate=Decimal("0.00015"), tax_rate=Decimal("0.0023"),
+            slippage_rate=Decimal("0.001"), max_positions=5, position_size_pct=Decimal("0.2"),
+            benchmark_ticker="SPY",
+        )
 
-print("=" * 130)
-print("전체 전략 5년 백테스트 + 결정론 검증")
-print("기간: 2021-01-01 ~ 2026-02-25 | 종목: %d개 | 자본: $100,000 | 반복: %d회" % (len(SYMBOLS), NUM_RUNS))
-print("=" * 130)
+        print("=" * 130)
+        print("전체 전략 5년 백테스트 + 결정론 검증")
+        print("기간: 2021-01-01 ~ 2026-02-25 | 종목: %d개 | 자본: $100,000 | 반복: %d회" % (len(SYMBOLS), NUM_RUNS))
+        print("=" * 130)
 
-all_results = {}  # {strategy_id: [run1, run2, run3]}
+        all_results = {}  # {strategy_id: [run1, run2, run3]}
+        raw_returns = {}  # {strategy_id: [raw_float_run1, raw_float_run2, ...]} for determinism
 
-for sid, sdict in STRATEGIES.items():
-    strategy = StrategyDefinition(**sdict)
-    runs = []
-    for run_idx in range(NUM_RUNS):
-        engine = BacktestEngine(data_loader=loader, config=config)
-        r = engine.run(strategy)
-        runs.append({
-            "total_return": round(float(r.total_return), 2),
-            "total_trades": r.total_trades,
-            "win_rate": round(float(r.win_rate), 1) if r.win_rate else 0.0,
-            "mdd": round(float(r.mdd), 2) if r.mdd else 0.0,
-            "sharpe": round(float(r.sharpe_ratio), 2) if r.sharpe_ratio else 0.0,
-            "cagr": round(float(r.cagr), 2) if r.cagr else 0.0,
-        })
-    all_results[sid] = runs
-    # 진행 표시
-    det = "PASS" if all(r["total_return"] == runs[0]["total_return"] for r in runs) else "FAIL"
-    print("  [%s] %-25s | 수익률: %8.2f%% | 거래: %4d | 승률: %5.1f%% | MDD: %7.2f%% | Sharpe: %6.2f | CAGR: %7.2f%%" % (
-        det, sdict["name"],
-        runs[0]["total_return"], runs[0]["total_trades"],
-        runs[0]["win_rate"], runs[0]["mdd"],
-        runs[0]["sharpe"], runs[0]["cagr"]
-    ))
+        for sid, sdict in STRATEGIES.items():
+            strategy = StrategyDefinition(**sdict)
+            runs = []
+            raw_ret_list = []
+            for run_idx in range(NUM_RUNS):
+                engine = BacktestEngine(data_loader=loader, config=config)
+                r = engine.run(strategy)
+                raw_ret_list.append(float(r.total_return))
+                runs.append({
+                    "total_return": round(float(r.total_return), 2),
+                    "total_trades": r.total_trades,
+                    "win_rate": round(float(r.win_rate), 1) if r.win_rate else 0.0,
+                    "mdd": round(float(r.mdd), 2) if r.mdd else 0.0,
+                    "sharpe": round(float(r.sharpe_ratio), 2) if r.sharpe_ratio else 0.0,
+                    "cagr": round(float(r.cagr), 2) if r.cagr else 0.0,
+                })
+            all_results[sid] = runs
+            raw_returns[sid] = raw_ret_list
+            # 진행 표시 - determinism uses raw returns
+            det = "PASS" if all(rv == raw_ret_list[0] for rv in raw_ret_list) else "FAIL"
+            print("  [%s] %-25s | 수익률: %8.2f%% | 거래: %4d | 승률: %5.1f%% | MDD: %7.2f%% | Sharpe: %6.2f | CAGR: %7.2f%%" % (
+                det, sdict["name"],
+                runs[0]["total_return"], runs[0]["total_trades"],
+                runs[0]["win_rate"], runs[0]["mdd"],
+                runs[0]["sharpe"], runs[0]["cagr"]
+            ))
 
-# =====================================================================
-# 결과 출력
-# =====================================================================
-print()
-print("=" * 130)
-print("%-4s %-25s | %10s | %6s | %7s | %8s | %7s | %8s | %s" % (
-    "#", "전략명", "수익률", "거래수", "승률", "MDD", "Sharpe", "CAGR", "결정론"
-))
-print("-" * 130)
+        # =====================================================================
+        # 결과 출력
+        # =====================================================================
+        print()
+        print("=" * 130)
+        print("%-4s %-25s | %10s | %6s | %7s | %8s | %7s | %8s | %s" % (
+            "#", "전략명", "수익률", "거래수", "승률", "MDD", "Sharpe", "CAGR", "결정론"
+        ))
+        print("-" * 130)
 
-sorted_results = sorted(all_results.items(), key=lambda x: x[1][0]["total_return"], reverse=True)
+        sorted_results = sorted(all_results.items(), key=lambda x: x[1][0]["total_return"], reverse=True)
 
-for idx, (sid, runs) in enumerate(sorted_results, 1):
-    r = runs[0]
-    det_ok = all(run["total_return"] == r["total_return"] for run in runs)
-    det_str = "PASS (%dx동일)" % NUM_RUNS if det_ok else "FAIL"
-    name = STRATEGIES[sid]["name"]
-    ver = STRATEGIES[sid]["version"]
-    v_mark = " *" if ver == "2.0" else ""
+        for idx, (sid, runs) in enumerate(sorted_results, 1):
+            r = runs[0]
+            det_ok = all(rv == raw_returns[sid][0] for rv in raw_returns[sid])
+            det_str = "PASS (%dx동일)" % NUM_RUNS if det_ok else "FAIL"
+            name = STRATEGIES[sid]["name"]
+            ver = STRATEGIES[sid]["version"]
+            v_mark = " *" if ver == "2.0" else ""
 
-    print("%-4d %-23s%s | %9.2f%% | %6d | %6.1f%% | %7.2f%% | %7.2f | %7.2f%% | %s" % (
-        idx, name, v_mark, r["total_return"], r["total_trades"],
-        r["win_rate"], r["mdd"], r["sharpe"], r["cagr"], det_str
-    ))
+            print("%-4d %-23s%s | %9.2f%% | %6d | %6.1f%% | %7.2f%% | %7.2f | %7.2f%% | %s" % (
+                idx, name, v_mark, r["total_return"], r["total_trades"],
+                r["win_rate"], r["mdd"], r["sharpe"], r["cagr"], det_str
+            ))
 
-print("-" * 130)
-print("* = V56 업데이트 적용 전략 (데이터 검증 기반)")
-print()
+        print("-" * 130)
+        print("* = V56 업데이트 적용 전략 (데이터 검증 기반)")
+        print()
 
-# 미실행 전략
-print("[ 백테스트 미실행 전략 (미구현 지표) ]")
-for sid, reason in SKIPPED.items():
-    print("  - %-30s : %s" % (sid, reason))
+        # 미실행 전략
+        print("[ 백테스트 미실행 전략 (미구현 지표) ]")
+        for sid, reason in SKIPPED.items():
+            print("  - %-30s : %s" % (sid, reason))
 
-# =====================================================================
-# 결정론 상세
-# =====================================================================
-print()
-print("[ 결정론 검증 상세 ]")
-all_deterministic = True
-for sid, runs in all_results.items():
-    returns = [r["total_return"] for r in runs]
-    if len(set(returns)) > 1:
-        all_deterministic = False
-        print("  FAIL %-25s : %s" % (STRATEGIES[sid]["name"], returns))
+        # =====================================================================
+        # 결정론 상세
+        # =====================================================================
+        print()
+        print("[ 결정론 검증 상세 ]")
+        all_deterministic = True
+        for sid, raw_ret_list in raw_returns.items():
+            if len(set(raw_ret_list)) > 1:
+                all_deterministic = False
+                print("  FAIL %-25s : %s" % (STRATEGIES[sid]["name"], raw_ret_list))
 
-if all_deterministic:
-    print("  전체 PASS - %d개 전략 x %d회 = 모두 동일 결과" % (len(all_results), NUM_RUNS))
+        if all_deterministic:
+            print("  전체 PASS - %d개 전략 x %d회 = 모두 동일 결과" % (len(all_results), NUM_RUNS))
 
-# =====================================================================
-# JSON 저장
-# =====================================================================
-output = {
-    "test_config": {
-        "period": "2021-01-01 ~ 2026-02-25",
-        "symbols": SYMBOLS,
-        "initial_capital": 100000,
-        "num_runs": NUM_RUNS,
-    },
-    "results": {},
-    "skipped": SKIPPED,
-    "determinism": "ALL_PASS" if all_deterministic else "SOME_FAIL",
-}
-for sid, runs in sorted_results:
-    output["results"][sid] = {
-        "name": STRATEGIES[sid]["name"],
-        "version": STRATEGIES[sid]["version"],
-        "runs": runs,
-        "deterministic": all(r["total_return"] == runs[0]["total_return"] for r in runs),
-    }
+        # =====================================================================
+        # JSON 저장
+        # =====================================================================
+        output = {
+            "test_config": {
+                "period": "2021-01-01 ~ 2026-02-25",
+                "symbols": SYMBOLS,
+                "initial_capital": 100000,
+                "num_runs": NUM_RUNS,
+            },
+            "results": {},
+            "skipped": SKIPPED,
+            "determinism": "ALL_PASS" if all_deterministic else "SOME_FAIL",
+        }
+        for sid, runs in sorted_results:
+            output["results"][sid] = {
+                "name": STRATEGIES[sid]["name"],
+                "version": STRATEGIES[sid]["version"],
+                "runs": runs,
+                "deterministic": all(rv == raw_returns[sid][0] for rv in raw_returns[sid]),
+            }
 
-out_path = Path(__file__).resolve().parent / "full_backtest_results.json"
-with open(out_path, "w", encoding="utf-8") as f:
-    json.dump(output, f, ensure_ascii=False, indent=2)
-print("\n결과 저장: %s" % out_path)
+        out_path = Path(__file__).resolve().parent / "full_backtest_results.json"
+        with open(out_path, "w", encoding="utf-8") as f:
+            json.dump(output, f, ensure_ascii=False, indent=2)
+        print("\n결과 저장: %s" % out_path)
+    finally:
+        loader.close()
+    print("완료.")
 
-loader.close()
-print("완료.")
+
+if __name__ == "__main__":
+    main()
