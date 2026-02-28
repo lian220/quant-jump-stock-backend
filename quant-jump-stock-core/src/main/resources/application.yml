@@ -68,17 +68,20 @@ spring:
       auto-index-creation: ${MONGO_AUTO_INDEX_CREATION:false}
 
   # ============================================
-  # Google Cloud Pub/Sub Configuration
+  # Google Cloud Configuration
   # ============================================
   # 에뮬레이터 설정은 application-local.yml에서 관리
-  # 프로덕션: 환경변수로 실제 GCP 연결
+  # 프로덕션: Pub/Sub은 VM SA ADC 사용, Vertex AI는 전용 SA 키 사용
   cloud:
     gcp:
-      project-id: ${VERTEX_AI_PROJECT_ID:quantiq-local}
+      project-id: ${PUBSUB_PROJECT_ID:quantiq-local}
       credentials:
         encoded-key: ${GCP_CREDENTIALS_ENCODED:}
       pubsub:
-        project-id: ${PUBSUB_PROJECT_ID:${VERTEX_AI_PROJECT_ID:quantiq-local}}
+        project-id: ${PUBSUB_PROJECT_ID:quantiq-local}
+        # Pub/Sub 전용 credentials — 미설정 시 ADC 사용 (VM SA)
+        credentials:
+          encoded-key: ${PUBSUB_CREDENTIALS_ENCODED:}
 
   # ============================================
   # Quartz Scheduler Configuration
@@ -105,6 +108,8 @@ management:
       enabled: true
     mongo:
       enabled: true
+    pubsub:
+      enabled: false  # Pub/Sub 연결 실패가 전체 health를 DOWN시키지 않도록 비활성화
 
 logging:
   level:
