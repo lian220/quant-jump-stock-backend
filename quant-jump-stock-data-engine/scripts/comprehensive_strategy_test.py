@@ -3,10 +3,12 @@
 모든 테스트 가능한 전략을 5년 백테스트 + 3회 반복 결정론 검증합니다.
 V56(데이터 검증), V57(백테스트 검증) 마이그레이션 반영 후의 최종 상태입니다.
 
-테스트 대상: 16개 전략
-- 기존 기술적 전략 12개 (업데이트 반영)
-- 신규 전략 2개 (V57)
+DB 전체: 24개 전략 (V11: 20개 + V57 신규: 4개)
+테스트 대상: 17개 전략
+- 기존 기술적 전략 11개 (업데이트 반영)
+- V57 신규 전략 4개 (rsi_macd_combo, golden_cross_rsi, rsi_macd_sma200, yield_curve_rsi)
 - 캘린더 전략 2개 (calendar 지표 구현)
+블록: 7개 (미구현 지표)
 """
 import os, sys, json
 from pathlib import Path
@@ -240,6 +242,41 @@ STRATEGIES = {
         "risk_management": {"stop_loss_pct": 0.10, "take_profit_pct": 0.25, "max_position_pct": 0.1}
     },
 
+    # 14. RSI+MACD+SMA200 편향보정 (B+등급, CAGR 14.22%, PF 2.85)
+    "rsi_macd_sma200": {
+        "strategy_id": "rsi_macd_sma200", "name": "RSI+MACD+SMA200 편향보정", "version": "1.0",
+        "rules": [
+            {"name": "rsi_macd_sma200_buy", "signal_type": "buy", "conditions": [
+                {"indicator": "rsi", "params": {"period": 14}, "operator": "lt", "value": 45},
+                {"indicator": "macd_hist", "params": {}, "operator": "gt", "value": 0},
+                {"indicator": "price", "params": {}, "operator": "gt", "value": "sma_200"}
+            ], "logic": "and", "weight": 1.0},
+            {"name": "rsi_overbought_sell", "signal_type": "sell", "conditions": [
+                {"indicator": "rsi", "params": {"period": 14}, "operator": "gt", "value": 65}
+            ], "logic": "and", "weight": 1.0}
+        ],
+        "risk_management": {"stop_loss_pct": 0.10, "take_profit_pct": 0.25, "max_position_pct": 0.1}
+    },
+
+    # 15. Yield Curve+RSI 매크로 전략 (B+등급, CAGR 12.89%, PF 2.62)
+    "yield_curve_rsi": {
+        "strategy_id": "yield_curve_rsi", "name": "Yield Curve+RSI", "version": "1.0",
+        "rules": [
+            {"name": "yield_rsi_buy", "signal_type": "buy", "conditions": [
+                {"indicator": "t10y2y", "params": {}, "operator": "gt", "value": 0},
+                {"indicator": "rsi", "params": {"period": 14}, "operator": "lt", "value": 40},
+                {"indicator": "sma", "params": {"period": 50}, "operator": "gt", "value": "sma_200"}
+            ], "logic": "and", "weight": 1.0},
+            {"name": "rsi_overbought_sell", "signal_type": "sell", "conditions": [
+                {"indicator": "rsi", "params": {"period": 14}, "operator": "gt", "value": 65}
+            ], "logic": "and", "weight": 1.0},
+            {"name": "yield_curve_inversion_sell", "signal_type": "sell", "conditions": [
+                {"indicator": "t10y2y", "params": {}, "operator": "lt", "value": -0.5}
+            ], "logic": "and", "weight": 1.0}
+        ],
+        "risk_management": {"stop_loss_pct": 0.12, "take_profit_pct": 0.30, "max_position_pct": 0.1}
+    },
+
     # ======================================================================
     # E. SEASONAL 전략 (2개 - calendar 지표 구현)
     # ======================================================================
@@ -362,7 +399,7 @@ categories = {
     "MOMENTUM": ["golden_cross", "rsi_oversold", "macd_crossover", "bollinger_squeeze", "momentum_breakout", "trend_following"],
     "QUANT_COMPOSITE": ["triple_screen", "mean_reversion", "dual_momentum", "scalping_rsi"],
     "ASSET_ALLOCATION": ["rate_linked_allocation"],
-    "V57_NEW": ["rsi_macd_combo", "golden_cross_rsi"],
+    "V57_NEW": ["rsi_macd_combo", "golden_cross_rsi", "rsi_macd_sma200", "yield_curve_rsi"],
     "SEASONAL": ["january_effect", "sell_in_may"],
 }
 

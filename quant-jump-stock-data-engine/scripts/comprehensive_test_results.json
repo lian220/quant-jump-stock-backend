@@ -187,6 +187,90 @@
       "name": "금리 연동 v2",
       "version": "2.0"
     },
+    "rsi_macd_sma200": {
+      "runs": [
+        {
+          "total_return": 99.13,
+          "total_trades": 62,
+          "win_rate": 75.8,
+          "mdd": -18.02,
+          "sharpe": 0.51,
+          "cagr": 14.3,
+          "avg_holding_days": 37.0,
+          "profit_factor": 2.83,
+          "stop_loss_count": 13,
+          "take_profit_count": 6
+        },
+        {
+          "total_return": 99.13,
+          "total_trades": 62,
+          "win_rate": 75.8,
+          "mdd": -18.02,
+          "sharpe": 0.51,
+          "cagr": 14.3,
+          "avg_holding_days": 37.0,
+          "profit_factor": 2.83,
+          "stop_loss_count": 13,
+          "take_profit_count": 6
+        },
+        {
+          "total_return": 99.13,
+          "total_trades": 62,
+          "win_rate": 75.8,
+          "mdd": -18.02,
+          "sharpe": 0.51,
+          "cagr": 14.3,
+          "avg_holding_days": 37.0,
+          "profit_factor": 2.83,
+          "stop_loss_count": 13,
+          "take_profit_count": 6
+        }
+      ],
+      "name": "RSI+MACD+SMA200 편향보정",
+      "version": "1.0"
+    },
+    "yield_curve_rsi": {
+      "runs": [
+        {
+          "total_return": 87.96,
+          "total_trades": 70,
+          "win_rate": 75.7,
+          "mdd": -23.16,
+          "sharpe": 0.48,
+          "cagr": 13.03,
+          "avg_holding_days": 36.4,
+          "profit_factor": 2.6,
+          "stop_loss_count": 13,
+          "take_profit_count": 2
+        },
+        {
+          "total_return": 87.96,
+          "total_trades": 70,
+          "win_rate": 75.7,
+          "mdd": -23.16,
+          "sharpe": 0.48,
+          "cagr": 13.03,
+          "avg_holding_days": 36.4,
+          "profit_factor": 2.6,
+          "stop_loss_count": 13,
+          "take_profit_count": 2
+        },
+        {
+          "total_return": 87.96,
+          "total_trades": 70,
+          "win_rate": 75.7,
+          "mdd": -23.16,
+          "sharpe": 0.48,
+          "cagr": 13.03,
+          "avg_holding_days": 36.4,
+          "profit_factor": 2.6,
+          "stop_loss_count": 13,
+          "take_profit_count": 2
+        }
+      ],
+      "name": "Yield Curve+RSI",
+      "version": "1.0"
+    },
     "golden_cross_rsi": {
       "runs": [
         {
@@ -661,9 +745,9 @@
   },
   "determinism": "ALL_PASS",
   "summary": {
-    "total_tested": 15,
+    "total_tested": 17,
     "total_blocked": 7,
-    "a_grade": 5,
+    "a_grade": 7,
     "b_grade": 5,
     "inactive": 3,
     "no_trades": 2
