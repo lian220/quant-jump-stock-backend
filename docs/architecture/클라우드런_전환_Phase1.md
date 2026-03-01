@@ -1,8 +1,24 @@
-# Phase 1: WebFlux 제거 및 부팅 시간 최적화
+# Core API Cloud Run 전환 계획 및 진행 상태
 
-> **목표**: Native Image cold start 4-14초 → ~1.5초
-> **Phase 1 예상 절감**: ~2-4초
-> **리스크**: LOW (VM에서 먼저 적용, 기능 변경 없음)
+> **목표**: Native Image cold start 4-14초 → ~1.5초 / VM → Cloud Run 완전 전환
+> **최종 업데이트**: 2026-03-01
+> **현재 상태**: Phase 1(부분), Phase 2-4 코드 준비 완료. Terraform 적용 및 프로덕션 전환 대기.
+
+## 진행 상태 요약
+
+| Phase | 항목 | 상태 |
+|-------|------|------|
+| 1-1 | WebFlux → RestClient 전환 | **미완료** (계획 작성됨) |
+| 1-2 | Prod 프로파일 생성 | **완료** (application.yml 단일화, ddl-auto:none, lazy-init:true) |
+| 1-3 | Pub/Sub 구독 지연 초기화 | **완료** (PubSubEventListenerAdapter 삭제, Push 전환) |
+| 2 | Pub/Sub Pull → Push 전환 | **코드 완료** (PubSubPushController, LightweightPubSubPublisher, Pull 어댑터 삭제) |
+| 3 | Quartz → Cloud Scheduler 전환 | **코드 완료** (CloudSchedulerController 6개 엔드포인트, QuartzConfig 조건부) |
+| 4 | Cloud Run 배포 준비 | **완료** (deploy-core.yml, Dockerfile.native, entrypoint.sh, Terraform 리소스) |
+| - | Config 정리 | **완료** (application*.yml 3→1, docker-compose*.yml 3→1, start.sh gcp deprecated) |
+
+---
+
+## Phase 1: 부팅 시간 최적화
 
 ---
 
@@ -202,104 +218,91 @@ CompletableFuture.runAsync {
 
 ---
 
-## 1-2. Prod 프로파일 생성
+## 1-2. Prod 프로파일 → application.yml 단일화 ✅ 완료
 
-### 변경 내용
+### 변경 내용 (2026-03-01)
 
-**새 파일**: `src/main/resources/application-prod.yml`
+**결정**: `application-prod.yml` 별도 생성 대신, `application.yml`에 직접 적용하여 단일 파일로 관리.
 
 ```yaml
+# application.yml에 직접 적용 (환경 무관하게 동일)
 spring:
+  main:
+    lazy-initialization: true    # cold start 최적화
   jpa:
     hibernate:
-      ddl-auto: none          # validate 대신 none (35개 Entity 검증 제거, ~0.3-0.5초 절감)
-springdoc:
-  api-docs.enabled: false     # Swagger 비활성화 (~0.2초 절감)
-  swagger-ui.enabled: false
-logging:
-  level:
-    org.hibernate.SQL: WARN
-    org.springframework.data.mongodb: WARN
+      ddl-auto: none             # Flyway가 스키마 관리, validate 불필요
 ```
 
-### 왜 필요한가?
+- **Swagger**: 환경변수 `${SWAGGER_ENABLED:true}`로 제어 (프로덕션에서 Cloud Run env로 false 설정)
+- **포트**: `${SERVER_PORT:10010}`로 제어 (Cloud Run은 `PORT` env로 8080 주입)
 
-| 항목 | 현재 | prod 프로파일 | 절감 |
-|------|------|--------------|------|
-| Hibernate ddl-auto | validate (35개 Entity 메타데이터 검증) | none | ~0.3-0.5초 |
-| Swagger/SpringDoc | 항상 활성화 | 비활성화 | ~0.2초 |
-| SQL 로깅 | DEBUG | WARN | 미미하지만 로그 I/O 감소 |
+### 삭제된 파일
+- `application-local.yml` — 모든 설정이 application.yml + env_file + docker-compose 환경변수로 커버
+- `application-prod.yml` — gitignored 상태로 CI/CD에서 적용 불가했음, 유용한 설정은 application.yml로 이동
 
-> **Flyway가 스키마를 관리하므로** Hibernate validate는 프로덕션에서 불필요합니다.
+> **원칙**: 환경별 차이는 환경변수로 제어, 코드 파일은 하나로 통일.
 
 ---
 
-## 1-3. Pub/Sub 구독 지연 초기화
+## 1-3. Pub/Sub Pull 구독 제거 ✅ 완료
 
-### 변경 내용
+### 변경 내용 (2026-03-01)
 
-**수정 파일**: `adapter/input/messaging/PubSubEventListenerAdapter.kt`
+**결정**: Phase 2의 Pull → Push 전환을 선행 적용하여, Pull 구독 코드를 완전히 제거함.
+지연 초기화 대신 Pull 자체를 없애는 것이 부팅 시간에 더 효과적.
 
-```kotlin
-// Before: @PostConstruct (부팅 시 블로킹, 6개 구독 순차 생성)
-@PostConstruct
-fun init() {
-    subscribe(EventTopics.ANALYSIS_COMPLETED, ::handleAnalysisCompleted)
-    subscribe(EventTopics.ECONOMIC_DATA_COLLECTED, ::handleEconomicDataCollected)
-    // ... 4개 더
-}
+**삭제된 파일/의존성:**
+- `PubSubEventListenerAdapter.kt` — Pull 구독 어댑터 전체 삭제
+- `spring-cloud-gcp-starter-pubsub` — 의존성 제거 (gRPC/Netty 오버헤드 제거)
 
-// After: ApplicationReadyEvent + 백그라운드 스레드
-@EventListener(ApplicationReadyEvent::class)
-fun subscribeAll() {
-    Thread.startVirtualThread {
-        subscribe(EventTopics.ANALYSIS_COMPLETED, ::handleAnalysisCompleted)
-        subscribe(EventTopics.ECONOMIC_DATA_COLLECTED, ::handleEconomicDataCollected)
-        // ... 4개 더
-        logger.info("Pub/Sub 구독 초기화 완료")
-    }
-}
-```
+**대체:**
+- `PubSubPushController.kt` — `/_ah/push-handler/{topicName}` 단일 엔드포인트로 6개 토픽 수신
+- `PubSubMessageHandlerService.kt` — 핸들러 로직 분리 (Push 컨트롤러에서 호출)
+- `LightweightPubSubPublisher.kt` — `google-cloud-pubsub` 직접 사용 (경량 퍼블리셔)
 
 ### 효과
 
 | 항목 | Before | After |
 |------|--------|-------|
-| 부팅 블로킹 | 6개 Pull 구독 순차 생성 (~1-3초) | 부팅 완료 후 백그라운드 실행 |
-| 서버 가용성 | 구독 완료까지 대기 | 즉시 HTTP 요청 수신 가능 |
-| 구독 실패 시 | 부팅 실패 | 부팅 성공, 구독만 재시도 가능 |
-
-> **주의**: Phase 2에서 Pull → Push 전환하면 이 코드는 제거됩니다.
-> Phase 1에서는 기존 Pull 방식 유지하되 부팅 블로킹만 제거합니다.
+| 부팅 블로킹 | 6개 Pull 구독 순차 생성 (~1-3초) | **제거** (Push는 HTTP 요청으로 수신) |
+| gRPC/Netty 오버헤드 | spring-cloud-gcp 전체 스택 | **제거** (경량 Publisher만 사용) |
+| 구독 실패 시 | 부팅 실패 | 해당 없음 (Push는 Pub/Sub이 HTTP로 전달) |
 
 ---
 
 ## Phase 1 전체 예상 효과
 
-| 최적화 | 절감 시간 |
-|--------|----------|
-| WebFlux(Netty) 제거 | ~0.3-0.5초 |
-| Hibernate validate → none | ~0.3-0.5초 |
-| Swagger 비활성화 | ~0.2초 |
-| Pub/Sub 구독 지연 | ~1-3초 (부팅 블로킹 → 백그라운드) |
-| **합계** | **~2-4초** |
+| 최적화 | 절감 시간 | 상태 |
+|--------|----------|------|
+| WebFlux(Netty) 제거 | ~0.3-0.5초 | **미완료** |
+| Hibernate validate → none | ~0.3-0.5초 | ✅ 완료 (ddl-auto: none) |
+| Swagger 비활성화 (프로덕션) | ~0.2초 | ✅ 완료 (env var 제어) |
+| Pub/Sub Pull 구독 제거 | ~1-3초 | ✅ 완료 (Push 전환 + Pull 삭제) |
+| spring-cloud-gcp 제거 | ~0.5-1초 | ✅ 완료 (경량 퍼블리셔) |
+| lazy-initialization | ~0.2-0.5초 | ✅ 완료 |
+| **합계** | **~2.5-5.5초** | 대부분 완료, WebFlux만 남음 |
 
 ---
 
 ## 검증 방법
 
 ```bash
-# 1. 빌드
+# 1. 빌드 (application.yml 단일 파일, 프로파일 불필요)
 cd quant-jump-stock-core
 ./gradlew build -x test
 
-# 2. 기존 프로파일로 부팅 시간 측정 (baseline)
+# 2. JVM 부팅 시간 측정
 java -jar build/libs/quant-jump-stock-core-*.jar 2>&1 | grep "Started"
 
-# 3. prod 프로파일로 부팅 시간 측정
-java -jar build/libs/quant-jump-stock-core-*.jar --spring.profiles.active=prod 2>&1 | grep "Started"
+# 3. Native Image 빌드 + 부팅 시간 측정
+./gradlew nativeCompile
+./build/native/nativeCompile/quant-jump-stock-core 2>&1 | grep "Started"
 
-# 4. API 동작 확인
+# 4. Docker Native 빌드 (docker-compose 통합)
+CORE_DOCKERFILE=Dockerfile.native CORE_CONTAINER_PORT=8080 docker compose up quant-jump-stock-core
+
+# 5. API 동작 확인
 curl http://localhost:10010/actuator/health
 curl http://localhost:10010/api/v1/stocks
 ```

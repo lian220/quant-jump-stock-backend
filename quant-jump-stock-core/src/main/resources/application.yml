@@ -12,6 +12,7 @@ spring:
     name: quantiq-core
   main:
     allow-bean-definition-overriding: true
+    lazy-initialization: true
   # ============================================
   # PostgreSQL (RDB) Configuration
   # ============================================
@@ -32,7 +33,7 @@ spring:
   # ============================================
   jpa:
     hibernate:
-      ddl-auto: validate  # Flyway가 스키마 관리, JPA는 검증만
+      ddl-auto: none  # Flyway가 스키마 관리
     generate-ddl: false
     open-in-view: false  # N+1 문제 방지
     properties:
@@ -48,7 +49,7 @@ spring:
   # Flyway Configuration
   # ============================================
   flyway:
-    enabled: ${FLYWAY_ENABLED:true}
+    enabled: ${FLYWAY_ENABLED:false}
     locations: classpath:db/migration
     baseline-on-migrate: true  # 기존 DB에 Flyway 적용 시 필요
     baseline-version: 0
@@ -70,8 +71,8 @@ spring:
   # ============================================
   # Google Cloud Configuration
   # ============================================
-  # 에뮬레이터 설정은 application-local.yml에서 관리
-  # 프로덕션: Pub/Sub은 VM SA ADC 사용, Vertex AI는 전용 SA 키 사용
+  # Pub/Sub: 에뮬레이터는 PUBSUB_EMULATOR_HOST 환경변수로 자동 감지
+  # 프로덕션: ADC 사용 (Cloud Run SA), Vertex AI는 전용 SA 키 사용
   cloud:
     gcp:
       project-id: ${PUBSUB_PROJECT_ID:quantiq-local}

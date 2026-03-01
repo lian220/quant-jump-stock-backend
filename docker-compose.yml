@@ -178,10 +178,10 @@ services:
   quant-jump-stock-core:
     build:
       context: ./quant-jump-stock-core
-      dockerfile: Dockerfile
+      dockerfile: ${CORE_DOCKERFILE:-Dockerfile}
     container_name: qjs-core
     ports:
-      - "${CORE_API_PORT:-10010}:${CORE_API_PORT:-10010}"
+      - "${CORE_API_PORT:-10010}:${CORE_CONTAINER_PORT:-10010}"
     depends_on:
       pubsub-emulator:
         condition: service_healthy
