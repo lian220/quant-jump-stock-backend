@@ -48,6 +48,7 @@ spring:
           fetch_size: 100
           use_get_generated_keys: true
         format_sql: false
+        dialect: org.hibernate.dialect.PostgreSQLDialect
         temp:
           use_jdbc_metadata_defaults: false
 
