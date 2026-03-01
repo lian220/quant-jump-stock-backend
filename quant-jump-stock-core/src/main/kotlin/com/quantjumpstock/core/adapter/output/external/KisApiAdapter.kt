@@ -8,15 +8,17 @@ import com.quantjumpstock.core.adapter.output.persistence.jpa.UserKisAccountJpaR
 import com.quantjumpstock.core.infrastructure.security.EncryptionService
 import com.quantjumpstock.core.config.KisConfig
 import com.quantjumpstock.core.domain.trading.port.output.TradingApiPort
+import java.time.Duration
 import java.time.LocalDateTime
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.locks.ReentrantLock
 import org.slf4j.LoggerFactory
 import org.springframework.http.MediaType
+import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
-import org.springframework.web.reactive.function.client.WebClient
+import org.springframework.web.client.RestClient
 
 /**
  * KIS API Adapter (Output Adapter)
@@ -32,8 +34,8 @@ class KisApiAdapter(
 ) : TradingApiPort {
     private val logger = LoggerFactory.getLogger(KisApiAdapter::class.java)
 
-    // 사용자별 WebClient 캐시
-    private val webClientCache = ConcurrentHashMap<String, WebClient>()
+    // 사용자별 RestClient 캐시
+    private val restClientCache = ConcurrentHashMap<String, RestClient>()
 
     private val lastApiCallTime = AtomicLong(0)
     private val minApiIntervalMs = 500L
@@ -51,15 +53,21 @@ class KisApiAdapter(
     }
 
     /**
-     * 사용자 ID로 WebClient 생성 또는 캐시에서 반환
+     * 사용자 ID로 RestClient 생성 또는 캐시에서 반환
      */
-    private fun getWebClientForUser(userId: String): WebClient {
-        return webClientCache.computeIfAbsent(userId) {
+    private fun getRestClientForUser(userId: String): RestClient {
+        return restClientCache.computeIfAbsent(userId) {
             val kisAccount = getActiveKisAccount(userId)
             val baseUrl = KisConfig.getBaseUrlForAccountType(kisAccount.accountType)
-            logger.info("Creating WebClient for user $userId with ${kisAccount.accountType} account: $baseUrl")
+            logger.info("Creating RestClient for user $userId with ${kisAccount.accountType} account: $baseUrl")
 
-            WebClient.builder().baseUrl(baseUrl).build()
+            RestClient.builder()
+                .baseUrl(baseUrl)
+                .requestFactory(SimpleClientHttpRequestFactory().apply {
+                    setConnectTimeout(Duration.ofSeconds(10))
+                    setReadTimeout(Duration.ofSeconds(30))
+                })
+                .build()
         }
     }
 
@@ -91,13 +99,13 @@ class KisApiAdapter(
         logger.info("Refreshing KIS access token for user: $userId, type: ${kisAccount.accountType}")
 
         val appSecret = encryptionService.decrypt(kisAccount.appSecretEncrypted)
-        val webClient = getWebClientForUser(userId)
+        val restClient = getRestClientForUser(userId)
 
-        val response = webClient
+        val response = restClient
             .post()
             .uri("/oauth2/tokenP")
             .contentType(MediaType.APPLICATION_JSON)
-            .bodyValue(
+            .body(
                 mapOf(
                     "grant_type" to "client_credentials",
                     "appkey" to kisAccount.appKey,
@@ -105,8 +113,7 @@ class KisApiAdapter(
                 )
             )
             .retrieve()
-            .bodyToMono(Map::class.java)
-            .block()
+            .body(Map::class.java)
             ?: throw RuntimeException("Failed to get access token from KIS for user: $userId")
 
         val token = response["access_token"] as String
@@ -149,7 +156,7 @@ class KisApiAdapter(
 
         val kisAccount = getActiveKisAccount(userId)
         val token = getAccessToken(userId)
-        val webClient = getWebClientForUser(userId)
+        val restClient = getRestClientForUser(userId)
 
         // TR_ID: 모의투자(VTTS3012R), 실전투자(TTTS3012R)
         val trId = when (kisAccount.accountType) {
@@ -159,7 +166,7 @@ class KisApiAdapter(
 
         val appSecret = encryptionService.decrypt(kisAccount.appSecretEncrypted)
 
-        return webClient
+        return restClient
             .get()
             .uri { uriBuilder ->
                 uriBuilder
@@ -178,8 +185,7 @@ class KisApiAdapter(
             .header("tr_id", trId)
             .header("Content-Type", "application/json; charset=utf-8")
             .retrieve()
-            .bodyToMono(Map::class.java)
-            .block() as Map<String, Any>? ?: emptyMap()
+            .body(Map::class.java) as Map<String, Any>? ?: emptyMap()
     }
 
     /**
@@ -202,7 +208,7 @@ class KisApiAdapter(
 
         val kisAccount = getActiveKisAccount(userId)
         val token = getAccessToken(userId)
-        val webClient = getWebClientForUser(userId)
+        val restClient = getRestClientForUser(userId)
 
         // TR_ID: 모의투자 매수(VTTT1002U), 매도(VTTT1001U), 실전투자 매수(TTTT1002U), 매도(TTTT1001U)
         val trId = when {
@@ -230,7 +236,7 @@ class KisApiAdapter(
         logger.info("🔄 Placing $orderType order for $userId: $ticker x$quantity @ $price")
 
         return try {
-            val result = webClient
+            val result = restClient
                 .post()
                 .uri("/uapi/overseas-stock/v1/trading/order")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -239,10 +245,9 @@ class KisApiAdapter(
                 .header("appsecret", appSecret)
                 .header("tr_id", trId)
                 .header("Content-Type", "application/json; charset=utf-8")
-                .bodyValue(orderBody)
+                .body(orderBody)
                 .retrieve()
-                .bodyToMono(Map::class.java)
-                .block() as Map<String, Any>? ?: emptyMap()
+                .body(Map::class.java) as Map<String, Any>? ?: emptyMap()
 
             val rtCd = result["rt_cd"] as? String
             if (rtCd == "0") {

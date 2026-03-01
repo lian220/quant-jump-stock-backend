@@ -57,11 +57,11 @@ jobs:
       - name: Build Native Image
         working-directory: quant-jump-stock-core
         env:
-          SPRING_PROFILES_ACTIVE: prod
+          SPRING_PROFILES_ACTIVE: prod,cloudrun
         run: |
           chmod +x ./gradlew
           ./gradlew nativeCompile -x test \
-            -Dspring.profiles.active=prod \
+            -Dspring.profiles.active=prod,cloudrun \
             -Dorg.gradle.jvmargs="-Xmx4g" \
             -PnativeImageArgs="-J-Xmx12g,-Ob"
 
@@ -114,8 +114,8 @@ jobs:
               docker exec qjs-nginx nginx -s reload 2>/dev/null; \
               echo 'Core API (native) deployed to VM'"
 
-      # ── Health Check ───────────────────────────────────
-      - name: Verify Deployment
+      # ── Health Check (VM) ──────────────────────────────
+      - name: Verify VM Deployment
         run: |
           echo "Waiting for Core API startup (native ~2s)..."
           HEALTH_URL="https://${{ secrets.GCE_HOST }}/api/v1/auth/oauth2/urls"
@@ -130,4 +130,62 @@ jobs:
             echo "  ...attempt $i/6 (HTTP $HTTP_CODE)"
           done
           echo "Core API not ready after 30s"
+          exit 1
+
+  # ============================================================
+  # Cloud Run 배포 (VM과 병행 운영)
+  # ============================================================
+  deploy-cloudrun:
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy Core API to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: qjs-core
+          image: ${{ env.AR_REPO }}/qjs-core:native-${{ github.sha }}
+          region: ${{ env.REGION }}
+          flags: >-
+            --no-allow-unauthenticated
+            --memory=512Mi --cpu=1
+            --min-instances=0 --max-instances=3
+            --port=8080 --timeout=600
+            --cpu-boost
+            --service-account=qjs-core-api@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+          env_vars: |
+            SPRING_PROFILES_ACTIVE=prod,cloudrun
+            PUBSUB_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
+            TZ=Asia/Seoul
+          secrets: |
+            /secrets/common/env=qjs-env-common:latest
+            /secrets/db-prod/env=qjs-env-db-prod:latest
+            /secrets/prod/env=qjs-env-prod:latest
+
+      - name: Verify Cloud Run Deployment
+        run: |
+          SERVICE_URL=$(gcloud run services describe qjs-core \
+            --region ${{ env.REGION }} \
+            --format 'value(status.url)')
+          echo "Cloud Run URL: $SERVICE_URL"
+          TOKEN=$(gcloud auth print-identity-token)
+          for i in $(seq 1 10); do
+            sleep 3
+            HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" \
+              -H "Authorization: Bearer $TOKEN" \
+              "$SERVICE_URL/actuator/health/liveness" 2>/dev/null || echo "000")
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "Core API Cloud Run is healthy!"
+              exit 0
+            fi
+            echo "  ...attempt $i/10 (HTTP $HTTP_CODE)"
+          done
+          echo "Core API Cloud Run not ready after 30s"
           exit 1

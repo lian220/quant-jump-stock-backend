@@ -6,7 +6,7 @@ import com.quantjumpstock.core.infrastructure.util.DateRangeFormatter
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
-import org.springframework.web.reactive.function.client.WebClient
+import org.springframework.web.client.RestClient
 import java.time.ZonedDateTime
 import java.time.ZoneId
 
@@ -16,7 +16,7 @@ import java.time.ZoneId
  */
 @Component
 class SlackApiClient(
-    private val webClient: WebClient
+    private val restClient: RestClient
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
     private val kst = ZoneId.of("Asia/Seoul")
@@ -212,14 +212,12 @@ class SlackApiClient(
      */
     private fun sendToSlackApi(message: SlackApiMessage): SlackApiResponse? {
         return try {
-            webClient.post()
+            restClient.post()
                 .uri("https://slack.com/api/chat.postMessage")
                 .header("Authorization", "Bearer $slackBotToken")
-                .header("Content-Type", "application/json")
-                .bodyValue(message)
+                .body(message)
                 .retrieve()
-                .bodyToMono(SlackApiResponse::class.java)
-                .block()
+                .body(SlackApiResponse::class.java)
         } catch (e: Exception) {
             logger.error("❌ Slack API 호출 실패", e)
             null
@@ -698,12 +696,11 @@ class SlackApiClient(
      * Slack Webhook으로 메시지 전송 (지정된 URL)
      */
     private fun sendToSlackWebhook(message: SlackMessage, webhookUrl: String) {
-        webClient.post()
+        restClient.post()
             .uri(webhookUrl)
-            .bodyValue(message)
+            .body(message)
             .retrieve()
-            .bodyToMono(String::class.java)
-            .block()
+            .body(String::class.java)
     }
 }
 

@@ -5,8 +5,8 @@ import com.quantjumpstock.core.domain.model.AnalysisRequest
 import com.quantjumpstock.core.domain.model.BacktestRequest
 import com.quantjumpstock.core.domain.model.EconomicDataUpdateRequest
 import com.quantjumpstock.core.domain.model.VertexAIPredictionRequest
+import com.quantjumpstock.core.infrastructure.messaging.LightweightPubSubPublisher
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.google.cloud.spring.pubsub.core.PubSubTemplate
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.util.*
@@ -21,7 +21,7 @@ import java.util.concurrent.TimeUnit
  */
 @Component
 class PubSubMessagePublisherAdapter(
-    private val pubSubTemplate: PubSubTemplate,
+    private val publisher: LightweightPubSubPublisher,
     private val objectMapper: ObjectMapper
 ) : MessagePublisher {
 
@@ -136,7 +136,7 @@ class PubSubMessagePublisherAdapter(
         logger.debug("📤 Pub/Sub 메시지 생성: topic={}, requestId={}", pubsubTopic, requestId)
 
         try {
-            pubSubTemplate.publish(pubsubTopic, eventJson)
+            publisher.publish(pubsubTopic, eventJson)
                 .get(PUBLISH_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             logger.info("✅ Pub/Sub 메시지 발행 성공: topic={}, requestId={}", pubsubTopic, requestId)
         } catch (e: Exception) {

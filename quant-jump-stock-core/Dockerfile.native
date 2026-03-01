@@ -15,15 +15,16 @@ RUN groupadd -r appuser && useradd -r -g appuser -d /app appuser
 WORKDIR /app
 
 COPY build/native/nativeCompile/quant-jump-stock-core app
-RUN chmod +x app && chown appuser:appuser app
+COPY entrypoint.sh entrypoint.sh
+RUN chmod +x app entrypoint.sh && chown appuser:appuser app entrypoint.sh
 
 USER appuser
 
-ENV SERVER_PORT=10010
+# Cloud Run: PORT 환경변수 자동 주입 (기본 8080)
+# VM: docker-compose env_file 로 SERVER_PORT 주입
+ENV PORT=8080
 ENV TZ=Asia/Seoul
-EXPOSE 10010
+EXPOSE 8080
 
-HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD curl -sf http://localhost:10010/actuator/health || exit 1
-
-ENTRYPOINT ["./app"]
+# entrypoint.sh: Cloud Run Secret Manager 파일 → 환경변수 로드 후 앱 실행
+ENTRYPOINT ["./entrypoint.sh"]

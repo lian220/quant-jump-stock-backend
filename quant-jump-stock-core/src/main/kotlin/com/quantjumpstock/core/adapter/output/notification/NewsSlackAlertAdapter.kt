@@ -5,11 +5,12 @@ import com.quantjumpstock.core.domain.news.port.output.NewsAlertSender
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Component
-import org.springframework.web.reactive.function.client.WebClient
+import org.springframework.web.client.RestClient
+import java.util.concurrent.CompletableFuture
 
 @Component
 class NewsSlackAlertAdapter(
-    private val webClient: WebClient,
+    private val restClient: RestClient,
     @Value("\${slack.enabled:true}") private val slackEnabled: Boolean,
     @Value("\${slack.webhook-url-news:}") private val slackWebhookUrl: String
 ) : NewsAlertSender {
@@ -19,18 +20,16 @@ class NewsSlackAlertAdapter(
     override fun sendAlert(message: String) {
         if (!slackEnabled) return
         if (slackWebhookUrl.isBlank()) return
-        try {
-            webClient.post()
-                .uri(slackWebhookUrl)
-                .bodyValue(SlackMessage(text = message))
-                .retrieve()
-                .bodyToMono(String::class.java)
-                .subscribe(
-                    { },
-                    { e -> logger.warn("Slack 뉴스 알림 발송 실패: {}", e.message) }
-                )
-        } catch (e: Exception) {
-            logger.warn("Slack 뉴스 알림 발송 실패: {}", e.message)
+        CompletableFuture.runAsync {
+            try {
+                restClient.post()
+                    .uri(slackWebhookUrl)
+                    .body(SlackMessage(text = message))
+                    .retrieve()
+                    .body(String::class.java)
+            } catch (e: Exception) {
+                logger.warn("Slack 뉴스 알림 발송 실패: {}", e.message)
+            }
         }
     }
 }

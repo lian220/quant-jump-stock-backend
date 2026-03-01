@@ -12,11 +12,10 @@ docs/
 ├── plans/                # 구현 계획
 ├── features/             # 기능 상세
 ├── database/             # DB 스키마
-├── setup/                # 환경설정/배포/운영
-├── testing/              # 테스트 전략/실행 가이드
-├── troubleshooting/      # 장애 대응/문제 해결
+├── setup/                # 환경설정/배포/운영 (로컬·테스트·트러블슈팅 포함)
 ├── guidelines/           # 코딩/문서 가이드
 ├── analysis/             # 데이터 분석 결과
+├── strategy/             # 전략/백테스트 관련
 └── kis/                  # KIS API 연동
 ```
 
@@ -28,8 +27,8 @@ docs/
 | 구조 이해 | [architecture](./architecture/) |
 | 기능 구현 계획 확인 | [plans](./plans/) |
 | 스키마 확인 | [database](./database/) |
-| 테스트 기준 확인 | [testing](./testing/) |
-| 장애 대응 | [troubleshooting](./troubleshooting/) |
+| 테스트·로컬 실행 | [setup/로컬_테스트_가이드](./setup/로컬_테스트_가이드.md), [setup/](./setup/) |
+| 장애 대응 | [setup/배포_운영_가이드](./setup/배포_운영_가이드.md) §트러블슈팅 |
 
 ## 섹션 안내
 
@@ -42,11 +41,8 @@ docs/
 ### Setup/Deployment
 - 환경변수, 로컬 실행, 배포 절차, 운영 명령
 
-### Testing
-- 단위/통합 테스트 전략 및 실행 방법
-
-### Troubleshooting
-- 자주 발생하는 장애와 점검 순서
+### Setup (테스트·장애 대응 포함)
+- 환경변수, 로컬 실행, 배포 절차, [로컬_테스트_가이드](setup/로컬_테스트_가이드.md), [배포_운영_가이드](setup/배포_운영_가이드.md) §트러블슈팅
 
 ## 루트 문서 연결
 

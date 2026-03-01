@@ -1,0 +1,12 @@
+# Core만 Native Image로 빌드/실행할 때 사용
+# 사용: docker compose -f docker-compose.yml -f docker-compose.native.yml up -d
+# 전제: quant-jump-stock-core/build/native/nativeCompile/quant-jump-stock-core 가 이미 빌드되어 있음
+
+services:
+  quant-jump-stock-core:
+    build:
+      context: ./quant-jump-stock-core
+      dockerfile: Dockerfile.native
+    # Dockerfile.native 기본 PORT=8080 이므로 호스트 10010 → 컨테이너 8080 매핑
+    ports:
+      - "${CORE_API_PORT:-10010}:8080"

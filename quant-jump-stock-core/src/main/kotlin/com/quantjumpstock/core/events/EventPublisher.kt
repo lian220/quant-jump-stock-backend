@@ -1,8 +1,11 @@
 package com.quantjumpstock.core.events
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.google.api.core.ApiFutureCallback
+import com.google.api.core.ApiFutures
+import com.google.common.util.concurrent.MoreExecutors
+import com.quantjumpstock.core.infrastructure.messaging.LightweightPubSubPublisher
 import org.slf4j.LoggerFactory
-import com.google.cloud.spring.pubsub.core.PubSubTemplate
 import org.springframework.stereotype.Service
 
 /**
@@ -11,7 +14,7 @@ import org.springframework.stereotype.Service
  */
 @Service
 class EventPublisher(
-    private val pubSubTemplate: PubSubTemplate,
+    private val publisher: LightweightPubSubPublisher,
     private val objectMapper: ObjectMapper
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -29,14 +32,18 @@ class EventPublisher(
             logger.info("📤 Publishing event to topic [$pubsubTopic]: eventId=${event.eventId}, type=${event.eventType}")
             logger.debug("Event payload: $message")
 
-            pubSubTemplate.publish(pubsubTopic, message)
-                .whenComplete { _, ex ->
-                    if (ex == null) {
-                        logger.info("✅ Event published successfully: ${event.eventId}")
-                    } else {
-                        logger.error("❌ Failed to publish event: ${event.eventId}", ex)
+            ApiFutures.addCallback(
+                publisher.publish(pubsubTopic, message),
+                object : ApiFutureCallback<String> {
+                    override fun onSuccess(messageId: String) {
+                        logger.info("✅ Event published successfully: ${event.eventId}, messageId=$messageId")
                     }
-                }
+                    override fun onFailure(t: Throwable) {
+                        logger.error("❌ Event publish failed: ${event.eventId}", t)
+                    }
+                },
+                MoreExecutors.directExecutor()
+            )
         } catch (e: Exception) {
             logger.error("❌ Error publishing event to topic [$topic]", e)
             throw e
@@ -51,12 +58,18 @@ class EventPublisher(
             val message = objectMapper.writeValueAsString(event)
             val pubsubTopic = toPubSubTopic(topic)
             logger.info("📤 Publishing event (async) to topic [$pubsubTopic]: ${event.eventType}")
-            pubSubTemplate.publish(pubsubTopic, message)
-                .whenComplete { _, ex ->
-                    if (ex != null) {
-                        logger.error("❌ Async publish failed for topic [$pubsubTopic]", ex)
+            ApiFutures.addCallback(
+                publisher.publish(pubsubTopic, message),
+                object : ApiFutureCallback<String> {
+                    override fun onSuccess(messageId: String) {
+                        logger.debug("Async publish completed for topic [$pubsubTopic]")
                     }
-                }
+                    override fun onFailure(t: Throwable) {
+                        logger.error("❌ Async publish failed for topic [$pubsubTopic]", t)
+                    }
+                },
+                MoreExecutors.directExecutor()
+            )
         } catch (e: Exception) {
             logger.error("❌ Error publishing event asynchronously to topic [$topic]", e)
         }

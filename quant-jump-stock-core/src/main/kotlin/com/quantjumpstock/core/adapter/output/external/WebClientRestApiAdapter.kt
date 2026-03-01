@@ -3,16 +3,16 @@ package com.quantjumpstock.core.adapter.output.external
 import com.quantjumpstock.core.domain.economic.port.output.RestApiClient
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
-import org.springframework.web.reactive.function.client.WebClient
+import org.springframework.web.client.RestClient
 import java.util.concurrent.CompletableFuture
 
 /**
- * WebClient REST API Adapter (Output Adapter)
+ * RestClient REST API Adapter (Output Adapter)
  * RestApiClient 인터페이스를 구현하여 외부 REST API와 연동합니다.
  */
 @Component
 class WebClientRestApiAdapter(
-    private val webClient: WebClient
+    private val restClient: RestClient
 ) : RestApiClient {
 
     private val logger = LoggerFactory.getLogger(this::class.java)
@@ -28,12 +28,13 @@ class WebClientRestApiAdapter(
                 emptyMap()
             }
 
-            webClient.post()
-                .uri(url)
-                .bodyValue(requestBody)
-                .retrieve()
-                .bodyToMono(String::class.java)
-                .toFuture()
+            CompletableFuture.supplyAsync {
+                restClient.post()
+                    .uri(url)
+                    .body(requestBody)
+                    .retrieve()
+                    .body(String::class.java) ?: ""
+            }
         } catch (e: Exception) {
             logger.error("REST API 호출 실패: $url", e)
             CompletableFuture.failedFuture(e)

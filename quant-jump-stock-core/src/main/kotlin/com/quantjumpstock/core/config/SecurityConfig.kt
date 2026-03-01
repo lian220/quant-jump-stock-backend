@@ -60,7 +60,11 @@ class SecurityConfig(
                                     "/api/v1/categories/**",
                                     "/api/v1/stats/**",
                                     // 내부 서비스 API (Data Engine → Core 캐시 eviction)
-                                    "/api/v1/internal/cache/evict"
+                                    "/api/v1/internal/cache/evict",
+                                    // Cloud Scheduler HTTP 타겟 (내부 전용)
+                                    "/api/internal/scheduler/**",
+                                    // Pub/Sub Push 엔드포인트 (Cloud Run OIDC 또는 내부 네트워크)
+                                    "/_ah/push-handler/**"
                             )
                             .permitAll()
                             .anyRequest()

@@ -2,9 +2,10 @@ package com.quantjumpstock.core.adapter.output.external
 
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
+import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.stereotype.Component
-import org.springframework.web.reactive.function.client.WebClient
-import org.springframework.web.reactive.function.client.WebClientResponseException
+import org.springframework.web.client.RestClient
+import org.springframework.web.client.RestClientResponseException
 import java.time.Duration
 
 /**
@@ -15,11 +16,18 @@ import java.time.Duration
  */
 @Component
 class DataEngineClient(
-    private val webClient: WebClient,
     @Value("\${data-engine.base-url:http://localhost:10020}")
     private val baseUrl: String
 ) {
     private val logger = LoggerFactory.getLogger(this::class.java)
+
+    private val restClient: RestClient = RestClient.builder()
+        .baseUrl(baseUrl)
+        .requestFactory(SimpleClientHttpRequestFactory().apply {
+            setConnectTimeout(Duration.ofSeconds(10))
+            setReadTimeout(Duration.ofMinutes(5))
+        })
+        .build()
 
     /**
      * ML 패키지 업로드 응답
@@ -57,16 +65,14 @@ class DataEngineClient(
      * data-engine의 /api/v1/ml/upload 엔드포인트 호출
      */
     fun uploadMlPackage(): PackageUploadResponse {
-        val url = "$baseUrl/api/v1/ml/upload"
-        logger.info("📦 data-engine ML 패키지 업로드 호출: $url")
+        val url = "/api/v1/ml/upload"
+        logger.info("📦 data-engine ML 패키지 업로드 호출: $baseUrl$url")
 
         return try {
-            val response = webClient.post()
+            val response = restClient.post()
                 .uri(url)
                 .retrieve()
-                .bodyToMono(PackageUploadResponse::class.java)
-                .timeout(Duration.ofMinutes(5))
-                .block()
+                .body(PackageUploadResponse::class.java)
 
             if (response != null) {
                 logger.info("✅ data-engine 응답: success=${response.success}, gcs_uri=${response.gcs_uri}")
@@ -79,7 +85,7 @@ class DataEngineClient(
                     timestamp = java.time.LocalDateTime.now().toString()
                 )
             }
-        } catch (e: WebClientResponseException) {
+        } catch (e: RestClientResponseException) {
             logger.error("❌ data-engine API 오류: ${e.statusCode} - ${e.responseBodyAsString}", e)
             PackageUploadResponse(
                 success = false,
@@ -101,23 +107,20 @@ class DataEngineClient(
      * data-engine의 /api/v1/ml/status 엔드포인트 호출
      */
     fun getPackageStatus(): PackageStatusResponse {
-        val url = "$baseUrl/api/v1/ml/status"
-        logger.info("📋 data-engine ML 패키지 상태 조회: $url")
+        val url = "/api/v1/ml/status"
+        logger.info("📋 data-engine ML 패키지 상태 조회: $baseUrl$url")
 
         return try {
-            val response = webClient.get()
+            restClient.get()
                 .uri(url)
                 .retrieve()
-                .bodyToMono(PackageStatusResponse::class.java)
-                .timeout(Duration.ofSeconds(30))
-                .block()
-
-            response ?: PackageStatusResponse(
-                bucket = "unknown",
-                base_path = "unknown",
-                current_version = 0,
-                timestamp = java.time.LocalDateTime.now().toString()
-            )
+                .body(PackageStatusResponse::class.java)
+                ?: PackageStatusResponse(
+                    bucket = "unknown",
+                    base_path = "unknown",
+                    current_version = 0,
+                    timestamp = java.time.LocalDateTime.now().toString()
+                )
         } catch (e: Exception) {
             logger.error("❌ data-engine 상태 조회 실패: ${e.message}", e)
             PackageStatusResponse(
