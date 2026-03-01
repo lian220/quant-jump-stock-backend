@@ -160,10 +160,7 @@ slack:
 messaging:
   provider: ${MESSAGING_PROVIDER:pubsub}  # pubsub (기본값)
 
-# Pub/Sub Pull 구독 활성화 (Cloud Run에서는 false, Push 사용)
-pubsub:
-  pull:
-    enabled: ${PUBSUB_PULL_ENABLED:true}
+# Pub/Sub: Push 방식 사용 (PubSubPushController)
 
 # ============================================
 # Vertex AI Configuration

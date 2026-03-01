@@ -14,7 +14,7 @@ import org.springframework.stereotype.Service
 
 /**
  * Pub/Sub 메시지 핸들러 서비스
- * Pull 구독(PubSubEventListenerAdapter)과 Push 엔드포인트(PubSubPushController) 양쪽에서 공유합니다.
+ * Push 엔드포인트(PubSubPushController)에서 호출합니다.
  */
 @Service
 class PubSubMessageHandlerService(
