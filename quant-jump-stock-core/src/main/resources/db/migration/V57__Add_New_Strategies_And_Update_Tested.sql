@@ -3,7 +3,16 @@
 -- 문서: docs/analysis/전략_백테스트_5년_검증.md
 
 -- =====================================================================
--- 0. 안전 장치: strategy_id UNIQUE 제약 조건 확인
+-- 0-1. 안전 장치: check_strategy_status 제약 조건 재생성
+-- DB에 INACTIVE가 누락된 경우를 대비하여 제약 조건을 재생성
+-- =====================================================================
+ALTER TABLE strategies DROP CONSTRAINT IF EXISTS check_strategy_status;
+ALTER TABLE strategies ADD CONSTRAINT check_strategy_status CHECK (
+    status IN ('ACTIVE', 'INACTIVE', 'DRAFT', 'ARCHIVED', 'PENDING_REVIEW', 'APPROVED', 'PUBLISHED', 'REJECTED')
+);
+
+-- =====================================================================
+-- 0-2. 안전 장치: strategy_id UNIQUE 제약 조건 확인
 -- V7에서 partial index만 생성된 경우 ON CONFLICT가 동작하지 않으므로
 -- full UNIQUE constraint가 없으면 생성
 -- =====================================================================
