@@ -151,7 +151,7 @@ jobs:
         uses: google-github-actions/deploy-cloudrun@v2
         with:
           service: qjs-core
-          image: ${{ env.AR_REPO }}/qjs-core:latest
+          image: ${{ env.AR_REPO }}/qjs-core:native-${{ github.sha }}
           region: ${{ env.REGION }}
           flags: >-
             --no-allow-unauthenticated

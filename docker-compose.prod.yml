@@ -1,7 +1,7 @@
 # ============================================================
 # Quant Jump Stock - Production (GCE VM)
 # ============================================================
-# Core API (HTTP + Quartz + Pub/Sub) + Nginx를 VM에서 실행.
+# Core API (HTTP + Pub/Sub) + Nginx를 VM에서 실행.
 # Data Engine / Frontend / Backoffice는 Cloud Run.
 #
 # 환경변수: Secret Manager → .env 파일 3개 다운로드
@@ -30,7 +30,7 @@ services:
           memory: 32M
     restart: unless-stopped
 
-  # ── Core API (HTTP + Quartz + Pub/Sub) ─────────────────
+  # ── Core API (HTTP + Pub/Sub) ──────────────────────────
   core:
     image: ${AR_REPO}/qjs-core:latest
     container_name: qjs-core
@@ -48,7 +48,6 @@ services:
       - DOCKER_CONTAINER=true
       - SERVER_PORT=10010
       - SPRING_PROFILES_ACTIVE=prod
-      - SPRING_QUARTZ_JOB_STORE_TYPE=memory
       - SPRING_FLYWAY_BASELINE_ON_MIGRATE=true
       - SPRING_FLYWAY_VALIDATE_ON_MIGRATE=false
       # Pub/Sub: PUBSUB_CREDENTIALS_ENCODED 미설정 → ADC 사용 (VM SA: lian-web)

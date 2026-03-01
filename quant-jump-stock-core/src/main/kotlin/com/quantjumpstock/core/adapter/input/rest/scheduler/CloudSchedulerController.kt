@@ -5,6 +5,7 @@ import com.quantjumpstock.core.application.backtest.CanonicalBacktestService
 import com.quantjumpstock.core.application.trading.AutoTradingService
 import org.slf4j.LoggerFactory
 import org.springframework.cache.CacheManager
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.PostMapping
 import org.springframework.web.bind.annotation.RequestMapping
@@ -49,7 +50,7 @@ class CloudSchedulerController(
         } catch (e: Exception) {
             logger.error("자동 매수 실행 중 오류", e)
             ResponseEntity.internalServerError()
-                .body(mapOf("status" to "error", "job" to "auto-buy", "message" to (e.message ?: "unknown")))
+                .body(mapOf("status" to "error", "job" to "auto-buy"))
         }
     }
 
@@ -69,13 +70,13 @@ class CloudSchedulerController(
 
         return try {
             // TODO: AutoTradingUseCase.checkAndExecuteSellOrders() 호출
-            logger.info("매도 조건 확인 중...")
-            logger.info("매도 체크 완료")
-            ResponseEntity.ok(mapOf("status" to "success", "job" to "auto-sell"))
+            logger.warn("자동 매도 체크는 아직 미구현 상태입니다")
+            ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED)
+                .body(mapOf("status" to "not_implemented", "job" to "auto-sell"))
         } catch (e: Exception) {
             logger.error("자동 매도 실행 중 오류", e)
             ResponseEntity.internalServerError()
-                .body(mapOf("status" to "error", "job" to "auto-sell", "message" to (e.message ?: "unknown")))
+                .body(mapOf("status" to "error", "job" to "auto-sell"))
         }
     }
 
@@ -90,12 +91,13 @@ class CloudSchedulerController(
 
         return try {
             // TODO: 주문 정리 UseCase 구현 필요
-            logger.info("주문 정리 로직은 아직 미구현 상태입니다")
-            ResponseEntity.ok(mapOf("status" to "success", "job" to "cleanup-orders", "note" to "not yet implemented"))
+            logger.warn("주문 정리 로직은 아직 미구현 상태입니다")
+            ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED)
+                .body(mapOf("status" to "not_implemented", "job" to "cleanup-orders"))
         } catch (e: Exception) {
             logger.error("주문 정리 실행 중 오류", e)
             ResponseEntity.internalServerError()
-                .body(mapOf("status" to "error", "job" to "cleanup-orders", "message" to (e.message ?: "unknown")))
+                .body(mapOf("status" to "error", "job" to "cleanup-orders"))
         }
     }
 
@@ -110,12 +112,13 @@ class CloudSchedulerController(
 
         return try {
             // TODO: 수익 리포트 UseCase 구현 필요
-            logger.info("포트폴리오 수익 보고 로직은 아직 미구현 상태입니다")
-            ResponseEntity.ok(mapOf("status" to "success", "job" to "portfolio-report", "note" to "not yet implemented"))
+            logger.warn("포트폴리오 수익 보고 로직은 아직 미구현 상태입니다")
+            ResponseEntity.status(HttpStatus.NOT_IMPLEMENTED)
+                .body(mapOf("status" to "not_implemented", "job" to "portfolio-report"))
         } catch (e: Exception) {
             logger.error("포트폴리오 수익 보고 실행 중 오류", e)
             ResponseEntity.internalServerError()
-                .body(mapOf("status" to "error", "job" to "portfolio-report", "message" to (e.message ?: "unknown")))
+                .body(mapOf("status" to "error", "job" to "portfolio-report"))
         }
     }
 
@@ -144,7 +147,7 @@ class CloudSchedulerController(
         } catch (e: Exception) {
             logger.error("Canonical 백테스트 실행 중 오류", e)
             ResponseEntity.internalServerError()
-                .body(mapOf("status" to "error", "job" to "canonical-backtest", "message" to (e.message ?: "unknown")))
+                .body(mapOf("status" to "error", "job" to "canonical-backtest"))
         }
     }
 
@@ -164,7 +167,7 @@ class CloudSchedulerController(
         } catch (e: Exception) {
             logger.error("백테스트 데이터 정리 실행 중 오류", e)
             ResponseEntity.internalServerError()
-                .body(mapOf("status" to "error", "job" to "backtest-cleanup", "message" to (e.message ?: "unknown")))
+                .body(mapOf("status" to "error", "job" to "backtest-cleanup"))
         }
     }
 

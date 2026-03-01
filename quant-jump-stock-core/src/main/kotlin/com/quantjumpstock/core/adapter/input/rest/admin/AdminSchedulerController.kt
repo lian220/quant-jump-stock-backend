@@ -37,7 +37,7 @@ class AdminSchedulerController(
         } catch (e: Exception) {
             logger.error("[Admin] 자동 매수 실행 중 오류", e)
             ResponseEntity.internalServerError()
-                .body(mapOf("success" to false, "message" to (e.message ?: "unknown error")))
+                .body(mapOf("success" to false, "message" to "자동 매수 실행 중 오류가 발생했습니다."))
         }
     }
 
@@ -59,7 +59,7 @@ class AdminSchedulerController(
         } catch (e: Exception) {
             logger.error("[Admin] Canonical 백테스트 실행 중 오류", e)
             ResponseEntity.internalServerError()
-                .body(mapOf("success" to false, "message" to (e.message ?: "unknown error")))
+                .body(mapOf("success" to false, "message" to "Canonical 백테스트 실행 중 오류가 발생했습니다."))
         }
     }
 
@@ -73,7 +73,7 @@ class AdminSchedulerController(
         } catch (e: Exception) {
             logger.error("[Admin] 백테스트 데이터 정리 실행 중 오류", e)
             ResponseEntity.internalServerError()
-                .body(mapOf("success" to false, "message" to (e.message ?: "unknown error")))
+                .body(mapOf("success" to false, "message" to "백테스트 데이터 정리 실행 중 오류가 발생했습니다."))
         }
     }
 }

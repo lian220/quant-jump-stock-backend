@@ -40,10 +40,14 @@ class PubSubPushController(
             val data = String(Base64.getDecoder().decode(envelope.message.data))
             handlerService.handleMessage(dotTopic, data)
             ResponseEntity.ok("ok")
+        } catch (e: IllegalArgumentException) {
+            // 잘못된 메시지 형식 → 재시도해도 동일 실패, ACK 처리
+            logger.warn("⚠️ Pub/Sub Push 메시지 형식 오류 (ACK): topic=$dotTopic", e)
+            ResponseEntity.ok("invalid message")
         } catch (e: Exception) {
-            logger.error("❌ Pub/Sub Push 처리 실패: topic=$dotTopic", e)
-            // 200 반환하여 재전송 방지 (실패해도 ACK)
-            ResponseEntity.ok("error: ${e.message}")
+            // DB 장애 등 일시적 오류 → 5xx 반환하여 Pub/Sub 재시도 허용
+            logger.error("❌ Pub/Sub Push 처리 실패 (NACK): topic=$dotTopic", e)
+            ResponseEntity.internalServerError().body("error")
         }
     }
 }

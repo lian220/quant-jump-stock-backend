@@ -75,7 +75,7 @@ class PubSubMessageHandlerService(
 
             logger.info("✅ 분석 완료 이벤트 처리 완료")
         } catch (e: Exception) {
-            logger.error("❌ 분석 완료 이벤트 처리 실패: $message", e)
+            logger.error("❌ 분석 완료 이벤트 처리 실패: topic=${EventTopics.ANALYSIS_COMPLETED}, size=${message.length}B", e)
             throw e
         }
     }
@@ -140,7 +140,11 @@ class PubSubMessageHandlerService(
             try {
                 val userId = payload.get("userId")?.asText()?.let { resolveNotificationUserId(it, null) }
                 if (userId != null) {
-                    val signalTypeKr = if (signalType == "BUY") "매수" else "매도"
+                    val signalTypeKr = when (signalType.uppercase()) {
+                        "BUY" -> "매수"
+                        "SELL" -> "매도"
+                        else -> "미확인($signalType)"
+                    }
                     val confidencePct = (confidence * 100).toInt()
                     notificationService.create(
                         userId = userId,
@@ -155,7 +159,7 @@ class PubSubMessageHandlerService(
                 logger.warn("매매 시그널 알림 생성 실패 (무시): ${e.message}")
             }
         } catch (e: Exception) {
-            logger.error("❌ 매매 신호 이벤트 처리 실패: $message", e)
+            logger.error("❌ 매매 신호 이벤트 처리 실패: topic=${EventTopics.TRADING_SIGNAL_DETECTED}, size=${message.length}B", e)
             throw e
         }
     }
@@ -205,7 +209,7 @@ class PubSubMessageHandlerService(
                 }
             }
         } catch (e: Exception) {
-            logger.error("❌ 백테스트 완료 이벤트 처리 실패: $message", e)
+            logger.error("❌ 백테스트 완료 이벤트 처리 실패: topic=${EventTopics.BACKTEST_COMPLETED}, size=${message.length}B", e)
             throw e
         }
     }
@@ -229,7 +233,7 @@ class PubSubMessageHandlerService(
 
             logger.info("✅ 백테스트 실패 결과 저장 완료")
         } catch (e: Exception) {
-            logger.error("❌ 백테스트 실패 이벤트 처리 실패: $message", e)
+            logger.error("❌ 백테스트 실패 이벤트 처리 실패: topic=${EventTopics.BACKTEST_FAILED}, size=${message.length}B", e)
             throw e
         }
     }
