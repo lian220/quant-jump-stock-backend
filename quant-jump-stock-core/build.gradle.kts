@@ -29,7 +29,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
     implementation("org.springframework.boot:spring-boot-starter-data-mongodb")
-    implementation("org.springframework.boot:spring-boot-starter-webflux")
+
     implementation("org.springframework.boot:spring-boot-starter-security")
     implementation("org.springframework.boot:spring-boot-starter-oauth2-client")
     implementation("org.springframework.boot:spring-boot-starter-oauth2-resource-server")
@@ -50,9 +50,6 @@ dependencies {
 
     // Connection Pool (Spring Boot BOM 관리)
     implementation("com.zaxxer:HikariCP")
-
-    // Quartz Scheduler
-    implementation("org.springframework.boot:spring-boot-starter-quartz")
 
     // SpringDoc OpenAPI (Swagger)
     implementation("org.springdoc:springdoc-openapi-starter-webmvc-ui:2.8.6")
@@ -90,6 +87,11 @@ graalvmNative {
         named("main") {
             imageName.set("quant-jump-stock-core")
             mainClass.set("com.quantjumpstock.core.QuantJumpStockCoreApplicationKt")
+            // 로컬 빠른 빌드: -PquickNative → quickBuild + -O0 (프로덕션은 미사용)
+            if (project.hasProperty("quickNative")) {
+                quickBuild.set(true)
+                buildArgs.add("-O0")
+            }
             buildArgs.addAll(
                 "--no-fallback",
                 "-H:+ReportExceptionStackTraces"
@@ -102,7 +104,10 @@ graalvmNative {
         }
     }
     binaries.all {
-        buildArgs.add("--verbose")
+        // 기본은 --verbose 미사용(빌드 시간·로그 부담 감소). 디버깅 시 -PnativeVerbose
+        if (project.hasProperty("nativeVerbose")) {
+            buildArgs.add("--verbose")
+        }
     }
 }
 
