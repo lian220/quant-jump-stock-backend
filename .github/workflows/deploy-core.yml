@@ -57,11 +57,11 @@ jobs:
       - name: Build Native Image
         working-directory: quant-jump-stock-core
         env:
-          SPRING_PROFILES_ACTIVE: prod
+          SPRING_PROFILES_ACTIVE: prod,cloudrun
         run: |
           chmod +x ./gradlew
           ./gradlew nativeCompile -x test \
-            -Dspring.profiles.active=prod \
+            -Dspring.profiles.active=prod,cloudrun \
             -Dorg.gradle.jvmargs="-Xmx4g" \
             -PnativeImageArgs="-J-Xmx12g,-Ob"
 
@@ -133,58 +133,59 @@ jobs:
           exit 1
 
   # ============================================================
-  # Cloud Run 배포 (전환 시 활성화)
+  # Cloud Run 배포 (VM과 병행 운영)
   # ============================================================
-  # VM → Cloud Run 전환이 완료되면 위 build-and-deploy 잡의 VM 관련 스텝을 제거하고
-  # 이 잡을 활성화합니다. 전환 기간에는 두 잡을 동시에 실행할 수도 있습니다.
-  #
-  # deploy-cloudrun:
-  #   needs: build-and-deploy
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Authenticate to GCP
-  #       uses: google-github-actions/auth@v2
-  #       with:
-  #         credentials_json: ${{ secrets.GCP_SA_KEY }}
-  #
-  #     - name: Deploy Core API to Cloud Run
-  #       uses: google-github-actions/deploy-cloudrun@v2
-  #       with:
-  #         service: qjs-core
-  #         image: ${{ env.AR_REPO }}/qjs-core:latest
-  #         region: ${{ env.REGION }}
-  #         flags: >-
-  #           --no-allow-unauthenticated
-  #           --memory=512Mi --cpu=1
-  #           --min-instances=0 --max-instances=3
-  #           --port=8080 --timeout=600
-  #           --cpu-throttling
-  #           --service-account=qjs-core-api@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
-  #         env_vars: |
-  #           SPRING_PROFILES_ACTIVE=prod,cloudrun
-  #           PUBSUB_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
-  #         secrets: |
-  #           /secrets/common/env=qjs-env-common:latest
-  #           /secrets/db-prod/env=qjs-env-db-prod:latest
-  #           /secrets/prod/env=qjs-env-prod:latest
-  #
-  #     - name: Verify Cloud Run Deployment
-  #       run: |
-  #         SERVICE_URL=$(gcloud run services describe qjs-core \
-  #           --region ${{ env.REGION }} \
-  #           --format 'value(status.url)')
-  #         echo "Cloud Run URL: $SERVICE_URL"
-  #         TOKEN=$(gcloud auth print-identity-token)
-  #         for i in $(seq 1 10); do
-  #           sleep 3
-  #           HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" \
-  #             -H "Authorization: Bearer $TOKEN" \
-  #             "$SERVICE_URL/actuator/health/liveness" 2>/dev/null || echo "000")
-  #           if [ "$HTTP_CODE" = "200" ]; then
-  #             echo "Core API Cloud Run is healthy!"
-  #             exit 0
-  #           fi
-  #           echo "  ...attempt $i/10 (HTTP $HTTP_CODE)"
-  #         done
-  #         echo "Core API Cloud Run not ready after 30s"
-  #         exit 1
+  deploy-cloudrun:
+    needs: build-and-deploy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Deploy Core API to Cloud Run
+        uses: google-github-actions/deploy-cloudrun@v2
+        with:
+          service: qjs-core
+          image: ${{ env.AR_REPO }}/qjs-core:latest
+          region: ${{ env.REGION }}
+          flags: >-
+            --no-allow-unauthenticated
+            --memory=512Mi --cpu=1
+            --min-instances=0 --max-instances=3
+            --port=8080 --timeout=600
+            --cpu-boost
+            --service-account=qjs-core-api@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+          env_vars: |
+            SPRING_PROFILES_ACTIVE=prod,cloudrun
+            PUBSUB_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
+            TZ=Asia/Seoul
+          secrets: |
+            /secrets/common/env=qjs-env-common:latest
+            /secrets/db-prod/env=qjs-env-db-prod:latest
+            /secrets/prod/env=qjs-env-prod:latest
+
+      - name: Verify Cloud Run Deployment
+        run: |
+          SERVICE_URL=$(gcloud run services describe qjs-core \
+            --region ${{ env.REGION }} \
+            --format 'value(status.url)')
+          echo "Cloud Run URL: $SERVICE_URL"
+          TOKEN=$(gcloud auth print-identity-token)
+          for i in $(seq 1 10); do
+            sleep 3
+            HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" \
+              -H "Authorization: Bearer $TOKEN" \
+              "$SERVICE_URL/actuator/health/liveness" 2>/dev/null || echo "000")
+            if [ "$HTTP_CODE" = "200" ]; then
+              echo "Core API Cloud Run is healthy!"
+              exit 0
+            fi
+            echo "  ...attempt $i/10 (HTTP $HTTP_CODE)"
+          done
+          echo "Core API Cloud Run not ready after 30s"
+          exit 1
