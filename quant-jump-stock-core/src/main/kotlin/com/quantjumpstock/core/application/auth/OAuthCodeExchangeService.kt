@@ -1,97 +1,91 @@
-package com.quantjumpstock.core.infrastructure.security
+package com.quantjumpstock.core.application.auth
 
+import com.quantjumpstock.core.adapter.output.external.NaverOAuthClient
 import com.quantjumpstock.core.domain.model.user.OAuthProvider
 import com.quantjumpstock.core.domain.model.user.User
 import com.quantjumpstock.core.domain.model.user.UserRole
 import com.quantjumpstock.core.domain.model.user.UserStatus
 import com.quantjumpstock.core.domain.port.output.UserRepository
 import com.quantjumpstock.core.domain.port.output.UserTierRepository
+import com.quantjumpstock.core.infrastructure.security.JwtService
 import org.slf4j.LoggerFactory
-import org.springframework.security.oauth2.client.userinfo.DefaultOAuth2UserService
-import org.springframework.security.oauth2.client.userinfo.OAuth2UserRequest
-import org.springframework.security.oauth2.core.user.DefaultOAuth2User
-import org.springframework.security.oauth2.core.user.OAuth2User
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import org.springframework.transaction.support.TransactionTemplate
 import java.util.UUID
 
+/**
+ * OAuth2 Authorization Code → JWT 교환 서비스
+ * Frontend-first OAuth 흐름: FE에서 code를 받아 BE로 전달 → JWT 반환
+ * 현재 지원: naver / 추후: google, kakao 등 확장 예정
+ */
 @Service
-class CustomOAuth2UserService(
+class OAuthCodeExchangeService(
+    private val naverOAuthClient: NaverOAuthClient,
     private val userRepository: UserRepository,
     private val userTierRepository: UserTierRepository,
+    private val jwtService: JwtService,
     private val transactionTemplate: TransactionTemplate
-) : DefaultOAuth2UserService() {
+) {
+    private val logger = LoggerFactory.getLogger(OAuthCodeExchangeService::class.java)
 
-    private val logger = LoggerFactory.getLogger(CustomOAuth2UserService::class.java)
+    data class OAuthCodeRequest(
+        val code: String,
+        val redirectUri: String
+    )
 
-    override fun loadUser(userRequest: OAuth2UserRequest): OAuth2User {
-        val oauth2User = super.loadUser(userRequest)
-        val registrationId = userRequest.clientRegistration.registrationId
+    data class OAuthTokenResponse(
+        val token: String
+    )
 
-        val provider = when (registrationId) {
-            "google" -> OAuthProvider.GOOGLE
+    /**
+     * Authorization Code → JWT 교환
+     * @param provider 소셜 로그인 제공자 (naver, google, kakao 등)
+     * @param request code와 redirectUri
+     * @return JWT 토큰
+     */
+    fun exchange(provider: String, request: OAuthCodeRequest): OAuthTokenResponse {
+        val oauthProvider = when (provider.lowercase()) {
             "naver" -> OAuthProvider.NAVER
-            else -> throw IllegalArgumentException("지원하지 않는 OAuth 프로바이더: $registrationId")
+            "google" -> OAuthProvider.GOOGLE
+            else -> throw IllegalArgumentException("지원하지 않는 OAuth 프로바이더: $provider")
         }
 
-        val userInfo = extractUserInfo(provider, oauth2User)
+        val info = when (oauthProvider) {
+            OAuthProvider.NAVER -> {
+                val accessToken = naverOAuthClient.exchangeCodeForToken(request.code, request.redirectUri)
+                val userInfo = naverOAuthClient.getUserInfo(accessToken)
+                UserInfoDto(
+                    providerId = userInfo.id,
+                    email = userInfo.email,
+                    name = userInfo.name,
+                    profileImageUrl = userInfo.profileImage,
+                    phone = userInfo.mobile
+                )
+            }
+            OAuthProvider.GOOGLE -> throw NotImplementedError("Google OAuth는 아직 구현되지 않았습니다")
+        }
 
         val user = transactionTemplate.execute {
             findOrCreateOAuthUser(
-                provider = provider,
-                providerId = userInfo.providerId,
-                email = userInfo.email,
-                name = userInfo.name,
-                profileImageUrl = userInfo.profileImageUrl,
-                phone = userInfo.phone
+                provider = oauthProvider,
+                providerId = info.providerId,
+                email = info.email,
+                name = info.name,
+                profileImageUrl = info.profileImageUrl,
+                phone = info.phone
             )
         } ?: throw IllegalStateException("OAuth 사용자 생성/조회에 실패했습니다")
 
-        val attributes = HashMap(oauth2User.attributes).apply {
-            put("internal_user_id", user.userId)
-            put("internal_user_db_id", user.id)
-            put("internal_user_role", user.role.name)
-            put("internal_user_email", user.email ?: "")
-        }
-
-        val nameAttributeKey = userRequest.clientRegistration
-            .providerDetails.userInfoEndpoint.userNameAttributeName
-
-        return DefaultOAuth2User(
-            oauth2User.authorities,
-            attributes,
-            nameAttributeKey
-        )
+        val jwt = jwtService.generateToken(user.userId, user.email, user.role.name, user.id)
+        return OAuthTokenResponse(token = jwt)
     }
 
-    private fun extractUserInfo(provider: OAuthProvider, oauth2User: OAuth2User): OAuthUserInfo {
-        return when (provider) {
-            OAuthProvider.GOOGLE -> OAuthUserInfo(
-                providerId = oauth2User.getAttribute<String>("sub")
-                    ?: oauth2User.getAttribute("id")
-                    ?: throw IllegalStateException("Google OAuth2 사용자의 ID를 찾을 수 없습니다"),
-                email = oauth2User.getAttribute("email"),
-                name = oauth2User.getAttribute("name"),
-                profileImageUrl = oauth2User.getAttribute("picture")
-            )
-            OAuthProvider.NAVER -> {
-                @Suppress("UNCHECKED_CAST")
-                val response = oauth2User.getAttribute<Map<String, Any>>("response")
-                    ?: throw IllegalStateException("네이버 사용자 정보의 response 필드가 없습니다")
-                OAuthUserInfo(
-                    providerId = response["id"] as? String
-                        ?: throw IllegalStateException("네이버 OAuth2 사용자의 ID를 찾을 수 없습니다"),
-                    email = response["email"] as? String,
-                    name = response["name"] as? String ?: response["nickname"] as? String,
-                    profileImageUrl = response["profile_image"] as? String,
-                    phone = response["mobile"] as? String
-                )
-            }
-        }
-    }
-
-    private fun findOrCreateOAuthUser(
+    /**
+     * OAuth 사용자 조회 또는 신규 생성
+     * CustomOAuth2UserService와 동일한 로직 — Spring Security OAuth 흐름에서도 사용됨
+     */
+    fun findOrCreateOAuthUser(
         provider: OAuthProvider,
         providerId: String,
         email: String?,
@@ -99,6 +93,7 @@ class CustomOAuth2UserService(
         profileImageUrl: String?,
         phone: String? = null
     ): User {
+        // 1. provider + providerId로 기존 사용자 조회
         userRepository.findByOAuthProviderAndProviderId(provider, providerId)?.let { existingUser ->
             logger.info("기존 OAuth 사용자 로그인: userId=${existingUser.userId}")
             if (phone != null && existingUser.phone == null) {
@@ -108,6 +103,7 @@ class CustomOAuth2UserService(
             return existingUser
         }
 
+        // 2. 이메일로 기존 계정 연결
         if (email != null) {
             userRepository.findByEmail(email)?.let { existingUser ->
                 logger.warn("이메일 기반 계정 연결: provider=$provider, userId=${existingUser.userId}")
@@ -125,6 +121,7 @@ class CustomOAuth2UserService(
             }
         }
 
+        // 3. 신규 사용자 생성
         val userId = generateUniqueUserId(provider, name)
         val newUser = User(
             userId = userId,
@@ -144,7 +141,6 @@ class CustomOAuth2UserService(
             val saved = userRepository.save(newUser)
             logger.info("새 OAuth 사용자 생성 완료: userId=${saved.userId}, id=${saved.id}")
 
-            // 무료 티어 자동 생성
             try {
                 userTierRepository.createFreeTierForUser(saved.userId)
             } catch (e: Exception) {
@@ -154,8 +150,7 @@ class CustomOAuth2UserService(
             saved
         } catch (e: DataIntegrityViolationException) {
             logger.warn("OAuth 사용자 생성 중 충돌 발생, 재조회 시도: ${e.message}")
-            userRepository.findByOAuthProviderAndProviderId(provider, providerId)
-                ?: throw e
+            userRepository.findByOAuthProviderAndProviderId(provider, providerId) ?: throw e
         } catch (e: Exception) {
             logger.error("OAuth 사용자 저장 실패: userId=$userId, error=${e.javaClass.simpleName}: ${e.message}", e)
             throw e
@@ -179,12 +174,12 @@ class CustomOAuth2UserService(
 
         throw IllegalStateException("고유한 사용자 ID 생성에 실패했습니다: prefix=$prefix, baseName=$baseName")
     }
-}
 
-private data class OAuthUserInfo(
-    val providerId: String,
-    val email: String?,
-    val name: String?,
-    val profileImageUrl: String?,
-    val phone: String? = null
-)
+    private data class UserInfoDto(
+        val providerId: String,
+        val email: String?,
+        val name: String?,
+        val profileImageUrl: String?,
+        val phone: String?
+    )
+}

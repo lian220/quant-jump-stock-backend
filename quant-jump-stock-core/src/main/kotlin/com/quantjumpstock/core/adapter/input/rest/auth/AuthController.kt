@@ -3,6 +3,7 @@ package com.quantjumpstock.core.adapter.input.rest.auth
 import com.quantjumpstock.core.application.auth.AuthService
 import com.quantjumpstock.core.application.auth.LoginRequest
 import com.quantjumpstock.core.application.auth.LoginResponse
+import com.quantjumpstock.core.application.auth.OAuthCodeExchangeService
 import com.quantjumpstock.core.application.auth.SignupRequest
 import com.quantjumpstock.core.application.auth.SignupResponse
 import io.swagger.v3.oas.annotations.Operation
@@ -15,15 +16,17 @@ import org.springframework.web.servlet.support.ServletUriComponentsBuilder
  * 인증 Controller
  * 로그인/회원가입/사용자 정보 조회
  *
- * OAuth2 로그인은 Spring Security OAuth2 Client가 처리:
- * - 시작: GET /api/v1/auth/oauth2/authorize/{provider}
- * - 콜백: GET /api/v1/auth/oauth2/callback/{provider}
+ * OAuth2 로그인 흐름 (Frontend-first):
+ * - FE → Naver OAuth URL로 직접 리다이렉트
+ * - Naver → FE /auth/callback/{provider}?code=... 로 리다이렉트
+ * - FE → POST /api/v1/auth/oauth2/code/{provider} {code, redirectUri} → JWT 반환
  */
 @RestController
 @RequestMapping("/api/v1/auth")
 @Tag(name = "Auth", description = "인증 API")
 class AuthController(
-    private val authService: AuthService
+    private val authService: AuthService,
+    private val oauthCodeExchangeService: OAuthCodeExchangeService
 ) {
 
     @PostMapping("/login")
@@ -82,5 +85,19 @@ class AuthController(
         return ResponseEntity.ok(mapOf(
             "naver" to "$baseUrl/api/v1/auth/oauth2/authorize/naver"
         ))
+    }
+
+    @PostMapping("/oauth2/code/{provider}")
+    @Operation(
+        summary = "OAuth2 코드 교환",
+        description = "Frontend에서 받은 Authorization Code를 JWT로 교환. " +
+            "현재 지원: naver / 추후 google, kakao 확장 예정"
+    )
+    fun exchangeOAuthCode(
+        @PathVariable provider: String,
+        @RequestBody request: OAuthCodeExchangeService.OAuthCodeRequest
+    ): ResponseEntity<OAuthCodeExchangeService.OAuthTokenResponse> {
+        val response = oauthCodeExchangeService.exchange(provider, request)
+        return ResponseEntity.ok(response)
     }
 }

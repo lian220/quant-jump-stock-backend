@@ -1,8 +1,6 @@
 package com.quantjumpstock.core.config
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.quantjumpstock.core.infrastructure.security.CustomOAuth2UserService
-import com.quantjumpstock.core.infrastructure.security.OAuth2AuthenticationSuccessHandler
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.http.MediaType
@@ -17,16 +15,14 @@ import org.springframework.web.cors.CorsConfigurationSource
 /**
  * Spring Security 설정
  *
- * JWT 인증 필터 + Spring Security OAuth2 Client로 Google/Naver 로그인을 처리합니다.
- * API 요청에 대해 401 JSON 응답, OAuth2 플로우에 대해서만 리다이렉트를 수행합니다.
+ * JWT 인증 필터를 사용하며, OAuth2는 프론트엔드-first 방식으로 처리합니다.
+ * (프론트 → Naver → 프론트 콜백 → 백엔드 POST /api/v1/auth/oauth2/code/{provider})
  */
 @Configuration
 @EnableWebSecurity
 @EnableMethodSecurity(prePostEnabled = true)
 class SecurityConfig(
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
-    private val customOAuth2UserService: CustomOAuth2UserService,
-    private val oAuth2SuccessHandler: OAuth2AuthenticationSuccessHandler,
     private val objectMapper: ObjectMapper,
     private val corsConfigurationSource: CorsConfigurationSource
 ) {
@@ -36,7 +32,7 @@ class SecurityConfig(
         http
                 .cors { it.configurationSource(corsConfigurationSource) }
                 .csrf { it.disable() }
-                .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED) }
+                .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
                 .authorizeHttpRequests { auth ->
                     auth.requestMatchers("/api/v1/admin/**")
                             .hasRole("ADMIN")
@@ -85,13 +81,6 @@ class SecurityConfig(
                             )
                         )
                     }
-                }
-                .oauth2Login { oauth2 ->
-                    oauth2
-                        .authorizationEndpoint { it.baseUri("/api/v1/auth/oauth2/authorize") }
-                        .redirectionEndpoint { it.baseUri("/api/v1/auth/oauth2/callback/*") }
-                        .userInfoEndpoint { it.userService(customOAuth2UserService) }
-                        .successHandler(oAuth2SuccessHandler)
                 }
                 .addFilterBefore(
                         jwtAuthenticationFilter,

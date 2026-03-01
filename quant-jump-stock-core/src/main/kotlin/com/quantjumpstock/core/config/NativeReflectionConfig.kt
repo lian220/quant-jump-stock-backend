@@ -17,6 +17,7 @@ import com.quantjumpstock.core.application.subscription.MySubscriptionsResponse
 import com.quantjumpstock.core.application.subscription.SubscribeResponse
 import com.quantjumpstock.core.application.subscription.SubscriptionSummary
 import com.quantjumpstock.core.application.subscription.UnsubscribeResponse
+import com.quantjumpstock.core.application.auth.OAuthCodeExchangeService
 import com.quantjumpstock.core.application.tier.TierConfigurationDto
 import org.springframework.aot.hint.annotation.RegisterReflectionForBinding
 import org.springframework.context.annotation.Configuration
@@ -52,5 +53,8 @@ import org.springframework.context.annotation.Configuration
     SimpleResponse::class,
     // 티어 설정 DTO
     TierConfigurationDto::class,
+    // OAuth2 코드 교환 DTO
+    OAuthCodeExchangeService.OAuthCodeRequest::class,
+    OAuthCodeExchangeService.OAuthTokenResponse::class,
 )
 class NativeReflectionConfig
