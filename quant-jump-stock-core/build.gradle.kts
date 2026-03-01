@@ -36,8 +36,7 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-actuator")
     implementation("org.springframework.boot:spring-boot-starter-cache")
     implementation("com.github.ben-manes.caffeine:caffeine:3.1.8")
-    implementation(platform("com.google.cloud:spring-cloud-gcp-dependencies:7.4.4"))
-    implementation("com.google.cloud:spring-cloud-gcp-starter-pubsub")
+    implementation("com.google.cloud:google-cloud-pubsub:1.149.0")
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
 

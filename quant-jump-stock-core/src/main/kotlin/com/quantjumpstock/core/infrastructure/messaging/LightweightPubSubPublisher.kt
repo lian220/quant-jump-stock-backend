@@ -26,7 +26,7 @@ import java.util.concurrent.TimeUnit
  */
 @Component
 class LightweightPubSubPublisher(
-    @Value("\${spring.cloud.gcp.project-id:quantiq-local}")
+    @Value("\${gcp.project-id:quantiq-local}")
     private val projectId: String
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
