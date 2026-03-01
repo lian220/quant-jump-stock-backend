@@ -94,8 +94,7 @@ graalvmNative {
             }
             buildArgs.addAll(
                 "--no-fallback",
-                "-H:+ReportExceptionStackTraces",
-                "-H:IncludeResources=application.*\\.yml"
+                "-H:+ReportExceptionStackTraces"
             )
             // CI에서 -PnativeImageArgs="-J-Xmx12g" 전달 시 적용
             if (project.hasProperty("nativeImageArgs")) {
