@@ -57,11 +57,11 @@ jobs:
       - name: Build Native Image
         working-directory: quant-jump-stock-core
         env:
-          SPRING_PROFILES_ACTIVE: prod,cloudrun
+          SPRING_PROFILES_ACTIVE: prod
         run: |
           chmod +x ./gradlew
           ./gradlew nativeCompile -x test \
-            -Dspring.profiles.active=prod,cloudrun \
+            -Dspring.profiles.active=prod \
             -Dorg.gradle.jvmargs="-Xmx4g" \
             -PnativeImageArgs="-J-Xmx12g,-Ob"
 
@@ -160,7 +160,10 @@ jobs:
             --port=8080 --timeout=600
             --cpu-boost
             --service-account=qjs-core-api@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
-            --set-env-vars=^::^SPRING_PROFILES_ACTIVE=prod,cloudrun::PUBSUB_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}::TZ=Asia/Seoul
+          env_vars: |
+            SPRING_PROFILES_ACTIVE=prod
+            PUBSUB_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
+            TZ=Asia/Seoul
           secrets: |
             /secrets/common/env=qjs-env-common:latest
             /secrets/db-prod/env=qjs-env-db-prod:latest
