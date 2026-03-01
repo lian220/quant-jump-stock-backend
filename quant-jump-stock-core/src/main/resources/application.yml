@@ -36,6 +36,7 @@ spring:
       ddl-auto: none  # Flyway가 스키마 관리
     generate-ddl: false
     open-in-view: false  # N+1 문제 방지
+    defer-datasource-initialization: false
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
@@ -44,6 +45,8 @@ spring:
           fetch_size: 100
           use_get_generated_keys: true
         format_sql: false
+        temp:
+          use_jdbc_metadata_defaults: false
 
   # ============================================
   # Flyway Configuration
@@ -67,6 +70,9 @@ spring:
     mongodb:
       uri: ${MONGODB_URI:mongodb://quantiq_user:quantiq_password@localhost:27017/stock_trading?authSource=admin}
       auto-index-creation: ${MONGO_AUTO_INDEX_CREATION:false}
+    jpa:
+      repositories:
+        bootstrap-mode: lazy
 
 # ============================================
 # Actuator Configuration
