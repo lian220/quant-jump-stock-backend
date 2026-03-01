@@ -64,6 +64,7 @@ class IndicatorType(str, Enum):
     PER_SECTOR_RATIO = "per_sector_ratio"    # 섹터 대비 PER
     PORTFOLIO_DRIFT = "portfolio_drift"      # 포트폴리오 드리프트
     TREASURY_10Y = "treasury_10y"            # 미국 10년물 국채금리
+    T10Y2Y = "t10y2y"                        # 장단기 금리차 (10Y - 2Y)
 
     @classmethod
     def is_sentiment_indicator(cls, indicator: str) -> bool:

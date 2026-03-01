@@ -377,8 +377,12 @@ class MetricsCalculator:
 
         years = Decimal(str(days)) / Decimal("365")
 
-        if years <= 0 or final_value <= 0:
+        if years <= 0:
             return Decimal("0")
+
+        # final_value <= 0 이면 전액 손실 (-100%)
+        if final_value <= 0:
+            return Decimal("-100")
 
         ratio = float(final_value / initial_capital)
         years_float = float(years)
@@ -386,7 +390,7 @@ class MetricsCalculator:
         try:
             cagr = (ratio ** (1 / years_float)) - 1
             return Decimal(str(cagr * 100))
-        except (ValueError, ZeroDivisionError):
+        except (ValueError, ZeroDivisionError, OverflowError):
             return Decimal("0")
 
     def _calculate_mdd(self, equity_curve: List[Decimal]) -> Decimal:

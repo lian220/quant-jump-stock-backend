@@ -1,0 +1,342 @@
+{
+  "test_name": "expert_improved_iteration3_2",
+  "results": {
+    "rsi_oversold_ts_only": {
+      "runs": [
+        {
+          "total_return": 1255.05,
+          "total_trades": 407,
+          "win_rate": 64.6,
+          "mdd": -23.54,
+          "sharpe": 1.88,
+          "cagr": 65.83,
+          "avg_holding_days": 11.8,
+          "profit_factor": 2.31,
+          "stop_loss_count": 130,
+          "take_profit_count": 38
+        },
+        {
+          "total_return": 1255.05,
+          "total_trades": 407,
+          "win_rate": 64.6,
+          "mdd": -23.54,
+          "sharpe": 1.88,
+          "cagr": 65.83,
+          "avg_holding_days": 11.8,
+          "profit_factor": 2.31,
+          "stop_loss_count": 130,
+          "take_profit_count": 38
+        },
+        {
+          "total_return": 1255.05,
+          "total_trades": 407,
+          "win_rate": 64.6,
+          "mdd": -23.54,
+          "sharpe": 1.88,
+          "cagr": 65.83,
+          "avg_holding_days": 11.8,
+          "profit_factor": 2.31,
+          "stop_loss_count": 130,
+          "take_profit_count": 38
+        }
+      ],
+      "name": "RSI 과매도 + TS (no SMA200)",
+      "is_baseline": false
+    },
+    "rsi_macd_widen_dz": {
+      "runs": [
+        {
+          "total_return": 137.9,
+          "total_trades": 107,
+          "win_rate": 67.3,
+          "mdd": -18.28,
+          "sharpe": 0.47,
+          "cagr": 18.31,
+          "avg_holding_days": 34.3,
+          "profit_factor": 2.17,
+          "stop_loss_count": 30,
+          "take_profit_count": 12
+        },
+        {
+          "total_return": 137.9,
+          "total_trades": 107,
+          "win_rate": 67.3,
+          "mdd": -18.28,
+          "sharpe": 0.47,
+          "cagr": 18.31,
+          "avg_holding_days": 34.3,
+          "profit_factor": 2.17,
+          "stop_loss_count": 30,
+          "take_profit_count": 12
+        },
+        {
+          "total_return": 137.9,
+          "total_trades": 107,
+          "win_rate": 67.3,
+          "mdd": -18.28,
+          "sharpe": 0.47,
+          "cagr": 18.31,
+          "avg_holding_days": 34.3,
+          "profit_factor": 2.17,
+          "stop_loss_count": 30,
+          "take_profit_count": 12
+        }
+      ],
+      "name": "RSI+MACD (DZ 42→65)",
+      "is_baseline": false
+    },
+    "rsi_macd_v1": {
+      "runs": [
+        {
+          "total_return": 98.99,
+          "total_trades": 115,
+          "win_rate": 68.7,
+          "mdd": -14.01,
+          "sharpe": 0.56,
+          "cagr": 14.28,
+          "avg_holding_days": 11.5,
+          "profit_factor": 2.09,
+          "stop_loss_count": 27,
+          "take_profit_count": 6
+        },
+        {
+          "total_return": 98.99,
+          "total_trades": 115,
+          "win_rate": 68.7,
+          "mdd": -14.01,
+          "sharpe": 0.56,
+          "cagr": 14.28,
+          "avg_holding_days": 11.5,
+          "profit_factor": 2.09,
+          "stop_loss_count": 27,
+          "take_profit_count": 6
+        },
+        {
+          "total_return": 98.99,
+          "total_trades": 115,
+          "win_rate": 68.7,
+          "mdd": -14.01,
+          "sharpe": 0.56,
+          "cagr": 14.28,
+          "avg_holding_days": 11.5,
+          "profit_factor": 2.09,
+          "stop_loss_count": 27,
+          "take_profit_count": 6
+        }
+      ],
+      "name": "RSI+MACD v1 (기준)",
+      "is_baseline": true
+    },
+    "rsi_macd_trailing": {
+      "runs": [
+        {
+          "total_return": 97.85,
+          "total_trades": 146,
+          "win_rate": 73.3,
+          "mdd": -22.58,
+          "sharpe": 0.41,
+          "cagr": 14.16,
+          "avg_holding_days": 15.5,
+          "profit_factor": 2.05,
+          "stop_loss_count": 25,
+          "take_profit_count": 3
+        },
+        {
+          "total_return": 97.85,
+          "total_trades": 146,
+          "win_rate": 73.3,
+          "mdd": -22.58,
+          "sharpe": 0.41,
+          "cagr": 14.16,
+          "avg_holding_days": 15.5,
+          "profit_factor": 2.05,
+          "stop_loss_count": 25,
+          "take_profit_count": 3
+        },
+        {
+          "total_return": 97.85,
+          "total_trades": 146,
+          "win_rate": 73.3,
+          "mdd": -22.58,
+          "sharpe": 0.41,
+          "cagr": 14.16,
+          "avg_holding_days": 15.5,
+          "profit_factor": 2.05,
+          "stop_loss_count": 25,
+          "take_profit_count": 3
+        }
+      ],
+      "name": "RSI+MACD + TS",
+      "is_baseline": false
+    },
+    "rsi_macd_sl10": {
+      "runs": [
+        {
+          "total_return": 91.45,
+          "total_trades": 111,
+          "win_rate": 68.5,
+          "mdd": -12.34,
+          "sharpe": 0.55,
+          "cagr": 13.43,
+          "avg_holding_days": 12.0,
+          "profit_factor": 2.01,
+          "stop_loss_count": 22,
+          "take_profit_count": 5
+        },
+        {
+          "total_return": 91.45,
+          "total_trades": 111,
+          "win_rate": 68.5,
+          "mdd": -12.34,
+          "sharpe": 0.55,
+          "cagr": 13.43,
+          "avg_holding_days": 12.0,
+          "profit_factor": 2.01,
+          "stop_loss_count": 22,
+          "take_profit_count": 5
+        },
+        {
+          "total_return": 91.45,
+          "total_trades": 111,
+          "win_rate": 68.5,
+          "mdd": -12.34,
+          "sharpe": 0.55,
+          "cagr": 13.43,
+          "avg_holding_days": 12.0,
+          "profit_factor": 2.01,
+          "stop_loss_count": 22,
+          "take_profit_count": 5
+        }
+      ],
+      "name": "RSI+MACD (SL10 TP25)",
+      "is_baseline": false
+    },
+    "rsi_macd_sma200_loose": {
+      "runs": [
+        {
+          "total_return": 72.22,
+          "total_trades": 59,
+          "win_rate": 74.6,
+          "mdd": -15.01,
+          "sharpe": 0.4,
+          "cagr": 11.13,
+          "avg_holding_days": 31.0,
+          "profit_factor": 2.49,
+          "stop_loss_count": 12,
+          "take_profit_count": 4
+        },
+        {
+          "total_return": 72.22,
+          "total_trades": 59,
+          "win_rate": 74.6,
+          "mdd": -15.01,
+          "sharpe": 0.4,
+          "cagr": 11.13,
+          "avg_holding_days": 31.0,
+          "profit_factor": 2.49,
+          "stop_loss_count": 12,
+          "take_profit_count": 4
+        },
+        {
+          "total_return": 72.22,
+          "total_trades": 59,
+          "win_rate": 74.6,
+          "mdd": -15.01,
+          "sharpe": 0.4,
+          "cagr": 11.13,
+          "avg_holding_days": 31.0,
+          "profit_factor": 2.49,
+          "stop_loss_count": 12,
+          "take_profit_count": 4
+        }
+      ],
+      "name": "RSI+MACD+SMA200 (RSI45)",
+      "is_baseline": false
+    },
+    "golden_cross_rsi_v1": {
+      "runs": [
+        {
+          "total_return": 67.63,
+          "total_trades": 78,
+          "win_rate": 41.0,
+          "mdd": -18.22,
+          "sharpe": 0.37,
+          "cagr": 10.54,
+          "avg_holding_days": 27.8,
+          "profit_factor": 1.74,
+          "stop_loss_count": 15,
+          "take_profit_count": 13
+        },
+        {
+          "total_return": 67.63,
+          "total_trades": 78,
+          "win_rate": 41.0,
+          "mdd": -18.22,
+          "sharpe": 0.37,
+          "cagr": 10.54,
+          "avg_holding_days": 27.8,
+          "profit_factor": 1.74,
+          "stop_loss_count": 15,
+          "take_profit_count": 13
+        },
+        {
+          "total_return": 67.63,
+          "total_trades": 78,
+          "win_rate": 41.0,
+          "mdd": -18.22,
+          "sharpe": 0.37,
+          "cagr": 10.54,
+          "avg_holding_days": 27.8,
+          "profit_factor": 1.74,
+          "stop_loss_count": 15,
+          "take_profit_count": 13
+        }
+      ],
+      "name": "골든크로스+RSI v1 (기준)",
+      "is_baseline": true
+    },
+    "golden_cross_rsi_ts": {
+      "runs": [
+        {
+          "total_return": 12.4,
+          "total_trades": 78,
+          "win_rate": 43.6,
+          "mdd": -18.93,
+          "sharpe": -0.04,
+          "cagr": 2.29,
+          "avg_holding_days": 22.0,
+          "profit_factor": 1.17,
+          "stop_loss_count": 14,
+          "take_profit_count": 6
+        },
+        {
+          "total_return": 12.4,
+          "total_trades": 78,
+          "win_rate": 43.6,
+          "mdd": -18.93,
+          "sharpe": -0.04,
+          "cagr": 2.29,
+          "avg_holding_days": 22.0,
+          "profit_factor": 1.17,
+          "stop_loss_count": 14,
+          "take_profit_count": 6
+        },
+        {
+          "total_return": 12.4,
+          "total_trades": 78,
+          "win_rate": 43.6,
+          "mdd": -18.93,
+          "sharpe": -0.04,
+          "cagr": 2.29,
+          "avg_holding_days": 22.0,
+          "profit_factor": 1.17,
+          "stop_loss_count": 14,
+          "take_profit_count": 6
+        }
+      ],
+      "name": "골든크로스+RSI + TS",
+      "is_baseline": false
+    }
+  },
+  "determinism": "ALL_PASS"
+}

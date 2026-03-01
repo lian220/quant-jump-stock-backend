@@ -1,0 +1,404 @@
+{
+  "test_config": {
+    "period": "2021-01-01 ~ 2026-02-25",
+    "symbols": [
+      "AAPL",
+      "NVDA",
+      "TSLA",
+      "MSFT",
+      "GOOGL",
+      "AMZN",
+      "META",
+      "JNJ",
+      "AMAT",
+      "INTC"
+    ],
+    "initial_capital": 100000,
+    "num_runs": 3
+  },
+  "results": {
+    "rsi_oversold": {
+      "name": "RSI 과매도 (v2)",
+      "version": "2.0",
+      "runs": [
+        {
+          "total_return": 4479.56,
+          "total_trades": 391,
+          "win_rate": 62.9,
+          "mdd": -25.26,
+          "sharpe": 3.34,
+          "cagr": 110.03
+        },
+        {
+          "total_return": 4479.56,
+          "total_trades": 391,
+          "win_rate": 62.9,
+          "mdd": -25.26,
+          "sharpe": 3.34,
+          "cagr": 110.03
+        },
+        {
+          "total_return": 4479.56,
+          "total_trades": 391,
+          "win_rate": 62.9,
+          "mdd": -25.26,
+          "sharpe": 3.34,
+          "cagr": 110.03
+        }
+      ],
+      "deterministic": true
+    },
+    "scalping_rsi": {
+      "name": "RSI 스캘핑",
+      "version": "1.0",
+      "runs": [
+        {
+          "total_return": 238.31,
+          "total_trades": 250,
+          "win_rate": 58.0,
+          "mdd": -7.69,
+          "sharpe": 1.73,
+          "cagr": 26.68
+        },
+        {
+          "total_return": 238.31,
+          "total_trades": 250,
+          "win_rate": 58.0,
+          "mdd": -7.69,
+          "sharpe": 1.73,
+          "cagr": 26.68
+        },
+        {
+          "total_return": 238.31,
+          "total_trades": 250,
+          "win_rate": 58.0,
+          "mdd": -7.69,
+          "sharpe": 1.73,
+          "cagr": 26.68
+        }
+      ],
+      "deterministic": true
+    },
+    "rate_linked_allocation": {
+      "name": "금리 연동 배분 (v2)",
+      "version": "2.0",
+      "runs": [
+        {
+          "total_return": 58.57,
+          "total_trades": 94,
+          "win_rate": 40.4,
+          "mdd": -33.07,
+          "sharpe": 0.16,
+          "cagr": 9.36
+        },
+        {
+          "total_return": 58.57,
+          "total_trades": 94,
+          "win_rate": 40.4,
+          "mdd": -33.07,
+          "sharpe": 0.16,
+          "cagr": 9.36
+        },
+        {
+          "total_return": 58.57,
+          "total_trades": 94,
+          "win_rate": 40.4,
+          "mdd": -33.07,
+          "sharpe": 0.16,
+          "cagr": 9.36
+        }
+      ],
+      "deterministic": true
+    },
+    "bollinger_squeeze": {
+      "name": "볼린저 밴드 스퀴즈",
+      "version": "1.0",
+      "runs": [
+        {
+          "total_return": 0.0,
+          "total_trades": 0,
+          "win_rate": 0.0,
+          "mdd": 0.0,
+          "sharpe": 0.0,
+          "cagr": 0.0
+        },
+        {
+          "total_return": 0.0,
+          "total_trades": 0,
+          "win_rate": 0.0,
+          "mdd": 0.0,
+          "sharpe": 0.0,
+          "cagr": 0.0
+        },
+        {
+          "total_return": 0.0,
+          "total_trades": 0,
+          "win_rate": 0.0,
+          "mdd": 0.0,
+          "sharpe": 0.0,
+          "cagr": 0.0
+        }
+      ],
+      "deterministic": true
+    },
+    "mean_reversion": {
+      "name": "평균 회귀 (v2)",
+      "version": "2.0",
+      "runs": [
+        {
+          "total_return": 0.0,
+          "total_trades": 0,
+          "win_rate": 0.0,
+          "mdd": 0.0,
+          "sharpe": 0.0,
+          "cagr": 0.0
+        },
+        {
+          "total_return": 0.0,
+          "total_trades": 0,
+          "win_rate": 0.0,
+          "mdd": 0.0,
+          "sharpe": 0.0,
+          "cagr": 0.0
+        },
+        {
+          "total_return": 0.0,
+          "total_trades": 0,
+          "win_rate": 0.0,
+          "mdd": 0.0,
+          "sharpe": 0.0,
+          "cagr": 0.0
+        }
+      ],
+      "deterministic": true
+    },
+    "high_dividend": {
+      "name": "고배당 가치주",
+      "version": "1.0",
+      "runs": [
+        {
+          "total_return": 0.0,
+          "total_trades": 0,
+          "win_rate": 0.0,
+          "mdd": 0.0,
+          "sharpe": 0.0,
+          "cagr": 0.0
+        },
+        {
+          "total_return": 0.0,
+          "total_trades": 0,
+          "win_rate": 0.0,
+          "mdd": 0.0,
+          "sharpe": 0.0,
+          "cagr": 0.0
+        },
+        {
+          "total_return": 0.0,
+          "total_trades": 0,
+          "win_rate": 0.0,
+          "mdd": 0.0,
+          "sharpe": 0.0,
+          "cagr": 0.0
+        }
+      ],
+      "deterministic": true
+    },
+    "golden_cross": {
+      "name": "골든크로스",
+      "version": "1.0",
+      "runs": [
+        {
+          "total_return": -13.84,
+          "total_trades": 168,
+          "win_rate": 32.7,
+          "mdd": -40.15,
+          "sharpe": -0.29,
+          "cagr": -2.85
+        },
+        {
+          "total_return": -13.84,
+          "total_trades": 168,
+          "win_rate": 32.7,
+          "mdd": -40.15,
+          "sharpe": -0.29,
+          "cagr": -2.85
+        },
+        {
+          "total_return": -13.84,
+          "total_trades": 168,
+          "win_rate": 32.7,
+          "mdd": -40.15,
+          "sharpe": -0.29,
+          "cagr": -2.85
+        }
+      ],
+      "deterministic": true
+    },
+    "trend_following": {
+      "name": "추세 추종 (v2)",
+      "version": "2.0",
+      "runs": [
+        {
+          "total_return": -20.54,
+          "total_trades": 210,
+          "win_rate": 39.0,
+          "mdd": -52.17,
+          "sharpe": -0.32,
+          "cagr": -4.36
+        },
+        {
+          "total_return": -20.54,
+          "total_trades": 210,
+          "win_rate": 39.0,
+          "mdd": -52.17,
+          "sharpe": -0.32,
+          "cagr": -4.36
+        },
+        {
+          "total_return": -20.54,
+          "total_trades": 210,
+          "win_rate": 39.0,
+          "mdd": -52.17,
+          "sharpe": -0.32,
+          "cagr": -4.36
+        }
+      ],
+      "deterministic": true
+    },
+    "dual_momentum": {
+      "name": "듀얼 모멘텀 (v2)",
+      "version": "2.0",
+      "runs": [
+        {
+          "total_return": -26.89,
+          "total_trades": 61,
+          "win_rate": 19.7,
+          "mdd": -33.66,
+          "sharpe": -0.42,
+          "cagr": -5.9
+        },
+        {
+          "total_return": -26.89,
+          "total_trades": 61,
+          "win_rate": 19.7,
+          "mdd": -33.66,
+          "sharpe": -0.42,
+          "cagr": -5.9
+        },
+        {
+          "total_return": -26.89,
+          "total_trades": 61,
+          "win_rate": 19.7,
+          "mdd": -33.66,
+          "sharpe": -0.42,
+          "cagr": -5.9
+        }
+      ],
+      "deterministic": true
+    },
+    "momentum_breakout": {
+      "name": "모멘텀 브레이크아웃",
+      "version": "1.0",
+      "runs": [
+        {
+          "total_return": -47.98,
+          "total_trades": 409,
+          "win_rate": 30.3,
+          "mdd": -68.77,
+          "sharpe": -0.59,
+          "cagr": -11.91
+        },
+        {
+          "total_return": -47.98,
+          "total_trades": 409,
+          "win_rate": 30.3,
+          "mdd": -68.77,
+          "sharpe": -0.59,
+          "cagr": -11.91
+        },
+        {
+          "total_return": -47.98,
+          "total_trades": 409,
+          "win_rate": 30.3,
+          "mdd": -68.77,
+          "sharpe": -0.59,
+          "cagr": -11.91
+        }
+      ],
+      "deterministic": true
+    },
+    "triple_screen": {
+      "name": "트리플 스크린",
+      "version": "1.0",
+      "runs": [
+        {
+          "total_return": -92.5,
+          "total_trades": 323,
+          "win_rate": 20.4,
+          "mdd": -93.43,
+          "sharpe": -1.21,
+          "cagr": -39.51
+        },
+        {
+          "total_return": -92.5,
+          "total_trades": 323,
+          "win_rate": 20.4,
+          "mdd": -93.43,
+          "sharpe": -1.21,
+          "cagr": -39.51
+        },
+        {
+          "total_return": -92.5,
+          "total_trades": 323,
+          "win_rate": 20.4,
+          "mdd": -93.43,
+          "sharpe": -1.21,
+          "cagr": -39.51
+        }
+      ],
+      "deterministic": true
+    },
+    "macd_crossover": {
+      "name": "MACD 크로스오버",
+      "version": "1.0",
+      "runs": [
+        {
+          "total_return": -98.75,
+          "total_trades": 372,
+          "win_rate": 8.9,
+          "mdd": -98.8,
+          "sharpe": -2.99,
+          "cagr": -57.24
+        },
+        {
+          "total_return": -98.75,
+          "total_trades": 372,
+          "win_rate": 8.9,
+          "mdd": -98.8,
+          "sharpe": -2.99,
+          "cagr": -57.24
+        },
+        {
+          "total_return": -98.75,
+          "total_trades": 372,
+          "win_rate": 8.9,
+          "mdd": -98.8,
+          "sharpe": -2.99,
+          "cagr": -57.24
+        }
+      ],
+      "deterministic": true
+    }
+  },
+  "skipped": {
+    "low_per_value": "per_sector_ratio 미구현",
+    "balanced_60_40": "portfolio_drift 미구현",
+    "all_weather": "portfolio_drift 미구현",
+    "january_effect": "calendar 미구현",
+    "sell_in_may": "calendar 미구현",
+    "quarterly_momentum": "calendar+momentum_3m 미구현",
+    "vertex_ai_prediction": "ml_prediction 미구현",
+    "ai_technical_hybrid": "ensemble_score 미구현"
+  },
+  "determinism": "ALL_PASS"
+}

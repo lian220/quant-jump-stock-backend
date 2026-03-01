@@ -113,10 +113,12 @@ class MongoDataLoader(DataLoader):
         include_sentiment: bool = False,
         include_recommendations: bool = False,
         include_fundamentals: bool = False,
+        include_fred: bool = False,
+        include_sector: bool = False,
         **kwargs
     ) -> Dict[str, pd.DataFrame]:
         """
-        MongoDB에서 주식 데이터 로드 (감성 분석 + 추천 지표 + 펀더멘탈 통합)
+        MongoDB에서 주식 데이터 로드 (감성 분석 + 추천 지표 + 펀더멘탈 + FRED 통합)
 
         Args:
             symbols: 종목 코드 리스트 (예: ["AAPL", "NVDA"])
@@ -125,6 +127,8 @@ class MongoDataLoader(DataLoader):
             include_sentiment: 감성 분석 데이터 포함 여부
             include_recommendations: 기술적 추천 데이터 포함 여부
             include_fundamentals: 펀더멘탈 데이터 포함 여부 (info 필드에서 추출)
+            include_fred: FRED 경제지표 포함 여부 (T10Y2Y, DGS10 등)
+            include_sector: 섹터 정보 포함 여부 (per_sector_ratio 계산용)
 
         Returns:
             {symbol: DataFrame} 딕셔너리
@@ -132,6 +136,8 @@ class MongoDataLoader(DataLoader):
                               [sentiment_score, sentiment_count] (옵션)
                               [is_recommended, rec_rsi, rec_score] (옵션)
                               [per, pbr, dividend_yield, roe, earnings_growth, debt_to_equity, forward_pe] (옵션)
+                              [treasury_10y, t10y2y, dgs2, t10yie] (옵션, FRED)
+                              [sector] (옵션, 섹터 정보)
         """
         client = self._get_client()
         db = client[self.database]
@@ -154,8 +160,9 @@ class MongoDataLoader(DataLoader):
         }
 
         # projection: 필요한 종목의 OHLCV만 가져오기 (네트워크 전송량 대폭 절감)
-        # - yfinance_indicators, fred_indicators 제외
+        # - yfinance_indicators 제외
         # - include_fundamentals=False면 info 서브필드도 제외
+        # - include_fred=True면 fred_indicators 포함
         projection = {"date": 1}
         ohlcv_fields = ["open", "high", "low", "close", "close_price", "volume"]
         for symbol in symbols:
@@ -166,6 +173,13 @@ class MongoDataLoader(DataLoader):
             if include_fundamentals:
                 for info_key in _FUNDAMENTAL_FIELDS.values():
                     projection[f"stocks.{symbol}.info.{info_key}"] = 1
+            # 섹터 정보: per_sector_ratio 계산에 필요
+            if include_sector:
+                projection[f"stocks.{symbol}.info.sector"] = 1
+
+        # FRED 경제지표 projection
+        if include_fred:
+            projection["fred_indicators"] = 1
 
         # 데이터 조회
         cursor = coll.find(query, projection).sort("date", 1)
@@ -213,6 +227,26 @@ class MongoDataLoader(DataLoader):
                     key = (doc.get("ticker"), doc.get("date"))
                     recommendation_data[key] = doc
                 logger.debug(f"Loaded {len(rec_docs)} recommendation records")
+
+        # FRED 경제지표 인덱스 빌드 (일별 → 모든 종목에 공통 적용)
+        fred_by_date: Dict[str, Dict[str, float]] = {}
+        if include_fred:
+            for doc in documents:
+                fred_raw = doc.get("fred_indicators")
+                if fred_raw and isinstance(fred_raw, dict):
+                    date_str = doc["date"]
+                    fred_record: Dict[str, float] = {}
+                    # DGS10 → treasury_10y, T10Y2Y → t10y2y, DGS2 → dgs2, T10YIE → t10yie
+                    for code, info in fred_raw.items():
+                        val = info.get("value") if isinstance(info, dict) else info
+                        if val is not None:
+                            try:
+                                fred_record[code] = float(val)
+                            except (ValueError, TypeError):
+                                logger.debug(f"Non-numeric FRED value for {code}: {val!r}")
+                    if fred_record:
+                        fred_by_date[date_str] = fred_record
+            logger.debug(f"Built FRED index: {len(fred_by_date)} days with data")
 
         # 종목별 데이터 변환 (Left Join 적용)
         result: Dict[str, pd.DataFrame] = {}
@@ -266,6 +300,11 @@ class MongoDataLoader(DataLoader):
                             val = info.get(info_key)
                             record[col] = float(val) if val is not None else _nan
 
+                    # Left Join: 섹터 정보 추가 (None → ffill 가능)
+                    if include_sector:
+                        info = stock_data.get("info", {}) if isinstance(stock_data, dict) else {}
+                        record["sector"] = info.get("sector") or None
+
                     # Left Join: 감성 분석 데이터 추가
                     if include_sentiment:
                         sent_key = (symbol, date_str)
@@ -294,14 +333,42 @@ class MongoDataLoader(DataLoader):
                             record["rec_rsi"] = 0.0
                             record["rec_score"] = 0.0
 
+                    # Left Join: FRED 경제지표 추가 (forward-fill 적용)
+                    if include_fred:
+                        fred_day = fred_by_date.get(date_str, {})
+                        _nan = float('nan')
+                        record["treasury_10y"] = fred_day.get("DGS10", _nan)
+                        record["t10y2y"] = fred_day.get("T10Y2Y", _nan)
+                        record["dgs2"] = fred_day.get("DGS2", _nan)
+                        record["t10yie"] = fred_day.get("T10YIE", _nan)
+
                     records.append(record)
 
             if records:
                 df = pd.DataFrame(records)
                 df.set_index("date", inplace=True)
                 df.sort_index(inplace=True)
+
+                # FRED 경제지표: forward-fill (비발표일에 최근 값 사용)
+                if include_fred:
+                    fred_cols = ["treasury_10y", "t10y2y", "dgs2", "t10yie"]
+                    existing_fred_cols = [c for c in fred_cols if c in df.columns]
+                    if existing_fred_cols:
+                        df[existing_fred_cols] = df[existing_fred_cols].ffill()
+
+                # 펀더멘탈: forward-fill (분기 업데이트 → 일별 갭 보정)
+                if include_fundamentals:
+                    fund_cols = list(_FUNDAMENTAL_FIELDS.keys())
+                    existing_fund_cols = [c for c in fund_cols if c in df.columns]
+                    if existing_fund_cols:
+                        df[existing_fund_cols] = df[existing_fund_cols].ffill()
+
+                # 섹터: forward-fill (info 업데이트 빈도 낮음) → 잔여 NaN은 "Unknown"
+                if include_sector and "sector" in df.columns:
+                    df["sector"] = df["sector"].ffill().fillna("Unknown")
+
                 result[symbol] = df
-                logger.debug(f"Loaded {len(df)} days for {symbol} (sentiment={include_sentiment}, rec={include_recommendations})")
+                logger.debug(f"Loaded {len(df)} days for {symbol} (sentiment={include_sentiment}, rec={include_recommendations}, fred={include_fred})")
             else:
                 logger.warning(f"No data for symbol: {symbol}")
 

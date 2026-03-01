@@ -231,16 +231,9 @@ class StrategyInterpreter:
                     for k, v in condition.params.items()
                 ))
                 needed_indicators.add((condition.indicator, hashable_params))
-                # value가 지표 참조인 경우
+                # value가 지표 참조인 경우 (예: "sma_50", "bollinger_20_lower")
                 if isinstance(condition.value, str) and "_" in condition.value:
-                    parts = condition.value.rsplit("_", 1)
-                    if len(parts) == 2:
-                        try:
-                            indicator_type = IndicatorType(parts[0])
-                            period = int(parts[1])
-                            needed_indicators.add((indicator_type, (("period", period),)))
-                        except (ValueError, KeyError):
-                            pass
+                    self._parse_value_ref(condition.value, needed_indicators)
 
         # 지표 계산
         for indicator_type, params_tuple in needed_indicators:
@@ -377,11 +370,120 @@ class StrategyInterpreter:
                         logger.warning("Recommendation score data not available in market_data")
                         indicators["rec_score"] = pd.Series(dtype=float)
 
+                # === 캘린더 지표 (계절성 전략) ===
+                elif indicator_type == IndicatorType.CALENDAR:
+                    idx = data.index
+                    mask = pd.Series(True, index=idx)
+
+                    cal_month = params.get("month")
+                    cal_day_gte = params.get("day_gte")
+                    cal_month_in = params.get("month_in")
+                    cal_day_in = params.get("day_in")
+
+                    try:
+                        if cal_month is not None:
+                            mask = mask & (idx.month == int(cal_month))
+                        if cal_day_gte is not None:
+                            mask = mask & (idx.day >= int(cal_day_gte))
+                        if cal_month_in is not None:
+                            month_list = list(cal_month_in) if not isinstance(cal_month_in, list) else cal_month_in
+                            mask = mask & idx.month.isin([int(m) for m in month_list])
+                        if cal_day_in is not None:
+                            day_list = list(cal_day_in) if not isinstance(cal_day_in, list) else cal_day_in
+                            day_tolerance = int(params.get("day_tolerance", 0))
+                            day_mask = pd.Series(False, index=idx)
+                            for d in day_list:
+                                parts = str(d).split("-")
+                                if len(parts) != 2:
+                                    logger.warning(f"Invalid day_in format: {d!r}, expected 'M-D'")
+                                    continue
+                                d_month, d_day = int(parts[0]), int(parts[1])
+                                if day_tolerance > 0:
+                                    day_mask = day_mask | (
+                                        (idx.month == d_month) & (idx.day >= d_day) & (idx.day <= d_day + day_tolerance)
+                                    )
+                                else:
+                                    day_mask = day_mask | ((idx.month == d_month) & (idx.day == d_day))
+                            mask = mask & day_mask
+                    except (ValueError, TypeError) as e:
+                        logger.warning(f"Invalid CALENDAR params {params}: {e}")
+                        indicators[key] = pd.Series(0.0, index=idx)
+                        continue
+
+                    indicators[key] = mask.astype(float)
+
+                # === 섹터 대비 PER 비율 (크로스-심볼, engine에서 사전 계산) ===
+                elif indicator_type == IndicatorType.PER_SECTOR_RATIO:
+                    if 'per_sector_ratio' in data.columns:
+                        indicators["per_sector_ratio"] = data['per_sector_ratio']
+                    else:
+                        logger.warning("per_sector_ratio data not available (cross-symbol computation required)")
+                        indicators["per_sector_ratio"] = pd.Series(dtype=float)
+
+                # === 모멘텀 지표 ===
+                elif indicator_type == IndicatorType.MOMENTUM_3M:
+                    # rank/top_n 파라미터가 있으면 크로스-심볼 랭킹 모드 (engine에서 사전 계산)
+                    if params.get("rank") or params.get("top_n"):
+                        if 'momentum_3m_top_n' in data.columns:
+                            indicators[key] = data['momentum_3m_top_n']
+                        else:
+                            logger.warning("momentum_3m_top_n data not available (cross-symbol computation required)")
+                            indicators[key] = pd.Series(dtype=float)
+                    else:
+                        period = 63  # ~3개월 거래일
+                        indicators[key] = (close / close.shift(period) - 1) * 100
+
+                # === FRED 경제지표 (데이터 검증 기반 추가) ===
+                elif indicator_type == IndicatorType.TREASURY_10Y:
+                    if 'treasury_10y' in data.columns:
+                        indicators["treasury_10y"] = data['treasury_10y']
+                    else:
+                        logger.warning("Treasury 10Y data not available in market_data")
+                        indicators["treasury_10y"] = pd.Series(dtype=float)
+
+                elif indicator_type == IndicatorType.T10Y2Y:
+                    if 't10y2y' in data.columns:
+                        indicators["t10y2y"] = data['t10y2y']
+                    else:
+                        logger.warning("T10Y2Y (yield spread) data not available in market_data")
+                        indicators["t10y2y"] = pd.Series(dtype=float)
+
             except InsufficientDataError as e:
                 logger.warning(f"Insufficient data for {key}: {e}")
                 indicators[key] = pd.Series(dtype=float)
 
         return indicators
+
+    @staticmethod
+    def _parse_value_ref(value: str, needed_indicators: set):
+        """비교 대상 문자열(예: "sma_50", "bollinger_20_lower")을 파싱하여 needed_indicators에 추가"""
+        # 1) 볼린저 패턴: "bollinger_{period}_{upper|middle|lower}"
+        import re
+        bb_match = re.match(r'^bollinger_(\d+)_(upper|middle|lower)$', value)
+        if bb_match:
+            period = int(bb_match.group(1))
+            suffix = bb_match.group(2)
+            bb_type = IndicatorType(f"bollinger_{suffix}")
+            needed_indicators.add((bb_type, (("period", period),)))
+            return
+
+        # 2) MACD 계열: "macd_signal" 등
+        try:
+            indicator_type = IndicatorType(value)
+            needed_indicators.add((indicator_type, ()))
+            return
+        except (ValueError, KeyError):
+            pass
+
+        # 3) 일반 패턴: "{indicator}_{period}" (예: "sma_50", "ema_20")
+        parts = value.rsplit("_", 1)
+        if len(parts) == 2:
+            try:
+                indicator_type = IndicatorType(parts[0])
+                period = int(parts[1])
+                needed_indicators.add((indicator_type, (("period", period),)))
+            except (ValueError, KeyError):
+                pass
 
     def _get_indicator_key(self, indicator_type: IndicatorType, params: Dict) -> str:
         """지표 키 생성"""
@@ -395,6 +497,20 @@ class StrategyInterpreter:
             period = params.get("period", 20)
             suffix = indicator_type.value.split("_")[-1]
             return f"bollinger_{period}_{suffix}"
+        elif indicator_type == IndicatorType.MOMENTUM_3M:
+            # rank/top_n 파라미터가 있으면 랭킹 모드 키 분리
+            if params.get("rank") or params.get("top_n"):
+                return "momentum_3m_rank"
+            return "momentum_3m"
+        elif indicator_type == IndicatorType.CALENDAR:
+            # 캘린더 파라미터별 고유 키 생성
+            param_parts = []
+            for k, v in sorted(params.items()):
+                if isinstance(v, (list, tuple)):
+                    param_parts.append(f"{k}={'_'.join(str(x) for x in v)}")
+                else:
+                    param_parts.append(f"{k}={v}")
+            return f"calendar_{'_'.join(param_parts)}" if param_parts else "calendar"
         else:
             return indicator_type.value
 
