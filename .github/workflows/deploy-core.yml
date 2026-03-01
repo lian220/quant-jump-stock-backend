@@ -160,10 +160,7 @@ jobs:
             --port=8080 --timeout=600
             --cpu-boost
             --service-account=qjs-core-api@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
-          env_vars: |
-            SPRING_PROFILES_ACTIVE=prod,cloudrun
-            PUBSUB_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}
-            TZ=Asia/Seoul
+            --set-env-vars=^::^SPRING_PROFILES_ACTIVE=prod,cloudrun::PUBSUB_PROJECT_ID=${{ secrets.GCP_PROJECT_ID }}::TZ=Asia/Seoul
           secrets: |
             /secrets/common/env=qjs-env-common:latest
             /secrets/db-prod/env=qjs-env-db-prod:latest
