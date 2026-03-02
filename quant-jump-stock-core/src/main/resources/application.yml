@@ -223,3 +223,9 @@ jwt:
 # ============================================
 oauth2:
   frontend-redirect-url: ${OAUTH_FRONTEND_REDIRECT_URL:http://localhost:3000/auth/callback}
+
+# ============================================
+# Cloudflare Gateway Configuration
+# ============================================
+cloudflare:
+  gateway-secret: ${CLOUDFLARE_GATEWAY_SECRET:}

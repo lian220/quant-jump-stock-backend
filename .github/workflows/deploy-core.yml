@@ -86,7 +86,7 @@ jobs:
           gcloud run deploy qjs-core \
             --image ${{ env.AR_REPO }}/qjs-core:native-${{ github.sha }} \
             --region ${{ env.REGION }} \
-            --no-allow-unauthenticated \
+            --allow-unauthenticated \
             --memory 1Gi --cpu 2 \
             --min-instances 0 --max-instances 3 \
             --port 8080 --timeout 600 \
@@ -104,11 +104,9 @@ jobs:
             --region ${{ env.REGION }} \
             --format 'value(status.url)')
           echo "Cloud Run URL: $SERVICE_URL"
-          TOKEN=$(gcloud auth print-identity-token)
           for i in $(seq 1 15); do
             sleep 5
             HTTP_CODE=$(curl -sf -o /dev/null -w "%{http_code}" \
-              -H "Authorization: Bearer $TOKEN" \
               "$SERVICE_URL/actuator/health/liveness" 2>/dev/null || echo "000")
             if [ "$HTTP_CODE" = "200" ]; then
               echo "Core API Cloud Run is healthy!"
