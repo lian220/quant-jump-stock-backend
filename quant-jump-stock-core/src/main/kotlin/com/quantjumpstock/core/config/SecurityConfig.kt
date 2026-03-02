@@ -84,12 +84,12 @@ class SecurityConfig(
                     }
                 }
                 .addFilterBefore(
-                        cloudflareGatewayFilter,
-                        JwtAuthenticationFilter::class.java
-                )
-                .addFilterBefore(
                         jwtAuthenticationFilter,
                         UsernamePasswordAuthenticationFilter::class.java
+                )
+                .addFilterBefore(
+                        cloudflareGatewayFilter,
+                        JwtAuthenticationFilter::class.java
                 )
 
         return http.build()
