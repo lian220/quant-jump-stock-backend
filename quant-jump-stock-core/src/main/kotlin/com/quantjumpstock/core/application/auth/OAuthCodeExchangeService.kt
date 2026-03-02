@@ -1,7 +1,7 @@
 package com.quantjumpstock.core.application.auth
 
-import com.quantjumpstock.core.adapter.output.external.NaverOAuthClient
 import com.quantjumpstock.core.domain.model.user.OAuthProvider
+import com.quantjumpstock.core.domain.port.output.OAuthPort
 import com.quantjumpstock.core.domain.model.user.User
 import com.quantjumpstock.core.domain.model.user.UserRole
 import com.quantjumpstock.core.domain.model.user.UserStatus
@@ -21,7 +21,7 @@ import java.util.UUID
  */
 @Service
 class OAuthCodeExchangeService(
-    private val naverOAuthClient: NaverOAuthClient,
+    private val naverOAuthPort: OAuthPort,
     private val userRepository: UserRepository,
     private val userTierRepository: UserTierRepository,
     private val jwtService: JwtService,
@@ -51,29 +51,19 @@ class OAuthCodeExchangeService(
             else -> throw IllegalArgumentException("지원하지 않는 OAuth 프로바이더: $provider")
         }
 
-        val info = when (oauthProvider) {
-            OAuthProvider.NAVER -> {
-                val accessToken = naverOAuthClient.exchangeCodeForToken(request.code, request.redirectUri)
-                val userInfo = naverOAuthClient.getUserInfo(accessToken)
-                UserInfoDto(
-                    providerId = userInfo.id,
-                    email = userInfo.email,
-                    name = userInfo.name,
-                    profileImageUrl = userInfo.profileImage,
-                    phone = userInfo.mobile
-                )
-            }
+        val oauthUserInfo = when (oauthProvider) {
+            OAuthProvider.NAVER -> naverOAuthPort.exchangeCodeAndGetUserInfo(request.code, request.redirectUri)
             OAuthProvider.GOOGLE -> throw NotImplementedError("Google OAuth는 아직 구현되지 않았습니다")
         }
 
         val user = transactionTemplate.execute {
             findOrCreateOAuthUser(
                 provider = oauthProvider,
-                providerId = info.providerId,
-                email = info.email,
-                name = info.name,
-                profileImageUrl = info.profileImageUrl,
-                phone = info.phone
+                providerId = oauthUserInfo.providerId,
+                email = oauthUserInfo.email,
+                name = oauthUserInfo.name,
+                profileImageUrl = oauthUserInfo.profileImageUrl,
+                phone = oauthUserInfo.phone
             )
         } ?: throw IllegalStateException("OAuth 사용자 생성/조회에 실패했습니다")
 
@@ -175,11 +165,4 @@ class OAuthCodeExchangeService(
         throw IllegalStateException("고유한 사용자 ID 생성에 실패했습니다: prefix=$prefix, baseName=$baseName")
     }
 
-    private data class UserInfoDto(
-        val providerId: String,
-        val email: String?,
-        val name: String?,
-        val profileImageUrl: String?,
-        val phone: String?
-    )
 }

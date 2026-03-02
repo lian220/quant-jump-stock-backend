@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component
 import org.springframework.util.LinkedMultiValueMap
 import org.springframework.web.client.RestClient
 import org.springframework.web.client.RestClientResponseException
+import com.quantjumpstock.core.domain.port.output.OAuthPort
 import java.time.Duration
 
 /**
@@ -20,7 +21,7 @@ class NaverOAuthClient(
     private val clientId: String,
     @Value("\${naver.oauth.client-secret:not-configured}")
     private val clientSecret: String
-) {
+) : OAuthPort {
     private val logger = LoggerFactory.getLogger(NaverOAuthClient::class.java)
 
     data class NaverUserInfo(
@@ -38,10 +39,22 @@ class NaverOAuthClient(
         })
         .build()
 
+    override fun exchangeCodeAndGetUserInfo(code: String, redirectUri: String): OAuthPort.OAuthUserInfo {
+        val accessToken = exchangeCodeForToken(code, redirectUri)
+        val userInfo = getUserInfo(accessToken)
+        return OAuthPort.OAuthUserInfo(
+            providerId = userInfo.id,
+            email = userInfo.email,
+            name = userInfo.name,
+            profileImageUrl = userInfo.profileImage,
+            phone = userInfo.mobile
+        )
+    }
+
     /**
      * Authorization Code → Access Token 교환
      */
-    fun exchangeCodeForToken(code: String, redirectUri: String): String {
+    private fun exchangeCodeForToken(code: String, redirectUri: String): String {
         val params = LinkedMultiValueMap<String, String>().apply {
             add("grant_type", "authorization_code")
             add("client_id", clientId)
@@ -77,7 +90,7 @@ class NaverOAuthClient(
     /**
      * Access Token → 사용자 정보 조회
      */
-    fun getUserInfo(accessToken: String): NaverUserInfo {
+    private fun getUserInfo(accessToken: String): NaverUserInfo {
         return try {
             @Suppress("UNCHECKED_CAST")
             val response = restClient.get()
