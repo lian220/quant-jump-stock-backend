@@ -1,16 +1,18 @@
 # Core API Cloud Run 전환 계획 및 진행 상태
 
-> **목표**: Native Image cold start 4-14초 → ~1.5초 / VM → Cloud Run 완전 전환
+> **목표**: Native Image cold start 6초+ → ~2초 / VM → Cloud Run 완전 전환
 > **최종 업데이트**: 2026-03-01
-> **현재 상태**: Phase 1(부분), Phase 2-4 코드 준비 완료. Terraform 적용 및 프로덕션 전환 대기.
+> **현재 상태**: Phase 1 대부분 완료 (**6.2초 → 2.5초 달성**), Phase 2-4 코드 준비 완료. Terraform 적용 및 프로덕션 전환 대기.
 
 ## 진행 상태 요약
 
 | Phase | 항목 | 상태 |
 |-------|------|------|
-| 1-1 | WebFlux → RestClient 전환 | **미완료** (계획 작성됨) |
+| 1-1 | WebFlux → RestClient 전환 | **완료** (RestClient 전환 완료, WebFlux 제거) |
 | 1-2 | Prod 프로파일 생성 | **완료** (application.yml 단일화, ddl-auto:none, lazy-init:true) |
 | 1-3 | Pub/Sub 구독 지연 초기화 | **완료** (PubSubEventListenerAdapter 삭제, Push 전환) |
+| 1-4 | spring-cloud-gcp-starter-pubsub 제거 | **완료** (google-cloud-pubsub 직접 사용) |
+| 1-5 | 추가 부팅 최적화 | **완료** (SpringDoc 비활성화, JPA lazy bootstrap, Hibernate 메타데이터 스킵, JMX 비활성화) |
 | 2 | Pub/Sub Pull → Push 전환 | **코드 완료** (PubSubPushController, LightweightPubSubPublisher, Pull 어댑터 삭제) |
 | 3 | Quartz → Cloud Scheduler 전환 | **코드 완료** (CloudSchedulerController 6개 엔드포인트, QuartzConfig 조건부) |
 | 4 | Cloud Run 배포 준비 | **완료** (deploy-core.yml, Dockerfile.native, entrypoint.sh, Terraform 리소스) |
@@ -22,7 +24,7 @@
 
 ---
 
-## 1-1. WebFlux 제거 → RestClient 전환
+## 1-1. WebFlux 제거 → RestClient 전환 ✅ 완료
 
 ### 왜 제거하는가?
 
@@ -245,7 +247,7 @@ spring:
 
 ---
 
-## 1-3. Pub/Sub Pull 구독 제거 ✅ 완료
+## 1-3. Pub/Sub Pull 구독 제거 + spring-cloud-gcp 제거 ✅ 완료
 
 ### 변경 내용 (2026-03-01)
 
@@ -254,34 +256,61 @@ spring:
 
 **삭제된 파일/의존성:**
 - `PubSubEventListenerAdapter.kt` — Pull 구독 어댑터 전체 삭제
-- `spring-cloud-gcp-starter-pubsub` — 의존성 제거 (gRPC/Netty 오버헤드 제거)
+- `spring-cloud-gcp-starter-pubsub` + Spring Cloud GCP BOM — 의존성 완전 제거 (gRPC/Netty 자동 초기화 오버헤드 제거)
 
 **대체:**
 - `PubSubPushController.kt` — `/_ah/push-handler/{topicName}` 단일 엔드포인트로 6개 토픽 수신
 - `PubSubMessageHandlerService.kt` — 핸들러 로직 분리 (Push 컨트롤러에서 호출)
-- `LightweightPubSubPublisher.kt` — `google-cloud-pubsub` 직접 사용 (경량 퍼블리셔)
+- `LightweightPubSubPublisher.kt` — `google-cloud-pubsub:1.149.0` 직접 사용 (경량 퍼블리셔)
+- `gcp.project-id` — `spring.cloud.gcp.project-id` 대신 커스텀 프로퍼티로 이동
 
 ### 효과
 
 | 항목 | Before | After |
 |------|--------|-------|
 | 부팅 블로킹 | 6개 Pull 구독 순차 생성 (~1-3초) | **제거** (Push는 HTTP 요청으로 수신) |
-| gRPC/Netty 오버헤드 | spring-cloud-gcp 전체 스택 | **제거** (경량 Publisher만 사용) |
+| gRPC/Netty 오버헤드 | spring-cloud-gcp 전체 스택 (auto-config) | **제거** (경량 Publisher만 사용) |
 | 구독 실패 시 | 부팅 실패 | 해당 없음 (Push는 Pub/Sub이 HTTP로 전달) |
+| 부팅 시간 (실측) | 6.235초 | **5.459초** (-0.8초) |
 
 ---
 
-## Phase 1 전체 예상 효과
+## Phase 1 전체 실측 결과
 
-| 최적화 | 절감 시간 | 상태 |
-|--------|----------|------|
-| WebFlux(Netty) 제거 | ~0.3-0.5초 | **미완료** |
-| Hibernate validate → none | ~0.3-0.5초 | ✅ 완료 (ddl-auto: none) |
-| Swagger 비활성화 (프로덕션) | ~0.2초 | ✅ 완료 (env var 제어) |
-| Pub/Sub Pull 구독 제거 | ~1-3초 | ✅ 완료 (Push 전환 + Pull 삭제) |
-| spring-cloud-gcp 제거 | ~0.5-1초 | ✅ 완료 (경량 퍼블리셔) |
-| lazy-initialization | ~0.2-0.5초 | ✅ 완료 |
-| **합계** | **~2.5-5.5초** | 대부분 완료, WebFlux만 남음 |
+### Cloud Run 부팅 시간 변천 (실측)
+
+| 단계 | 변경사항 | 부팅 시간 | 비고 |
+|------|----------|-----------|------|
+| 기준선 | spring-cloud-gcp 있음 | **6.235초** | |
+| 1차 | spring-cloud-gcp → google-cloud-pubsub 직접 사용 | **5.459초** | -0.8초 |
+| 2차 | + HikariPool minimum-idle=0 | 7.041초 | 악화 → 원복 |
+| 3차 | minimum-idle=2 원복 | 5.768초 | |
+| 4차 | + SpringDoc 비활성화 + JPA lazy bootstrap + Hibernate 메타데이터 스킵 | **2.132초** | 핵심 최적화 |
+| 5차 | + JMX 비활성화 + HikariPool init-fail-timeout + dialect 제거 | 부팅 실패 | dialect 필수 |
+| **최종** | **dialect 복원 + 전체 최적화 적용** | **2.554초** | **6.2초 → 2.5초 (59% 개선)** |
+
+### 최적화 항목별 상태
+
+| 최적화 | 상태 | 설정 |
+|--------|------|------|
+| WebFlux(Netty) 제거 | ✅ 완료 | RestClient 전환 |
+| spring-cloud-gcp-starter-pubsub 제거 | ✅ 완료 | `google-cloud-pubsub:1.149.0` 직접 사용 |
+| Pub/Sub Pull 구독 제거 | ✅ 완료 | Push 전환 + Pull 삭제 |
+| SpringDoc 프로덕션 비활성화 | ✅ 완료 | `SWAGGER_ENABLED=false` (Cloud Run env) |
+| JPA repository lazy bootstrap | ✅ 완료 | `spring.data.jpa.repositories.bootstrap-mode=lazy` |
+| Hibernate JDBC 메타데이터 스킵 | ✅ 완료 | `hibernate.temp.use_jdbc_metadata_defaults=false` + dialect 명시 필수 |
+| Hibernate ddl-auto: none | ✅ 완료 | Flyway가 스키마 관리 |
+| lazy-initialization | ✅ 완료 | `spring.main.lazy-initialization=true` |
+| JMX 비활성화 | ✅ 완료 | `spring.jmx.enabled=false` |
+| HikariPool init-fail-timeout | ✅ 완료 | `initialization-fail-timeout=-1` |
+| 로깅 레벨 축소 | ✅ 완료 | `${LOG_LEVEL_APP:DEBUG}`, `${LOG_LEVEL_MONGO:INFO}`, `${LOG_LEVEL_HIBERNATE:INFO}` |
+
+### 시도했으나 효과 없었던 최적화
+
+| 최적화 | 결과 | 이유 |
+|--------|------|------|
+| HikariPool minimum-idle=0 | **악화** (5.7초 → 7.0초) | Hibernate EntityManagerFactory가 초기화 시 DB 연결을 강제함 |
+| Hibernate dialect 자동 감지 (dialect 제거) | **부팅 실패** | `use_jdbc_metadata_defaults=false`와 함께 사용 시 dialect 감지 불가 |
 
 ---
 

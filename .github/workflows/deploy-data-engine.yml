@@ -57,7 +57,7 @@ jobs:
           region: ${{ env.REGION }}
           flags: >-
             --no-allow-unauthenticated
-            --memory=512Mi --cpu=1
+            --memory=1Gi --cpu=1
             --min-instances=0 --max-instances=3
             --port=8080 --timeout=600
             --cpu-throttling
