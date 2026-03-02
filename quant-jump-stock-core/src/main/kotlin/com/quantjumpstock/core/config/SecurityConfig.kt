@@ -22,6 +22,7 @@ import org.springframework.web.cors.CorsConfigurationSource
 @EnableWebSecurity
 @EnableMethodSecurity(prePostEnabled = true)
 class SecurityConfig(
+    private val cloudflareGatewayFilter: CloudflareGatewayFilter,
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
     private val objectMapper: ObjectMapper,
     private val corsConfigurationSource: CorsConfigurationSource
@@ -82,6 +83,10 @@ class SecurityConfig(
                         )
                     }
                 }
+                .addFilterBefore(
+                        cloudflareGatewayFilter,
+                        JwtAuthenticationFilter::class.java
+                )
                 .addFilterBefore(
                         jwtAuthenticationFilter,
                         UsernamePasswordAuthenticationFilter::class.java
