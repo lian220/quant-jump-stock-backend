@@ -10,7 +10,7 @@
 |-------|------|------|
 | 1-1 | WebFlux → RestClient 전환 | **완료** (RestClient 전환 완료, WebFlux 제거) |
 | 1-2 | Prod 프로파일 생성 | **완료** (application.yml 단일화, ddl-auto:none, lazy-init:true) |
-| 1-3 | Pub/Sub 구독 지연 초기화 | **완료** (PubSubEventListenerAdapter 삭제, Push 전환) |
+| 1-3 | Pub/Sub Pull 제거 + Push 전환 | **완료** (PubSubEventListenerAdapter 삭제, Push 전환) |
 | 1-4 | spring-cloud-gcp-starter-pubsub 제거 | **완료** (google-cloud-pubsub 직접 사용) |
 | 1-5 | 추가 부팅 최적화 | **완료** (SpringDoc 비활성화, JPA lazy bootstrap, Hibernate 메타데이터 스킵, JMX 비활성화) |
 | 2 | Pub/Sub Pull → Push 전환 | **코드 완료** (PubSubPushController, LightweightPubSubPublisher, Pull 어댑터 삭제) |

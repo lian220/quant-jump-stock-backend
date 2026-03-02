@@ -82,7 +82,7 @@ class NaverOAuthClient(
             response["access_token"] as? String
                 ?: throw IllegalStateException("네이버 토큰 응답에 access_token이 없습니다")
         } catch (e: RestClientResponseException) {
-            logger.error("네이버 토큰 API 호출 실패: status=${e.statusCode}, body=${e.responseBodyAsString}")
+            logger.error("네이버 토큰 API 호출 실패: status=${e.statusCode}")
             throw IllegalStateException("네이버 토큰 교환 중 오류 발생: ${e.message}", e)
         }
     }

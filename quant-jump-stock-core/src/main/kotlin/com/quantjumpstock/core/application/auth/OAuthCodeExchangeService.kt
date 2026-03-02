@@ -53,7 +53,7 @@ class OAuthCodeExchangeService(
 
         val oauthUserInfo = when (oauthProvider) {
             OAuthProvider.NAVER -> naverOAuthPort.exchangeCodeAndGetUserInfo(request.code, request.redirectUri)
-            OAuthProvider.GOOGLE -> throw NotImplementedError("Google OAuth는 아직 구현되지 않았습니다")
+            OAuthProvider.GOOGLE -> throw IllegalArgumentException("Google OAuth는 아직 구현되지 않았습니다")
         }
 
         val user = transactionTemplate.execute {
@@ -73,7 +73,6 @@ class OAuthCodeExchangeService(
 
     /**
      * OAuth 사용자 조회 또는 신규 생성
-     * CustomOAuth2UserService와 동일한 로직 — Spring Security OAuth 흐름에서도 사용됨
      */
     fun findOrCreateOAuthUser(
         provider: OAuthProvider,
