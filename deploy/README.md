@@ -1,6 +1,10 @@
 # Backend Deployment Scripts
 
-GCE VM 배포 및 운영을 위한 스크립트 모음
+> **Core API는 2026-03-03에 Cloud Run으로 이전되었습니다.**  
+> `deploy.sh`, `setup-gce.sh` 등은 **과거 GCE VM 배포용**이며, 현재 프로덕션 Core는 GitHub Actions → Cloud Run 배포입니다.  
+> 현재 인프라: 루트 [docs/infra/현재_인프라.md](../../docs/infra/현재_인프라.md)
+
+GCE VM 배포 및 운영을 위한 스크립트 모음 (아카이브 참고용)
 
 ## 📁 파일 목록
 

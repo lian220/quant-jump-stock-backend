@@ -1,8 +1,12 @@
-# GCE VM 배포 가이드
+# GCE VM 배포 가이드 (아카이브)
 
-**최종 업데이트:** 2026-02-11
-**VM IP:** `<VM_IP>` (terraform output vm_ip 으로 확인)
-**도메인:** https://api.alphafoundry.app
+> **⚠️ Core API는 2026-03-03에 Cloud Run으로 이전되었습니다.**  
+> 현재 프로덕션 Core 배포/운영은 **Cloud Run** 기준입니다.  
+> 이 문서는 과거 VM 배포·운영 시 참고용으로만 유지합니다.  
+> **현재 배포 방법**: 루트 [docs/infra/구글클라우드플랫폼_배포.md](../../docs/infra/구글클라우드플랫폼_배포.md) | [docs/infra/현재_인프라.md](../../docs/infra/현재_인프라.md)
+
+**최종 업데이트 (VM 기준):** 2026-02-11  
+**도메인:** https://api.alphafoundry.app (현재 Cloud Run Core)
 
 ---
 
