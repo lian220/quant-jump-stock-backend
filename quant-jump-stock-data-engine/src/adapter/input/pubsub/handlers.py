@@ -191,6 +191,7 @@ class EconomicDataHandler(MessageHandler):
                             "requestId": pipeline_rid,
                             "startDate": result.get("start_date"),
                             "endDate": result.get("end_date"),
+                            "threadTs": thread_ts,
                         }
                         self.publisher.publish("TRIGGER_TECHNICAL_ANALYSIS", chain_payload)
                         self.publisher.publish("TRIGGER_SENTIMENT_ANALYSIS", chain_payload)
@@ -301,6 +302,7 @@ class TechnicalAnalysisHandler(MessageHandler):
                         self.publisher.publish("TRIGGER_VERTEX_AI_PREDICTION", {
                             "source": "pipeline",
                             "requestId": pipeline_rid,
+                            "threadTs": message.thread_ts,
                         })
                     except Exception as chain_err:
                         logger.warning(f"⚠️ [Pipeline] Vertex AI 트리거 발행 실패 (분석은 성공): {chain_err}")
@@ -364,7 +366,7 @@ class SentimentAnalysisHandler(MessageHandler):
         try:
             result = self.service.run_sentiment_analysis(
                 message.request_id,
-                message.thread_ts,
+                thread_ts,
                 start_date=message.start_date,
                 end_date=message.end_date
             )
