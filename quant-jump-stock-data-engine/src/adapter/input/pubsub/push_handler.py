@@ -57,6 +57,7 @@ def _parse_push_message(topic: str, payload: Dict[str, Any]) -> PubSubMessage:
         target_date=payload.get("targetDate"),
         start_date=payload.get("startDate"),
         end_date=payload.get("endDate"),
+        source=payload.get("source", "standalone"),
     )
 
 
