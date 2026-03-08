@@ -27,6 +27,9 @@ class NotificationJpaAdapter(
     override fun countUnreadByUser(userId: Long): Long =
         jpaRepository.countByUserIdAndIsReadFalse(userId)
 
+    override fun countByUserIdSince(userId: Long, since: java.time.LocalDateTime): Long =
+        jpaRepository.countByUserIdAndCreatedAtAfter(userId, since)
+
     @Transactional
     override fun markAsRead(id: Long, userId: Long): Int =
         jpaRepository.markAsRead(id, userId)

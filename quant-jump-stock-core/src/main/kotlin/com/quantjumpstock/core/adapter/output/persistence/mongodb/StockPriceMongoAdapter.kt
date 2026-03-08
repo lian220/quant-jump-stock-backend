@@ -1,6 +1,7 @@
 package com.quantjumpstock.core.adapter.output.persistence.mongodb
 
 import com.quantjumpstock.core.domain.model.stock.StockPriceSnapshot
+import com.quantjumpstock.core.domain.port.output.MarketIndexSnapshot
 import com.quantjumpstock.core.domain.port.output.StockPriceDataPort
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Sort
@@ -84,6 +85,67 @@ class StockPriceMongoAdapter(
             }.toMap()
         } catch (e: Exception) {
             log.warn("MongoDB 가격 데이터 조회 실패: {}", e.message)
+            emptyMap()
+        }
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    override fun getLatestMarketIndices(tickers: List<String>): Map<String, MarketIndexSnapshot> {
+        if (tickers.isEmpty()) return emptyMap()
+
+        return try {
+            val query = Query()
+                .addCriteria(Criteria.where("yfinance_indicators").exists(true).ne(null))
+                .with(Sort.by(Sort.Direction.DESC, "date"))
+                .limit(5)
+
+            val fields = query.fields().include("date").include("yfinance_indicators")
+            val docs = mongoTemplate.find(query, Map::class.java, "daily_stock_data")
+
+            // yfinance_indicators가 비어있지 않은 문서만 필터
+            val validDocs = docs.filter { doc ->
+                val yf = doc["yfinance_indicators"] as? Map<*, *>
+                yf != null && yf.isNotEmpty()
+            }
+            if (validDocs.isEmpty()) return emptyMap()
+
+            val latestDoc = validDocs[0]
+            val previousDoc = validDocs.getOrNull(1)
+
+            val latestDate = parseDate(latestDoc["date"]?.toString()) ?: return emptyMap()
+            val latestYf = latestDoc["yfinance_indicators"] as? Map<String, Any> ?: return emptyMap()
+            val previousYf = previousDoc?.let { it["yfinance_indicators"] as? Map<String, Any> }
+
+            tickers.mapNotNull { ticker ->
+                val data = latestYf[ticker] as? Map<String, Any> ?: return@mapNotNull null
+                val close = extractNumber(data["close"] ?: data["close_price"]) ?: return@mapNotNull null
+                val name = data["name"]?.toString()
+
+                val prevClose = previousYf?.let { prev ->
+                    val prevData = prev[ticker] as? Map<String, Any>
+                    prevData?.let { extractNumber(it["close"] ?: it["close_price"]) }
+                }
+
+                val changePercent = prevClose?.let {
+                    if (it.compareTo(BigDecimal.ZERO) != 0) {
+                        close.subtract(it)
+                            .divide(it, 4, java.math.RoundingMode.HALF_UP)
+                            .multiply(BigDecimal(100))
+                            .setScale(2, java.math.RoundingMode.HALF_UP)
+                    } else null
+                }
+
+                ticker to MarketIndexSnapshot(
+                    ticker = ticker,
+                    name = name,
+                    date = latestDate,
+                    price = close,
+                    previousClose = prevClose,
+                    changePercent = changePercent
+                )
+            }.toMap()
+        } catch (e: Exception) {
+            log.warn("MongoDB 시장 지수 데이터 조회 실패: {}", e.message)
             emptyMap()
         }
     }
