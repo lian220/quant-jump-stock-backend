@@ -18,7 +18,7 @@ class ArchitectureTest {
      * - Adapter: 외부 시스템 연동 (REST, JPA, Kafka 등)
      * - Config: 설정 클래스 (cross-cutting)
      * - Infrastructure: 인프라 유틸리티 (cross-cutting)
-     * - Scheduler: Quartz 스케줄러
+     * - Scheduler: Cloud Scheduler HTTP 엔드포인트
      *
      * Note: Adapter 내부의 input ↔ output 의존성은 허용됩니다.
      */

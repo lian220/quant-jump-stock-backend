@@ -1,6 +1,7 @@
 package com.quantjumpstock.core.adapter.input.rest.news
 
 import com.quantjumpstock.core.application.auth.AuthService
+import com.quantjumpstock.core.application.common.SimpleResponse
 import com.quantjumpstock.core.application.news.*
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter

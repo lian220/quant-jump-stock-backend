@@ -1,7 +1,7 @@
 package com.quantjumpstock.core.adapter.input.rest.notification
 
 import com.quantjumpstock.core.application.auth.AuthService
-import com.quantjumpstock.core.application.news.SimpleResponse
+import com.quantjumpstock.core.application.common.SimpleResponse
 import com.quantjumpstock.core.application.notification.NotificationListDto
 import com.quantjumpstock.core.application.notification.NotificationService
 import io.swagger.v3.oas.annotations.Operation

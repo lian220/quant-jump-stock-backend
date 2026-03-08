@@ -70,7 +70,7 @@ src/main/kotlin/com/quantjumpstock/core/
 │   │   │   ├── user/           # 사용자 API
 │   │   │   └── vertexai/       # Vertex AI API
 │   │   ├── messaging/          # Pub/Sub 컨슈머
-│   │   └── scheduler/          # Quartz 잡 스케줄러
+│   │   └── scheduler/          # Cloud Scheduler HTTP 엔드포인트
 │   └── output/                 # 아웃바운드 어댑터
 │       ├── persistence/
 │       │   ├── jpa/            # PostgreSQL (JPA Entity/Repository)
@@ -112,7 +112,7 @@ src/main/kotlin/com/quantjumpstock/core/
 ├── config/                     # Spring 설정
 ├── events/                     # 이벤트 정의
 ├── infrastructure/             # 인프라 공통 유틸
-└── scheduler/                  # Quartz 설정
+└── scheduler/                  # Cloud Scheduler HTTP 엔드포인트 (Quartz 완전 제거됨)
 ```
 
 ## Data Engine 구조 (Python)
@@ -208,11 +208,14 @@ class EntityName(
 | Slack | 알림 전송 | `adapter/output/notification/slack/` |
 | Pub/Sub | 이벤트 메시징 (GCP) | `adapter/input/messaging/`, `adapter/output/messaging/` |
 
-## 스케줄러 (Quartz)
+## 스케줄러 (Cloud Scheduler)
 
-- 설정: `scheduler/` 디렉토리
-- 잡 정의: `adapter/input/scheduler/`
-- Quartz 테이블: `V3__Create_Quartz_Tables.sql`
+> Quartz는 완전 제거됨 (2026-02-28). 모든 스케줄링은 GCP Cloud Scheduler로 운영.
+
+- Cloud Scheduler 정의: `terraform/scheduler.tf`
+- HTTP 엔드포인트: `adapter/input/rest/scheduler/CloudSchedulerController.kt`
+- 데이터 파이프라인: Cloud Scheduler → Pub/Sub → Data Engine (체이닝)
+- 운영 가이드: [스케줄러_운영_가이드.md](./docs/setup/스케줄러_운영_가이드.md)
 
 ## 테스트 규칙
 

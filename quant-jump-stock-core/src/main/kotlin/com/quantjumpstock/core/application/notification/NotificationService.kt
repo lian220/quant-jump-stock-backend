@@ -3,6 +3,7 @@ package com.quantjumpstock.core.application.notification
 import com.quantjumpstock.core.domain.notification.model.Notification
 import com.quantjumpstock.core.domain.notification.model.NotificationPriority
 import com.quantjumpstock.core.domain.notification.model.NotificationType
+import com.quantjumpstock.core.domain.notification.port.output.NotificationPreferenceRepository
 import com.quantjumpstock.core.domain.notification.port.output.NotificationRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -10,7 +11,8 @@ import org.springframework.transaction.annotation.Transactional
 
 @Service
 class NotificationService(
-    private val notificationRepository: NotificationRepository
+    private val notificationRepository: NotificationRepository,
+    private val preferenceRepository: NotificationPreferenceRepository
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -22,7 +24,13 @@ class NotificationService(
         message: String? = null,
         actionUrl: String? = null,
         metadata: Map<String, Any>? = null
-    ): Notification {
+    ): Notification? {
+        val preference = preferenceRepository.findByUserId(userId)
+        if (preference != null && !preference.isTypeEnabled(type)) {
+            logger.debug("알림 스킵 (사용자 설정 off): userId={}, type={}", userId, type)
+            return null
+        }
+
         val notification = Notification(
             userId = userId,
             type = type,
@@ -40,8 +48,18 @@ class NotificationService(
     @Transactional
     fun createBatch(notifications: List<Notification>): List<Notification> {
         if (notifications.isEmpty()) return emptyList()
-        val saved = notificationRepository.saveAll(notifications)
-        logger.info("알림 배치 생성: {}건", saved.size)
+
+        val userIds = notifications.map { it.userId }.distinct()
+        val preferenceMap = preferenceRepository.findByUserIds(userIds).associateBy { it.userId }
+
+        val filtered = notifications.filter { notification ->
+            val preference = preferenceMap[notification.userId]
+            preference == null || preference.isTypeEnabled(notification.type)
+        }
+
+        if (filtered.isEmpty()) return emptyList()
+        val saved = notificationRepository.saveAll(filtered)
+        logger.info("알림 배치 생성: {}건 (필터 전 {}건)", saved.size, notifications.size)
         return saved
     }
 

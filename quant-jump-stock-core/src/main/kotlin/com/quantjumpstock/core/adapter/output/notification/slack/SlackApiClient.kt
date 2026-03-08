@@ -80,7 +80,7 @@ class SlackApiClient(
                             SlackField("Request ID", requestId, true),
                             SlackField("Date Range", "📅 $dateInfo", true),
                             SlackField("Timestamp", getCurrentTimeKST(), true),
-                            SlackField("Source", "Quartz Scheduler", true),
+                            SlackField("Source", "Cloud Scheduler", true),
                             SlackField("Status", "🔄 Processing", true)
                         )
                     )
@@ -124,7 +124,7 @@ class SlackApiClient(
                             SlackField("Request ID", requestId, true),
                             SlackField("Date Range", "📅 $dateInfo", true),
                             SlackField("Timestamp", getCurrentTimeKST(), true),
-                            SlackField("Source", "Quartz Scheduler", true),
+                            SlackField("Source", "Cloud Scheduler", true),
                             SlackField("Status", "🔄 Processing", true)
                         )
                     )
@@ -189,7 +189,7 @@ class SlackApiClient(
                 attachments = listOf(
                     SlackAttachment(
                         color = color,
-                        title = "Quartz 스케줄러 - $status",
+                        title = "Cloud Scheduler - $status",
                         text = "스케줄러 상태가 변경되었습니다.",
                         fields = listOf(
                             SlackField("Status", status.uppercase(), true),
@@ -255,7 +255,7 @@ class SlackApiClient(
                             SlackField("Request ID", requestId, true),
                             SlackField("Date Range", "📅 $dateInfo", true),
                             SlackField("Timestamp", getCurrentTimeKST(), true),
-                            SlackField("Source", "Quartz Scheduler", true),
+                            SlackField("Source", "Cloud Scheduler", true),
                             SlackField("Status", "🔄 Processing", true)
                         )
                     )
@@ -309,7 +309,7 @@ class SlackApiClient(
                             SlackField("Request ID", requestId, true),
                             SlackField("Date Range", "📅 $dateInfo", true),
                             SlackField("Timestamp", getCurrentTimeKST(), true),
-                            SlackField("Source", "Quartz Scheduler", true),
+                            SlackField("Source", "Cloud Scheduler", true),
                             SlackField("Status", "🔄 Processing", true)
                         )
                     )
@@ -363,7 +363,7 @@ class SlackApiClient(
                             SlackField("Request ID", requestId, true),
                             SlackField("Date Range", "📅 $dateInfo", true),
                             SlackField("Timestamp", getCurrentTimeKST(), true),
-                            SlackField("Source", "Quartz Scheduler", true),
+                            SlackField("Source", "Cloud Scheduler", true),
                             SlackField("Status", "🔄 Processing", true)
                         )
                     )
@@ -439,7 +439,7 @@ class SlackApiClient(
                             SlackField("Request ID", requestId, true),
                             SlackField("Date Range", "📅 $dateInfo", true),
                             SlackField("Timestamp", getCurrentTimeKST(), true),
-                            SlackField("Source", "Quartz Scheduler", true),
+                            SlackField("Source", "Cloud Scheduler", true),
                             SlackField("Status", "🔄 Processing", true)
                         )
                     )

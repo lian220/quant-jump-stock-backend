@@ -51,9 +51,3 @@ data class NotificationListResponse(
     val notifications: List<NotificationResponse>,
     val unreadCount: Long
 )
-
-@Schema(description = "공통 응답")
-data class SimpleResponse(
-    val success: Boolean,
-    val message: String? = null
-)
