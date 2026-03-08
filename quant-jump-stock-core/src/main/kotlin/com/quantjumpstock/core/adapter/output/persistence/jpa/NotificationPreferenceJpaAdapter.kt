@@ -12,6 +12,9 @@ class NotificationPreferenceJpaAdapter(
     override fun findByUserId(userId: Long): NotificationPreference? =
         jpaRepository.findByUserId(userId)?.toDomain()
 
+    override fun findByUserIds(userIds: List<Long>): List<NotificationPreference> =
+        jpaRepository.findByUserIdIn(userIds).map { it.toDomain() }
+
     override fun save(preference: NotificationPreference): NotificationPreference {
         val existing = jpaRepository.findByUserId(preference.userId)
         val entity = if (existing != null) {

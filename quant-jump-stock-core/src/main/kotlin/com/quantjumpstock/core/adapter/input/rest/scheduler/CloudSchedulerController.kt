@@ -17,9 +17,7 @@ import java.time.ZonedDateTime
 /**
  * Cloud Scheduler HTTP 엔드포인트 (Input Adapter)
  *
- * Quartz Job을 Cloud Scheduler HTTP 타겟으로 전환하기 위한 컨트롤러입니다.
- * Cloud Run 환경에서는 Quartz 대신 Cloud Scheduler가 이 엔드포인트를 호출합니다.
- * VM 환경에서는 Quartz와 병행 운영 가능합니다.
+ * GCP Cloud Scheduler가 이 엔드포인트를 HTTP 타겟으로 호출합니다.
  *
  * 보안: /api/internal/scheduler/ 하위 경로는 SecurityConfig에서 내부 전용으로 설정됩니다.
  */

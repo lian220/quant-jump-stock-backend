@@ -2,7 +2,7 @@ package com.quantjumpstock.core.config
 
 import com.quantjumpstock.core.application.news.NotificationListResponse
 import com.quantjumpstock.core.application.news.NotificationResponse
-import com.quantjumpstock.core.application.news.SimpleResponse
+import com.quantjumpstock.core.application.common.SimpleResponse
 import com.quantjumpstock.core.application.news.SubscriptionListResponse
 import com.quantjumpstock.core.application.news.SubscriptionResponse
 import com.quantjumpstock.core.application.portfolio.DefaultStockItem

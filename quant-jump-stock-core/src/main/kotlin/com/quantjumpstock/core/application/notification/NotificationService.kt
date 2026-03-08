@@ -49,8 +49,11 @@ class NotificationService(
     fun createBatch(notifications: List<Notification>): List<Notification> {
         if (notifications.isEmpty()) return emptyList()
 
+        val userIds = notifications.map { it.userId }.distinct()
+        val preferenceMap = preferenceRepository.findByUserIds(userIds).associateBy { it.userId }
+
         val filtered = notifications.filter { notification ->
-            val preference = preferenceRepository.findByUserId(notification.userId)
+            val preference = preferenceMap[notification.userId]
             preference == null || preference.isTypeEnabled(notification.type)
         }
 

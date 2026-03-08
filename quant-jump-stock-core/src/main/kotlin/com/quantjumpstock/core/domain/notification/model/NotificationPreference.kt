@@ -20,10 +20,10 @@ data class NotificationPreference(
         NotificationType.ANNOUNCEMENT -> announcementEnabled
         NotificationType.TRADING_SIGNAL -> tradingSignalEnabled
         NotificationType.BACKTEST_COMPLETE -> backtestEnabled
-        NotificationType.AI_ANALYSIS_COMPLETE -> backtestEnabled
+        NotificationType.AI_ANALYSIS_COMPLETE -> backtestEnabled  // AI 분석도 백테스트 카테고리로 그룹핑
         NotificationType.PRICE_ALERT -> priceAlertEnabled
         NotificationType.WEEKLY_DIGEST -> weeklyDigestEnabled
-        NotificationType.STRATEGY_PERFORMANCE -> tradingSignalEnabled
+        NotificationType.STRATEGY_PERFORMANCE -> tradingSignalEnabled  // 전략 성과도 매매 신호 카테고리로 그룹핑
         NotificationType.SUBSCRIPTION_EXPIRING -> true // 항상 발송
         NotificationType.USAGE_LIMIT_REACHED -> true   // 항상 발송
     }

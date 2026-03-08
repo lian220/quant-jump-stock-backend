@@ -112,7 +112,7 @@ src/main/kotlin/com/quantjumpstock/core/
 ├── config/                     # Spring 설정
 ├── events/                     # 이벤트 정의
 ├── infrastructure/             # 인프라 공통 유틸
-└── scheduler/                  # 스케줄러 설정 (레거시, Cloud Scheduler로 이관 완료)
+└── scheduler/                  # Cloud Scheduler HTTP 엔드포인트 (Quartz 완전 제거됨)
 ```
 
 ## Data Engine 구조 (Python)
