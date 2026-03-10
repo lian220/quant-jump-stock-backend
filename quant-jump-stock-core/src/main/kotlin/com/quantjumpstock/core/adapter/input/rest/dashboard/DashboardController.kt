@@ -24,20 +24,18 @@ class DashboardController(
     @GetMapping
     @Operation(summary = "대시보드 조회", description = "로그인 사용자의 대시보드 데이터를 집계하여 반환합니다")
     fun getDashboard(
-        @RequestHeader("Authorization") authorization: String
+        @RequestHeader("Authorization", required = false) authorization: String?
     ): ResponseEntity<Any> {
-        // DB PK (Long) 추출 - Notification 등에서 사용
-        val userDbId = authService.resolveUserPk(authorization)
+        if (authorization == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(SimpleResponse(false, "인증이 필요합니다"))
+        }
+
+        val resolvedUser = authService.resolveUser(authorization)
             ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
                 .body(SimpleResponse(false, "인증이 필요합니다"))
 
-        // 로그인 ID (String) 추출 - Subscription, UserTier 등에서 사용
-        val token = authorization.removePrefix("Bearer ")
-        val userId = authService.validateToken(token)?.user?.userId
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(SimpleResponse(false, "인증이 필요합니다"))
-
-        val dashboard = dashboardService.getDashboard(userId, userDbId)
+        val dashboard = dashboardService.getDashboard(resolvedUser.userId, resolvedUser.userDbId)
         return ResponseEntity.ok(dashboard)
     }
 }

@@ -2,7 +2,6 @@ package com.quantjumpstock.core.application.dashboard
 
 import com.quantjumpstock.core.application.notification.NotificationService
 import com.quantjumpstock.core.application.tier.TierConfigurationService
-import com.quantjumpstock.core.domain.notification.port.output.NotificationRepository
 import com.quantjumpstock.core.domain.port.output.StockPriceDataPort
 import com.quantjumpstock.core.domain.port.output.StrategySubscriptionRepository
 import com.quantjumpstock.core.domain.port.output.UserRepository
@@ -10,9 +9,6 @@ import com.quantjumpstock.core.domain.port.output.UserTierRepository
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
-import java.time.LocalDate
-import java.time.LocalDateTime
-import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 
 @Service
@@ -23,7 +19,6 @@ class DashboardService(
     private val subscriptionRepository: StrategySubscriptionRepository,
     private val tierConfigService: TierConfigurationService,
     private val notificationService: NotificationService,
-    private val notificationRepository: NotificationRepository,
     private val stockPriceDataPort: StockPriceDataPort
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -82,8 +77,7 @@ class DashboardService(
 
     private fun buildSignalsDto(userDbId: Long): DashboardSignalsDto {
         val unreadCount = notificationService.getUnreadCount(userDbId)
-        val todayStart = LocalDateTime.of(LocalDate.now(), LocalTime.MIN)
-        val todayCount = notificationRepository.countByUserIdSince(userDbId, todayStart)
+        val todayCount = notificationService.countTodayNotifications(userDbId)
         val recentNotifications = notificationService.getUserNotifications(userDbId, 3)
 
         return DashboardSignalsDto(

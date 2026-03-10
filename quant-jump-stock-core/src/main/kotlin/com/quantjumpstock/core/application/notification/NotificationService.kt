@@ -8,6 +8,9 @@ import com.quantjumpstock.core.domain.notification.port.output.NotificationRepos
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDate
+import java.time.LocalDateTime
+import java.time.LocalTime
 
 @Service
 class NotificationService(
@@ -68,6 +71,11 @@ class NotificationService(
 
     fun getUnreadCount(userId: Long): Long =
         notificationRepository.countUnreadByUser(userId)
+
+    fun countTodayNotifications(userId: Long): Long {
+        val todayStart = LocalDateTime.of(LocalDate.now(), LocalTime.MIN)
+        return notificationRepository.countByUserIdSince(userId, todayStart)
+    }
 
     @Transactional
     fun markAsRead(userId: Long, notificationId: Long): Boolean =

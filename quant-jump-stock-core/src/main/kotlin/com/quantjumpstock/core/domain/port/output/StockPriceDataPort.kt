@@ -1,5 +1,6 @@
 package com.quantjumpstock.core.domain.port.output
 
+import com.quantjumpstock.core.domain.model.stock.MarketIndexSnapshot
 import com.quantjumpstock.core.domain.model.stock.StockPriceSnapshot
 
 interface StockPriceDataPort {
@@ -13,12 +14,3 @@ interface StockPriceDataPort {
      */
     fun getLatestMarketIndices(tickers: List<String>): Map<String, MarketIndexSnapshot>
 }
-
-data class MarketIndexSnapshot(
-    val ticker: String,
-    val name: String?,
-    val date: java.time.LocalDate,
-    val price: java.math.BigDecimal,
-    val previousClose: java.math.BigDecimal?,
-    val changePercent: java.math.BigDecimal?
-)

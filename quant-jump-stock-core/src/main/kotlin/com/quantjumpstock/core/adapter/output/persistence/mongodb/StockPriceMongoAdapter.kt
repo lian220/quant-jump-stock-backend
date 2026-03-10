@@ -1,7 +1,7 @@
 package com.quantjumpstock.core.adapter.output.persistence.mongodb
 
+import com.quantjumpstock.core.domain.model.stock.MarketIndexSnapshot
 import com.quantjumpstock.core.domain.model.stock.StockPriceSnapshot
-import com.quantjumpstock.core.domain.port.output.MarketIndexSnapshot
 import com.quantjumpstock.core.domain.port.output.StockPriceDataPort
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Sort
