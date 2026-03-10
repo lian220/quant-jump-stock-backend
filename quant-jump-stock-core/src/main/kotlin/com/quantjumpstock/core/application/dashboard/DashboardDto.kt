@@ -69,7 +69,7 @@ data class DashboardNotificationDto(
     @Schema(description = "알림 제목")
     val title: String,
     @Schema(description = "생성 시각")
-    val createdAt: String
+    val createdAt: String?
 ) {
     companion object {
         private val formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd'T'HH:mm:ss")
@@ -79,7 +79,7 @@ data class DashboardNotificationDto(
                 id = id,
                 type = type,
                 title = title,
-                createdAt = createdAt?.format(formatter) ?: ""
+                createdAt = createdAt?.format(formatter)
             )
     }
 }

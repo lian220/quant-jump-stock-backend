@@ -17,7 +17,7 @@ interface NotificationJpaRepository : JpaRepository<NotificationEntity, Long> {
     @Query("UPDATE NotificationEntity n SET n.isRead = true WHERE n.id = :id AND n.userId = :userId")
     fun markAsRead(id: Long, userId: Long): Int
 
-    fun countByUserIdAndCreatedAtAfter(userId: Long, since: java.time.LocalDateTime): Long
+    fun countByUserIdAndCreatedAtGreaterThanEqual(userId: Long, since: java.time.LocalDateTime): Long
 
     @Modifying
     @Query("UPDATE NotificationEntity n SET n.isRead = true WHERE n.userId = :userId AND n.isRead = false")

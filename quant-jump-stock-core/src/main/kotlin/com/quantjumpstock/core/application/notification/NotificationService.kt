@@ -73,7 +73,7 @@ class NotificationService(
         notificationRepository.countUnreadByUser(userId)
 
     fun countTodayNotifications(userId: Long): Long {
-        val todayStart = LocalDateTime.of(LocalDate.now(), LocalTime.MIN)
+        val todayStart = LocalDateTime.of(LocalDate.now(java.time.ZoneId.of("Asia/Seoul")), LocalTime.MIN)
         return notificationRepository.countByUserIdSince(userId, todayStart)
     }
 

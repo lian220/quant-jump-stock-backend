@@ -83,9 +83,10 @@ class DashboardService(
         return DashboardSignalsDto(
             unreadCount = unreadCount,
             todayCount = todayCount,
-            recent = recentNotifications.map { n ->
+            recent = recentNotifications.mapNotNull { n ->
+                val id = n.id ?: return@mapNotNull null
                 DashboardNotificationDto.from(
-                    id = n.id ?: 0L,
+                    id = id,
                     type = n.type.name,
                     title = n.title,
                     createdAt = n.createdAt
