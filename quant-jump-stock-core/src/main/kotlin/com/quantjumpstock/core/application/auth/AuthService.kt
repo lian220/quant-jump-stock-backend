@@ -92,6 +92,17 @@ class AuthService(
     }
 
     /**
+     * Bearer 토큰에서 사용자 PK(Long)와 로그인 ID(String)를 한 번에 추출
+     */
+    fun resolveUser(authorization: String): ResolvedUser? {
+        if (!authorization.startsWith("Bearer ")) return null
+        val token = authorization.removePrefix("Bearer ")
+        val claims = jwtService.validateToken(token) ?: return null
+        val dbId = claims.dbId ?: return null
+        return ResolvedUser(userDbId = dbId, userId = claims.userId)
+    }
+
+    /**
      * 로그아웃 (JWT는 stateless - 클라이언트에서 토큰 삭제)
      */
     fun logout(token: String) {
@@ -228,6 +239,17 @@ data class SignupResponse(
     val token: String? = null,
     val user: UserInfo? = null,
     val error: String? = null
+)
+
+/**
+ * 인증 예외
+ */
+/**
+ * 인증된 사용자 정보 (DB PK + 로그인 ID)
+ */
+data class ResolvedUser(
+    val userDbId: Long,
+    val userId: String
 )
 
 /**
