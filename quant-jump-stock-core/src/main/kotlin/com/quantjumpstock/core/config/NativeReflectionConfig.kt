@@ -18,6 +18,15 @@ import com.quantjumpstock.core.application.subscription.SubscribeResponse
 import com.quantjumpstock.core.application.subscription.SubscriptionSummary
 import com.quantjumpstock.core.application.subscription.UnsubscribeResponse
 import com.quantjumpstock.core.application.auth.OAuthCodeExchangeService
+import com.quantjumpstock.core.application.dashboard.DashboardAiUsageDto
+import com.quantjumpstock.core.application.dashboard.DashboardIndexDto
+import com.quantjumpstock.core.application.dashboard.DashboardMarketDto
+import com.quantjumpstock.core.application.dashboard.DashboardNotificationDto
+import com.quantjumpstock.core.application.dashboard.DashboardResponse
+import com.quantjumpstock.core.application.dashboard.DashboardSignalsDto
+import com.quantjumpstock.core.application.dashboard.DashboardStrategyDto
+import com.quantjumpstock.core.application.dashboard.DashboardSubscriptionsDto
+import com.quantjumpstock.core.application.dashboard.DashboardUserDto
 import com.quantjumpstock.core.application.tier.TierConfigurationDto
 import org.springframework.aot.hint.annotation.RegisterReflectionForBinding
 import org.springframework.context.annotation.Configuration
@@ -56,5 +65,15 @@ import org.springframework.context.annotation.Configuration
     // OAuth2 코드 교환 DTO
     OAuthCodeExchangeService.OAuthCodeRequest::class,
     OAuthCodeExchangeService.OAuthTokenResponse::class,
+    // 대시보드 DTO
+    DashboardResponse::class,
+    DashboardUserDto::class,
+    DashboardSubscriptionsDto::class,
+    DashboardStrategyDto::class,
+    DashboardSignalsDto::class,
+    DashboardNotificationDto::class,
+    DashboardMarketDto::class,
+    DashboardIndexDto::class,
+    DashboardAiUsageDto::class,
 )
 class NativeReflectionConfig
