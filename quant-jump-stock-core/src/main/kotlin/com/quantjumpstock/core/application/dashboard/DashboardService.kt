@@ -3,6 +3,7 @@ package com.quantjumpstock.core.application.dashboard
 import com.quantjumpstock.core.application.notification.NotificationService
 import com.quantjumpstock.core.application.tier.TierConfigurationService
 import com.quantjumpstock.core.domain.port.output.StockPriceDataPort
+import com.quantjumpstock.core.domain.port.output.StrategyRepository
 import com.quantjumpstock.core.domain.port.output.StrategySubscriptionRepository
 import com.quantjumpstock.core.domain.port.output.UserRepository
 import com.quantjumpstock.core.domain.port.output.UserTierRepository
@@ -17,6 +18,7 @@ class DashboardService(
     private val userRepository: UserRepository,
     private val userTierRepository: UserTierRepository,
     private val subscriptionRepository: StrategySubscriptionRepository,
+    private val strategyRepository: StrategyRepository,
     private val tierConfigService: TierConfigurationService,
     private val notificationService: NotificationService,
     private val stockPriceDataPort: StockPriceDataPort
@@ -45,9 +47,11 @@ class DashboardService(
         val currentCount = subscriptionDetails.size
         val limitResult = tierConfigService.checkSubscriptionLimit(tierInfo.tier, currentCount.toLong())
 
+        val maxCount = if (limitResult.isUnlimited) strategyRepository.count() else limitResult.maxCount
+
         val subscriptionsDto = DashboardSubscriptionsDto(
             count = currentCount,
-            maxCount = limitResult.maxCount,
+            maxCount = maxCount,
             strategies = subscriptionDetails.map { detail ->
                 DashboardStrategyDto(
                     id = detail.strategyId,
