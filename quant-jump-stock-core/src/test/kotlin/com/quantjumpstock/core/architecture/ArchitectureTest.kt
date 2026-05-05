@@ -1,13 +1,36 @@
 package com.quantjumpstock.core.architecture
 
 import com.tngtech.archunit.core.importer.ImportOption
+import com.tngtech.archunit.core.importer.Location
 import com.tngtech.archunit.junit.AnalyzeClasses
 import com.tngtech.archunit.junit.ArchTest
 import com.tngtech.archunit.lang.ArchRule
 import com.tngtech.archunit.lang.syntax.ArchRuleDefinition.noClasses
 import com.tngtech.archunit.library.Architectures.layeredArchitecture
 
-@AnalyzeClasses(packages = ["com.quantjumpstock.core"], importOptions = [ImportOption.DoNotIncludeTests::class])
+/**
+ * Spring Boot AOT 가 생성하는 `__TestContext..._BeanDefinitions` /
+ * `__TestContext..._BeanFactoryRegistrations` 클래스들을 ArchUnit 분석에서 제외한다.
+ *
+ * 이 클래스들은 build/classes/java/aotTest/... 경로에 자동 생성되어 모든 Bean 을 직접
+ * 호출하므로, 첫 번째 컨텍스트가 생성되는 패키지(테스트 클래스의 패키지)가 어디냐에 따라
+ * Layered Architecture 위반이 무작위로 발생함. 운영 코드 룰 검증과는 무관한 노이즈이므로
+ * 일괄 제외.
+ */
+private class DoNotIncludeAotGeneratedTestSources : ImportOption {
+    override fun includes(location: Location): Boolean {
+        // /aotTest/ — Spring Boot AOT 테스트 출력 디렉터리.
+        return !location.contains("/aotTest/")
+    }
+}
+
+@AnalyzeClasses(
+    packages = ["com.quantjumpstock.core"],
+    importOptions = [
+        ImportOption.DoNotIncludeTests::class,
+        DoNotIncludeAotGeneratedTestSources::class
+    ]
+)
 class ArchitectureTest {
 
     /**

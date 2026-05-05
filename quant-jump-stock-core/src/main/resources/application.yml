@@ -187,7 +187,9 @@ db:
 app:
   security:
     encryption-key: ${APP_ENCRYPTION_KEY:CHANGE_THIS_TO_32_CHARACTERS_KEY}
-    encryption-key-v2: ${APP_ENCRYPTION_KEY_V2:}
+    # 32 zero bytes 의 Base64 — 개발/테스트 부팅용 fallback. 운영은 GCP Secret Manager 가 override 한다.
+    # 이 값이 운영에서 사용되면 기밀성 보장 X — 절대 운영 키로 사용 금지.
+    encryption-key-v2: ${APP_ENCRYPTION_KEY_V2:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:4000}
 

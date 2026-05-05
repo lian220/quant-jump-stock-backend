@@ -34,4 +34,10 @@ interface UserKisAccountJpaRepository : JpaRepository<UserKisAccountEntity, Long
         @Param("userId") userId: Long,
         @Param("accountType") accountType: KisAccountType
     ): Optional<UserKisAccountEntity>
+
+    /**
+     * V2(GCM) 컬럼이 비어 있는 row 전체 조회.
+     * Phase 1A PRE-P3: 부팅 시 ECB → GCM 재암호화 backfill 대상.
+     */
+    fun findAllByAppSecretEncryptedV2IsNull(): List<UserKisAccountEntity>
 }
