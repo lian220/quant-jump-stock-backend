@@ -16,23 +16,34 @@ import javax.crypto.spec.SecretKeySpec
  */
 @Service
 class EncryptionServiceGcm(
-    @Value("\${app.security.encryption-key-v2:}")
+    @Value(
+        // 개발용 default: 32 zero bytes의 Base64. 운영에서는 GCP Secret Manager가 override.
+        // 절대 운영 값으로 사용 금지.
+        "\${app.security.encryption-key-v2:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=}"
+    )
     encryptionKeyBase64: String
 ) {
-    private val keyBytes: ByteArray = Base64.getDecoder().decode(encryptionKeyBase64).also {
-        require(it.size == 32) { "encryption-key-v2 must decode to exactly 32 bytes (got ${it.size})" }
+    companion object {
+        private const val ALGORITHM = "AES"
+        private const val TRANSFORMATION = "AES/GCM/NoPadding"
+        private const val IV_LENGTH_BYTES = 12
+        private const val TAG_LENGTH_BITS = 128
+        private const val KEY_LENGTH_BYTES = 32
+        private const val MIN_PAYLOAD_BYTES = IV_LENGTH_BYTES + TAG_LENGTH_BITS / 8
     }
-    private val algorithm = "AES"
-    private val transformation = "AES/GCM/NoPadding"
-    private val ivLengthBytes = 12
-    private val tagLengthBits = 128
+
+    private val keyBytes: ByteArray = Base64.getDecoder().decode(encryptionKeyBase64).also {
+        require(it.size == KEY_LENGTH_BYTES) {
+            "encryption-key-v2 must decode to exactly $KEY_LENGTH_BYTES bytes (got ${it.size})"
+        }
+    }
     private val secureRandom = SecureRandom()
 
     fun encrypt(plainText: String): String {
-        val iv = ByteArray(ivLengthBytes).also { secureRandom.nextBytes(it) }
-        val keySpec = SecretKeySpec(keyBytes, algorithm)
-        val cipher = Cipher.getInstance(transformation)
-        cipher.init(Cipher.ENCRYPT_MODE, keySpec, GCMParameterSpec(tagLengthBits, iv))
+        val iv = ByteArray(IV_LENGTH_BYTES).also { secureRandom.nextBytes(it) }
+        val keySpec = SecretKeySpec(keyBytes, ALGORITHM)
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.ENCRYPT_MODE, keySpec, GCMParameterSpec(TAG_LENGTH_BITS, iv))
         val ciphertext = cipher.doFinal(plainText.toByteArray(Charsets.UTF_8))
         val combined = ByteArray(iv.size + ciphertext.size).also {
             iv.copyInto(it, 0)
@@ -43,12 +54,14 @@ class EncryptionServiceGcm(
 
     fun decrypt(encrypted: String): String {
         val combined = Base64.getDecoder().decode(encrypted)
-        require(combined.size > ivLengthBytes) { "encrypted payload too short" }
-        val iv = combined.copyOfRange(0, ivLengthBytes)
-        val ciphertext = combined.copyOfRange(ivLengthBytes, combined.size)
-        val keySpec = SecretKeySpec(keyBytes, algorithm)
-        val cipher = Cipher.getInstance(transformation)
-        cipher.init(Cipher.DECRYPT_MODE, keySpec, GCMParameterSpec(tagLengthBits, iv))
+        require(combined.size >= MIN_PAYLOAD_BYTES) {
+            "encrypted payload too short: expected at least $MIN_PAYLOAD_BYTES bytes, got ${combined.size}"
+        }
+        val iv = combined.copyOfRange(0, IV_LENGTH_BYTES)
+        val ciphertext = combined.copyOfRange(IV_LENGTH_BYTES, combined.size)
+        val keySpec = SecretKeySpec(keyBytes, ALGORITHM)
+        val cipher = Cipher.getInstance(TRANSFORMATION)
+        cipher.init(Cipher.DECRYPT_MODE, keySpec, GCMParameterSpec(TAG_LENGTH_BITS, iv))
         return String(cipher.doFinal(ciphertext), Charsets.UTF_8)
     }
 }

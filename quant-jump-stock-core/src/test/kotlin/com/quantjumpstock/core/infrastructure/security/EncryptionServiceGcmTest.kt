@@ -3,10 +3,12 @@ package com.quantjumpstock.core.infrastructure.security
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import java.util.Base64
+import kotlin.experimental.xor
 
 class EncryptionServiceGcmTest {
 
-    // 테스트 전용 고정 키 (Base64(0..31) — 정확히 32바이트로 디코딩되어 키 길이 require를 통과)
+    // TEST ONLY — sequential bytes 0x00..0x1F (32 bytes), 절대 운영에 사용 금지
     private val v2Key = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
     private val service = EncryptionServiceGcm(v2Key)
 
@@ -31,8 +33,18 @@ class EncryptionServiceGcmTest {
     fun `tampered ciphertext는 복호화 실패한다 (GCM 태그 검증)`() {
         val plain = "MY_KIS_APP_SECRET_VALUE"
         val encrypted = service.encrypt(plain)
-        val tampered = encrypted.dropLast(4) + "AAAA"
+        val decoded = Base64.getDecoder().decode(encrypted)
+        decoded[decoded.lastIndex] = decoded[decoded.lastIndex].xor(0xFF.toByte())
+        val tampered = Base64.getEncoder().encodeToString(decoded)
         assertThatThrownBy { service.decrypt(tampered) }
             .isInstanceOfAny(javax.crypto.AEADBadTagException::class.java, java.lang.IllegalArgumentException::class.java)
+    }
+
+    @Test
+    fun `너무 짧은 ciphertext는 IllegalArgumentException`() {
+        val tooShort = Base64.getEncoder().encodeToString(ByteArray(20)) // 28 미만
+        assertThatThrownBy { service.decrypt(tooShort) }
+            .isInstanceOf(IllegalArgumentException::class.java)
+            .hasMessageContaining("expected at least")
     }
 }
