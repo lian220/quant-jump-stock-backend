@@ -6,6 +6,7 @@ import com.quantjumpstock.core.adapter.output.persistence.jpa.KisTokenJpaReposit
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserKisAccountEntity
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserKisAccountJpaRepository
 import com.quantjumpstock.core.infrastructure.security.EncryptionService
+import com.quantjumpstock.core.infrastructure.security.EncryptionServiceGcm
 import com.quantjumpstock.core.config.KisConfig
 import com.quantjumpstock.core.domain.trading.port.output.TradingApiPort
 import java.time.Duration
@@ -22,45 +23,63 @@ import org.springframework.web.client.RestClient
 
 /**
  * KIS API Adapter (Output Adapter)
- * TradingApiPort를 구현하여 한국투자증권 API와 연동합니다.
+ * TradingApiPort 를 구현하여 한국투자증권 API 와 연동한다.
  *
- * ⚠️ 사용자별 KIS 계정 정보를 DB에서 조회하여 사용합니다
+ * Phase 1A PRE Task 10 변경:
+ *  - restClientCache / accessTokenCache 키를 (userId, accountType) 복합키로 분리해
+ *    동일 사용자가 MOCK ↔ REAL 전환 시 잘못된 baseURL/토큰을 재사용하지 않도록 한다.
+ *  - 토큰 발급은 ConcurrentHashMap.compute 로 race-free 하게 수행한다.
+ *  - AppSecret 복호화는 v2(GCM) 우선, v2 가 비어있으면 v1(ECB) legacy fallback.
+ *    Task 7 이후 신규 등록은 v1 = "" 로 마킹되므로 v2 우선 처리가 필수.
  */
 @Component
 class KisApiAdapter(
     private val userKisAccountRepository: UserKisAccountJpaRepository,
-    private val encryptionService: EncryptionService,
+    private val encryptionServiceLegacy: EncryptionService,
+    private val encryptionServiceGcm: EncryptionServiceGcm,
     private val tokenRepository: KisTokenJpaRepository
 ) : TradingApiPort {
     private val logger = LoggerFactory.getLogger(KisApiAdapter::class.java)
 
-    // 사용자별 RestClient 캐시
-    private val restClientCache = ConcurrentHashMap<String, RestClient>()
+    private data class CacheKey(val userId: String, val accountType: KisAccountType)
+    private data class CachedToken(val accessToken: String, val expirationTime: LocalDateTime) {
+        fun isValid(now: LocalDateTime = LocalDateTime.now()): Boolean = now.isBefore(expirationTime)
+    }
+
+    private val restClientCache = ConcurrentHashMap<CacheKey, RestClient>()
+    private val accessTokenCache = ConcurrentHashMap<CacheKey, CachedToken>()
 
     private val lastApiCallTime = AtomicLong(0)
     private val minApiIntervalMs = 500L
     private val apiLock = ReentrantLock()
 
-    // 사용자별 액세스 토큰 캐시
-    private val accessTokenCache = ConcurrentHashMap<String, Pair<String, LocalDateTime>>()
-
-    /**
-     * 사용자별 활성화된 KIS 계정 조회
-     */
     private fun getActiveKisAccount(userId: String): UserKisAccountEntity {
         return userKisAccountRepository.findActiveByUserUserId(userId)
             .orElseThrow { IllegalStateException("KIS account not found for user: $userId") }
     }
 
     /**
-     * 사용자 ID로 RestClient 생성 또는 캐시에서 반환
+     * AppSecret 복호화 (v2 우선, v1 legacy fallback).
+     * Task 7 이후 신규 등록은 v1 = "" 로 저장되므로 v2 우선 처리해야 KIS 인증이 성립한다.
+     * v2 가 null 또는 빈 문자열이면 마이그레이션 미완 row 로 간주하고 legacy ECB 로 fallback.
      */
-    private fun getRestClientForUser(userId: String): RestClient {
-        return restClientCache.computeIfAbsent(userId) {
-            val kisAccount = getActiveKisAccount(userId)
-            val baseUrl = KisConfig.getBaseUrlForAccountType(kisAccount.accountType)
-            logger.info("Creating RestClient for user $userId with ${kisAccount.accountType} account: $baseUrl")
+    internal fun decryptAppSecret(entity: UserKisAccountEntity): String {
+        val v2 = entity.appSecretEncryptedV2
+        return if (!v2.isNullOrBlank()) {
+            encryptionServiceGcm.decrypt(v2)
+        } else {
+            encryptionServiceLegacy.decrypt(entity.appSecretEncrypted)
+        }
+    }
 
+    /**
+     * (userId, accountType) 별 RestClient 캐시.
+     * 동일 사용자라도 모의 ↔ 실전 baseURL 이 다르므로 분리 캐시가 필수.
+     */
+    internal fun getOrCreateRestClient(userId: String, accountType: KisAccountType): RestClient {
+        return restClientCache.computeIfAbsent(CacheKey(userId, accountType)) {
+            val baseUrl = KisConfig.getBaseUrlForAccountType(accountType)
+            logger.info("Creating RestClient for user=$userId type=$accountType baseUrl=$baseUrl")
             RestClient.builder()
                 .baseUrl(baseUrl)
                 .requestFactory(SimpleClientHttpRequestFactory().apply {
@@ -72,34 +91,37 @@ class KisApiAdapter(
     }
 
     override fun getAccessToken(userId: String): String {
+        val kisAccount = getActiveKisAccount(userId)
+        return getAccessTokenInternal(userId, kisAccount)
+    }
+
+    private fun getAccessTokenInternal(userId: String, kisAccount: UserKisAccountEntity): String {
+        val key = CacheKey(userId, kisAccount.accountType)
         val now = LocalDateTime.now()
 
-        // 1. Memory cache
-        val cached = accessTokenCache[userId]
-        if (cached != null && now.isBefore(cached.second)) {
-            return cached.first
+        accessTokenCache[key]?.takeIf { it.isValid(now) }?.let { return it.accessToken }
+
+        val dbToken = tokenRepository.findLatestTokenByUserIdAndAccountType(userId, kisAccount.accountType)
+        if (dbToken.isPresent && dbToken.get().isValid()) {
+            val cached = CachedToken(dbToken.get().accessToken, dbToken.get().expirationTime)
+            accessTokenCache[key] = cached
+            return cached.accessToken
         }
 
-        // 2. DB cache (PostgreSQL)
-        val kisAccount = getActiveKisAccount(userId)
-        val tokenEntity = tokenRepository.findLatestTokenByUserIdAndAccountType(userId, kisAccount.accountType)
-
-        if (tokenEntity.isPresent && tokenEntity.get().isValid()) {
-            val token = tokenEntity.get()
-            accessTokenCache[userId] = Pair(token.accessToken, token.expirationTime)
-            return token.accessToken
-        }
-
-        // 3. New token from KIS
-        return refreshToken(userId, kisAccount)
+        // compute 블록은 동일 key 에 대해 단일 스레드만 진입하므로 동시 호출 시 KIS 발급은 1회만 수행된다.
+        val computed = accessTokenCache.compute(key) { _, existing ->
+            if (existing != null && existing.isValid()) existing
+            else issueNewToken(userId, kisAccount)
+        }!!
+        return computed.accessToken
     }
 
     @Transactional(readOnly = false)
-    private fun refreshToken(userId: String, kisAccount: UserKisAccountEntity): String {
-        logger.info("Refreshing KIS access token for user: $userId, type: ${kisAccount.accountType}")
+    private fun issueNewToken(userId: String, kisAccount: UserKisAccountEntity): CachedToken {
+        logger.info("Refreshing KIS access token: user=$userId type=${kisAccount.accountType}")
 
-        val appSecret = encryptionService.decrypt(kisAccount.appSecretEncrypted)
-        val restClient = getRestClientForUser(userId)
+        val appSecret = decryptAppSecret(kisAccount)
+        val restClient = getOrCreateRestClient(userId, kisAccount.accountType)
 
         val response = restClient
             .post()
@@ -120,25 +142,22 @@ class KisApiAdapter(
         val expiresIn = (response["expires_in"] as Int).toLong()
         val expirationTime = LocalDateTime.now().plusSeconds(expiresIn)
 
-        // 기존 토큰 비활성화
         tokenRepository.deactivateUserTokens(
             kisAccount.user.id ?: throw IllegalStateException("User ID is null"),
             kisAccount.accountType,
             LocalDateTime.now()
         )
 
-        // 새 토큰 저장 (PostgreSQL)
-        val kisTokenEntity = KisTokenEntity(
-            user = kisAccount.user,
-            accountType = kisAccount.accountType,
-            accessToken = token,
-            expirationTime = expirationTime
+        tokenRepository.save(
+            KisTokenEntity(
+                user = kisAccount.user,
+                accountType = kisAccount.accountType,
+                accessToken = token,
+                expirationTime = expirationTime
+            )
         )
-        tokenRepository.save(kisTokenEntity)
 
-        accessTokenCache[userId] = Pair(token, expirationTime)
-
-        return token
+        return CachedToken(token, expirationTime)
     }
 
     private fun waitForRateLimit() {
@@ -155,16 +174,15 @@ class KisApiAdapter(
         waitForRateLimit()
 
         val kisAccount = getActiveKisAccount(userId)
-        val token = getAccessToken(userId)
-        val restClient = getRestClientForUser(userId)
+        val token = getAccessTokenInternal(userId, kisAccount)
+        val restClient = getOrCreateRestClient(userId, kisAccount.accountType)
 
-        // TR_ID: 모의투자(VTTS3012R), 실전투자(TTTS3012R)
         val trId = when (kisAccount.accountType) {
             KisAccountType.MOCK -> "VTTS3012R"
             KisAccountType.REAL -> "TTTS3012R"
         }
 
-        val appSecret = encryptionService.decrypt(kisAccount.appSecretEncrypted)
+        val appSecret = decryptAppSecret(kisAccount)
 
         return restClient
             .get()
@@ -188,14 +206,6 @@ class KisApiAdapter(
             .body(Map::class.java) as Map<String, Any>? ?: emptyMap()
     }
 
-    /**
-     * 해외 주식 주문 실행
-     * @param userId 사용자 ID
-     * @param ticker 종목 코드 (예: AAPL)
-     * @param orderType 주문 유형 (BUY/SELL)
-     * @param quantity 수량
-     * @param price 가격 (시장가 주문: "0")
-     */
     @Suppress("UNCHECKED_CAST")
     override fun placeOrder(
         userId: String,
@@ -207,10 +217,9 @@ class KisApiAdapter(
         waitForRateLimit()
 
         val kisAccount = getActiveKisAccount(userId)
-        val token = getAccessToken(userId)
-        val restClient = getRestClientForUser(userId)
+        val token = getAccessTokenInternal(userId, kisAccount)
+        val restClient = getOrCreateRestClient(userId, kisAccount.accountType)
 
-        // TR_ID: 모의투자 매수(VTTT1002U), 매도(VTTT1001U), 실전투자 매수(TTTT1002U), 매도(TTTT1001U)
         val trId = when {
             kisAccount.accountType == KisAccountType.MOCK && orderType == "BUY" -> "VTTT1002U"
             kisAccount.accountType == KisAccountType.MOCK && orderType == "SELL" -> "VTTT1001U"
@@ -219,21 +228,20 @@ class KisApiAdapter(
             else -> throw IllegalArgumentException("Invalid order type: $orderType")
         }
 
-        val appSecret = encryptionService.decrypt(kisAccount.appSecretEncrypted)
+        val appSecret = decryptAppSecret(kisAccount)
 
-        // KIS API 주문 요청 Body
         val orderBody = mapOf(
             "CANO" to kisAccount.accountNumber,
             "ACNT_PRDT_CD" to kisAccount.accountProductCode,
-            "OVRS_EXCG_CD" to "NASD", // NASD, NYSE, AMEX 등
+            "OVRS_EXCG_CD" to "NASD",
             "PDNO" to ticker,
             "ORD_QTY" to quantity.toString(),
-            "OVRS_ORD_UNPR" to price, // 0: 시장가, 지정가: 가격
-            "ORD_SVR_DVSN_CD" to "0", // 0: 해외주식
-            "ORD_DVSN" to if (price == "0") "00" else "00" // 00: 지정가, 01: 시장가
+            "OVRS_ORD_UNPR" to price,
+            "ORD_SVR_DVSN_CD" to "0",
+            "ORD_DVSN" to if (price == "0") "00" else "00"
         )
 
-        logger.info("🔄 Placing $orderType order for $userId: $ticker x$quantity @ $price")
+        logger.info("Placing $orderType order for $userId: $ticker x$quantity @ $price")
 
         return try {
             val result = restClient
@@ -251,14 +259,14 @@ class KisApiAdapter(
 
             val rtCd = result["rt_cd"] as? String
             if (rtCd == "0") {
-                logger.info("✅ Order placed successfully: $ticker x$quantity")
+                logger.info("Order placed successfully: $ticker x$quantity")
             } else {
-                logger.error("❌ Order failed: ${result["msg1"]}")
+                logger.error("Order failed: ${result["msg1"]}")
             }
 
             result
         } catch (e: Exception) {
-            logger.error("❌ Error placing order for $ticker", e)
+            logger.error("Error placing order for $ticker", e)
             mapOf(
                 "rt_cd" to "1",
                 "msg1" to "Order execution failed: ${e.message}"
