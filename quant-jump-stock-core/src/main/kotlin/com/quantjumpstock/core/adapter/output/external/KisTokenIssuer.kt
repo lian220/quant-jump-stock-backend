@@ -1,7 +1,6 @@
 package com.quantjumpstock.core.adapter.output.external
 
 import com.quantjumpstock.core.adapter.output.persistence.jpa.KisAccountType
-import com.quantjumpstock.core.adapter.output.persistence.jpa.KisTokenEntity
 import com.quantjumpstock.core.adapter.output.persistence.jpa.KisTokenJpaRepository
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserKisAccountEntity
 import com.quantjumpstock.core.config.KisConfig
@@ -10,7 +9,6 @@ import org.slf4j.LoggerFactory
 import org.springframework.http.MediaType
 import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.stereotype.Component
-import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.client.RestClient
 import java.time.Duration
 import java.time.LocalDateTime
@@ -18,36 +16,39 @@ import java.time.LocalDateTime
 /**
  * KIS OAuth 토큰 발급을 담당하는 별도 빈.
  *
- * 분리 이유 (Phase 1A PRE 검토 C-1 / H-1 반영):
+ * 분리 이유 (Phase 1A PRE 패널 C-1/H-1 + CodeRabbit #2 반영):
  *  - 기존 [KisApiAdapter.issueNewToken] 은 `private` + `@Transactional` 조합이라 Spring AOP
- *    프록시가 advice 를 건너뛰어 트랜잭션이 실제로 열리지 않았다. `deactivateUserTokens` 와
- *    `save` 가 별도 commit 으로 쪼개져 토큰 공백 또는 UNIQUE 제약 위반 위험이 있었다.
+ *    프록시가 advice 를 건너뛰어 트랜잭션이 실제로 열리지 않았다.
  *  - 추가로 `accessTokenCache.compute(...)` 람다 안에서 KIS HTTPS(최대 30s) + DB write 가
  *    수행되어 ConcurrentHashMap 버킷 락이 30초까지 점유되는 교착 위험이 있었다.
+ *  - **CodeRabbit #2 추가 분리**: 본 클래스의 `issueNewToken` 도 `@Transactional` 안에서
+ *    KIS HTTP 를 호출하면 DB 트랜잭션이 네트워크 latency 만큼 hold 됨 → Hikari pool 압박.
+ *    KIS 호출은 트랜잭션 *밖* 에서 수행하고, DB 영속화만 [KisTokenStore.persist] 에 위임.
  *
- * 분리 이후:
- *  - 본 클래스는 `public` 메서드로 호출되어 Spring AOP 프록시가 정상 동작한다.
- *  - 호출자([KisApiAdapter]) 는 토큰 캐시 락 *밖* 에서 본 메서드를 호출한다.
- *  - 다중 인스턴스에서는 KIS 발급이 인스턴스 수만큼 발생할 수 있으나 본 PR 범위 외 (Tier 5
- *    Phase 1B: 분산 발급 직렬화).
+ * 흐름:
+ * 1. [issueNewToken] (no @Transactional): KIS OAuth HTTP 호출 → access_token / expires_in 파싱
+ * 2. [KisTokenStore.persist] (@Transactional): deactivate + save (DB 만)
+ *
+ * 다중 인스턴스에서는 KIS 발급이 인스턴스 수만큼 발생할 수 있으나 본 PR 범위 외 (Phase 1B
+ * 분산 발급 직렬화).
  */
 @Component
 class KisTokenIssuer(
-    private val tokenRepository: KisTokenJpaRepository,
     private val appSecretCipher: AppSecretCipher,
+    private val tokenStore: KisTokenStore,
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
     /**
-     * KIS OAuth 토큰을 새로 발급하고 DB 에 저장한다.
+     * KIS OAuth 토큰 발급 + DB 저장.
      *
-     * 트랜잭션 경계: 본 메서드 전체가 하나의 트랜잭션. `deactivateUserTokens` 와 `save` 가
-     * 같은 commit 으로 묶여 부분 실패가 발생하지 않는다.
+     * **트랜잭션 경계 없음** — KIS HTTP 호출은 트랜잭션 밖. DB 저장은 [KisTokenStore.persist]
+     * 가 자체 `@Transactional` 로 처리.
      */
-    @Transactional
     fun issueNewToken(userId: String, kisAccount: UserKisAccountEntity): IssuedToken {
         logger.info("Refreshing KIS access token: user=$userId type=${kisAccount.accountType}")
 
+        // 1. KIS HTTP 호출 (네트워크 latency, 트랜잭션 밖)
         val appSecret = decryptAppSecret(kisAccount)
         val restClient = buildOauthClient(kisAccount.accountType)
 
@@ -67,19 +68,12 @@ class KisTokenIssuer(
             ?: throw RuntimeException("Failed to get access token from KIS for user: $userId")
 
         val token = response["access_token"] as String
-        val expiresIn = (response["expires_in"] as Int).toLong()
+        // KIS 공식 응답: expires_in 은 Long. 일부 환경에서 Int 로 역직렬화될 수 있어 Number 안전 캐스팅.
+        val expiresIn = (response["expires_in"] as Number).toLong()
         val expirationTime = LocalDateTime.now().plusSeconds(expiresIn)
 
-        val userPk = kisAccount.user.id ?: throw IllegalStateException("User ID is null")
-        tokenRepository.deactivateUserTokens(userPk, kisAccount.accountType, LocalDateTime.now())
-        tokenRepository.save(
-            KisTokenEntity(
-                user = kisAccount.user,
-                accountType = kisAccount.accountType,
-                accessToken = token,
-                expirationTime = expirationTime,
-            ),
-        )
+        // 2. DB 영속화 (트랜잭션 안, 별도 빈)
+        tokenStore.persist(kisAccount.user, kisAccount.accountType, token, expirationTime)
 
         return IssuedToken(token, expirationTime)
     }

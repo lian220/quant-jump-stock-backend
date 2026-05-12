@@ -13,8 +13,6 @@ import org.springframework.transaction.annotation.Propagation
 import org.springframework.transaction.annotation.Transactional
 import org.springframework.transaction.event.TransactionPhase
 import org.springframework.transaction.event.TransactionalEventListener
-import java.math.BigDecimal
-import java.math.RoundingMode
 
 /**
  * Phase 1A PRE Task 11 — OrderExecutionRequestEvent 컨슈머 (Option B 경량판).
@@ -126,13 +124,17 @@ class OrderExecutionListener(
     }
 
     private fun recordSignal(event: OrderExecutionRequestEvent, executed: Boolean, reason: String?) {
-        val confidence = BigDecimal.valueOf(event.compositeScore / 10.0).setScale(2, RoundingMode.HALF_UP)
+        val confidence = TradeSignalExecuted.confidenceFromCompositeScore(event.compositeScore)
+        val signalType = when (event.side) {
+            TradeSide.BUY -> TradeSignal.BUY
+            TradeSide.SELL -> TradeSignal.SELL
+        }
         val signal = if (executed) {
             TradeSignalExecuted.recordExecution(
                 userId = event.userId,
                 recommendationId = event.predictionId,
                 ticker = event.ticker,
-                signal = TradeSignal.BUY,
+                signal = signalType,
                 confidence = confidence,
                 tradeId = event.tradeId
             )
@@ -141,7 +143,7 @@ class OrderExecutionListener(
                 userId = event.userId,
                 recommendationId = event.predictionId,
                 ticker = event.ticker,
-                signal = TradeSignal.BUY,
+                signal = signalType,
                 confidence = confidence,
                 reason = reason ?: "Unknown"
             )

@@ -110,7 +110,8 @@ class KisApiAdapter(
         val lock = keyLocks.computeIfAbsent(key) { ReentrantLock() }
         lock.lock()
         try {
-            accessTokenCache[key]?.takeIf { it.isValid(now) }?.let { return it.accessToken }
+            // lock wait 가 길었을 가능성 있어 fresh time 으로 재검증.
+            accessTokenCache[key]?.takeIf { it.isValid(LocalDateTime.now()) }?.let { return it.accessToken }
 
             val issued = tokenIssuer.issueNewToken(userId, kisAccount)
             val cached = CachedToken(issued.accessToken, issued.expirationTime)

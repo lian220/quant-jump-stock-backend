@@ -45,10 +45,17 @@ data class TradeSignalExecuted(
         /**
          * compositeScore (0~10 범위) → confidence (0.00~1.00) 정규화.
          * AutoTradingService 가 매 신호마다 동일하게 계산하던 변환 로직을 도메인으로 통합.
+         *
+         * 입력 검증: 0..10 범위 외 값은 도메인 invariant 위반으로 즉시 거절.
+         * 잘못된 confidence 가 silently 저장되어 audit log 를 오염시키는 것 방지.
          */
-        fun confidenceFromCompositeScore(compositeScore: Double): java.math.BigDecimal =
-            java.math.BigDecimal.valueOf(compositeScore / 10.0)
-                .setScale(2, java.math.RoundingMode.HALF_UP)
+        fun confidenceFromCompositeScore(compositeScore: Double): java.math.BigDecimal {
+            require(compositeScore in 0.0..10.0) {
+                "compositeScore must be in [0.0, 10.0], got $compositeScore"
+            }
+            return java.math.BigDecimal.valueOf(compositeScore)
+                .divide(java.math.BigDecimal.TEN, 2, java.math.RoundingMode.HALF_UP)
+        }
 
         /**
          * 실행 기록 생성
