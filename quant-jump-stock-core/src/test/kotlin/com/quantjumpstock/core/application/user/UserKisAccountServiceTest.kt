@@ -1,10 +1,10 @@
 package com.quantjumpstock.core.application.user
 
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserEntity
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserJpaRepository
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserKisAccountJpaRepository
 import com.quantjumpstock.core.domain.model.user.KisAccountType
 import com.quantjumpstock.core.infrastructure.security.EncryptionServiceGcm
+import com.quantjumpstock.core.testsupport.KisAccountTestSupport
 import jakarta.persistence.EntityManager
 import jakarta.persistence.PersistenceContext
 import org.assertj.core.api.Assertions.assertThat
@@ -14,7 +14,6 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.support.TransactionTemplate
-import java.util.UUID
 
 /**
  * Phase 1A PRE-요구사항 Task 7 — UserKisAccountService 의 GCM(v2) 컬럼 전환 검증.
@@ -46,20 +45,11 @@ class UserKisAccountServiceTest {
     @PersistenceContext
     lateinit var em: EntityManager
 
-    private val createdKisIds = mutableListOf<Long>()
-    private val createdUserIds = mutableListOf<Long>()
-
     private val tx by lazy { TransactionTemplate(txManager) }
+    private val support by lazy { KisAccountTestSupport(userRepo, kisRepo, txManager) }
 
     @AfterEach
-    fun cleanup() {
-        tx.executeWithoutResult {
-            createdKisIds.forEach { kisRepo.deleteById(it) }
-            createdUserIds.forEach { userRepo.deleteById(it) }
-        }
-        createdKisIds.clear()
-        createdUserIds.clear()
-    }
+    fun cleanup() = support.cleanup()
 
     @Test
     fun `registerOrUpdate 후 v2 컬럼이 채워지고 v1은 빈 문자열이다`() {
@@ -81,7 +71,7 @@ class UserKisAccountServiceTest {
         em.clear()
 
         val entity = kisRepo.findByUserUserId(userId).orElseThrow()
-        createdKisIds += entity.id!!
+        support.trackKisAccount(entity.id!!)
 
         assertThat(entity.appSecretEncryptedV2)
             .describedAs("신규 등록은 v2(GCM) 컬럼에 저장되어야 한다")
@@ -114,26 +104,12 @@ class UserKisAccountServiceTest {
         em.clear()
 
         // cleanup 용 entity id 수집
-        kisRepo.findByUserUserId(userId).ifPresent { createdKisIds += it.id!! }
+        kisRepo.findByUserUserId(userId).ifPresent { support.trackKisAccount(it.id!!) }
 
         val decrypted = service.getDecryptedAppSecret(userId)
         assertThat(decrypted).isEqualTo(plain)
     }
 
-    private fun createTestUser(): String {
-        val unique = UUID.randomUUID().toString().take(8)
-        val userIdStr = "kis_svc_test_$unique"
-        val saved = tx.execute {
-            userRepo.save(
-                UserEntity(
-                    userId = userIdStr,
-                    name = "KIS Service 테스트 사용자",
-                    email = "kis_svc_${unique}@example.com",
-                    passwordHash = "hashed_password"
-                )
-            )
-        }!!
-        createdUserIds += saved.id!!
-        return userIdStr
-    }
+    private fun createTestUser(): String =
+        support.createUser(prefix = "kis_svc_test", transactional = true).userId
 }

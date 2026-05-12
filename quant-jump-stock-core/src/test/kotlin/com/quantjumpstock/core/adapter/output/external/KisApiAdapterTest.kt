@@ -7,8 +7,7 @@ import com.quantjumpstock.core.adapter.output.persistence.jpa.UserKisAccountEnti
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserKisAccountJpaRepository
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserStatus
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserRole
-import com.quantjumpstock.core.infrastructure.security.EncryptionService
-import com.quantjumpstock.core.infrastructure.security.EncryptionServiceGcm
+import com.quantjumpstock.core.infrastructure.security.AppSecretCipher
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
@@ -35,12 +34,11 @@ import java.util.Optional
 class KisApiAdapterTest {
 
     private val userKisRepo: UserKisAccountJpaRepository = mockk()
-    private val legacy: EncryptionService = mockk()
-    private val gcm: EncryptionServiceGcm = mockk()
+    private val cipher: AppSecretCipher = mockk()
     private val tokenRepo: KisTokenJpaRepository = mockk(relaxed = true)
     private val tokenIssuer: KisTokenIssuer = mockk(relaxed = true)
 
-    private val adapter = KisApiAdapter(userKisRepo, legacy, gcm, tokenRepo, tokenIssuer)
+    private val adapter = KisApiAdapter(userKisRepo, cipher, tokenRepo, tokenIssuer)
 
     @Test
     fun `getOrCreateRestClient 는 (userId, accountType) 복합키로 캐시한다`() {
@@ -59,36 +57,36 @@ class KisApiAdapterTest {
     }
 
     @Test
-    fun `decryptAppSecret 은 v2 가 있으면 GCM 으로 복호화한다`() {
+    fun `decryptAppSecret 은 AppSecretCipher 에 v2 v1 을 그대로 위임한다`() {
         val entity = userKisEntity(v1Cipher = "ECB_V1", v2Cipher = "GCM_V2")
-        every { gcm.decrypt("GCM_V2") } returns "PLAIN_FROM_GCM"
+        every { cipher.decrypt("GCM_V2", "ECB_V1") } returns "PLAIN_FROM_GCM"
 
         val result = adapter.decryptAppSecret(entity)
 
         assertThat(result).isEqualTo("PLAIN_FROM_GCM")
-        verify(exactly = 0) { legacy.decrypt(any()) }
+        verify(exactly = 1) { cipher.decrypt("GCM_V2", "ECB_V1") }
     }
 
     @Test
-    fun `decryptAppSecret 은 v2 가 null 이면 legacy ECB 로 fallback 한다`() {
+    fun `decryptAppSecret 은 v2 가 null 이어도 cipher 에 그대로 위임 (fallback 정책은 cipher 책임)`() {
         val entity = userKisEntity(v1Cipher = "ECB_V1", v2Cipher = null)
-        every { legacy.decrypt("ECB_V1") } returns "PLAIN_FROM_LEGACY"
+        every { cipher.decrypt(null, "ECB_V1") } returns "PLAIN_FROM_LEGACY"
 
         val result = adapter.decryptAppSecret(entity)
 
         assertThat(result).isEqualTo("PLAIN_FROM_LEGACY")
-        verify(exactly = 0) { gcm.decrypt(any()) }
+        verify(exactly = 1) { cipher.decrypt(null, "ECB_V1") }
     }
 
     @Test
-    fun `decryptAppSecret 은 v2 가 빈 문자열이어도 legacy 로 fallback 한다`() {
+    fun `decryptAppSecret 은 v2 가 빈 문자열이어도 cipher 에 그대로 위임`() {
         val entity = userKisEntity(v1Cipher = "ECB_V1", v2Cipher = "")
-        every { legacy.decrypt("ECB_V1") } returns "PLAIN_FROM_LEGACY"
+        every { cipher.decrypt("", "ECB_V1") } returns "PLAIN_FROM_LEGACY"
 
         val result = adapter.decryptAppSecret(entity)
 
         assertThat(result).isEqualTo("PLAIN_FROM_LEGACY")
-        verify(exactly = 0) { gcm.decrypt(any()) }
+        verify(exactly = 1) { cipher.decrypt("", "ECB_V1") }
     }
 
     private fun userKisEntity(

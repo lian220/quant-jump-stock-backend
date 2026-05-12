@@ -5,8 +5,7 @@ import com.quantjumpstock.core.adapter.output.persistence.jpa.KisTokenEntity
 import com.quantjumpstock.core.adapter.output.persistence.jpa.KisTokenJpaRepository
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserKisAccountEntity
 import com.quantjumpstock.core.config.KisConfig
-import com.quantjumpstock.core.infrastructure.security.EncryptionService
-import com.quantjumpstock.core.infrastructure.security.EncryptionServiceGcm
+import com.quantjumpstock.core.infrastructure.security.AppSecretCipher
 import org.slf4j.LoggerFactory
 import org.springframework.http.MediaType
 import org.springframework.http.client.SimpleClientHttpRequestFactory
@@ -35,8 +34,7 @@ import java.time.LocalDateTime
 @Component
 class KisTokenIssuer(
     private val tokenRepository: KisTokenJpaRepository,
-    private val encryptionServiceLegacy: EncryptionService,
-    private val encryptionServiceGcm: EncryptionServiceGcm,
+    private val appSecretCipher: AppSecretCipher,
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -87,17 +85,10 @@ class KisTokenIssuer(
     }
 
     /**
-     * v2(GCM) 우선, v2 가 비어있으면 v1(ECB) legacy fallback.
-     * Task 7 이후 신규 등록은 v1 = "" 로 저장되므로 v2 우선이 필수.
+     * AppSecret 복호화. fallback 정책은 [AppSecretCipher] 가 단일 소스.
      */
-    private fun decryptAppSecret(entity: UserKisAccountEntity): String {
-        val v2 = entity.appSecretEncryptedV2
-        return if (!v2.isNullOrBlank()) {
-            encryptionServiceGcm.decrypt(v2)
-        } else {
-            encryptionServiceLegacy.decrypt(entity.appSecretEncrypted)
-        }
-    }
+    private fun decryptAppSecret(entity: UserKisAccountEntity): String =
+        appSecretCipher.decrypt(entity.appSecretEncryptedV2, entity.appSecretEncrypted)
 
     /**
      * OAuth 토큰 발급용 단발성 RestClient. 캐싱 가치가 낮으므로 매번 새로 만든다.

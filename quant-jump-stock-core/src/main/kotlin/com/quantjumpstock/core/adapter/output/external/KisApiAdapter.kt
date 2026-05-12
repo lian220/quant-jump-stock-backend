@@ -6,8 +6,7 @@ import com.quantjumpstock.core.adapter.output.persistence.jpa.UserKisAccountEnti
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserKisAccountJpaRepository
 import com.quantjumpstock.core.config.KisConfig
 import com.quantjumpstock.core.domain.trading.port.output.TradingApiPort
-import com.quantjumpstock.core.infrastructure.security.EncryptionService
-import com.quantjumpstock.core.infrastructure.security.EncryptionServiceGcm
+import com.quantjumpstock.core.infrastructure.security.AppSecretCipher
 import org.slf4j.LoggerFactory
 import org.springframework.http.MediaType
 import org.springframework.http.client.SimpleClientHttpRequestFactory
@@ -35,8 +34,7 @@ import java.util.concurrent.locks.ReentrantLock
 @Component
 class KisApiAdapter(
     private val userKisAccountRepository: UserKisAccountJpaRepository,
-    private val encryptionServiceLegacy: EncryptionService,
-    private val encryptionServiceGcm: EncryptionServiceGcm,
+    private val appSecretCipher: AppSecretCipher,
     private val tokenRepository: KisTokenJpaRepository,
     private val tokenIssuer: KisTokenIssuer,
 ) : TradingApiPort {
@@ -62,18 +60,10 @@ class KisApiAdapter(
     }
 
     /**
-     * AppSecret 복호화 (v2 우선, v1 legacy fallback).
-     * Task 7 이후 신규 등록은 v1 = "" 로 저장되므로 v2 우선 처리해야 KIS 인증이 성립한다.
-     * v2 가 null 또는 빈 문자열이면 마이그레이션 미완 row 로 간주하고 legacy ECB 로 fallback.
+     * AppSecret 복호화. fallback 정책은 [AppSecretCipher] 가 단일 소스로 관리.
      */
-    internal fun decryptAppSecret(entity: UserKisAccountEntity): String {
-        val v2 = entity.appSecretEncryptedV2
-        return if (!v2.isNullOrBlank()) {
-            encryptionServiceGcm.decrypt(v2)
-        } else {
-            encryptionServiceLegacy.decrypt(entity.appSecretEncrypted)
-        }
-    }
+    internal fun decryptAppSecret(entity: UserKisAccountEntity): String =
+        appSecretCipher.decrypt(entity.appSecretEncryptedV2, entity.appSecretEncrypted)
 
     /**
      * (userId, accountType) 별 RestClient 캐시.

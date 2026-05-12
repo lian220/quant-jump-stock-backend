@@ -43,6 +43,14 @@ data class TradeSignalExecuted(
 
     companion object {
         /**
+         * compositeScore (0~10 범위) → confidence (0.00~1.00) 정규화.
+         * AutoTradingService 가 매 신호마다 동일하게 계산하던 변환 로직을 도메인으로 통합.
+         */
+        fun confidenceFromCompositeScore(compositeScore: Double): java.math.BigDecimal =
+            java.math.BigDecimal.valueOf(compositeScore / 10.0)
+                .setScale(2, java.math.RoundingMode.HALF_UP)
+
+        /**
          * 실행 기록 생성
          */
         fun recordExecution(

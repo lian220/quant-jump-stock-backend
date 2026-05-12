@@ -264,7 +264,8 @@ class AutoTradingService(
     }
 
     /**
-     * 신호 실행 로그 기록
+     * 신호 실행 로그 기록.
+     * confidence 변환은 [TradeSignalExecuted.confidenceFromCompositeScore] 도메인 메서드로 통합.
      */
     private fun recordSignalExecution(
         userId: Long,
@@ -275,37 +276,20 @@ class AutoTradingService(
         skipReason: String?,
         tradeId: Long?
     ) {
-        try {
-            val signal = when (decision) {
-                ExecutionDecision.EXECUTED -> TradeSignalExecuted.recordExecution(
-                    userId = userId,
-                    recommendationId = recommendationId,
-                    ticker = ticker,
-                    signal = TradeSignal.BUY,
-                    confidence = BigDecimal.valueOf(compositeScore / 10.0).setScale(2, RoundingMode.HALF_UP),
-                    tradeId = tradeId!!
-                )
-                ExecutionDecision.SKIPPED -> TradeSignalExecuted.recordSkipped(
-                    userId = userId,
-                    recommendationId = recommendationId,
-                    ticker = ticker,
-                    signal = TradeSignal.BUY,
-                    confidence = BigDecimal.valueOf(compositeScore / 10.0).setScale(2, RoundingMode.HALF_UP),
-                    reason = skipReason ?: "Unknown"
-                )
-                ExecutionDecision.FAILED -> TradeSignalExecuted.recordFailed(
-                    userId = userId,
-                    recommendationId = recommendationId,
-                    ticker = ticker,
-                    signal = TradeSignal.BUY,
-                    confidence = BigDecimal.valueOf(compositeScore / 10.0).setScale(2, RoundingMode.HALF_UP),
-                    reason = skipReason ?: "Unknown"
-                )
-            }
-            tradeSignalExecutedRepository.save(signal)
-        } catch (e: Exception) {
-            logger.error("Failed to record signal execution", e)
+        val confidence = TradeSignalExecuted.confidenceFromCompositeScore(compositeScore)
+        val signal = when (decision) {
+            ExecutionDecision.EXECUTED -> TradeSignalExecuted.recordExecution(
+                userId, recommendationId, ticker, TradeSignal.BUY, confidence, tradeId!!
+            )
+            ExecutionDecision.SKIPPED -> TradeSignalExecuted.recordSkipped(
+                userId, recommendationId, ticker, TradeSignal.BUY, confidence, skipReason ?: "Unknown"
+            )
+            ExecutionDecision.FAILED -> TradeSignalExecuted.recordFailed(
+                userId, recommendationId, ticker, TradeSignal.BUY, confidence, skipReason ?: "Unknown"
+            )
         }
+        runCatching { tradeSignalExecutedRepository.save(signal) }
+            .onFailure { logger.error("Failed to record signal execution", it) }
     }
 
     /**

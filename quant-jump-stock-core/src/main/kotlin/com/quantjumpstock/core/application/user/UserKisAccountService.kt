@@ -4,8 +4,7 @@ import com.quantjumpstock.core.domain.model.user.KisAccountType
 import com.quantjumpstock.core.domain.model.user.UserKisAccount
 import com.quantjumpstock.core.domain.port.output.UserKisAccountRepository
 import com.quantjumpstock.core.domain.port.output.UserRepository
-import com.quantjumpstock.core.infrastructure.security.EncryptionService
-import com.quantjumpstock.core.infrastructure.security.EncryptionServiceGcm
+import com.quantjumpstock.core.infrastructure.security.AppSecretCipher
 import jakarta.validation.constraints.NotBlank
 import jakarta.validation.constraints.Pattern
 import jakarta.validation.constraints.Size
@@ -18,8 +17,7 @@ import org.springframework.transaction.annotation.Transactional
 class UserKisAccountService(
     private val userKisAccountRepository: UserKisAccountRepository,
     private val userRepository: UserRepository,
-    private val encryptionServiceLegacy: EncryptionService,
-    private val encryptionServiceGcm: EncryptionServiceGcm
+    private val appSecretCipher: AppSecretCipher,
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -36,7 +34,7 @@ class UserKisAccountService(
         val user = userRepository.findByUserId(userId)
             ?: throw IllegalArgumentException("User not found: $userId")
 
-        val encryptedV2 = encryptionServiceGcm.encrypt(request.appSecret)
+        val encryptedV2 = appSecretCipher.encryptForStorage(request.appSecret)
 
         val existingAccount = user.id?.let { userKisAccountRepository.findByUserId(it) }
 
@@ -120,9 +118,7 @@ class UserKisAccountService(
         val kisAccount = userKisAccountRepository.findActiveByUserUserId(userId)
             ?: throw IllegalArgumentException("KIS account not found: $userId")
 
-        return kisAccount.appSecretEncryptedV2
-            ?.let { encryptionServiceGcm.decrypt(it) }
-            ?: encryptionServiceLegacy.decrypt(kisAccount.appSecretEncrypted)
+        return appSecretCipher.decrypt(kisAccount.appSecretEncryptedV2, kisAccount.appSecretEncrypted)
     }
 }
 

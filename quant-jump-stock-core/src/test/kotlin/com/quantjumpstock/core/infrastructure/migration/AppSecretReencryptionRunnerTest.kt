@@ -1,12 +1,12 @@
 package com.quantjumpstock.core.infrastructure.migration
 
 import com.quantjumpstock.core.adapter.output.persistence.jpa.KisAccountType
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserEntity
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserJpaRepository
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserKisAccountEntity
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserKisAccountJpaRepository
 import com.quantjumpstock.core.infrastructure.security.EncryptionService
 import com.quantjumpstock.core.infrastructure.security.EncryptionServiceGcm
+import com.quantjumpstock.core.testsupport.KisAccountTestSupport
 import jakarta.persistence.EntityManager
 import jakarta.persistence.PersistenceContext
 import org.assertj.core.api.Assertions.assertThat
@@ -16,7 +16,6 @@ import org.springframework.beans.factory.annotation.Autowired
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.transaction.PlatformTransactionManager
 import org.springframework.transaction.support.TransactionTemplate
-import java.util.UUID
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -54,21 +53,11 @@ class AppSecretReencryptionRunnerTest {
     @PersistenceContext
     lateinit var em: EntityManager
 
-    private val createdKisIds = mutableListOf<Long>()
-    private val createdUserIds = mutableListOf<Long>()
-
     private val tx by lazy { TransactionTemplate(txManager) }
+    private val support by lazy { KisAccountTestSupport(userRepo, kisRepo, txManager) }
 
     @AfterEach
-    fun cleanup() {
-        // 명시적 cleanup: 본 테스트가 생성한 row 만 삭제 (다른 테스트의 fixture 는 보존)
-        tx.executeWithoutResult {
-            createdKisIds.forEach { kisRepo.deleteById(it) }
-            createdUserIds.forEach { userRepo.deleteById(it) }
-        }
-        createdKisIds.clear()
-        createdUserIds.clear()
-    }
+    fun cleanup() = support.cleanup()
 
     @Test
     fun `ECB로 암호화된 row가 GCM으로 재암호화되어 v2에 저장된다`() {
@@ -77,8 +66,7 @@ class AppSecretReencryptionRunnerTest {
 
         val kisIdRef = AtomicReference<Long>()
         tx.executeWithoutResult {
-            val user = createTestUser()
-            createdUserIds += user.id!!
+            val user = support.createUser(prefix = "kis_reenc")
             val saved = kisRepo.save(
                 UserKisAccountEntity(
                     user = user,
@@ -92,7 +80,7 @@ class AppSecretReencryptionRunnerTest {
                 )
             )
             kisIdRef.set(saved.id!!)
-            createdKisIds += saved.id!!
+            support.trackKisAccount(saved.id!!)
         }
 
         runner.executeReencryption()
@@ -117,8 +105,7 @@ class AppSecretReencryptionRunnerTest {
 
         val kisIdRef = AtomicReference<Long>()
         tx.executeWithoutResult {
-            val user = createTestUser()
-            createdUserIds += user.id!!
+            val user = support.createUser(prefix = "kis_reenc")
             val saved = kisRepo.save(
                 UserKisAccountEntity(
                     user = user,
@@ -132,7 +119,7 @@ class AppSecretReencryptionRunnerTest {
                 )
             )
             kisIdRef.set(saved.id!!)
-            createdKisIds += saved.id!!
+            support.trackKisAccount(saved.id!!)
         }
 
         runner.executeReencryption()
@@ -146,15 +133,4 @@ class AppSecretReencryptionRunnerTest {
         assertThat(updated.appSecretEncrypted).isEqualTo(oldEcb)
     }
 
-    private fun createTestUser(): UserEntity {
-        val unique = UUID.randomUUID().toString().take(8)
-        return userRepo.save(
-            UserEntity(
-                userId = "kis_reenc_$unique",
-                name = "재암호화 테스트 사용자",
-                email = "kis_reenc_${unique}@example.com",
-                passwordHash = "hashed_password"
-            )
-        )
-    }
 }
