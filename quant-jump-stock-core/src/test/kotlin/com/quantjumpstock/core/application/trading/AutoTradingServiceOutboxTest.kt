@@ -48,6 +48,7 @@ class AutoTradingServiceOutboxTest {
     private val strategySubscriptionRepository = mockk<StrategySubscriptionRepository>()
     private val strategyDefaultStockRepository = mockk<StrategyDefaultStockRepository>()
     private val eventPublisher = mockk<ApplicationEventPublisher>()
+    private val stalePendingTradeReconciler = mockk<StalePendingTradeReconciler>(relaxed = true)
 
     private val service = AutoTradingService(
         userRepository,
@@ -58,7 +59,8 @@ class AutoTradingServiceOutboxTest {
         accountRepository,
         strategySubscriptionRepository,
         strategyDefaultStockRepository,
-        eventPublisher
+        eventPublisher,
+        stalePendingTradeReconciler
     )
 
     @Test

@@ -33,12 +33,19 @@ class AutoTradingService(
     private val strategySubscriptionRepository: StrategySubscriptionRepository,
     private val strategyDefaultStockRepository: StrategyDefaultStockRepository,
     // Phase 1A PRE Task 11: KIS 외부 호출을 AFTER_COMMIT 리스너로 위임
-    private val applicationEventPublisher: ApplicationEventPublisher
+    private val applicationEventPublisher: ApplicationEventPublisher,
+    // Phase 1A PRE backend-architect C-2: AFTER_COMMIT 리스너 보상 실패 시 영구 PENDING 회수
+    private val stalePendingTradeReconciler: StalePendingTradeReconciler,
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
     @Transactional
     fun executeAutoTrading() {
+        // 본 사이클 시작 전, 이전 사이클의 영구 PENDING (리스너 보상 실패) 정리.
+        // REQUIRES_NEW 트랜잭션이라 본 트랜잭션 실패와 독립적으로 commit.
+        runCatching { stalePendingTradeReconciler.reconcile() }
+            .onFailure { logger.error("StalePendingTradeReconciler 호출 실패 (사이클은 계속 진행)", it) }
+
         logger.info("🚀 Starting Auto Trading Execution...")
         // 스케줄러가 00:30(KST)에 실행되므로, 분석 데이터는 전날 날짜로 저장됨
         val analysisDate = LocalDate.now().minusDays(1)

@@ -95,7 +95,7 @@ class AppSecretReencryptionRunnerTest {
             createdKisIds += saved.id!!
         }
 
-        runner.run()
+        runner.executeReencryption()
 
         // 1차 캐시 클리어 → 실제 DB 값 검증 (in-memory dirty entity 회피)
         em.clear()
@@ -135,7 +135,7 @@ class AppSecretReencryptionRunnerTest {
             createdKisIds += saved.id!!
         }
 
-        runner.run()
+        runner.executeReencryption()
 
         em.clear()
 

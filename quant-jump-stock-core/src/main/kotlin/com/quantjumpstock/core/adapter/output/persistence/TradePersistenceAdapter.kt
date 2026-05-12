@@ -64,6 +64,10 @@ class TradePersistenceAdapter(
         return tradeJpaRepository.findByStatus(JpaTradeStatus.PENDING).map { toDomain(it) }
     }
 
+    override fun findStalePending(threshold: LocalDateTime): List<Trade> {
+        return tradeJpaRepository.findStalePending(threshold).map { toDomain(it) }
+    }
+
     override fun deleteById(id: Long) {
         tradeJpaRepository.deleteById(id)
     }
