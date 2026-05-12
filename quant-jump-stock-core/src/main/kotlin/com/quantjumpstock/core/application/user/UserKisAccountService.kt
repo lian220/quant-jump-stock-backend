@@ -6,6 +6,9 @@ import com.quantjumpstock.core.domain.port.output.UserKisAccountRepository
 import com.quantjumpstock.core.domain.port.output.UserRepository
 import com.quantjumpstock.core.infrastructure.security.EncryptionService
 import com.quantjumpstock.core.infrastructure.security.EncryptionServiceGcm
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Pattern
+import jakarta.validation.constraints.Size
 import java.time.LocalDateTime
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -124,13 +127,29 @@ class UserKisAccountService(
 }
 
 /**
- * KIS 계정 등록 요청
+ * KIS 계정 등록 요청.
+ *
+ * 입력 검증 (Phase 1A PRE 보안 리뷰 H-3 반영):
+ *  - appKey/appSecret 길이 상한으로 대용량 페이로드 차단.
+ *  - accountNumber 는 KIS 규격(숫자 8자리)만 허용.
+ *  - accountProductCode 는 2자리 숫자(예: "01" 해외주식).
  */
 data class KisAccountRequest(
+    @field:NotBlank
+    @field:Size(min = 10, max = 100, message = "appKey 길이는 10~100자")
     val appKey: String,
+
+    @field:NotBlank
+    @field:Size(min = 10, max = 200, message = "appSecret 길이는 10~200자")
     val appSecret: String,  // 평문 (암호화되어 저장됨)
+
+    @field:NotBlank
+    @field:Pattern(regexp = "^\\d{8}$", message = "accountNumber 는 숫자 8자리")
     val accountNumber: String,
+
+    @field:Pattern(regexp = "^\\d{2}$", message = "accountProductCode 는 숫자 2자리")
     val accountProductCode: String = "01",
+
     val accountType: KisAccountType = KisAccountType.MOCK,
     val enabled: Boolean = true
 )

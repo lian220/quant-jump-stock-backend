@@ -6,10 +6,12 @@ import com.quantjumpstock.core.application.marketplace.StrategyNotFoundException
 import com.quantjumpstock.core.infrastructure.security.AccessDeniedException
 import com.quantjumpstock.core.infrastructure.security.UnauthorizedException
 import jakarta.servlet.http.HttpServletRequest
+import jakarta.validation.ConstraintViolationException
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.http.converter.HttpMessageNotReadableException
+import org.springframework.web.bind.MethodArgumentNotValidException
 import org.springframework.web.bind.MissingRequestHeaderException
 import org.springframework.web.bind.annotation.ExceptionHandler
 import org.springframework.web.bind.annotation.RestControllerAdvice
@@ -102,6 +104,45 @@ class GlobalExceptionHandler(
             .body(ErrorResponse(
                 error = "Bad Request",
                 message = "잘못된 요청 형식입니다",
+                status = HttpStatus.BAD_REQUEST.value()
+            ))
+    }
+
+    /**
+     * @Valid @RequestBody 검증 실패 처리.
+     * KisAccountRequest 등 Bean Validation 제약(@NotBlank, @Size, @Pattern) 위반 시 400 응답.
+     */
+    @ExceptionHandler(MethodArgumentNotValidException::class)
+    fun handleMethodArgumentNotValid(ex: MethodArgumentNotValidException): ResponseEntity<ErrorResponse> {
+        val fieldErrors = ex.bindingResult.fieldErrors.joinToString(", ") {
+            "${it.field}: ${it.defaultMessage}"
+        }
+        logger.warn("⚠️ Validation failed: {}", fieldErrors)
+
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(
+                error = "Bad Request",
+                message = "검증 실패: $fieldErrors",
+                status = HttpStatus.BAD_REQUEST.value()
+            ))
+    }
+
+    /**
+     * @PathVariable / @RequestParam 등의 ConstraintViolation (예: @Min, @Pattern) 처리.
+     */
+    @ExceptionHandler(ConstraintViolationException::class)
+    fun handleConstraintViolation(ex: ConstraintViolationException): ResponseEntity<ErrorResponse> {
+        val violations = ex.constraintViolations.joinToString(", ") {
+            "${it.propertyPath}: ${it.message}"
+        }
+        logger.warn("⚠️ Constraint violation: {}", violations)
+
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(
+                error = "Bad Request",
+                message = "검증 실패: $violations",
                 status = HttpStatus.BAD_REQUEST.value()
             ))
     }

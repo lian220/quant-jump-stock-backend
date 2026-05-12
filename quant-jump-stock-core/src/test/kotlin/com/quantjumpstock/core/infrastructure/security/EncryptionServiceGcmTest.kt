@@ -3,6 +3,7 @@ package com.quantjumpstock.core.infrastructure.security
 import org.assertj.core.api.Assertions.assertThat
 import org.assertj.core.api.Assertions.assertThatThrownBy
 import org.junit.jupiter.api.Test
+import org.springframework.mock.env.MockEnvironment
 import java.util.Base64
 import kotlin.experimental.xor
 
@@ -10,7 +11,8 @@ class EncryptionServiceGcmTest {
 
     // TEST ONLY — sequential bytes 0x00..0x1F (32 bytes), 절대 운영에 사용 금지
     private val v2Key = "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
-    private val service = EncryptionServiceGcm(v2Key)
+    private val emptyEnvironment = MockEnvironment()
+    private val service = EncryptionServiceGcm(v2Key, emptyEnvironment)
 
     @Test
     fun `암호화-복호화 라운드트립이 동작한다`() {
@@ -46,5 +48,24 @@ class EncryptionServiceGcmTest {
         assertThatThrownBy { service.decrypt(tooShort) }
             .isInstanceOf(IllegalArgumentException::class.java)
             .hasMessageContaining("expected at least")
+    }
+
+    @Test
+    fun `zero-key 는 prod 프로파일에서 부팅 실패`() {
+        val zeroKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        val prodEnv = MockEnvironment().withProperty("dummy", "x").apply { setActiveProfiles("prod") }
+        assertThatThrownBy { EncryptionServiceGcm(zeroKey, prodEnv) }
+            .isInstanceOf(IllegalStateException::class.java)
+            .hasMessageContaining("zero-bytes development fallback")
+    }
+
+    @Test
+    fun `zero-key 는 비-prod 프로파일에서는 부팅 허용 (warn 로그)`() {
+        val zeroKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        val localEnv = MockEnvironment().apply { setActiveProfiles("local") }
+        // 예외 없이 생성 가능해야 함 (logger.warn 만 발생)
+        val svc = EncryptionServiceGcm(zeroKey, localEnv)
+        val plain = "TEST"
+        assertThat(svc.decrypt(svc.encrypt(plain))).isEqualTo(plain)
     }
 }

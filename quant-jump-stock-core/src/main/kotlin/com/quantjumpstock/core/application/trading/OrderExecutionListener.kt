@@ -1,5 +1,6 @@
 package com.quantjumpstock.core.application.trading
 
+import com.quantjumpstock.core.domain.model.trading.TradeSide
 import com.quantjumpstock.core.domain.model.trading.TradeSignal
 import com.quantjumpstock.core.domain.model.trading.TradeSignalExecuted
 import com.quantjumpstock.core.domain.port.output.AccountRepository
@@ -49,31 +50,43 @@ class OrderExecutionListener(
         logger.info("📨 OrderExecutionRequest received: tradeId=${event.tradeId} ${event.ticker} x${event.quantity}")
 
         val orderType = when (event.side) {
-            com.quantjumpstock.core.domain.model.trading.TradeSide.BUY -> "BUY"
-            com.quantjumpstock.core.domain.model.trading.TradeSide.SELL -> "SELL"
+            TradeSide.BUY -> "BUY"
+            TradeSide.SELL -> "SELL"
         }
 
         try {
-            val result = tradingApiPort.placeOrder(
-                userId = event.userIdString,
-                ticker = event.ticker,
-                orderType = orderType,
-                quantity = event.quantity,
-                price = event.priceForKis
-            )
+            try {
+                val result = tradingApiPort.placeOrder(
+                    userId = event.userIdString,
+                    ticker = event.ticker,
+                    orderType = orderType,
+                    quantity = event.quantity,
+                    price = event.priceForKis
+                )
 
-            val rtCd = result["rt_cd"] as? String
-            if (rtCd == "0") {
-                val kisOrderId = (result["output"] as? Map<*, *>)?.get("KRX_FWDG_ORD_ORGNO") as? String
-                handleSuccess(event, kisOrderId)
-            } else {
-                val errorMsg = result["msg1"] as? String ?: "Unknown error"
-                logger.error("❌ KIS order failed: ${event.ticker} - $errorMsg")
-                handleFailure(event, "KIS API error: $errorMsg")
+                val rtCd = result["rt_cd"] as? String
+                if (rtCd == "0") {
+                    val kisOrderId = (result["output"] as? Map<*, *>)?.get("KRX_FWDG_ORD_ORGNO") as? String
+                    handleSuccess(event, kisOrderId)
+                } else {
+                    val errorMsg = result["msg1"] as? String ?: "Unknown error"
+                    logger.error("❌ KIS order failed: ${event.ticker} - $errorMsg")
+                    handleFailure(event, "KIS API error: $errorMsg")
+                }
+            } catch (e: Exception) {
+                logger.error("❌ Exception during KIS order: ${event.ticker}", e)
+                handleFailure(event, "Exception: ${e.message}")
             }
-        } catch (e: Exception) {
-            logger.error("❌ Exception during KIS order: ${event.ticker}", e)
-            handleFailure(event, "Exception: ${e.message}")
+        } catch (uncaught: Throwable) {
+            // 보상 자체(handleFailure 의 trade.fail() / unlockCash) 가 실패한 경우의 마지막 안전망.
+            // StalePendingTradeReconciler 가 다음 자동매매 사이클에서 fail() 만 회수하므로
+            // lockedCash 자동 unlock 은 운영자 수동 조치가 필요함을 critical log 로 노출.
+            logger.error(
+                "CRITICAL: OrderExecutionListener 보상 자체 실패. tradeId={} userId={} " +
+                    "lockedAmount={} ticker={}. 수동 보상 필요: Trade fail + Account unlockCash.",
+                event.tradeId, event.userId, event.lockedAmount, event.ticker, uncaught,
+            )
+            throw uncaught
         }
     }
 

@@ -1,34 +1,34 @@
 package com.quantjumpstock.core.adapter.output.external
 
 import com.quantjumpstock.core.adapter.output.persistence.jpa.KisAccountType
-import com.quantjumpstock.core.adapter.output.persistence.jpa.KisTokenEntity
 import com.quantjumpstock.core.adapter.output.persistence.jpa.KisTokenJpaRepository
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserKisAccountEntity
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserKisAccountJpaRepository
-import com.quantjumpstock.core.infrastructure.security.EncryptionService
-import com.quantjumpstock.core.infrastructure.security.EncryptionServiceGcm
 import com.quantjumpstock.core.config.KisConfig
 import com.quantjumpstock.core.domain.trading.port.output.TradingApiPort
-import java.time.Duration
-import java.time.LocalDateTime
-import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicLong
-import java.util.concurrent.locks.ReentrantLock
+import com.quantjumpstock.core.infrastructure.security.EncryptionService
+import com.quantjumpstock.core.infrastructure.security.EncryptionServiceGcm
 import org.slf4j.LoggerFactory
 import org.springframework.http.MediaType
 import org.springframework.http.client.SimpleClientHttpRequestFactory
 import org.springframework.stereotype.Component
-import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.client.RestClient
+import java.time.Duration
+import java.time.LocalDateTime
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.locks.ReentrantLock
 
 /**
  * KIS API Adapter (Output Adapter)
  * TradingApiPort 를 구현하여 한국투자증권 API 와 연동한다.
  *
- * Phase 1A PRE Task 10 변경:
+ * Phase 1A PRE Task 10 + 패널 리뷰 반영:
  *  - restClientCache / accessTokenCache 키를 (userId, accountType) 복합키로 분리해
  *    동일 사용자가 MOCK ↔ REAL 전환 시 잘못된 baseURL/토큰을 재사용하지 않도록 한다.
- *  - 토큰 발급은 ConcurrentHashMap.compute 로 race-free 하게 수행한다.
+ *  - 토큰 발급은 [KisTokenIssuer] 별도 빈으로 분리해 Spring AOP 트랜잭션이 정상 동작.
+ *  - 토큰 캐시 동기화는 per-key [ReentrantLock] + double-check 패턴 — KIS HTTPS(30s) 호출이
+ *    ConcurrentHashMap 버킷 락을 점유하지 않도록 한다.
+ *  - rate limit 은 [apiLock] 으로 단일 인스턴스 내 race 차단 (다중 인스턴스는 Phase 1B 분산 처리).
  *  - AppSecret 복호화는 v2(GCM) 우선, v2 가 비어있으면 v1(ECB) legacy fallback.
  *    Task 7 이후 신규 등록은 v1 = "" 로 마킹되므로 v2 우선 처리가 필수.
  */
@@ -37,7 +37,8 @@ class KisApiAdapter(
     private val userKisAccountRepository: UserKisAccountJpaRepository,
     private val encryptionServiceLegacy: EncryptionService,
     private val encryptionServiceGcm: EncryptionServiceGcm,
-    private val tokenRepository: KisTokenJpaRepository
+    private val tokenRepository: KisTokenJpaRepository,
+    private val tokenIssuer: KisTokenIssuer,
 ) : TradingApiPort {
     private val logger = LoggerFactory.getLogger(KisApiAdapter::class.java)
 
@@ -48,10 +49,12 @@ class KisApiAdapter(
 
     private val restClientCache = ConcurrentHashMap<CacheKey, RestClient>()
     private val accessTokenCache = ConcurrentHashMap<CacheKey, CachedToken>()
+    // per-key 락. token 발급 동시성 직렬화를 ConcurrentHashMap 버킷 락 *밖* 에서 수행하기 위한 보조 자료구조.
+    private val keyLocks = ConcurrentHashMap<CacheKey, ReentrantLock>()
 
-    private val lastApiCallTime = AtomicLong(0)
-    private val minApiIntervalMs = 500L
     private val apiLock = ReentrantLock()
+    private var lastApiCallNanos = 0L
+    private val minApiIntervalMs = 500L
 
     private fun getActiveKisAccount(userId: String): UserKisAccountEntity {
         return userKisAccountRepository.findActiveByUserUserId(userId)
@@ -82,10 +85,12 @@ class KisApiAdapter(
             logger.info("Creating RestClient for user=$userId type=$accountType baseUrl=$baseUrl")
             RestClient.builder()
                 .baseUrl(baseUrl)
-                .requestFactory(SimpleClientHttpRequestFactory().apply {
-                    setConnectTimeout(Duration.ofSeconds(10))
-                    setReadTimeout(Duration.ofSeconds(30))
-                })
+                .requestFactory(
+                    SimpleClientHttpRequestFactory().apply {
+                        setConnectTimeout(Duration.ofSeconds(10))
+                        setReadTimeout(Duration.ofSeconds(30))
+                    },
+                )
                 .build()
         }
     }
@@ -99,8 +104,10 @@ class KisApiAdapter(
         val key = CacheKey(userId, kisAccount.accountType)
         val now = LocalDateTime.now()
 
+        // 1. 메모리 캐시 확인 (락 없음)
         accessTokenCache[key]?.takeIf { it.isValid(now) }?.let { return it.accessToken }
 
+        // 2. DB 조회 (이전 인스턴스가 발급한 토큰이 살아있는 경우)
         val dbToken = tokenRepository.findLatestTokenByUserIdAndAccountType(userId, kisAccount.accountType)
         if (dbToken.isPresent && dbToken.get().isValid()) {
             val cached = CachedToken(dbToken.get().accessToken, dbToken.get().expirationTime)
@@ -108,66 +115,54 @@ class KisApiAdapter(
             return cached.accessToken
         }
 
-        // compute 블록은 동일 key 에 대해 단일 스레드만 진입하므로 동시 호출 시 KIS 발급은 1회만 수행된다.
-        val computed = accessTokenCache.compute(key) { _, existing ->
-            if (existing != null && existing.isValid()) existing
-            else issueNewToken(userId, kisAccount)
-        }!!
-        return computed.accessToken
-    }
+        // 3. per-key 락 안에서 double-check 후 발급. KIS 외부 호출은 ConcurrentHashMap
+        //    버킷 락 *밖* 에서 수행되므로 다른 key 의 토큰 캐시 접근에 영향 없음.
+        val lock = keyLocks.computeIfAbsent(key) { ReentrantLock() }
+        lock.lock()
+        try {
+            accessTokenCache[key]?.takeIf { it.isValid(now) }?.let { return it.accessToken }
 
-    @Transactional(readOnly = false)
-    private fun issueNewToken(userId: String, kisAccount: UserKisAccountEntity): CachedToken {
-        logger.info("Refreshing KIS access token: user=$userId type=${kisAccount.accountType}")
-
-        val appSecret = decryptAppSecret(kisAccount)
-        val restClient = getOrCreateRestClient(userId, kisAccount.accountType)
-
-        val response = restClient
-            .post()
-            .uri("/oauth2/tokenP")
-            .contentType(MediaType.APPLICATION_JSON)
-            .body(
-                mapOf(
-                    "grant_type" to "client_credentials",
-                    "appkey" to kisAccount.appKey,
-                    "appsecret" to appSecret
-                )
-            )
-            .retrieve()
-            .body(Map::class.java)
-            ?: throw RuntimeException("Failed to get access token from KIS for user: $userId")
-
-        val token = response["access_token"] as String
-        val expiresIn = (response["expires_in"] as Int).toLong()
-        val expirationTime = LocalDateTime.now().plusSeconds(expiresIn)
-
-        tokenRepository.deactivateUserTokens(
-            kisAccount.user.id ?: throw IllegalStateException("User ID is null"),
-            kisAccount.accountType,
-            LocalDateTime.now()
-        )
-
-        tokenRepository.save(
-            KisTokenEntity(
-                user = kisAccount.user,
-                accountType = kisAccount.accountType,
-                accessToken = token,
-                expirationTime = expirationTime
-            )
-        )
-
-        return CachedToken(token, expirationTime)
-    }
-
-    private fun waitForRateLimit() {
-        val now = System.currentTimeMillis()
-        val elapsed = now - lastApiCallTime.get()
-        if (elapsed < minApiIntervalMs) {
-            Thread.sleep(minApiIntervalMs - elapsed)
+            val issued = tokenIssuer.issueNewToken(userId, kisAccount)
+            val cached = CachedToken(issued.accessToken, issued.expirationTime)
+            accessTokenCache[key] = cached
+            return cached.accessToken
+        } finally {
+            lock.unlock()
         }
-        lastApiCallTime.set(System.currentTimeMillis())
     }
+
+    /**
+     * 단일 인스턴스 내 KIS API 호출 간격 보장. 다중 인스턴스 분산 rate limit 은 Phase 1B 범위.
+     */
+    private fun waitForRateLimit() {
+        apiLock.lock()
+        try {
+            val now = System.nanoTime()
+            val elapsedMs = (now - lastApiCallNanos) / 1_000_000
+            if (lastApiCallNanos != 0L && elapsedMs < minApiIntervalMs) {
+                Thread.sleep(minApiIntervalMs - elapsedMs)
+            }
+            lastApiCallNanos = System.nanoTime()
+        } finally {
+            apiLock.unlock()
+        }
+    }
+
+    /**
+     * KIS API 공통 헤더(인증/앱키/TR 식별자/Content-Type) 적용.
+     * placeOrder/getOverseasBalance 양쪽에서 동일한 5줄을 중복하던 것을 추출.
+     */
+    private fun <S : RestClient.RequestHeadersSpec<S>> RestClient.RequestHeadersSpec<S>.kisHeaders(
+        token: String,
+        appKey: String,
+        appSecret: String,
+        trId: String,
+    ): RestClient.RequestHeadersSpec<S> = this
+        .header("authorization", "Bearer $token")
+        .header("appkey", appKey)
+        .header("appsecret", appSecret)
+        .header("tr_id", trId)
+        .header("Content-Type", "application/json; charset=utf-8")
 
     @Suppress("UNCHECKED_CAST")
     override fun getOverseasBalance(userId: String, exchange: String): Map<String, Any> {
@@ -197,11 +192,7 @@ class KisApiAdapter(
                     .queryParam("CTX_AREA_NK200", "")
                     .build()
             }
-            .header("authorization", "Bearer $token")
-            .header("appkey", kisAccount.appKey)
-            .header("appsecret", appSecret)
-            .header("tr_id", trId)
-            .header("Content-Type", "application/json; charset=utf-8")
+            .kisHeaders(token, kisAccount.appKey, appSecret, trId)
             .retrieve()
             .body(Map::class.java) as Map<String, Any>? ?: emptyMap()
     }
@@ -212,7 +203,7 @@ class KisApiAdapter(
         ticker: String,
         orderType: String,
         quantity: Int,
-        price: String
+        price: String,
     ): Map<String, Any> {
         waitForRateLimit()
 
@@ -230,6 +221,11 @@ class KisApiAdapter(
 
         val appSecret = decryptAppSecret(kisAccount)
 
+        // ORD_DVSN: KIS 해외주식 주문 구분 — 현재 모든 주문을 지정가("00") 로 처리한다.
+        // 시장가 진입(price="0") 분기는 KIS 명세 재확인 후 별도 PR 에서 활성화 예정.
+        // 기존 `if (price == "0") "00" else "00"` 코드는 양쪽 동일 값으로 분기 무효였음 → 명시화.
+        val ordDvsn = "00"
+
         val orderBody = mapOf(
             "CANO" to kisAccount.accountNumber,
             "ACNT_PRDT_CD" to kisAccount.accountProductCode,
@@ -238,7 +234,7 @@ class KisApiAdapter(
             "ORD_QTY" to quantity.toString(),
             "OVRS_ORD_UNPR" to price,
             "ORD_SVR_DVSN_CD" to "0",
-            "ORD_DVSN" to if (price == "0") "00" else "00"
+            "ORD_DVSN" to ordDvsn,
         )
 
         logger.info("Placing $orderType order for $userId: $ticker x$quantity @ $price")
@@ -248,12 +244,8 @@ class KisApiAdapter(
                 .post()
                 .uri("/uapi/overseas-stock/v1/trading/order")
                 .contentType(MediaType.APPLICATION_JSON)
-                .header("authorization", "Bearer $token")
-                .header("appkey", kisAccount.appKey)
-                .header("appsecret", appSecret)
-                .header("tr_id", trId)
-                .header("Content-Type", "application/json; charset=utf-8")
                 .body(orderBody)
+                .kisHeaders(token, kisAccount.appKey, appSecret, trId)
                 .retrieve()
                 .body(Map::class.java) as Map<String, Any>? ?: emptyMap()
 
@@ -266,10 +258,11 @@ class KisApiAdapter(
 
             result
         } catch (e: Exception) {
+            // 응답 메시지에 e.message 노출 시 내부 식별자가 새어나갈 수 있어 일반화 (security M-1).
             logger.error("Error placing order for $ticker", e)
             mapOf(
                 "rt_cd" to "1",
-                "msg1" to "Order execution failed: ${e.message}"
+                "msg1" to "Order execution failed",
             )
         }
     }

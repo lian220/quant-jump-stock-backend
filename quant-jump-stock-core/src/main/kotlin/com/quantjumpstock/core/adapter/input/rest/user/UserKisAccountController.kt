@@ -8,6 +8,7 @@ import com.quantjumpstock.core.infrastructure.security.UserPrincipal
 import com.quantjumpstock.core.infrastructure.security.SecurityUtils
 import com.quantjumpstock.core.infrastructure.security.AccessDeniedException
 import com.quantjumpstock.core.infrastructure.security.UnauthorizedException
+import jakarta.validation.Valid
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
@@ -26,7 +27,7 @@ class UserKisAccountController(
     @PostMapping
     fun registerKisAccount(
         @PathVariable userId: String,
-        @RequestBody request: KisAccountRequest,
+        @Valid @RequestBody request: KisAccountRequest,
         @CurrentUser currentUser: UserPrincipal?
     ): ResponseEntity<Map<String, Any>> {
         validateUserAccess(userId, currentUser)

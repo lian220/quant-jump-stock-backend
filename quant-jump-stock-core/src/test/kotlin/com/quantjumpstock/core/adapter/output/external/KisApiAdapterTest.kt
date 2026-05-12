@@ -38,8 +38,9 @@ class KisApiAdapterTest {
     private val legacy: EncryptionService = mockk()
     private val gcm: EncryptionServiceGcm = mockk()
     private val tokenRepo: KisTokenJpaRepository = mockk(relaxed = true)
+    private val tokenIssuer: KisTokenIssuer = mockk(relaxed = true)
 
-    private val adapter = KisApiAdapter(userKisRepo, legacy, gcm, tokenRepo)
+    private val adapter = KisApiAdapter(userKisRepo, legacy, gcm, tokenRepo, tokenIssuer)
 
     @Test
     fun `getOrCreateRestClient 는 (userId, accountType) 복합키로 캐시한다`() {
