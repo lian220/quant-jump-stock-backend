@@ -14,7 +14,13 @@ import org.junit.jupiter.api.Test
  */
 class EncryptionServiceLegacyRegressionTest {
 
-    private val service = EncryptionService("QuantiqSecureKey2026ForKisApiEncryption!@#")
+    companion object {
+        // TEST_ONLY: 운영 키와 무관한 32+ 바이트 더미. 실제 키 형태와 닮지 않게 의도적으로 길게.
+        private const val TEST_ONLY_LEGACY_KEY =
+            "TEST_ONLY_DO_NOT_USE_IN_PRODUCTION_LEGACY_ECB_REGRESSION_FIXTURE"
+    }
+
+    private val service = EncryptionService(TEST_ONLY_LEGACY_KEY)
 
     @Test
     fun `ECB 모드에서 같은 평문은 같은 암호문을 만든다 (현재 동작 보존)`() {

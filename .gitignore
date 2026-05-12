@@ -140,3 +140,4 @@ settings.local.json
 
 # Local SQL scripts (contains sensitive data)
 **/db/local/
+.worktrees/
