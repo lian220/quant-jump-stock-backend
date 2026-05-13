@@ -300,11 +300,11 @@ def _init_services():
         # 필수 설정 검증
         missing = []
         if not settings.gcp.project_id:
-            missing.append("VERTEX_AI_PROJECT_ID")
+            missing.append("GCP_PROJECT_ID")
         if not settings.gcp.model_bucket:
-            missing.append("VERTEX_AI_BUCKET_NAME")
+            missing.append("GCP_BUCKET_NAME")
         if not settings.gcp.region:
-            missing.append("VERTEX_AI_REGION")
+            missing.append("GCP_REGION")
 
         if missing:
             logger.warning(f"Vertex AI 필수 설정 누락: {', '.join(missing)} — Vertex AI 비활성화")

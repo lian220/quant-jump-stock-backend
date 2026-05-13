@@ -113,12 +113,13 @@ class GcpSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=_env_files, env_prefix="", extra="ignore")
 
     enabled: bool = Field(default=False, alias="VERTEX_AI_ENABLED")
-    project_id: str = Field(default="", alias="VERTEX_AI_PROJECT_ID")
-    region: str = Field(default="asia-northeast3", alias="VERTEX_AI_REGION")
-    credentials_path: Optional[str] = Field(default=None, alias="VERTEX_AI_CREDENTIALS_PATH")
+    # GCP 프로젝트는 단일 진실원 (옛 분리 설계 폐기 — Secret Manager의 GCP_* 키와 일치)
+    project_id: str = Field(default="", alias="GCP_PROJECT_ID")
+    region: str = Field(default="us-central1", alias="GCP_REGION")
+    credentials_path: Optional[str] = Field(default=None, alias="GCP_CREDENTIALS_PATH")
 
     # Vertex AI
-    model_bucket: str = Field(default="", alias="VERTEX_AI_BUCKET_NAME")
+    model_bucket: str = Field(default="", alias="GCP_BUCKET_NAME")
     package_base_path: str = Field(default="ml-packages", alias="VERTEX_AI_PACKAGE_BASE_PATH")
     job_name: str = Field(default="quantiq-stock-prediction", alias="VERTEX_AI_JOB_NAME")
     machine_type: str = Field(default="n1-standard-4", alias="VERTEX_AI_MACHINE_TYPE")
