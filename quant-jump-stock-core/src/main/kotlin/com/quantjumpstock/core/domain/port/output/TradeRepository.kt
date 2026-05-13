@@ -30,6 +30,15 @@ interface TradeRepository {
 
     fun findPendingTrades(): List<Trade>
 
+    /**
+     * `updatedAt` 이 [threshold] 이전인 PENDING trade 조회 (stale).
+     *
+     * AFTER_COMMIT 리스너의 보상 자체가 실패(JVM crash, DB 일시 장애)했을 때
+     * 영구 PENDING 으로 남는 trade 를 정기 스윕으로 회수하기 위함.
+     * 호출자는 [com.quantjumpstock.core.application.trading.StalePendingTradeReconciler].
+     */
+    fun findStalePending(threshold: LocalDateTime): List<Trade>
+
     fun deleteById(id: Long)
 
     fun existsById(id: Long): Boolean

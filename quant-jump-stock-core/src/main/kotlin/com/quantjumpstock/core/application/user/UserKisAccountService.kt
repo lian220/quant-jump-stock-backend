@@ -4,7 +4,10 @@ import com.quantjumpstock.core.domain.model.user.KisAccountType
 import com.quantjumpstock.core.domain.model.user.UserKisAccount
 import com.quantjumpstock.core.domain.port.output.UserKisAccountRepository
 import com.quantjumpstock.core.domain.port.output.UserRepository
-import com.quantjumpstock.core.infrastructure.security.EncryptionService
+import com.quantjumpstock.core.infrastructure.security.AppSecretCipher
+import jakarta.validation.constraints.NotBlank
+import jakarta.validation.constraints.Pattern
+import jakarta.validation.constraints.Size
 import java.time.LocalDateTime
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
@@ -14,56 +17,54 @@ import org.springframework.transaction.annotation.Transactional
 class UserKisAccountService(
     private val userKisAccountRepository: UserKisAccountRepository,
     private val userRepository: UserRepository,
-    private val encryptionService: EncryptionService
+    private val appSecretCipher: AppSecretCipher,
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
     /**
      * KIS 계정 정보 등록/업데이트
-     * @param userId 사용자 ID
-     * @param request KIS 계정 정보
+     *
+     * Phase 1A PRE Task 7: AppSecret 신규 등록은 GCM(v2) 컬럼에 저장한다.
+     * v1(ECB) 컬럼은 빈 문자열로 마킹되며, Task 8 (V61) 에서 drop 예정.
      */
     @Transactional
     fun registerOrUpdateKisAccount(userId: String, request: KisAccountRequest): UserKisAccount {
         logger.info("🔐 Registering/Updating KIS account for user: $userId")
 
-        // 1. 사용자 조회
         val user = userRepository.findByUserId(userId)
             ?: throw IllegalArgumentException("User not found: $userId")
 
-        // 2. AppSecret 암호화
-        val encryptedSecret = encryptionService.encrypt(request.appSecret)
+        val encryptedV2 = appSecretCipher.encryptForStorage(request.appSecret)
 
-        // 3. 기존 계정 확인
         val existingAccount = user.id?.let { userKisAccountRepository.findByUserId(it) }
 
         return if (existingAccount != null) {
-            // 업데이트
             val updated = existingAccount.update(
                 appKey = request.appKey,
-                appSecretEncrypted = encryptedSecret,
+                appSecretEncrypted = "",
+                appSecretEncryptedV2 = encryptedV2,
                 accountNumber = request.accountNumber,
                 accountProductCode = request.accountProductCode,
                 accountType = request.accountType,
                 enabled = request.enabled
             )
-            userKisAccountRepository.save(updated)
+            val saved = userKisAccountRepository.save(updated)
             logger.info("✅ KIS account updated for user: $userId")
-            updated
+            saved
         } else {
-            // 신규 등록
             val newAccount = UserKisAccount.createNew(
                 userId = user.id!!,
                 appKey = request.appKey,
-                appSecretEncrypted = encryptedSecret,
+                appSecretEncrypted = "",
+                appSecretEncryptedV2 = encryptedV2,
                 accountNumber = request.accountNumber,
                 accountProductCode = request.accountProductCode,
                 accountType = request.accountType,
                 enabled = request.enabled
             )
-            userKisAccountRepository.save(newAccount)
+            val saved = userKisAccountRepository.save(newAccount)
             logger.info("✅ KIS account registered for user: $userId")
-            newAccount
+            saved
         }
     }
 
@@ -107,26 +108,44 @@ class UserKisAccountService(
 
     /**
      * 복호화된 AppSecret 조회 (내부 사용 전용)
-     * @param userId 사용자 ID
-     * @return 복호화된 AppSecret
+     *
+     * Phase 1A PRE Task 7: v2(GCM) 컬럼 우선 복호화. v2 가 비어있으면 v1(ECB) fallback
+     * — Task 6 재암호화 Runner 가 모든 row 의 v2 를 채울 때까지의 안전망이다.
+     * Task 8 (V61) 에서 v1 컬럼이 drop 되면 본 fallback 분기도 함께 제거된다.
      */
     @Transactional(readOnly = true)
     fun getDecryptedAppSecret(userId: String): String {
         val kisAccount = userKisAccountRepository.findActiveByUserUserId(userId)
             ?: throw IllegalArgumentException("KIS account not found: $userId")
 
-        return encryptionService.decrypt(kisAccount.appSecretEncrypted)
+        return appSecretCipher.decrypt(kisAccount.appSecretEncryptedV2, kisAccount.appSecretEncrypted)
     }
 }
 
 /**
- * KIS 계정 등록 요청
+ * KIS 계정 등록 요청.
+ *
+ * 입력 검증 (Phase 1A PRE 보안 리뷰 H-3 반영):
+ *  - appKey/appSecret 길이 상한으로 대용량 페이로드 차단.
+ *  - accountNumber 는 KIS 규격(숫자 8자리)만 허용.
+ *  - accountProductCode 는 2자리 숫자(예: "01" 해외주식).
  */
 data class KisAccountRequest(
+    @field:NotBlank
+    @field:Size(min = 10, max = 100, message = "appKey 길이는 10~100자")
     val appKey: String,
+
+    @field:NotBlank
+    @field:Size(min = 10, max = 200, message = "appSecret 길이는 10~200자")
     val appSecret: String,  // 평문 (암호화되어 저장됨)
+
+    @field:NotBlank
+    @field:Pattern(regexp = "^\\d{8}$", message = "accountNumber 는 숫자 8자리")
     val accountNumber: String,
+
+    @field:Pattern(regexp = "^\\d{2}$", message = "accountProductCode 는 숫자 2자리")
     val accountProductCode: String = "01",
+
     val accountType: KisAccountType = KisAccountType.MOCK,
     val enabled: Boolean = true
 )

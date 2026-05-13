@@ -12,12 +12,12 @@ import com.quantjumpstock.core.domain.port.output.TradeRepository
 import com.quantjumpstock.core.domain.port.output.TradeSignalExecutedRepository
 import com.quantjumpstock.core.domain.port.output.TradingConfigRepository
 import com.quantjumpstock.core.domain.port.output.UserRepository
-import com.quantjumpstock.core.domain.trading.port.output.TradingApiPort
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.LocalDate
 import java.time.LocalDateTime
 import org.slf4j.LoggerFactory
+import org.springframework.context.ApplicationEventPublisher
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 
@@ -29,15 +29,23 @@ class AutoTradingService(
     private val tradeRepository: TradeRepository,
     private val tradeSignalExecutedRepository: TradeSignalExecutedRepository,
     private val accountRepository: AccountRepository,
-    private val tradingApiPort: TradingApiPort,
     // SCRUM-349: Universe 기반 필터링
     private val strategySubscriptionRepository: StrategySubscriptionRepository,
-    private val strategyDefaultStockRepository: StrategyDefaultStockRepository
+    private val strategyDefaultStockRepository: StrategyDefaultStockRepository,
+    // Phase 1A PRE Task 11: KIS 외부 호출을 AFTER_COMMIT 리스너로 위임
+    private val applicationEventPublisher: ApplicationEventPublisher,
+    // Phase 1A PRE backend-architect C-2: AFTER_COMMIT 리스너 보상 실패 시 영구 PENDING 회수
+    private val stalePendingTradeReconciler: StalePendingTradeReconciler,
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
     @Transactional
     fun executeAutoTrading() {
+        // 본 사이클 시작 전, 이전 사이클의 영구 PENDING (리스너 보상 실패) 정리.
+        // REQUIRES_NEW 트랜잭션이라 본 트랜잭션 실패와 독립적으로 commit.
+        runCatching { stalePendingTradeReconciler.reconcile() }
+            .onFailure { logger.error("StalePendingTradeReconciler 호출 실패 (사이클은 계속 진행)", it) }
+
         logger.info("🚀 Starting Auto Trading Execution...")
         // 스케줄러가 00:30(KST)에 실행되므로, 분석 데이터는 전날 날짜로 저장됨
         val analysisDate = LocalDate.now().minusDays(1)
@@ -164,7 +172,7 @@ class AutoTradingService(
                             return@predictionLoop
                         }
 
-                        // 6️⃣ 거래 기록 생성 (PostgreSQL)
+                        // 6️⃣ 거래 기록 생성 (PostgreSQL, PENDING)
                         val trade = Trade.createBuyOrder(
                             userId = userId,
                             ticker = ticker,
@@ -173,54 +181,26 @@ class AutoTradingService(
                         )
                         val savedTrade = tradeRepository.save(trade)
 
-                        // 7️⃣ 실제 KIS API 주문 실행
-                        try {
-                            val orderResult = tradingApiPort.placeOrder(
-                                userId = user.userId,
+                        // 7️⃣ Phase 1A PRE Task 11: KIS 외부 호출은 AFTER_COMMIT 리스너로 위임
+                        //    - 트랜잭션 안에서는 PENDING Trade 저장 + 이벤트 발행만 수행
+                        //    - OrderExecutionListener 가 KIS placeOrder 수행 → 성공: Trade.execute,
+                        //      실패: Trade.fail + 현금 잠금 해제 + 신호 FAILED 로그
+                        applicationEventPublisher.publishEvent(
+                            OrderExecutionRequestEvent(
+                                tradeId = savedTrade.id!!,
+                                userId = userId,
+                                userIdString = user.userId,
                                 ticker = ticker,
-                                orderType = "BUY",
+                                side = TradeSide.BUY,
                                 quantity = quantity,
-                                price = "0" // 시장가 주문
+                                priceForKis = "0", // 시장가 주문
+                                lockedAmount = totalAmount,
+                                predictionId = predictionId,
+                                compositeScore = prediction.compositeScore.toDouble()
                             )
+                        )
 
-                            val rtCd = orderResult["rt_cd"] as? String
-                            if (rtCd == "0") {
-                                // 주문 성공
-                                val kisOrderId = orderResult["output"]?.let {
-                                    (it as? Map<*, *>)?.get("KRX_FWDG_ORD_ORGNO") as? String
-                                }
-                                val executedTrade = savedTrade.execute(kisOrderId)
-                                tradeRepository.save(executedTrade)
-
-                                logger.info("✅ KIS order placed: $ticker x$quantity (orderId: $kisOrderId)")
-                            } else {
-                                // 주문 실패 - 거래 상태 업데이트 및 현금 잠금 해제
-                                val failedTrade = savedTrade.fail()
-                                tradeRepository.save(failedTrade)
-                                accountRepository.save(lockedAccount.unlockCash(totalAmount))
-
-                                val errorMsg = orderResult["msg1"] as? String ?: "Unknown error"
-                                logger.error("❌ KIS order failed: $ticker - $errorMsg")
-
-                                recordSignalExecution(userId, predictionId, ticker, prediction.compositeScore.toDouble(), ExecutionDecision.FAILED, "KIS API error: $errorMsg", savedTrade.id)
-                                totalTradesSkipped++
-                                return@predictionLoop
-                            }
-                        } catch (e: Exception) {
-                            logger.error("❌ Exception during KIS order: $ticker", e)
-                            val failedTrade = savedTrade.fail()
-                            tradeRepository.save(failedTrade)
-                            accountRepository.save(lockedAccount.unlockCash(totalAmount))
-
-                            recordSignalExecution(userId, predictionId, ticker, prediction.compositeScore.toDouble(), ExecutionDecision.FAILED, "Exception: ${e.message}", savedTrade.id)
-                            totalTradesSkipped++
-                            return@predictionLoop
-                        }
-
-                        // 8️⃣ 신호 실행 로그 기록
-                        recordSignalExecution(userId, predictionId, ticker, prediction.compositeScore.toDouble(), ExecutionDecision.EXECUTED, null, savedTrade.id)
-
-                        logger.info("✅ Created BUY order: $ticker x$quantity @ $price = $totalAmount (CompositeScore: ${prediction.compositeScore})")
+                        logger.info("✅ Queued PENDING BUY order: $ticker x$quantity @ $price = $totalAmount (CompositeScore: ${prediction.compositeScore})")
                         totalTradesCreated++
                         cashRemaining = cashRemaining - totalAmount
 
@@ -284,7 +264,8 @@ class AutoTradingService(
     }
 
     /**
-     * 신호 실행 로그 기록
+     * 신호 실행 로그 기록.
+     * confidence 변환은 [TradeSignalExecuted.confidenceFromCompositeScore] 도메인 메서드로 통합.
      */
     private fun recordSignalExecution(
         userId: Long,
@@ -295,37 +276,20 @@ class AutoTradingService(
         skipReason: String?,
         tradeId: Long?
     ) {
-        try {
-            val signal = when (decision) {
-                ExecutionDecision.EXECUTED -> TradeSignalExecuted.recordExecution(
-                    userId = userId,
-                    recommendationId = recommendationId,
-                    ticker = ticker,
-                    signal = TradeSignal.BUY,
-                    confidence = BigDecimal.valueOf(compositeScore / 10.0).setScale(2, RoundingMode.HALF_UP),
-                    tradeId = tradeId!!
-                )
-                ExecutionDecision.SKIPPED -> TradeSignalExecuted.recordSkipped(
-                    userId = userId,
-                    recommendationId = recommendationId,
-                    ticker = ticker,
-                    signal = TradeSignal.BUY,
-                    confidence = BigDecimal.valueOf(compositeScore / 10.0).setScale(2, RoundingMode.HALF_UP),
-                    reason = skipReason ?: "Unknown"
-                )
-                ExecutionDecision.FAILED -> TradeSignalExecuted.recordFailed(
-                    userId = userId,
-                    recommendationId = recommendationId,
-                    ticker = ticker,
-                    signal = TradeSignal.BUY,
-                    confidence = BigDecimal.valueOf(compositeScore / 10.0).setScale(2, RoundingMode.HALF_UP),
-                    reason = skipReason ?: "Unknown"
-                )
-            }
-            tradeSignalExecutedRepository.save(signal)
-        } catch (e: Exception) {
-            logger.error("Failed to record signal execution", e)
+        val confidence = TradeSignalExecuted.confidenceFromCompositeScore(compositeScore)
+        val signal = when (decision) {
+            ExecutionDecision.EXECUTED -> TradeSignalExecuted.recordExecution(
+                userId, recommendationId, ticker, TradeSignal.BUY, confidence, tradeId!!
+            )
+            ExecutionDecision.SKIPPED -> TradeSignalExecuted.recordSkipped(
+                userId, recommendationId, ticker, TradeSignal.BUY, confidence, skipReason ?: "Unknown"
+            )
+            ExecutionDecision.FAILED -> TradeSignalExecuted.recordFailed(
+                userId, recommendationId, ticker, TradeSignal.BUY, confidence, skipReason ?: "Unknown"
+            )
         }
+        runCatching { tradeSignalExecutedRepository.save(signal) }
+            .onFailure { logger.error("Failed to record signal execution", it) }
     }
 
     /**

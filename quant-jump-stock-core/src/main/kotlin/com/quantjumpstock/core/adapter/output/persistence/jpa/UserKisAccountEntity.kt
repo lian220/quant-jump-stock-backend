@@ -24,11 +24,20 @@ class UserKisAccountEntity(
     val appKey: String,
 
     /**
-     * 암호화된 App Secret
-     * Spring의 Jasypt 또는 AES 암호화 사용
+     * 암호화된 App Secret (V1: AES/ECB - legacy)
+     * Phase 1A PRE-요구사항 P3: V61 backfill 후 V62에서 제거 예정.
      */
     @Column(name = "app_secret_encrypted", nullable = false, length = 500)
     val appSecretEncrypted: String,
+
+    /**
+     * 암호화된 App Secret (V2: AES/GCM)
+     * Base64(IV(12B) || ciphertext+tag(16B)) 포맷.
+     * 부팅 시 [com.quantjumpstock.core.infrastructure.migration.AppSecretReencryptionRunner]가
+     * 누락 row를 backfill (ECB → GCM 재암호화).
+     */
+    @Column(name = "app_secret_encrypted_v2", length = 1024)
+    var appSecretEncryptedV2: String? = null,
 
     /**
      * 계좌번호 (앞 8자리)

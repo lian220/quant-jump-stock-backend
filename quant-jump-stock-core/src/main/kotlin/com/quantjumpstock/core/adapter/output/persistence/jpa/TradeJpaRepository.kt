@@ -24,6 +24,13 @@ interface TradeJpaRepository : JpaRepository<TradeEntity, Long> {
 
     fun findByStatus(status: TradeStatus): List<TradeEntity>
 
+    /**
+     * Stale PENDING trade 조회 — `status = PENDING AND updatedAt < :threshold`.
+     * AFTER_COMMIT 리스너 보상 실패로 영구 PENDING 에 남은 trade 회수용.
+     */
+    @Query("SELECT t FROM TradeEntity t WHERE t.status = 'PENDING' AND t.updatedAt < :threshold")
+    fun findStalePending(threshold: LocalDateTime): List<TradeEntity>
+
     @Query("""
         SELECT t FROM TradeEntity t
         WHERE t.user.id = :userId

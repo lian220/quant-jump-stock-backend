@@ -34,4 +34,24 @@ interface UserKisAccountJpaRepository : JpaRepository<UserKisAccountEntity, Long
         @Param("userId") userId: Long,
         @Param("accountType") accountType: KisAccountType
     ): Optional<UserKisAccountEntity>
+
+    /**
+     * V2(GCM) 컬럼이 비어 있는 row 전체 조회.
+     * Phase 1A PRE-P3: 부팅 시 ECB → GCM 재암호화 backfill 대상.
+     *
+     * @deprecated 메모리 압박 위험 (entity 전체 + LAZY user 연관 로드).
+     *             대신 [findIdsForReencryption] 으로 ID 만 조회 후 row 단위 처리.
+     */
+    @Deprecated("Use findIdsForReencryption() — entity full load is unsafe at scale")
+    fun findAllByAppSecretEncryptedV2IsNull(): List<UserKisAccountEntity>
+
+    /**
+     * V2(GCM) backfill 대상 row 의 PK 만 조회. entity full load 회피.
+     *
+     * 호출자([com.quantjumpstock.core.infrastructure.migration.AppSecretReencryptionRunner])는
+     * 이 ID 리스트로 [com.quantjumpstock.core.infrastructure.migration.AppSecretRowReencryptionService.reencryptOne]
+     * 을 row 단위로 호출하여 REQUIRES_NEW 트랜잭션으로 처리한다.
+     */
+    @Query("SELECT k.id FROM UserKisAccountEntity k WHERE k.appSecretEncryptedV2 IS NULL")
+    fun findIdsForReencryption(): List<Long>
 }
