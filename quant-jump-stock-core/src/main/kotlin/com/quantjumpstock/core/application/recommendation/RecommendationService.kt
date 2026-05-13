@@ -54,13 +54,14 @@ class RecommendationService(
 
         logger.info("Fetching buy signals for date={}, minCompositeScore={}", date, minCompositeScore)
 
-        // ✅ 부분 점수 시스템: Composite Score 기준으로만 필터링
+        // ADR 0001 진정성 규칙: composite_score 임계 + is_recommended=true 둘 다 통과해야 함.
+        // is_recommended=false인 stale 데이터(75일 정지 시절 sync_service fallback 적재) 차단.
         val buySignals = predictionResultRepository.findHighConfidenceBuySignals(
             date,
             minCompositeScore
-        )  // is_recommended 필터 제거 (부분 점수 허용)
+        ).filter { it.isRecommended }
 
-        logger.info("Found {} stocks with compositeScore >= {}", buySignals.size, minCompositeScore)
+        logger.info("Found {} stocks with compositeScore >= {} AND is_recommended=true", buySignals.size, minCompositeScore)
 
         val priceMap = loadPricesSafely(buySignals.map { it.ticker }.distinct())
 
@@ -155,17 +156,10 @@ private fun PredictionResult.toBuySignalDto(priceSnapshot: StockPriceSnapshot? =
             .toInt()
             .coerceIn(0, 100)
 
-    val hasAi = aiScore.compareTo(BigDecimal.ZERO) != 0
-    val hasSentiment = sentimentNormalizedScore.compareTo(BigDecimal.ZERO) != 0
-    val hasTech = techScore.compareTo(BigDecimal.ZERO) != 0
-    val weights = mutableListOf<Pair<BigDecimal, BigDecimal>>()
-    if (hasTech) weights.add(RecommendationCriteria.WEIGHT_TECH to RecommendationCriteria.MAX_TECH_SCORE)
-    if (hasAi) weights.add(RecommendationCriteria.WEIGHT_AI to RecommendationCriteria.MAX_AI_SCORE)
-    if (hasSentiment) weights.add(RecommendationCriteria.WEIGHT_SENTIMENT to RecommendationCriteria.MAX_SENTIMENT_SCORE)
-    val totalWeight = weights.sumOf { it.first }
-    val compositeMax = if (totalWeight > BigDecimal.ZERO)
-        weights.sumOf { (w, mx) -> w.divide(totalWeight, 4, RoundingMode.HALF_UP) * mx }
-    else RecommendationCriteria.MAX_SCORE
+    // ADR 0001 진정성 규칙: compositeMax 는 정적 7.4 고정.
+    // 옛 동적 가중치 재분배(부재 축의 가중치를 다른 축에 비례 분배)는 폐기.
+    // 부재 축은 0으로 처리되어 composite가 자연 낮아짐 → display 도 정직하게 낮음.
+    val compositeMax = RecommendationCriteria.MAX_SCORE
 
     return BuySignalDto(
         ticker = ticker,

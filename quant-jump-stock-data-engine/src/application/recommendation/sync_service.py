@@ -176,15 +176,16 @@ class RecommendationSyncService:
     def _fetch_ai_predictions(self, analysis_date: str) -> Dict[str, Dict]:
         """
         AI 예측 데이터 조회 (MongoDB stock_predictions).
-        - date 필드가 ISODate(UTC)로 저장되므로 naive datetime exact match + 문자열 $or 사용.
-        - 정확한 날짜에 데이터 없으면 analysis_date 이전 최근 날짜로 fallback (Vertex AI가
-          마지막 데이터 날짜 기준으로 저장하므로 analysis_date와 1~2일 차이날 수 있음).
+
+        진정성 규칙(ADR 0001): analysis_date 정확 매칭만. fallback 없음.
+        - 옛 데이터를 새 날짜 라벨로 적재하지 않음 (76일 정지 시절 거짓 적재 결함 차단).
+        - 데이터 없으면 빈 dict 반환 → 추천 시스템이 "데이터 없음"으로 정직하게 처리.
         - rise_probability 없으면 predicted_price/actual_price로 계산 후 0~1 정규화.
         """
         try:
             dt_date = datetime.strptime(analysis_date, "%Y-%m-%d")
 
-            # 1차: 정확한 날짜 매칭
+            # 정확한 날짜 매칭만. fallback 없음 (가짜 적재 차단)
             predictions = list(self.mongo_db.stock_predictions.find({
                 "$or": [
                     {"date": dt_date},
@@ -192,30 +193,14 @@ class RecommendationSyncService:
                 ]
             }))
 
-            effective_date = analysis_date
-
-            # 2차: 데이터 없으면 analysis_date 이전 최근 날짜 fallback
             if not predictions:
-                latest_doc = self.mongo_db.stock_predictions.find_one(
-                    {"date": {"$lte": dt_date}},
-                    sort=[("date", -1)]
+                logger.warning(
+                    f"[Sync] stock_predictions 데이터 없음 (date={analysis_date}). "
+                    f"fallback 비활성화 — AI 데이터 누락으로 처리. (ADR 0001 진정성 규칙)"
                 )
-                if latest_doc:
-                    latest_date = latest_doc["date"]
-                    effective_date = (
-                        latest_date.strftime("%Y-%m-%d")
-                        if isinstance(latest_date, datetime)
-                        else str(latest_date)[:10]
-                    )
-                    predictions = list(self.mongo_db.stock_predictions.find(
-                        {"date": latest_date}
-                    ))
-                    logger.info(
-                        f"[Sync] stock_predictions 날짜 fallback: {analysis_date} → {effective_date}"
-                    )
 
             logger.info(
-                f"[Sync] stock_predictions 조회 date={effective_date} -> {len(predictions)}건 "
+                f"[Sync] stock_predictions 조회 date={analysis_date} -> {len(predictions)}건 "
                 f"(ai_predicted_price/ai_rise_probability 반영용)"
             )
 
@@ -271,23 +256,10 @@ class RecommendationSyncService:
 
             # fallback: 데이터 없으면 이전 최근 날짜 조회
             if not recommendations:
-                fallback_doc = self.mongo_db.stock_recommendations.find_one(
-                    {"date": {"$lt": analysis_date}, "ticker": {"$exists": True}},
-                    sort=[("date", -1)]
+                logger.warning(
+                    f"[Sync] stock_recommendations 데이터 없음 (date={analysis_date}). "
+                    f"fallback 비활성화 — Tech 데이터 누락으로 처리. (ADR 0001 진정성 규칙)"
                 )
-                if fallback_doc:
-                    fallback_date = fallback_doc.get("date")
-                    if isinstance(fallback_date, datetime):
-                        fallback_date_str = fallback_date.strftime("%Y-%m-%d")
-                    else:
-                        fallback_date_str = str(fallback_date)[:10]
-                    recommendations = list(self.mongo_db.stock_recommendations.find(
-                        {"date": fallback_date}
-                    ))
-                    logger.info(
-                        f"[Sync] stock_recommendations 날짜 fallback: {analysis_date} → {fallback_date_str} "
-                        f"({len(recommendations)}건)"
-                    )
 
             results = {}
             for rec in recommendations:
@@ -508,24 +480,23 @@ class RecommendationSyncService:
         has_tech: bool = True,
     ) -> Decimal:
         """
-        Composite Score 계산 (동적 가중치 재분배).
-        부재 데이터 소스의 가중치를 가용 소스에 비례 분배하여 합계 = 1.0 유지.
-        e.g., 감정 부재: AI 0.3->0.43, Tech 0.4->0.57 (합 0.7->1.0)
+        Composite Score 계산 (ADR 0001 진정성 규칙).
+
+        정적 가중치 0.3 AI + 0.4 Tech + 0.3 Sent, max = 7.4 고정.
+        부재 축은 0으로 처리 → 점수 자연 하락 → grade 임계에 자동 컷오프.
+        - 옛 동적 가중치 재분배 폐기: 부분 점수를 "100% 강력 추천"으로 둔갑시킨 결함의 원천.
+        - 부재 축의 가중치를 다른 축에 비례 재분배하지 않음 (인플레 차단).
         """
-        active = []
-        if has_tech:
-            active.append((self.weight_tech, tech_score))
-        if has_ai:
-            active.append((self.weight_ai, ai_score))
-        if has_sentiment:
-            active.append((self.weight_sentiment, sentiment_score))
+        effective_ai = ai_score if has_ai else Decimal("0")
+        effective_tech = tech_score if has_tech else Decimal("0")
+        effective_sent = sentiment_score if has_sentiment else Decimal("0")
 
-        if not active:
-            return Decimal("0")
-
-        total_weight = sum(w for w, _ in active)
-        weighted_sum = sum((w / total_weight) * s for w, s in active)
-        return weighted_sum.quantize(Decimal("0.01"))
+        composite = (
+            self.weight_ai * effective_ai
+            + self.weight_tech * effective_tech
+            + self.weight_sentiment * effective_sent
+        )
+        return composite.quantize(Decimal("0.01"))
 
     def _calculate_ai_score(self, rise_probability: Optional[float]) -> Decimal:
         """AI 점수 계산: rise_probability × 10 (0~10)
@@ -597,20 +568,21 @@ class RecommendationSyncService:
         """
         추천 여부 판정 (Composite Score 기준)
 
+        ADR 0001 진정성 규칙: composite ≥ 3.0 (grade B 이상)일 때만 is_recommended=True.
+        - 옛 BETA 임계(0.8)는 AI/감정 통합 전 잠정 임계였음. 통합 후엔 의미 약해 인플레 추천.
+        - 부재 축이 있는 종목은 정적 가중치로 점수 자연 낮아 grade B 미달 → is_recommended=False.
+        - Core API가 `.filter { isRecommended }` 추가로 stale 데이터 차단까지 보강.
+
         Args:
-            composite_score: 종합 점수 (0~7.5)
+            composite_score: 종합 점수 (0~7.4)
             grade: 등급 (S, A, B, C, D)
 
         Returns:
             추천 여부 (True/False)
         """
-        # BETA 상태 (AI/감정 미통합): 0.8점 이상
-        # 통합 후: 2.0점 이상 (C등급)
-        MIN_SCORE_BETA = Decimal("0.8")
-        # MIN_SCORE_INTEGRATED = Decimal("2.0")  # 통합 후 활성화
-
-        # 현재는 BETA 기준 사용
-        return composite_score >= MIN_SCORE_BETA
+        # ADR 0001: grade B 이상만 추천 (composite ≥ 3.0)
+        MIN_SCORE = Decimal("3.0")
+        return composite_score >= MIN_SCORE
 
     def _determine_price_recommendation(self, upside_percent: float) -> str:
         """
