@@ -1,5 +1,7 @@
 # Composite Score는 세 축이 모두 fresh할 때만 산출한다
 
+**Status**: proposed (2026-05-12) — 구현 미진행. PR #72 hotfix가 회귀로 reset되어 본 ADR 도 effectively unimplemented. 별도 PR로 (b) plan 재시작 필요.
+
 Composite Score(`0.3 × AI + 0.4 × Tech + 0.3 × Sentiment`)는 세 축(AI 예측 / 기술적 분석 / 감정 분석)의 데이터가 모두 fresh(7일 이내)할 때만 산출된다. 한 축이라도 stale 또는 부재면 그 종목은 추천 후보에서 제외된다.
 
 기존 `data-engine/src/services/buy_criteria.py:115-137`의 동적 가중치 재분배(`_dynamic_weights`)는 빠진 축의 가중치를 나머지에 재배분하여 *부분 점수를 종합 점수로 둔갑*시켰다. 예: AI/감정 부재 시 `(w_ai, w_tech, w_sent) = (0, 1, 0)`이 발동되어 `composite = tech_score`(max 3.5)가 되고, 슬랙에 "종합점수 3.50, 신뢰도 100%, 강력 추천"으로 표시되었다. 2026-02-27 이후 75일간 사용자에게 거짓 추천을 노출시킨 직접 원인.
