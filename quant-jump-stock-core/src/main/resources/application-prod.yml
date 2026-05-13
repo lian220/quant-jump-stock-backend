@@ -1,0 +1,19 @@
+# ============================================
+# Production Profile Override (SPRING_PROFILES_ACTIVE=prod 시 자동 로드)
+# ============================================
+#
+# 본 파일은 application.yml 위에 override. prod 전용 안전 설정만 명시.
+# Hibernate ddl-auto=validate 추가 사유 (2026-05-13 V60 사고 회고):
+#   prod DB schema 와 JPA entity 매핑이 어긋난 상태로 부팅되면 첫 query
+#   까지 fail 이 지연됨. validate 모드는 부팅 즉시 entity ↔ table 컬럼/
+#   타입 매핑을 검증, mismatch 면 부팅 fail-fast 로 catch (cascading 차단,
+#   운영자 인지 빠름).
+#
+# 안전 toggle: 만약 활성 후 mismatch 로 부팅 차단되어 긴급 비활성 필요 시
+#   prod env 에 HIBERNATE_DDL_AUTO=none 추가하면 즉시 우회 가능.
+# ============================================
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: ${HIBERNATE_DDL_AUTO:validate}

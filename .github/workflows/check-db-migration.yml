@@ -1,0 +1,188 @@
+name: DB Migration Gate
+
+# PR 에 V_*.sql 새 마이그레이션이 포함되면:
+#  1. "🔴 schema-change" label 자동 부착
+#  2. PR 에 SQL diff + 운영자 체크리스트 자동 코멘트
+#  3. "schema-applied-to-prod" label 이 없으면 status check fail → 머지 차단
+#
+# 운영 정책 (docs/setup/db_마이그레이션_운영_가이드.md 참조):
+#  - prod DB 마이그레이션은 운영자 수동 적용 (psql, 보수적)
+#  - 코드 자동 deploy 가 schema 보다 먼저 가면 부팅 fail (cascading 위험)
+#  - 본 workflow 가 PR 머지 전 단계에서 사람 실수를 catch
+
+on:
+  pull_request:
+    branches: [ main ]
+    types: [ opened, synchronize, reopened, labeled, unlabeled ]
+    paths:
+      - 'quant-jump-stock-core/src/main/resources/db/migration/V*.sql'
+      - '.github/workflows/check-db-migration.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+  statuses: write
+  checks: write
+
+jobs:
+  detect-migration:
+    name: Detect Schema Migration
+    runs-on: ubuntu-latest
+    outputs:
+      has_migration: ${{ steps.diff.outputs.has_migration }}
+      migration_files: ${{ steps.diff.outputs.migration_files }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect new V_*.sql files
+        id: diff
+        run: |
+          BASE_SHA="${{ github.event.pull_request.base.sha }}"
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+
+          # PR 에서 추가/변경된 V_*.sql 파일 (manual/ 폴더 제외)
+          MIGRATION_FILES=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA" \
+            | grep -E '^quant-jump-stock-core/src/main/resources/db/migration/V[0-9]+__.*\.sql$' \
+            | grep -v '/manual/' \
+            || true)
+
+          if [ -z "$MIGRATION_FILES" ]; then
+            echo "has_migration=false" >> "$GITHUB_OUTPUT"
+            echo "migration_files=" >> "$GITHUB_OUTPUT"
+            echo "✅ No new migration files in this PR."
+          else
+            echo "has_migration=true" >> "$GITHUB_OUTPUT"
+            # multiline 변수는 EOF 패턴
+            {
+              echo 'migration_files<<EOF'
+              echo "$MIGRATION_FILES"
+              echo 'EOF'
+            } >> "$GITHUB_OUTPUT"
+            echo "🔴 New migration files detected:"
+            echo "$MIGRATION_FILES"
+          fi
+
+  add-label-and-comment:
+    name: Add label + checklist comment
+    needs: detect-migration
+    if: needs.detect-migration.outputs.has_migration == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Add 🔴 schema-change label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: ['🔴 schema-change']
+            });
+
+      - name: Post checklist comment (idempotent)
+        env:
+          MIGRATION_FILES: ${{ needs.detect-migration.outputs.migration_files }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { execSync } = require('child_process');
+            const files = (process.env.MIGRATION_FILES || '').split('\n').filter(Boolean);
+            const baseSha = process.env.BASE_SHA;
+            const headSha = process.env.HEAD_SHA;
+
+            // 각 파일의 SQL 본문 (>200줄이면 head 만)
+            const diffSections = files.map(f => {
+              try {
+                const content = execSync(`git show ${headSha}:${f}`, { encoding: 'utf8' });
+                const lines = content.split('\n');
+                const preview = lines.length > 200 ? lines.slice(0, 200).join('\n') + '\n... (truncated, see file)' : content;
+                return `<details><summary><code>${f}</code></summary>\n\n\`\`\`sql\n${preview}\n\`\`\`\n</details>`;
+              } catch {
+                return `- \`${f}\` (read fail)`;
+              }
+            }).join('\n\n');
+
+            const commentMarker = '<!-- db-migration-gate -->';
+            const body = `${commentMarker}
+            ## 🔴 Schema 변경 감지 — 운영자 수동 적용 필요
+
+            본 PR 에 신규 Flyway 마이그레이션 파일이 포함되어 있습니다. **머지 전 prod DB 적용 + 라벨 부착 필요**.
+
+            ### 추가/변경 마이그레이션 파일
+            ${diffSections}
+
+            ### 운영자 체크리스트
+            - [ ] **prod DB 백업 확인** (Supabase 자동 백업 또는 수동 dump)
+            - [ ] SQL 검토 — \`ADD COLUMN\` / \`CREATE TABLE\` 인지, 또는 \`DROP\` / \`ALTER\` destructive 인지
+            - [ ] 영향 추정 — lock 시간, 데이터 변환 cost, rollback plan
+            - [ ] [docs/setup/db_마이그레이션_운영_가이드.md](../blob/main/quant-jump-stock-core/docs/setup/db_마이그레이션_운영_가이드.md) 절차에 따라 prod psql 직접 적용
+            - [ ] flyway_schema_history 에 row 추가 (가이드 §3 참조)
+            - [ ] 검증 SQL 로 컬럼/테이블/제약 확인
+            - [ ] **완료 후 \`schema-applied-to-prod\` 라벨 부착** ← 이 라벨 없으면 머지 차단
+
+            ### 머지 차단 사유
+            \`schema-applied-to-prod\` 라벨이 부착되지 않으면 \`Schema migration applied check\` status 가 fail. 운영자가 prod 적용 + 라벨 부착 후 머지 가능.
+
+            ---
+            🤖 자동 생성 — 매 PR 변경 시 갱신됨.
+            `.replace(/^            /gm, '');
+
+            // 기존 코멘트 update or 새로 생성
+            const comments = await github.rest.issues.listComments({
+              owner: context.repo.owner, repo: context.repo.repo,
+              issue_number: context.issue.number, per_page: 100
+            });
+            const existing = comments.data.find(c => c.body && c.body.includes(commentMarker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                comment_id: existing.id, body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner, repo: context.repo.repo,
+                issue_number: context.issue.number, body
+              });
+            }
+
+  applied-check:
+    name: Schema migration applied check
+    needs: detect-migration
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify schema-applied-to-prod label (when schema-change present)
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const hasMigration = '${{ needs.detect-migration.outputs.has_migration }}' === 'true';
+            if (!hasMigration) {
+              core.info('No migration files in PR — gate passes automatically.');
+              return;
+            }
+
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number
+            });
+            const labels = pr.labels.map(l => l.name);
+            if (!labels.includes('schema-applied-to-prod')) {
+              core.setFailed(
+                'Schema migration detected but `schema-applied-to-prod` label NOT found. ' +
+                '운영자가 prod DB 에 마이그레이션을 직접 적용한 뒤 ' +
+                '`schema-applied-to-prod` 라벨을 부착해야 머지 가능합니다. ' +
+                '절차: docs/setup/db_마이그레이션_운영_가이드.md'
+              );
+            } else {
+              core.info('schema-applied-to-prod label found — gate passes.');
+            }
