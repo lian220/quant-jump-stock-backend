@@ -26,9 +26,29 @@ from cloudevents.http import CloudEvent
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
 
-# Secret Manager에 평문 노출 안 됨을 위해 deploy 시 --set-secrets 로 마운트
-# 또는 환경변수로 SLACK_WEBHOOK_URL_SCHEDULER 직접 주입
-SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL", "")
+def _load_webhook_url() -> str:
+    """Slack webhook URL 로드.
+
+    GCP `--set-secrets` 는 시크릿 전체 값만 환경변수로 마운트하며 단일 키 추출을 지원하지 않음.
+    qjs-env-common 시크릿은 dotenv 형식 (KEY=VALUE 줄)이므로 SECRET_BUNDLE 환경변수에서 파싱.
+
+    우선순위:
+      1. SLACK_WEBHOOK_URL 직접 주입 (테스트/수동 배포)
+      2. SECRET_BUNDLE 안의 SLACK_WEBHOOK_URL_SCHEDULER 줄
+    """
+    direct = os.getenv("SLACK_WEBHOOK_URL", "")
+    if direct:
+        return direct
+    bundle = os.getenv("SECRET_BUNDLE", "")
+    if bundle:
+        for raw in bundle.splitlines():
+            line = raw.strip()
+            if line.startswith("SLACK_WEBHOOK_URL_SCHEDULER="):
+                return line.split("=", 1)[1].strip().strip('"').strip("'")
+    return ""
+
+
+SLACK_WEBHOOK_URL = _load_webhook_url()
 
 # Secret Manager AuditLog method 이름 → 사람이 읽기 쉬운 라벨
 _METHOD_LABEL = {
