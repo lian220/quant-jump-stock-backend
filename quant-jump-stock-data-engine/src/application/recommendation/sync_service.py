@@ -456,7 +456,9 @@ class RecommendationSyncService:
                 "tech_signals_count": tech_signals_count,
                 "composite_score": float(composite_score),
                 "composite_grade": grade,
-                "is_recommended": self._determine_recommended(composite_score, grade),
+                "is_recommended": self._determine_recommended(
+                    composite_score, grade, price_recommendation
+                ),
                 "recommendation_reason": reason,
                 # 🆕 Phase 6.5: 가격 메트릭
                 "current_price": current_price,
@@ -499,8 +501,15 @@ class RecommendationSyncService:
         return composite.quantize(Decimal("0.01"))
 
     def _calculate_ai_score(self, rise_probability: Optional[float]) -> Decimal:
-        """AI 점수 계산: rise_probability × 10 (0~10)
-        rise_probability는 0~1 정규화값 (0%→0.5, +20%→1.0, -20%→0.0)
+        """AI 점수 계산 (ADR 0001 진정성 규칙 + 양수 편향 제거)
+
+        rise_probability는 0~1 정규화값 (0%→0.5, +20%→1.0, -20%→0.0).
+
+        양수 편향 결함 제거:
+        - 옛: rise_probability × 10 → 중립(0.5)이 5점, 하락 예측도 양수 점수
+              결과: 하락 예측 종목이 composite에 양수 기여 → 추천에 포함
+        - 신: 중립 이상(rise_pct ≥ 0)만 점수 부여. 하락 예측은 0점.
+              매핑: 0.5 → 0, 0.75 → 5, 1.0 → 10 (양수 구간만 0~10 스케일)
         """
         if rise_probability is None:
             return Decimal("0")
@@ -509,15 +518,31 @@ class RecommendationSyncService:
         except Exception:
             logger.warning(f"rise_probability 변환 실패 (값={rise_probability!r}), 0으로 대체")
             return Decimal("0")
-        return value * Decimal("10")
+        # 0.5 미만 = 하락 예측 → 0점 (음수 upside 종목 자동 컷오프)
+        if value < Decimal("0.5"):
+            return Decimal("0")
+        # 0.5~1.0 → 0~10 선형 매핑
+        return ((value - Decimal("0.5")) * Decimal("20")).quantize(Decimal("0.01"))
 
     def _calculate_sentiment_score(self, sentiment: Optional[float]) -> Decimal:
-        """감정 점수 정규화: (sentiment + 1) / 2 × 10 (0~10)"""
+        """감정 점수 정규화 (ADR 0001 진정성 규칙 + 양수 편향 제거)
+
+        sentiment 범위 -1 (매우 부정) ~ +1 (매우 긍정).
+
+        양수 편향 결함 제거:
+        - 옛: (sent+1)/2 × 10 → 중립(0)이 5점, 부정도 양수 점수
+              결과: 중립/부정 뉴스가 composite에 양수 기여
+        - 신: 양수 sentiment만 점수 부여. 중립/부정은 0점.
+              매핑: 0 → 0, +0.5 → 5, +1 → 10 (양수 구간만 0~10 스케일)
+        """
         if sentiment is None:
             return Decimal("0")
-        # sentiment: -1~1 → normalized: 0~10
-        normalized = (Decimal(str(sentiment)) + Decimal("1")) / Decimal("2") * Decimal("10")
-        return normalized.quantize(Decimal("0.01"))
+        value = Decimal(str(sentiment))
+        # 0 이하 = 중립 또는 부정 → 0점
+        if value <= Decimal("0"):
+            return Decimal("0")
+        # 0~1 → 0~10 선형 매핑
+        return (value * Decimal("10")).quantize(Decimal("0.01"))
 
     def _calculate_tech_score(self, tech: Dict) -> Decimal:
         """기술적 점수 계산: 1.5×골든크로스 + 1.0×RSI<threshold + 1.0×MACD매수 (0~3.5)"""
@@ -564,25 +589,39 @@ class RecommendationSyncService:
 
         return ", ".join(reasons) if reasons else None
 
-    def _determine_recommended(self, composite_score: Decimal, grade: str) -> bool:
+    def _determine_recommended(
+        self,
+        composite_score: Decimal,
+        grade: str,
+        price_recommendation: Optional[str] = None,
+    ) -> bool:
         """
-        추천 여부 판정 (Composite Score 기준)
+        추천 여부 판정 (ADR 0001 진정성 규칙 + verdict gate)
 
-        ADR 0001 진정성 규칙: composite ≥ 3.0 (grade B 이상)일 때만 is_recommended=True.
-        - 옛 BETA 임계(0.8)는 AI/감정 통합 전 잠정 임계였음. 통합 후엔 의미 약해 인플레 추천.
-        - 부재 축이 있는 종목은 정적 가중치로 점수 자연 낮아 grade B 미달 → is_recommended=False.
-        - Core API가 `.filter { isRecommended }` 추가로 stale 데이터 차단까지 보강.
+        두 게이트 통과해야 is_recommended=True:
+        1. composite ≥ 3.0 (grade B 이상)
+        2. price_recommendation ∉ {매도, 강력매도}
+
+        verdict gate (#2)의 이유:
+        - composite_score 산식과 price_recommendation 산식이 별도 결정
+        - 같은 입력에서 "강력매수 grade A" + "매도 priceRec" 동시 출력 가능
+        - 모순 라벨 차단을 위해 매도 신호 시 추천 자동 제외 (Drucker/Doumont 지적)
 
         Args:
             composite_score: 종합 점수 (0~7.4)
             grade: 등급 (S, A, B, C, D)
+            price_recommendation: 가격 추천 (강력매수/매수/보유/매도)
 
         Returns:
             추천 여부 (True/False)
         """
-        # ADR 0001: grade B 이상만 추천 (composite ≥ 3.0)
-        MIN_SCORE = Decimal("3.0")
-        return composite_score >= MIN_SCORE
+        # Gate 1: grade B 이상
+        if composite_score < Decimal("3.0"):
+            return False
+        # Gate 2: 매도 신호면 추천 안 함 (모순 차단)
+        if price_recommendation in ("매도", "강력매도", "SELL", "STRONG_SELL"):
+            return False
+        return True
 
     def _determine_price_recommendation(self, upside_percent: float) -> str:
         """
