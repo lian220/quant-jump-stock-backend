@@ -8,6 +8,7 @@ on:
       - '.github/workflows/deploy-data-engine.yml'
       - '!**.md'
       - '!docs/**'
+      - '!quant-jump-stock-data-engine/cloud_functions/**'
 
 env:
   REGION: asia-northeast3
