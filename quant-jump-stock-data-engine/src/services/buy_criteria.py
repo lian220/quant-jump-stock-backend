@@ -15,7 +15,7 @@ v2 변경사항:
 from __future__ import annotations
 import logging
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, Any, List, Tuple
+from typing import TYPE_CHECKING, Dict, Any, List
 
 if TYPE_CHECKING:
     from config.settings import RecommendationCriteriaSettings
@@ -110,40 +110,11 @@ class BuyCriteria:
             count += 1
         return count
 
-    # ── 동적 가중치 ──────────────────────────────────────
+    # ── Composite Score (ADR 0001 진정성 규칙) ──────────────
 
-    def _dynamic_weights(self, has_ai: bool, has_sentiment: bool) -> Tuple[float, float, float]:
-        """
-        가용 데이터 기반 동적 가중치 재분배.
-        부재 데이터 소스의 가중치를 나머지에 비례 분배하여 합계 = 1.0 유지.
-
-        Examples:
-            3개 모두: (0.3, 0.4, 0.3)
-            감정 부재: (0.43, 0.57, 0.0)
-            AI 부재:   (0.0, 0.57, 0.43)
-            기술만:    (0.0, 1.0, 0.0)
-        """
-        active = [("tech", self.weight_technical)]
-        if has_ai:
-            active.append(("ai", self.weight_ai))
-        if has_sentiment:
-            active.append(("sentiment", self.weight_sentiment))
-
-        total = sum(w for _, w in active)
-        if total == 0:
-            return 0.0, 1.0, 0.0
-
-        weights = {name: w / total for name, w in active}
-        return weights.get("ai", 0.0), weights.get("tech", 0.0), weights.get("sentiment", 0.0)
-
-    def _max_possible_score(self, has_ai: bool, has_sentiment: bool) -> float:
-        """가용 데이터 기반 이론적 최대 composite score"""
-        w_ai, w_tech, w_sent = self._dynamic_weights(has_ai, has_sentiment)
-        return (
-            w_ai * ScoreScale.CRITERIA_MAX_AI
-            + w_tech * ScoreScale.CRITERIA_MAX_TECH
-            + w_sent * ScoreScale.CRITERIA_MAX_SENTIMENT
-        )
+    # 정적 가중치 = 0.3 AI + 0.4 Tech + 0.3 Sent, max = 7.4 (고정)
+    # 동적 가중치 재분배는 폐기 — 부분 점수를 100% 만점으로 둔갑시킨 결함의 원천.
+    # 부재 축은 0으로 처리 → 점수 자연 하락 → grade 임계에 자동 컷오프.
 
     # ── Composite Score ──────────────────────────────────
 
@@ -154,40 +125,59 @@ class BuyCriteria:
         sentiment_score: float = 0.0,
         has_ai: bool = True,
         has_sentiment: bool = True,
+        has_tech: bool = True,
     ) -> Dict[str, Any]:
         """
-        Composite Score 계산 (동적 가중치 재분배 적용)
+        Composite Score 계산 (ADR 0001 진정성 규칙)
+
+        정적 가중치 0.3/0.4/0.3 적용, max = 7.4 고정.
+        부재 축은 0으로 처리 (부분 점수도 그대로 산출, 자연히 낮은 점수).
+        - 옛 _dynamic_weights 폐기: 부재 축의 가중치를 다른 축에 재분배해 "100% 강력 추천"
+          같은 인플레 거짓을 만들던 결함의 원천.
+        - missing_axes 정보는 보존 (UI/디버깅 용도).
+
+        Args:
+            has_ai/has_sentiment/has_tech: 데이터 *부재* 여부 (sync_service와 동일 의미).
+              True = 데이터 가용, False = 데이터 부재. tech_score가 0이어도 *분석은 정상 수행*
+              한 경우는 has_tech=True (신호 없음 ≠ 데이터 부재).
 
         Returns:
             {tech_score, tech_signals, ai_score, sentiment_score,
-             composite_score, max_possible, confidence, weights}
+             composite_score, max_possible, confidence, missing_axes}
         """
         tech_score = self.calculate_tech_score(indicators)
         tech_signals = self.count_tech_signals(indicators)
 
-        w_ai, w_tech, w_sent = self._dynamic_weights(has_ai, has_sentiment)
-        composite = (
-            w_ai * ai_score
-            + w_tech * tech_score
-            + w_sent * sentiment_score
-        )
+        # 부재 축은 0으로 처리 (그 축의 가중치 × 0 = 0 기여)
+        effective_ai = ai_score if has_ai else 0.0
+        effective_tech = tech_score if has_tech else 0.0
+        effective_sent = sentiment_score if has_sentiment else 0.0
 
-        max_possible = self._max_possible_score(has_ai, has_sentiment)
+        composite = (
+            self.weight_ai * effective_ai
+            + self.weight_technical * effective_tech
+            + self.weight_sentiment * effective_sent
+        )
+        max_possible = (
+            self.weight_ai * ScoreScale.CRITERIA_MAX_AI
+            + self.weight_technical * ScoreScale.CRITERIA_MAX_TECH
+            + self.weight_sentiment * ScoreScale.CRITERIA_MAX_SENTIMENT
+        )
         confidence = composite / max_possible if max_possible > 0 else 0.0
 
         return {
             "tech_score": tech_score,
             "tech_signals": tech_signals,
-            "ai_score": ai_score,
-            "sentiment_score": sentiment_score,
+            "ai_score": effective_ai,
+            "sentiment_score": effective_sent,
             "composite_score": round(composite, 4),
             "max_possible": round(max_possible, 4),
             "confidence": round(confidence, 4),
-            "weights": {
-                "ai": round(w_ai, 4),
-                "tech": round(w_tech, 4),
-                "sentiment": round(w_sent, 4),
-            },
+            "missing_axes": [
+                name for name, present in [
+                    ("ai", has_ai), ("tech", has_tech), ("sentiment", has_sentiment)
+                ] if not present
+            ],
         }
 
     # ── 등급 결정 ──────────────────────────────────────
@@ -211,9 +201,10 @@ class BuyCriteria:
         """
         전체 분석 결과에서 등급 기반 매수 후보 필터링.
 
-        v2: passes_filter 하드 게이트 대신 다층 등급 시스템 사용.
-        - 동적 가중치 재분배로 데이터 부재 시에도 공정한 점수 산출
-        - 기술 신호 1개 이상 + 등급 "관심 종목" 이상이면 후보 진입
+        v3 (ADR 0001 진정성 규칙):
+        - 정적 가중치 + 부재 축 0 처리 (calculate_composite_score)
+        - composite_score 기반 grade 임계로 자연 컷오프
+        - 부분 데이터 종목도 점수 그대로 산출. 점수 낮으면 grade 자동 NONE으로 떨어짐
         - max_stocks_to_recommend 개수 제한 (상위 N개)
         """
         if ai_scores is None:
@@ -226,16 +217,17 @@ class BuyCriteria:
             ticker = stock.get("ticker", "")
             indicators = self._get_indicators(stock)
 
-            # 종목별 데이터 가용성 판단 (dict 존재 여부)
+            # 데이터 부재 여부 — dict/indicators 존재 기준 (신호 0과 다름)
             has_ai = ticker in ai_scores
             has_sentiment = ticker in sentiment_scores
+            has_tech = bool(indicators)  # 기술 분석이 수행됐는가 (신호 부재 ≠ 데이터 부재)
 
             ai = ai_scores.get(ticker, 0.0)
             sentiment = sentiment_scores.get(ticker, 0.0)
 
             scores = self.calculate_composite_score(
                 indicators, ai, sentiment,
-                has_ai=has_ai, has_sentiment=has_sentiment,
+                has_ai=has_ai, has_sentiment=has_sentiment, has_tech=has_tech,
             )
 
             grade = self.determine_grade(scores)
@@ -291,11 +283,12 @@ class BuyCriteria:
             indicators = self._get_indicators(stock)
             has_ai = ticker in ai_scores
             has_sentiment = ticker in sentiment_scores
+            has_tech = bool(indicators)
             ai = ai_scores.get(ticker, 0.0)
             sentiment = sentiment_scores.get(ticker, 0.0)
             scores = self.calculate_composite_score(
                 indicators, ai, sentiment,
-                has_ai=has_ai, has_sentiment=has_sentiment,
+                has_ai=has_ai, has_sentiment=has_sentiment, has_tech=has_tech,
             )
             grade = self.determine_grade(scores)
 

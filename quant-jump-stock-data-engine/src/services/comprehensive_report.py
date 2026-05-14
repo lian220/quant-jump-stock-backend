@@ -33,9 +33,15 @@ def _query_stock_predictions_by_date(db, analysis_date: str, target_date: dateti
     """
     stock_predictions 컬렉션에서 해당 분석일 문서 조회.
     MongoDB date가 ISODate(UTC)로 저장된 경우를 위해 여러 쿼리 시도.
-    정확한 날짜에 데이터가 없으면 analysis_date 이전 최근 날짜로 fallback.
+
+    ADR 0001 진정성 규칙: 정확한 날짜만 매칭. fallback 없음.
+    데이터 없으면 빈 list 반환 → 호출자가 "AI 데이터 부재"로 처리.
     """
-    projection = {"_id": 0, "ticker": 1, "predicted_price": 1, "actual_price": 1}
+    # rise_probability 도 projection에 포함 — 저장된 값을 그대로 사용 (sync_service와 일치)
+    projection = {
+        "_id": 0, "ticker": 1,
+        "predicted_price": 1, "actual_price": 1, "rise_probability": 1,
+    }
 
     # 1) Naive UTC 당일 범위
     start_utc = datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0)
@@ -58,30 +64,11 @@ def _query_stock_predictions_by_date(db, analysis_date: str, target_date: dateti
     if preds:
         return preds
 
-    # 4) Fallback: analysis_date 이전 최근 날짜 (최대 _MAX_PREDICTION_LOOKBACK_DAYS일)
-    min_date = start_utc - timedelta(days=_MAX_PREDICTION_LOOKBACK_DAYS)
-    latest_doc = db.stock_predictions.find_one(
-        {"date": {"$gte": min_date, "$lte": start_utc}},
-        sort=[("date", -1)],
+    # ADR 0001: fallback 폐기 (옛 결함: 75일 정지 시절 옛 데이터를 새 라벨로 가짜 적재)
+    logger.warning(
+        f"stock_predictions 데이터 없음 (date={analysis_date}). "
+        f"fallback 비활성화 — AI 데이터 누락으로 처리."
     )
-    if latest_doc:
-        fallback_date = latest_doc["date"]
-        fallback_label = (
-            fallback_date.strftime("%Y-%m-%d")
-            if isinstance(fallback_date, datetime)
-            else str(fallback_date)[:10]
-        )
-        preds = list(db.stock_predictions.find({"date": fallback_date}, projection))
-        if preds:
-            logger.info(
-                f"stock_predictions 날짜 fallback: {analysis_date} → {fallback_label} ({len(preds)}건)"
-            )
-            return preds
-        else:
-            logger.warning(
-                f"stock_predictions {_MAX_PREDICTION_LOOKBACK_DAYS}일 이내 데이터 없음 (기준: {analysis_date})"
-            )
-
     return []
 
 
@@ -210,20 +197,27 @@ class ComprehensiveReportService:
         pred_count = 0
         for doc in preds:
             ticker = doc.get("ticker")
-            predicted = doc.get("predicted_price")
-            if not ticker or not predicted:
+            if not ticker:
                 continue
             if ticker in result:
                 continue  # stock_analysis_results 데이터 우선
 
+            predicted = doc.get("predicted_price")
+            stored_rise = doc.get("rise_probability")
             current = current_prices.get(ticker, doc.get("actual_price", 0))
-            if current and current > 0:
+
+            # 저장된 rise_probability 우선 사용 (sync_service와 일치)
+            # 없으면 predicted/current로 계산. predicted 없어도 stored_rise만 있으면 가능
+            if stored_rise is not None:
+                rise_prob = float(stored_rise)
+            elif predicted and current and current > 0:
                 rise_prob = (predicted - current) / current * 100
             else:
-                rise_prob = 0.0
+                # AI 데이터 의미 있는 신호 없으면 skip
+                continue
 
             result[ticker] = {
-                "predicted_price": float(predicted),
+                "predicted_price": float(predicted) if predicted else None,
                 "current_price": float(current) if current else 0.0,
                 "rise_probability": round(rise_prob, 2),
             }
