@@ -6,9 +6,11 @@
 
 - 진단 (2026-05-12): [종목추천_파이프라인_정지_진단](docs/analysis/ai/종목추천_파이프라인_정지_진단_2026-05-12.md)
 - 산식 검토 (2026-05-12): [추천_점수_산식_검토](docs/analysis/ai/추천_점수_산식_검토_2026-05-12.md)
-- 정상화 + 정정 (2026-05-13): [추천_파이프라인_정상화](docs/analysis/ai/추천_파이프라인_정상화_2026-05-13.md) **← 최신 latest snapshot**
-- ADR 0001: [Composite Score 진정성 규칙](docs/adr/0001-composite-score-three-axis-integrity.md) (status: proposed)
-- ADR 0002: [수정 plan scope](docs/adr/0002-recommendation-fix-plan-honesty-first.md) (status: proposed, a 부분 완료)
+- 정상화 + 정정 (2026-05-13): [추천_파이프라인_정상화](docs/analysis/ai/추천_파이프라인_정상화_2026-05-13.md)
+- **정직성 패치 완료 (2026-05-14)**: [추천_시스템_정직성_패치](docs/analysis/ai/추천_시스템_정직성_패치_2026-05-14.md) ← 최신 종합 보고
+- **시각화 보고서 (HTML)**: [사고_종합_보고서.html](docs/analysis/ai/사고_종합_보고서.html) — 브라우저로 열어 한 화면에서 검토
+- ADR 0001: [Composite Score 진정성 규칙](docs/adr/0001-composite-score-three-axis-integrity.md) (status: implemented in PR #75)
+- ADR 0002: [수정 plan scope](docs/adr/0002-recommendation-fix-plan-honesty-first.md) (status: (a)+(b) 완료, (c) trace 1~3개월)
 
 ## Glossary
 

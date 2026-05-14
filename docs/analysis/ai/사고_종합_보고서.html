@@ -1,0 +1,623 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Alpha Foundry 추천 시스템 76일 정지 사고 종합 보고서</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans KR', sans-serif;
+    background: #0d1117; color: #e6edf3; line-height: 1.6;
+    padding: 40px 20px; max-width: 1200px; margin: 0 auto;
+  }
+  h1 { font-size: 2.2em; margin-bottom: 8px; border-bottom: 2px solid #30363d; padding-bottom: 12px; }
+  h2 { font-size: 1.6em; margin: 40px 0 16px; color: #58a6ff; }
+  h3 { font-size: 1.2em; margin: 24px 0 12px; color: #f0883e; }
+  p { margin-bottom: 12px; }
+  .subtitle { color: #8b949e; font-size: 1.1em; margin-bottom: 30px; }
+
+  .tldr {
+    background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+    border-left: 4px solid #58a6ff;
+    padding: 24px; margin: 24px 0; border-radius: 8px;
+  }
+  .tldr h2 { margin-top: 0; color: #58a6ff; border: none; }
+
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 0.92em; }
+  th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #30363d; }
+  th { background: #161b22; color: #58a6ff; font-weight: 600; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  tr:hover { background: #161b22; }
+
+  .grid { display: grid; gap: 16px; margin: 16px 0; }
+  .grid-2 { grid-template-columns: 1fr 1fr; }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 768px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+  .card {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 16px; transition: transform 0.2s;
+  }
+  .card:hover { transform: translateY(-2px); border-color: #58a6ff; }
+  .card h4 { color: #f0883e; margin-bottom: 8px; }
+
+  .timeline { position: relative; padding-left: 30px; margin: 24px 0; }
+  .timeline::before {
+    content: ''; position: absolute; left: 8px; top: 0; bottom: 0;
+    width: 2px; background: #30363d;
+  }
+  .timeline-item { position: relative; margin-bottom: 20px; }
+  .timeline-item::before {
+    content: ''; position: absolute; left: -27px; top: 8px;
+    width: 12px; height: 12px; border-radius: 50%; background: #58a6ff;
+    box-shadow: 0 0 0 3px #0d1117;
+  }
+  .timeline-item.bad::before { background: #f85149; }
+  .timeline-item.good::before { background: #3fb950; }
+  .timeline-item.warning::before { background: #d29922; }
+  .timeline-date { color: #8b949e; font-size: 0.88em; }
+  .timeline-title { font-weight: 600; font-size: 1.05em; margin: 4px 0; }
+  .timeline-body { color: #c9d1d9; font-size: 0.95em; }
+
+  .badge {
+    display: inline-block; padding: 3px 10px; border-radius: 12px;
+    font-size: 0.78em; font-weight: 600; margin-right: 6px;
+  }
+  .badge.p0 { background: #f85149; color: white; }
+  .badge.p1 { background: #d29922; color: #0d1117; }
+  .badge.p2 { background: #58a6ff; color: white; }
+  .badge.p3 { background: #6e7681; color: white; }
+  .badge.done { background: #3fb950; color: #0d1117; }
+  .badge.fail { background: #f85149; color: white; }
+  .badge.warn { background: #d29922; color: #0d1117; }
+
+  .flow {
+    background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+    padding: 20px; margin: 16px 0; font-family: 'SF Mono', Monaco, monospace; font-size: 0.85em;
+    overflow-x: auto; line-height: 1.4;
+  }
+  .flow .good { color: #3fb950; }
+  .flow .bad { color: #f85149; }
+  .flow .neutral { color: #8b949e; }
+  .flow .arrow { color: #58a6ff; }
+
+  .compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; }
+  .compare > div {
+    padding: 16px; border-radius: 8px; border: 1px solid #30363d;
+  }
+  .compare .before { background: linear-gradient(135deg, #2d1b1f, #1a0f12); }
+  .compare .after { background: linear-gradient(135deg, #1b2d20, #0f1a12); }
+  .compare h4 { margin-bottom: 12px; }
+  .compare .before h4 { color: #f85149; }
+  .compare .after h4 { color: #3fb950; }
+
+  .math {
+    background: #0d1117; border: 1px solid #30363d; padding: 12px;
+    border-radius: 6px; margin: 8px 0; font-family: 'SF Mono', monospace;
+    font-size: 0.92em; overflow-x: auto;
+  }
+
+  code {
+    background: #161b22; padding: 2px 6px; border-radius: 4px;
+    font-family: 'SF Mono', monospace; font-size: 0.92em; color: #f0883e;
+  }
+
+  .expert-quote {
+    border-left: 3px solid #58a6ff; padding: 4px 16px;
+    margin: 8px 0; font-style: italic; color: #c9d1d9;
+  }
+
+  .stat { font-size: 2em; font-weight: 700; color: #58a6ff; }
+  .stat-label { color: #8b949e; font-size: 0.88em; }
+
+  details {
+    background: #161b22; border: 1px solid #30363d;
+    border-radius: 6px; padding: 12px 16px; margin: 8px 0;
+  }
+  summary { cursor: pointer; font-weight: 600; color: #58a6ff; }
+  details[open] summary { margin-bottom: 12px; }
+
+  .footer {
+    text-align: center; color: #8b949e; font-size: 0.88em;
+    margin-top: 60px; padding-top: 20px; border-top: 1px solid #30363d;
+  }
+</style>
+</head>
+<body>
+
+<h1>📊 Alpha Foundry 추천 시스템 76일 정지 사고</h1>
+<p class="subtitle">종합 보고서 — 진단 · 정상화 · 정직성 패치 · 후속 작업 (2026-05-14)</p>
+
+<div class="tldr">
+  <h2>TL;DR</h2>
+  <p>
+    <b>2026-02-27 ~ 2026-05-13 사이 76일간</b> Vertex AI 적재가 멈췄음에도 시스템은 정상으로 보였다.
+    <code>sync_service</code> 의 fallback이 매일 옛 데이터를 새 날짜 라벨로 복제 적재(<b>1,855건</b>),
+    슬랙 메시지는 <code>_dynamic_weights</code> 가중치 재분배로 기술 점수를 "강력 추천 100%"로 둔갑시켰다.
+  </p>
+  <p>
+    <b>PR #75 (정직성 패치)</b> 머지 완료. 정적 가중치 + fallback 제거 + is_recommended 임계 강화로
+    거짓 추천을 차단했다. 그러나 9명 전문가 패널 (Christensen / Porter / Drucker / Godin / Kim &amp; Mauborgne /
+    Collins / Taleb / Meadows / Doumont) 검토 결과 <b>증상 치료에 가깝다</b> — 후속 6개 trace 필요.
+  </p>
+</div>
+
+<div class="grid grid-3">
+  <div class="card">
+    <div class="stat">76일</div>
+    <div class="stat-label">Vertex AI Custom Job 0건 기간 (2/28~5/13)</div>
+  </div>
+  <div class="card">
+    <div class="stat">1,855건</div>
+    <div class="stat-label">PostgreSQL stale row (53거래일 × 35종목)</div>
+  </div>
+  <div class="card">
+    <div class="stat">4중</div>
+    <div class="stat-label">중첩된 fragility (코드+인프라+데이터+조직)</div>
+  </div>
+</div>
+
+<h2>🕒 사고 타임라인</h2>
+
+<div class="timeline">
+  <div class="timeline-item good">
+    <div class="timeline-date">2026-02-22</div>
+    <div class="timeline-title">Vertex AI 직접 호출 → Pub/Sub 체이닝으로 리팩토링</div>
+    <div class="timeline-body">commit <code>e44573c</code>. 별도 Cloud Scheduler 작업 (stock-prediction-daily 23:45 KST) 제거. evening-pipeline 안에 체이닝으로 통합.</div>
+  </div>
+
+  <div class="timeline-item warning">
+    <div class="timeline-date">2026-02-27 23:33 UTC</div>
+    <div class="timeline-title">Secret Manager <code>qjs-env-common</code> v17 destroy → v18 생성</div>
+    <div class="timeline-body">
+      이 시점에 secret 키 이름이 <span style="color:#f85149">VERTEX_AI_PROJECT_ID / REGION / BUCKET_NAME → GCP_*</span>로 변경됨.
+      코드는 여전히 <code>VERTEX_AI_*</code> alias 찾음. 변경자: <code>lian-web@</code> 서비스 어카운트.
+    </div>
+  </div>
+
+  <div class="timeline-item warning">
+    <div class="timeline-date">2026-02-28</div>
+    <div class="timeline-title">마지막 정상 Custom Job 3건 SUCCEEDED</div>
+    <div class="timeline-body">옛 revision (00047)이 옛 환경변수 메모리 유지 중이라 마지막 데이터 적재. <b>이후 새 revision이 시작되면 깨질 운명.</b></div>
+  </div>
+
+  <div class="timeline-item bad">
+    <div class="timeline-date">2026-03-04 10:13 UTC</div>
+    <div class="timeline-title">qjs-data-engine 00048 revision 첫 배포 → <b>noop 폴백 영구화</b></div>
+    <div class="timeline-body">
+      새 컨테이너가 Secret v18을 마운트 → 코드 <code>main.py:299</code> 검증에서
+      VERTEX_AI_PROJECT_ID 빈 값 발견 → <code>_vertex_ai_noop</code> 핸들러 등록.
+      Pub/Sub 메시지는 정상 ACK되지만 Custom Job 0건. <b>76일 정지 시작.</b>
+    </div>
+  </div>
+
+  <div class="timeline-item bad">
+    <div class="timeline-date">2026-03-04 ~ 2026-05-13</div>
+    <div class="timeline-title">76일간 매일 가짜 데이터 복제 적재</div>
+    <div class="timeline-body">
+      <code>sync_service</code> 의 fallback이 stock_predictions 빈 날짜에 옛 2/27자 데이터를
+      <span style="color:#f85149">새 날짜 라벨로 PostgreSQL prediction_results 에 매일 35건씩 복제</span>.
+      누적 1,855건 stale row. 매일 다른 current_price와 결합되어 upside가 매일 다르게 보임.
+    </div>
+  </div>
+
+  <div class="timeline-item warning">
+    <div class="timeline-date">2026-05-12 KST</div>
+    <div class="timeline-title">사용자가 슬랙 메시지 의심 → 진단 시작</div>
+    <div class="timeline-body">"강력 추천 100%" 라벨과 페이지 추천의 불일치 catch. 진단 PR #72 → ADR 0001 / 0002 작성. <code>arboreal-path-479202-c5</code> stale 프로젝트 ID 발견.</div>
+  </div>
+
+  <div class="timeline-item warning">
+    <div class="timeline-date">2026-05-13 09:36 KST</div>
+    <div class="timeline-title">사용자가 Secret v21로 정정 (VERTEX_AI_* 다시 박음)</div>
+    <div class="timeline-body">동시에 진단 PR 머지가 진행 중. <b>이 시점에 두 변경의 방향이 정반대</b>.</div>
+  </div>
+
+  <div class="timeline-item bad">
+    <div class="timeline-date">2026-05-13 10:06 KST</div>
+    <div class="timeline-title">진단 PR #72 머지 → hotfix 회귀 발생</div>
+    <div class="timeline-body">PR이 코드 alias를 <code>GCP_*</code>로 변경. 사용자가 Secret을 <code>VERTEX_AI_*</code>로 정정 중인 줄 모르고. 또 매칭 실패 → noop 그대로.</div>
+  </div>
+
+  <div class="timeline-item good">
+    <div class="timeline-date">2026-05-13 10:25 KST</div>
+    <div class="timeline-title">main hard reset + 00057 image rollback redeploy</div>
+    <div class="timeline-body">PR #72 force push로 origin/main에서 제거. 정상 image (00057-lw9) 강제 deploy. → 새 revision 00059-nfv active.</div>
+  </div>
+
+  <div class="timeline-item good">
+    <div class="timeline-date">2026-05-13 10:24 UTC</div>
+    <div class="timeline-title">🎉 <b>"Vertex AI services initialized"</b> 76일만의 첫 정상 부팅</div>
+    <div class="timeline-body">수동 Pub/Sub 트리거 → Custom Job <code>2395880624842866688</code> SUCCEEDED (20분 7초).</div>
+  </div>
+
+  <div class="timeline-item good">
+    <div class="timeline-date">2026-05-13 11:11 UTC</div>
+    <div class="timeline-title">evening-pipeline 수동 실행 → 세 축 모두 5/12자 적재</div>
+    <div class="timeline-body">Tech 35, Sent 25, AI 36. 첫 정직한 추천 (avg composite 1.79 — 정상 범위).</div>
+  </div>
+
+  <div class="timeline-item good">
+    <div class="timeline-date">2026-05-14 01:30 UTC</div>
+    <div class="timeline-title">✅ <b>PR #75 (정직성 패치) 머지</b></div>
+    <div class="timeline-body">정적 가중치 + fallback 제거 + is_recommended 임계 3.0. <b>1,855건 stale 차단.</b></div>
+  </div>
+</div>
+
+<h2>🔍 발견된 결함 (4중 fragility)</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>Layer</th>
+      <th>결함</th>
+      <th>위치</th>
+      <th>역할</th>
+      <th>상태</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>1. 인프라</td>
+      <td>Secret 키 이름 변경 vs 코드 alias 불일치</td>
+      <td>qjs-env-common v18~v20</td>
+      <td>76일 정지의 직접 원인. 사용자 v21로 정정</td>
+      <td><span class="badge done">RESOLVED</span></td>
+    </tr>
+    <tr>
+      <td>2. 코드 (data-engine)</td>
+      <td>main.py:299 noop 핸들러 — 환경변수 누락 시 메시지 흡수</td>
+      <td><code>data-engine/src/main.py</code></td>
+      <td>Pub/Sub 메시지를 silently ACK. 외부에 정지 신호 0</td>
+      <td><span class="badge done">unblocked (Secret 정상화)</span></td>
+    </tr>
+    <tr>
+      <td>3. 코드 (sync_service)</td>
+      <td>fallback 가짜 적재 — 옛 데이터를 새 날짜 라벨로 PostgreSQL 적재</td>
+      <td><code>sync_service.py:197-216</code></td>
+      <td>76일간 1,855건 stale row 누적. 페이지에 거짓 노출</td>
+      <td><span class="badge done">PR #75 제거 + soft-mark</span></td>
+    </tr>
+    <tr>
+      <td>3. 코드 (buy_criteria)</td>
+      <td><code>_dynamic_weights</code> — 부재 축의 가중치를 다른 축에 재분배</td>
+      <td><code>buy_criteria.py:115-137</code></td>
+      <td>tech 만점이 "강력 추천 100%"로 둔갑. 슬랙에 거짓 라벨</td>
+      <td><span class="badge done">PR #75 폐기</span></td>
+    </tr>
+    <tr>
+      <td>3. 코드 (Kotlin Core)</td>
+      <td><code>RecommendationService</code>의 <code>is_recommended</code> 필터 비활성</td>
+      <td><code>RecommendationService.kt:58-62</code></td>
+      <td>stale row가 페이지 응답에 그대로 노출</td>
+      <td><span class="badge done">PR #75 필터 재활성화</span></td>
+    </tr>
+    <tr>
+      <td>3. 코드 (comprehensive_report)</td>
+      <td>projection 결함 — <code>rise_probability</code> 누락</td>
+      <td><code>comprehensive_report.py:38</code></td>
+      <td>저장된 값을 못 읽고 매번 재계산</td>
+      <td><span class="badge done">PR #75 projection 정정</span></td>
+    </tr>
+    <tr>
+      <td>4. 조직</td>
+      <td>데이터 freshness 알람 부재 — 76일 정지가 안 보임</td>
+      <td>(메커니즘 자체 없음)</td>
+      <td>다음 사고도 *발견될 때까지* invisible</td>
+      <td><span class="badge fail">PENDING (task #14)</span></td>
+    </tr>
+    <tr>
+      <td>4. 조직</td>
+      <td>Secret Manager 변경 알람 부재</td>
+      <td>(메커니즘 자체 없음)</td>
+      <td>v17→v18 같은 변경을 누구도 인지 못 함</td>
+      <td><span class="badge fail">PENDING (task #14)</span></td>
+    </tr>
+    <tr>
+      <td>4. 조직</td>
+      <td>모델 정확도 KPI 부재 — backtest 0건</td>
+      <td>(누구의 KPI도 아님)</td>
+      <td>"AI 기반"이라 광고하면서 AI 작동 검증 메커니즘 0</td>
+      <td><span class="badge fail">PENDING (task #18 (c) plan)</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>📊 데이터 흐름도 — 결함 시 vs 정상</h2>
+
+<div class="compare">
+  <div class="before">
+    <h4>❌ 결함 시 (2026-03-04 ~ 2026-05-13)</h4>
+    <div class="flow">
+<span class="neutral"># 매일 KST 22:40</span>
+evening-pipeline <span class="arrow">→</span> 경제데이터 ✓
+  <span class="arrow">→</span> Tech 분석 ✓ (5/N자 적재)
+  <span class="arrow">→</span> Sent 분석 ✓ (5/N자 적재)
+  <span class="arrow">→</span> Pub/Sub vertex.ai.run.request
+       <span class="bad">→ noop 핸들러: ACK만, Custom Job 0건</span>
+       <span class="bad">→ stock_predictions 갱신 안 됨</span>
+
+<span class="neutral"># KST 23:20</span>
+stock-recommendation <span class="arrow">→</span> sync_service
+  <span class="arrow">→</span> stock_predictions 5/N자 조회 = 0건
+  <span class="bad">→ fallback: 옛 2/27자 35건 가져옴</span>
+  <span class="bad">→ PostgreSQL prediction_results 에 5/N 라벨로 INSERT</span>
+  <span class="arrow">→</span> comprehensive_report (Slack)
+       <span class="bad">→ _dynamic_weights (0,1,0)</span>
+       <span class="bad">→ "강력 추천 100%, 종합점수 3.50"</span>
+       <span class="bad">→ 슬랙 발송 (거짓)</span>
+    </div>
+  </div>
+  <div class="after">
+    <h4>✅ PR #75 후 (정상)</h4>
+    <div class="flow">
+<span class="neutral"># 매일 KST 22:40</span>
+evening-pipeline <span class="arrow">→</span> 경제데이터 ✓
+  <span class="arrow">→</span> Tech 분석 ✓
+  <span class="arrow">→</span> Sent 분석 ✓
+  <span class="arrow">→</span> Pub/Sub vertex.ai.run.request
+       <span class="good">→ VertexAIHandler 정상 등록</span>
+       <span class="good">→ Custom Job 제출 → SUCCEEDED ~20분</span>
+       <span class="good">→ stock_predictions 적재</span>
+
+<span class="neutral"># KST 23:20</span>
+stock-recommendation <span class="arrow">→</span> sync_service
+  <span class="arrow">→</span> stock_predictions 정확 매칭만
+  <span class="good">→ fallback 폐기 — 없으면 빈 dict</span>
+  <span class="arrow">→</span> PostgreSQL: 진짜 데이터만 적재
+  <span class="arrow">→</span> comprehensive_report
+       <span class="good">→ 정적 0.3/0.4/0.3 가중치, max 7.4</span>
+       <span class="good">→ 부재 축은 0 처리 → 점수 자연 하락</span>
+       <span class="good">→ 슬랙 발송 (정직)</span>
+    </div>
+  </div>
+</div>
+
+<h2>🧮 산식 비교 — COHR 케이스 산수</h2>
+
+<p>COHR (코히런트) 종목: AI=5.18, Tech=0, Sent=0 (sentiment_analysis 미적재)</p>
+
+<div class="compare">
+  <div class="before">
+    <h4>❌ 옛 시스템 (_dynamic_weights)</h4>
+    <div class="math">
+has_ai = True, has_tech = False, has_sent = False
+active_weights = [(ai, 0.3)]
+total = 0.3
+정규화 weights = (1.0, 0, 0)
+
+composite = 1.0 × 5.18 = <b>5.18</b>
+max_possible = 1.0 × 10 = <b>10</b>
+confidence = 5.18 / 10 = <b>51.8%</b>
+
+→ Grade <b>A</b> (composite ≥ 4.5)
+→ "추천" 라벨로 사용자 노출 ❌
+    </div>
+    <p style="color:#f85149"><b>거짓 라벨링</b>: AI 한 축만 있는데 grade A로 둔갑</p>
+  </div>
+  <div class="after">
+    <h4>✅ 새 시스템 (정적 가중치)</h4>
+    <div class="math">
+가중치 = (0.3, 0.4, 0.3) — 고정
+부재 축은 0으로 처리
+
+composite = 0.3 × 5.18 + 0.4 × 0 + 0.3 × 0
+         = <b>1.554</b>
+max_possible = <b>7.4</b> (고정)
+confidence = 1.554 / 7.4 = <b>21%</b>
+
+→ Grade <b>NONE</b> (composite &lt; 1.5 AND confidence &lt; 30%)
+→ 추천 후보 자동 제외 ✅
+    </div>
+    <p style="color:#3fb950"><b>자연 컷오프</b>: 부재 축 = 0 처리 → 점수 자연 하락 → grade 자동 NONE</p>
+  </div>
+</div>
+
+<h2>🎭 9명 전문가 패널 검토</h2>
+
+<p>PR #75 머지 직전 두 패널 검증. 종합 결론: <span class="badge done">MERGE</span> 단 6개 후속 trace 필수.</p>
+
+<div class="grid grid-2">
+  <div class="card">
+    <h4>🎲 TALEB — Antifragility</h4>
+    <p class="expert-quote">"PR #75 = via negativa. 거짓 신호 차단의 비대칭 가치. 다만 발견된 4중 fragility는 빙산의 일각."</p>
+    <p>판정: <span class="badge done">✅ 즉시 머지</span></p>
+  </div>
+  <div class="card">
+    <h4>🎲 SIMONS — Empirical</h4>
+    <p class="expert-quote">"out-of-sample Sharpe of composite ≥ 3.0 = ? 모르면 narrative platform이지 quant platform이 아님."</p>
+    <p>판정: <span class="badge warn">⚠️ Merge but backtest 시급</span></p>
+  </div>
+  <div class="card">
+    <h4>📊 MARKS — Cycles</h4>
+    <p class="expert-quote">"신뢰 사이클 위기의 바닥. 정직성 패치는 반전 시작점. 정적 가중치는 regime shift에 fragile."</p>
+    <p>판정: <span class="badge warn">⚠️ 조건부 — UX 위험</span></p>
+  </div>
+  <div class="card">
+    <h4>📚 CHRISTENSEN — JTBD</h4>
+    <p class="expert-quote">"진짜 JTBD = 불확실성 감소. 옛 시스템 over-deliver on quantity, under-deliver on core job. 음수 upside 모순은 동일 JTBD 위반."</p>
+    <p>판정: <span class="badge warn">⚠️ 음수 upside 모순 1주 내 필수</span></p>
+  </div>
+  <div class="card">
+    <h4>🧠 DRUCKER — Management</h4>
+    <p class="expert-quote">"코드 결함이 아닌 management failure. 비즈니스 정의 부재가 모든 결함의 어머니. 누구도 owner 아님."</p>
+    <p>판정: <span class="badge warn">⚠️ 머지 후 비즈니스 정체성 결정</span></p>
+  </div>
+  <div class="card">
+    <h4>✏️ DOUMONT — Clarity</h4>
+    <p class="expert-quote">"옛 시스템 = 부정직하지만 내적 일관. 새 시스템 = 정직하지만 내적 모순 (강력매수 + 매도 동시). honest but paralyzing."</p>
+    <p>판정: <span class="badge warn">⚠️ verdict gate 통합 필수</span></p>
+  </div>
+  <div class="card">
+    <h4>🌐 MEADOWS — Systems</h4>
+    <p class="expert-quote">"PR #75 = 단계 7 (loop) + 단계 12 (parameter) leverage. 진짜 leverage는 단계 6 (information flow = 모니터링)."</p>
+    <p>판정: <span class="badge warn">⚠️ task #14 알람이 진짜 leverage</span></p>
+  </div>
+  <div class="card">
+    <h4>🌊 KIM &amp; MAUBORGNE — Blue Ocean</h4>
+    <p class="expert-quote">"AI 정확도 red ocean에서 이길 수 없음. '정직한 AI 추천' = Blue Ocean 후보. PR #75 = 의도치 않은 차별화 진입."</p>
+    <p>판정: <span class="badge done">✅ 머지 + 정직성 마케팅 명시화</span></p>
+  </div>
+  <div class="card">
+    <h4>⚔️ PORTER — Competitive</h4>
+    <p class="expert-quote">"stuck in the middle 위험. AI commodity화 위협. 정직성을 차별화 무기로 만들지 못하면 시장에서 밀림."</p>
+    <p>판정: <span class="badge warn">⚠️ 차별화 명시화 필요</span></p>
+  </div>
+  <div class="card">
+    <h4>🚀 COLLINS — Hedgehog &amp; Flywheel</h4>
+    <p class="expert-quote">"Flywheel 안 돔 — 추천 → 결과 검증 부재. 정직성 = flywheel 기초지만 적중률 노출 필수. Stockdale paradox: 잔혹한 현실 인정."</p>
+    <p>판정: <span class="badge done">✅ + 추천 적중률 dashboard 권장</span></p>
+  </div>
+  <div class="card">
+    <h4>🎪 GODIN — Tribe &amp; Purple Cow</h4>
+    <p class="expert-quote">"현재 brown cow. 'AI 76일 꺼져있었다고 정직히 말합니다' = purple cow 가능성. Tribe formation 가능."</p>
+    <p>판정: <span class="badge done">✅ + 정직성 마케팅 메시지</span></p>
+  </div>
+</div>
+
+<h2>📋 후속 작업 로드맵 (6개 trace)</h2>
+
+<table>
+  <thead>
+    <tr>
+      <th>순위</th>
+      <th>Task</th>
+      <th>설명</th>
+      <th>기한</th>
+      <th>출처 전문가</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><span class="badge p0">P0</span></td>
+      <td>#14 데이터 freshness 알람 + Cloud Monitoring metric</td>
+      <td>76일 정지 재발 방지. <code>synced_count==0</code> 또는 <code>ai_count==0</code> 시 Slack 즉시 알람</td>
+      <td>1주</td>
+      <td>Meadows, Marks</td>
+    </tr>
+    <tr>
+      <td><span class="badge p0">P0</span></td>
+      <td>#16 음수 upside verdict gate 통합</td>
+      <td><code>is_recommended = (composite ≥ 3.0) AND (priceRec ∈ {매수, 강력매수})</code>. 모순 라벨 차단</td>
+      <td>1주</td>
+      <td>Drucker, Doumont, Christensen</td>
+    </tr>
+    <tr>
+      <td><span class="badge p0">P0</span></td>
+      <td>#17 AI 모델 calibration audit</td>
+      <td>MU=10/AMZN=9.37 만점 빈도 의심. 90일 분포 분석. 5% 초과 시 recalibrate</td>
+      <td>2주</td>
+      <td>Simons</td>
+    </tr>
+    <tr>
+      <td><span class="badge p1">P1</span></td>
+      <td>#13 단위 테스트 + DI 리팩토링</td>
+      <td>회귀 가드 3개 (정적 가중치, fallback 제거, is_recommended 임계). RecommendationSyncService DI 가능하게</td>
+      <td>1주</td>
+      <td>system-architect</td>
+    </tr>
+    <tr>
+      <td><span class="badge p1">P1</span></td>
+      <td>#15 Kotlin/Python 상수 단일 contract + CI gate</td>
+      <td>RecommendationCriteria.kt vs composite_grade.py 가중치/임계 중복. mismatch 시 빌드 실패</td>
+      <td>2주</td>
+      <td>system-architect</td>
+    </tr>
+    <tr>
+      <td><span class="badge p2">P2</span></td>
+      <td>#18 (c) plan — 산식 backtest + Sentiment + regime detection</td>
+      <td>정적 가중치 12개월 backtest. Sentiment 30% 정당성. regime-naive 모델 보강</td>
+      <td>1~3개월</td>
+      <td>Simons, Marks</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>🎯 1주 안 답해야 할 비즈니스 질문 (Drucker)</h2>
+
+<div class="grid grid-2">
+  <div class="card">
+    <h4>옵션 A — AI 회사</h4>
+    <p>"AI 기반 투자 플랫폼" 정체성 유지. 산식 검증 + 모델 정확도 backtest + (c) plan 풀 진행. 1~3개월 + GPU 비용 + 가능하면 ML 엔지니어 영입.</p>
+  </div>
+  <div class="card">
+    <h4>옵션 B — 정직한 정보 회사</h4>
+    <p>Blue Ocean 시도. "AI"를 one of many signals로 격하. 정직성/투명성/명료성을 차별화 무기. 산식 검증보다 사용자 의사결정 도구 우선. Tribe formation 집중.</p>
+  </div>
+</div>
+
+<details>
+  <summary>옵션 C — 현 hybrid (Collins 비추)</summary>
+  <p>둘 다 시도. Hedgehog Concept 위반 — *세계 최고가 될 수 있는 한 가지*를 정하지 않음. fragility 큼.</p>
+</details>
+
+<h2>🔧 운영 검증 명령</h2>
+
+<details>
+  <summary>현재 운영 상태 확인 (gcloud)</summary>
+  <pre style="background:#0d1117;padding:12px;border-radius:6px;overflow-x:auto;font-size:0.88em;color:#c9d1d9;">
+# Cloud Run 현재 active revision
+gcloud run revisions list --service=qjs-data-engine --region=asia-northeast3 --limit=2
+gcloud run revisions list --service=qjs-core --region=asia-northeast3 --limit=2
+
+# 최근 Vertex AI Custom Jobs
+gcloud ai custom-jobs list --region us-central1 --sort-by="~createTime" --limit=5 \
+  --format='table(displayName,state,createTime)'
+
+# 데이터 적재 확인 (Cloud Scheduler 다음 실행)
+gcloud scheduler jobs describe evening-pipeline --location=asia-northeast3
+gcloud scheduler jobs describe stock-recommendation --location=asia-northeast3
+  </pre>
+</details>
+
+<details>
+  <summary>MongoDB 적재 확인 (mongosh)</summary>
+  <pre style="background:#0d1117;padding:12px;border-radius:6px;overflow-x:auto;font-size:0.88em;color:#c9d1d9;">
+// 매일 evening-pipeline 후 (22:40 KST) 확인
+use stock_trading
+db.stock_predictions.findOne({}, {date:1, _id:0}, {sort:{date:-1}})
+db.stock_analysis_results.findOne({}, {date:1, _id:0}, {sort:{date:-1}})
+db.sentiment_analysis.findOne({}, {date:1, _id:0}, {sort:{date:-1}})
+
+// 최근 7일 적재 정상 여부
+db.stock_predictions.aggregate([
+  { $match: { date: { $gte: ISODate("2026-05-07") } } },
+  { $group: { _id: "$date", n: { $sum: 1 } } },
+  { $sort: { _id: -1 } }
+]).forEach(d => print(d._id + " " + d.n));
+  </pre>
+</details>
+
+<details>
+  <summary>PostgreSQL stale 데이터 확인 (psql via docker)</summary>
+  <pre style="background:#0d1117;padding:12px;border-radius:6px;overflow-x:auto;font-size:0.88em;color:#c9d1d9;">
+# PR #75 머지 후 페이지 응답에 stale 데이터 차단되는지 확인
+docker run --rm -e PGPASSWORD postgres:15 psql \
+  "host=... user=... dbname=postgres sslmode=require" \
+  -c "SELECT analysis_date, COUNT(*) FILTER (WHERE is_recommended) AS rec,
+              COUNT(*) FILTER (WHERE NOT is_recommended) AS not_rec
+       FROM prediction_results
+       WHERE analysis_date >= '2026-02-28'
+       GROUP BY analysis_date ORDER BY analysis_date DESC LIMIT 30;"
+  </pre>
+</details>
+
+<h2>📚 참조 문서</h2>
+
+<ul style="padding-left: 24px; color: #c9d1d9;">
+  <li><a href="종목추천_파이프라인_정지_진단_2026-05-12.md" style="color:#58a6ff">진단 (2026-05-12)</a> — 초기 분석</li>
+  <li><a href="추천_점수_산식_검토_2026-05-12.md" style="color:#58a6ff">산식 검토 (2026-05-12)</a> — 전문가 시각 의심 목록</li>
+  <li><a href="추천_파이프라인_정상화_2026-05-13.md" style="color:#58a6ff">정상화 (2026-05-13)</a> — Vertex AI 복구</li>
+  <li><a href="../../adr/0001-composite-score-three-axis-integrity.md" style="color:#58a6ff">ADR 0001</a> — Composite Score 진정성 규칙</li>
+  <li><a href="../../adr/0002-recommendation-fix-plan-honesty-first.md" style="color:#58a6ff">ADR 0002</a> — 수정 plan scope</li>
+  <li><a href="https://github.com/lian220/quant-jump-stock-backend/pull/75" style="color:#58a6ff">PR #75</a> — 정직성 패치 (머지 완료)</li>
+  <li><a href="https://github.com/lian220/quant-jump-stock-backend/pull/73" style="color:#58a6ff">PR #73</a> — 진단/정상화 문서</li>
+</ul>
+
+<div class="footer">
+  <p>Alpha Foundry 추천 시스템 사고 보고서 · 2026-05-14</p>
+  <p>76일 phantom 추천 → 정직성 회복 · 9명 전문가 패널 검증 · 6개 후속 trace</p>
+</div>
+
+</body>
+</html>
