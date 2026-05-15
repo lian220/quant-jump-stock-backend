@@ -1,10 +1,10 @@
 package com.quantjumpstock.core.application.trading
 
-import com.quantjumpstock.core.adapter.output.notification.slack.SlackApiClient
 import com.quantjumpstock.core.domain.model.trading.TradeSide
 import com.quantjumpstock.core.domain.model.trading.TradeSignal
 import com.quantjumpstock.core.domain.model.trading.TradeSignalExecuted
 import com.quantjumpstock.core.domain.port.output.AccountRepository
+import com.quantjumpstock.core.domain.port.output.ErrorNotifier
 import com.quantjumpstock.core.domain.port.output.TradeRepository
 import com.quantjumpstock.core.domain.port.output.TradeSignalExecutedRepository
 import com.quantjumpstock.core.domain.trading.port.output.TradingApiPort
@@ -40,7 +40,7 @@ class OrderExecutionListener(
     private val tradeRepository: TradeRepository,
     private val accountRepository: AccountRepository,
     private val tradeSignalExecutedRepository: TradeSignalExecutedRepository,
-    private val slackApiClient: SlackApiClient,
+    private val errorNotifier: ErrorNotifier,
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -90,7 +90,8 @@ class OrderExecutionListener(
             )
             notifyOrderFailure(
                 event, orderType, "CRITICAL 보상 실패 (수동 조치 필요)",
-                "lockedCash unlock 누락 가능 — 운영자 확인",
+                "lockedCash unlock 누락 가능 — 원인: ${uncaught.message ?: uncaught::class.simpleName} " +
+                    "(운영자 확인)",
                 uncaught,
             )
             throw uncaught
@@ -98,8 +99,8 @@ class OrderExecutionListener(
     }
 
     /**
-     * KIS 주문 실패 / 보상 실패 시 Slack 에러 채널 알림.
-     * 알림 자체 실패는 흡수하여 거래 처리 흐름에 영향을 주지 않음.
+     * KIS 주문 실패 / 보상 실패 시 에러 알림.
+     * [ErrorNotifier] 어댑터가 폭주 방지/시크릿 마스킹/전송 실패 흡수를 책임짐.
      */
     private fun notifyOrderFailure(
         event: OrderExecutionRequestEvent,
@@ -108,17 +109,13 @@ class OrderExecutionListener(
         message: String,
         ex: Throwable?,
     ) {
-        try {
-            slackApiClient.notifyApiError(
-                errorType = kind,
-                errorMessage = "trade=${event.tradeId} user=${event.userId} " +
-                    "$orderType ${event.ticker} x${event.quantity}: $message",
-                requestPath = "OrderExecutionListener",
-                stackTrace = ex?.stackTrace?.take(10)?.joinToString("\n") { it.toString() }
-            )
-        } catch (e: Exception) {
-            logger.warn("Slack 에러 알림 실패", e)
-        }
+        errorNotifier.notify(
+            context = "OrderExecutionListener",
+            errorType = kind,
+            errorMessage = "trade=${event.tradeId} user=${event.userId} " +
+                "$orderType ${event.ticker} x${event.quantity}: $message",
+            stackTrace = ex?.stackTrace?.take(10)?.joinToString("\n") { it.toString() },
+        )
     }
 
     private fun handleSuccess(event: OrderExecutionRequestEvent, kisOrderId: String?) {

@@ -20,8 +20,14 @@ import threading
 from datetime import datetime
 from pytz import timezone
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import (
+    http_exception_handler,
+    request_validation_exception_handler,
+)
+from starlette.exceptions import HTTPException as StarletteHTTPException
 import uvicorn
 
 # Config
@@ -91,8 +97,21 @@ app.include_router(analysis_router.router)
 # ============================================================
 # 전역 예외 핸들러 — 5xx 발생 시 Slack 에러 채널 자동 알림
 # ============================================================
-# HTTPException(4xx) / RequestValidationError 는 FastAPI 기본 핸들러가 처리하므로
-# 본 핸들러는 catch-all → 짜잘한 4xx/입력검증 에러는 자연스럽게 제외됨.
+# 핸들러 등록 순서 주의: HTTPException / RequestValidationError 를 명시적으로
+# 먼저 등록하지 않으면, catch-all Exception 핸들러가 4xx 응답을 가로채서 모두
+# 500 으로 응답되고 Slack 알림이 폭주할 수 있음 (Starlette/FastAPI 등록 순서
+# 의존성). 명시 등록으로 짜잘한 4xx 는 기본 핸들러가 처리하도록 보장.
+
+@app.exception_handler(StarletteHTTPException)
+async def _http_exception_passthrough(request: Request, exc: StarletteHTTPException):
+    return await http_exception_handler(request, exc)
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_exception_passthrough(request: Request, exc: RequestValidationError):
+    return await request_validation_exception_handler(request, exc)
+
+
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     logger = logging.getLogger(__name__)

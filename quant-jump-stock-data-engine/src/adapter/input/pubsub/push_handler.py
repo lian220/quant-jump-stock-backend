@@ -104,6 +104,7 @@ async def handle_push_message(topic_name: str, request: Request) -> Response:
         return Response(status_code=200, content="No handler (ACK)")
 
     # 메시지 처리
+    parsed = None
     try:
         parsed = _parse_push_message(dot_topic, payload)
         message_id = message.get("messageId", "unknown")
@@ -121,7 +122,7 @@ async def handle_push_message(topic_name: str, request: Request) -> Response:
         # NonRetryableError 포함 모든 예외를 구분
         from .subscriber import NonRetryableError
         is_non_retryable = isinstance(e, NonRetryableError)
-        request_id = getattr(parsed, "request_id", None) if "parsed" in locals() else None
+        request_id = parsed.request_id if parsed is not None else None
 
         if is_non_retryable:
             logger.error(f"Non-retryable error for {dot_topic} (ACK): {e}")

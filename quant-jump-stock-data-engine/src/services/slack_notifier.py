@@ -5,6 +5,8 @@ Bot Token 우선, Webhook fallback.
 Bot Token 사용 시 스레드 답글(thread_ts) 지원.
 """
 
+import re
+import time
 import requests
 import logging
 import threading
@@ -25,6 +27,25 @@ logger = logging.getLogger(__name__)
 # Bot Client 싱글톤 (thread-safe)
 _bot_client: Optional[SlackBotClient] = None
 _bot_client_lock = threading.Lock()
+
+# 에러 알림 폭주 방지: 동일 (topic, error_type) 5분 쿨다운
+_ERROR_NOTIFY_COOLDOWN_SEC = 300
+_error_notify_history: Dict[str, float] = {}
+_error_notify_lock = threading.Lock()
+
+# 민감정보 마스킹 — 어제 docker compose 시크릿 노출 사고 후속 방어선
+# key=value 패턴 (값이 공백/end-of-string까지) 또는 Bearer xxx 토큰을 *** 로 치환
+_SECRET_PATTERN = re.compile(
+    r'(?i)(password|passwd|secret|token|api[-_]?key|bearer|authorization|'
+    r'mongodb_uri|db_password|gcp_credentials)\s*[=:]\s*\S+',
+)
+
+
+def _mask_secrets(text: str) -> str:
+    """KIS/Atlas/Auth 응답 등에 포함될 수 있는 시크릿 평문을 마스킹."""
+    if not text:
+        return text
+    return _SECRET_PATTERN.sub(r'\1=***', text)
 
 
 def _get_bot_client() -> SlackBotClient:
@@ -249,6 +270,32 @@ class SlackNotifier:
     # ============================================================
 
     @staticmethod
+    def _should_notify_error(topic: str, error_type: str) -> bool:
+        """
+        동일 (topic, error_type) 조합에 대해 5분 내 1회만 알림 발송.
+
+        Cloud Scheduler가 반복 발행하는 메시지에서 동일 버그가 매번 트리거되면
+        Slack 채널이 같은 메시지로 채워지는 폭주를 방지.
+        """
+        key = f"{topic}::{error_type}"
+        now = time.monotonic()
+        with _error_notify_lock:
+            last = _error_notify_history.get(key)
+            if last is not None and (now - last) < _ERROR_NOTIFY_COOLDOWN_SEC:
+                logger.info(
+                    f"⏳ 에러 알림 쿨다운 중 (스킵): key={key} 남은={int(_ERROR_NOTIFY_COOLDOWN_SEC - (now - last))}s"
+                )
+                return False
+            _error_notify_history[key] = now
+            # 메모리 누수 방지: 만료된 항목 정리
+            if len(_error_notify_history) > 100:
+                cutoff = now - _ERROR_NOTIFY_COOLDOWN_SEC
+                expired = [k for k, t in _error_notify_history.items() if t < cutoff]
+                for k in expired:
+                    _error_notify_history.pop(k, None)
+        return True
+
+    @staticmethod
     def notify_handler_error(
         topic: str,
         error: str,
@@ -269,13 +316,20 @@ class SlackNotifier:
             request_id: 메시지 추적용 ID (있으면)
             retryable: 재시도 여부 (False: ACK 처리됨)
         """
+        # Rate-limit dedup: 동일 (topic, error_type) 조합 5분 쿨다운
+        if not SlackNotifier._should_notify_error(topic, error_type):
+            return
+
+        # 민감정보 마스킹 (KIS/Atlas 에러 메시지에 토큰/비밀번호 누출 방지)
+        safe_error = _mask_secrets(error[:500] if error else "(no message)")
+
         status_label = "🔁 Retryable" if retryable else "🛑 Non-retryable (ACK)"
         text = f"❌ Pub/Sub Handler Error: `{topic}`"
         attachments = [
             {
-                "color": "dc3545",
+                "color": "#dc3545",
                 "title": f"{error_type} in {topic}",
-                "text": error[:500] if error else "(no message)",
+                "text": safe_error,
                 "fields": [
                     {"title": "Topic", "value": topic, "short": True},
                     {"title": "Error Type", "value": error_type, "short": True},
