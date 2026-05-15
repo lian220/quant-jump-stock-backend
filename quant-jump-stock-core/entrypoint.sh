@@ -13,7 +13,14 @@ for f in /secrets/*/env; do
     if [ -f "$f" ]; then
         while IFS= read -r line || [ -n "$line" ]; do
             case "$line" in \#*|'') continue ;; esac
-            export "$line"
+            key="${line%%=*}"
+            val="${line#*=}"
+            # strip surrounding single or double quotes (dotenv convention)
+            case "$val" in
+                \"*\") val="${val#\"}" ; val="${val%\"}" ;;
+                \'*\') val="${val#\'}" ; val="${val%\'}" ;;
+            esac
+            export "${key}=${val}"
         done < "$f"
     fi
 done
