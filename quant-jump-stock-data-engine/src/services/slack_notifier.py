@@ -245,6 +245,57 @@ class SlackNotifier:
         )
 
     # ============================================================
+    # Pub/Sub 핸들러 공통 에러 알림
+    # ============================================================
+
+    @staticmethod
+    def notify_handler_error(
+        topic: str,
+        error: str,
+        error_type: str,
+        request_id: Optional[str] = None,
+        retryable: bool = False,
+    ):
+        """
+        Pub/Sub push 핸들러 공통 에러 알림.
+
+        push_handler.py 의 catch-all 블록에서 호출되어 모든 핸들러 예외를
+        에러 채널로 통합 전송. 알림 실패는 호출 측에서 흡수 (응답 영향 X).
+
+        Args:
+            topic: 핸들러 토픽 (dot notation, e.g. "vertex.ai.run.request")
+            error: 에러 메시지 (앞 500자만 사용)
+            error_type: 예외 클래스명 (e.g. "RuntimeError", "NonRetryableError")
+            request_id: 메시지 추적용 ID (있으면)
+            retryable: 재시도 여부 (False: ACK 처리됨)
+        """
+        status_label = "🔁 Retryable" if retryable else "🛑 Non-retryable (ACK)"
+        text = f"❌ Pub/Sub Handler Error: `{topic}`"
+        attachments = [
+            {
+                "color": "dc3545",
+                "title": f"{error_type} in {topic}",
+                "text": error[:500] if error else "(no message)",
+                "fields": [
+                    {"title": "Topic", "value": topic, "short": True},
+                    {"title": "Error Type", "value": error_type, "short": True},
+                    {"title": "Request ID", "value": request_id or "n/a", "short": True},
+                    {"title": "Status", "value": status_label, "short": True},
+                    {"title": "Timestamp", "value": datetime.now(KST).isoformat(), "short": False},
+                ],
+                "footer": "Quantiq Data Engine — push_handler",
+                "ts": int(datetime.now(KST).timestamp())
+            }
+        ]
+
+        SlackNotifier._post_message(
+            channel=SlackNotifier._get_error_channel(),
+            webhook_url=SlackNotifier._get_error_webhook(),
+            text=text,
+            attachments=attachments,
+        )
+
+    # ============================================================
     # 종합 분석 리포트
     # ============================================================
 
