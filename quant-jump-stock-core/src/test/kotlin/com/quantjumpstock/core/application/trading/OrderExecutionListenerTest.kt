@@ -5,6 +5,7 @@ import com.quantjumpstock.core.domain.model.trading.Trade
 import com.quantjumpstock.core.domain.model.trading.TradeSide
 import com.quantjumpstock.core.domain.model.trading.TradeStatus
 import com.quantjumpstock.core.domain.port.output.AccountRepository
+import com.quantjumpstock.core.domain.port.output.ErrorNotifier
 import com.quantjumpstock.core.domain.port.output.TradeRepository
 import com.quantjumpstock.core.domain.port.output.TradeSignalExecutedRepository
 import com.quantjumpstock.core.domain.trading.port.output.TradingApiPort
@@ -28,9 +29,10 @@ class OrderExecutionListenerTest {
     private val tradeRepository = mockk<TradeRepository>()
     private val accountRepository = mockk<AccountRepository>()
     private val tradeSignalExecutedRepository = mockk<TradeSignalExecutedRepository>(relaxed = true)
+    private val errorNotifier = mockk<ErrorNotifier>(relaxed = true)
 
     private val listener = OrderExecutionListener(
-        tradingApiPort, tradeRepository, accountRepository, tradeSignalExecutedRepository
+        tradingApiPort, tradeRepository, accountRepository, tradeSignalExecutedRepository, errorNotifier
     )
 
     private val event = OrderExecutionRequestEvent(
