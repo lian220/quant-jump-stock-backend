@@ -58,7 +58,12 @@ class UserKisAccountController(
         @CurrentUser currentUser: UserPrincipal?
     ): ResponseEntity<KisAccountResponse> {
         validateUserAccess(userId, currentUser)
-        return ResponseEntity.ok(userKisAccountService.getKisAccount(userId))
+        // 미등록 (active row 없음) 은 정상 흐름 — 404 로 응답 (FE 가 empty 상태로 분기).
+        return try {
+            ResponseEntity.ok(userKisAccountService.getKisAccount(userId))
+        } catch (e: IllegalArgumentException) {
+            ResponseEntity.notFound().build()
+        }
     }
 
     @PatchMapping("/toggle")
