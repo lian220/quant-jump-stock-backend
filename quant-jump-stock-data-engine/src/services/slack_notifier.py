@@ -408,7 +408,7 @@ class SlackNotifier:
                 "fields": [
                     {"type": "mrkdwn", "text": f"*총 분석 종목*\n{total}개"},
                     {"type": "mrkdwn", "text": f"*최종 추천 종목*\n{candidate_count}개"},
-                    {"type": "mrkdwn", "text": f"*평균 종합 점수*\n{avg_composite:.2f}"},
+                    {"type": "mrkdwn", "text": f"*평균 종합 점수*\n{avg_composite:.2f} / 7.4"},
                     {"type": "mrkdwn", "text": f"*평균 상승 확률*\n{avg_rise:.1f}%"},
                 ]
             },
@@ -496,7 +496,7 @@ class SlackNotifier:
                         "type": "mrkdwn",
                         "text": (
                             f"*{grade_emoji} {i}. {stock_name}* (`{ticker}`) — {grade_label}\n"
-                            f"• 종합점수: `{composite:.2f}` (신뢰도: {confidence:.0%}) | 상승확률: `{rise_str}` | 감정: `{sent_str}`\n"
+                            f"• 종합점수: `{composite:.2f}/7.4` (달성도 {confidence:.0%}) | 상승확률: `{rise_str}` | 감정: `{sent_str}`\n"
                             f"• 기술신호: {signal_text}"
                         )
                     }
@@ -551,7 +551,8 @@ class SlackNotifier:
                 "elements": [
                     {"type": "mrkdwn", "text": (
                         f"⏰ {current_time} | "
-                        f"기준: composite = 0.3×AI + 0.4×기술 + 0.3×감정 | "
+                        f"기준: 0.3×AI(0~10) + 0.4×기술(0~3.5) + 0.3×감정(0~10) → composite (max 7.4) | "
+                        f"AI/감정은 양수 예측만 점수, 매수 추천=composite≥3.0 + 가격 매수 | "
                         f"Quantiq Data Engine"
                     )}
                 ]
