@@ -83,6 +83,181 @@ class UserKisAccountServiceTest {
             .isEmpty()
     }
 
+    // ─────────────────────────────────────────────────
+    //  A+ 모델 (단일 활성 + 7일 휴지통 soft delete) 테스트
+    // ─────────────────────────────────────────────────
+
+    @Test
+    fun `같은 accountType 으로 register 는 update — 휴지통 발생 안 함`() {
+        val userId = createTestUser()
+        val first = registerRequest("PSKxAAAAAAAA", "secret_first_pass", KisAccountType.MOCK)
+        val second = registerRequest("PSKxBBBBBBBB", "secret_second_pass", KisAccountType.MOCK)
+
+        tx.executeWithoutResult { service.registerOrUpdateKisAccount(userId, first) }
+        tx.executeWithoutResult { service.registerOrUpdateKisAccount(userId, second) }
+        em.clear()
+
+        val active = kisRepo.findActiveByUserUserId(userId).orElseThrow()
+        support.trackKisAccount(active.id!!)
+        val trashedList = kisRepo.findTrashedByUserUserId(userId)
+
+        assertThat(active.appKey).isEqualTo("PSKxBBBBBBBB")
+        assertThat(active.deletedAt).isNull()
+        assertThat(trashedList).describedAs("같은 모드 update 는 휴지통 발생 안 함").isEmpty()
+    }
+
+    @Test
+    fun `다른 accountType 으로 register 는 기존을 휴지통으로 이동 + 신규 활성 INSERT`() {
+        val userId = createTestUser()
+        val mock = registerRequest("PSKxMOCKKEY1", "secret_for_mock", KisAccountType.MOCK)
+        val real = registerRequest("PSKxREALKEY1", "secret_for_real", KisAccountType.REAL)
+
+        tx.executeWithoutResult { service.registerOrUpdateKisAccount(userId, mock) }
+        tx.executeWithoutResult { service.registerOrUpdateKisAccount(userId, real) }
+        em.clear()
+
+        val active = kisRepo.findActiveByUserUserId(userId).orElseThrow()
+        val trashed = kisRepo.findTrashedByUserUserId(userId).firstOrNull()
+            ?: error("휴지통 row 가 있어야 한다")
+        support.trackKisAccount(active.id!!)
+        support.trackKisAccount(trashed.id!!)
+
+        assertThat(active.accountType).isEqualTo(com.quantjumpstock.core.adapter.output.persistence.jpa.KisAccountType.REAL)
+        assertThat(trashed.accountType).isEqualTo(com.quantjumpstock.core.adapter.output.persistence.jpa.KisAccountType.MOCK)
+        assertThat(trashed.deletedAt).isNotNull()
+    }
+
+    @Test
+    fun `DELETE 의미의 softDelete — active 가 휴지통으로 이동`() {
+        val userId = createTestUser()
+        tx.executeWithoutResult {
+            service.registerOrUpdateKisAccount(userId, registerRequest("PSKxAAAAAAAA", "secret_to_delete", KisAccountType.MOCK))
+        }
+        tx.executeWithoutResult { service.softDeleteActiveKisAccount(userId) }
+        em.clear()
+
+        assertThat(kisRepo.findActiveByUserUserId(userId)).isEmpty
+        val trashed = kisRepo.findTrashedByUserUserId(userId).firstOrNull()
+            ?: error("휴지통 row 가 있어야 한다")
+        support.trackKisAccount(trashed.id!!)
+        assertThat(trashed.deletedAt).isNotNull()
+        assertThat(trashed.enabled).isFalse()
+    }
+
+    @Test
+    fun `restore 후 휴지통이 활성으로 복구 — 기존 활성 없을 때`() {
+        val userId = createTestUser()
+        tx.executeWithoutResult {
+            service.registerOrUpdateKisAccount(userId, registerRequest("PSKxAAAAAAAA", "secret_to_restore", KisAccountType.MOCK))
+        }
+        tx.executeWithoutResult { service.softDeleteActiveKisAccount(userId) }
+        em.clear()
+
+        val response = tx.execute { service.restoreFromTrash(userId) }!!
+        em.clear()
+
+        val active = kisRepo.findActiveByUserUserId(userId).orElseThrow()
+        support.trackKisAccount(active.id!!)
+        assertThat(active.deletedAt).isNull()
+        assertThat(active.enabled).isTrue()
+        assertThat(response.appKey).startsWith("PSKx")
+            .describedAs("응답은 마스킹된 appKey 반환 (BE-1)")
+    }
+
+    @Test
+    fun `restore 스왑 — 현재 활성이 있으면 휴지통으로 교체`() {
+        val userId = createTestUser()
+        tx.executeWithoutResult {
+            service.registerOrUpdateKisAccount(userId, registerRequest("PSKxOLDOLDOLD", "secret_old_one", KisAccountType.MOCK))
+        }
+        tx.executeWithoutResult { service.softDeleteActiveKisAccount(userId) }
+        tx.executeWithoutResult {
+            service.registerOrUpdateKisAccount(userId, registerRequest("PSKxNEWNEWNEW", "secret_new_one", KisAccountType.MOCK))
+        }
+        tx.executeWithoutResult { service.restoreFromTrash(userId) }
+        em.clear()
+
+        val active = kisRepo.findActiveByUserUserId(userId).orElseThrow()
+        val trashed = kisRepo.findTrashedByUserUserId(userId).firstOrNull()
+            ?: error("스왑 후 휴지통 row 가 있어야 한다")
+        support.trackKisAccount(active.id!!)
+        support.trackKisAccount(trashed.id!!)
+
+        assertThat(active.appKey).isEqualTo("PSKxOLDOLDOLD")
+            .describedAs("이전 키가 복원되어 활성 row 가 된다")
+        assertThat(trashed.appKey).isEqualTo("PSKxNEWNEWNEW")
+            .describedAs("직전 활성 키가 휴지통으로 이동")
+    }
+
+    @Test
+    fun `getKisAccount 응답은 마스킹된 appKey 와 계좌번호 반환 (BE-1)`() {
+        val userId = createTestUser()
+        tx.executeWithoutResult {
+            service.registerOrUpdateKisAccount(userId, registerRequest("PSKxabcdefghIJKLMNOP", "secret_for_mask", KisAccountType.MOCK))
+        }
+        em.clear()
+        kisRepo.findActiveByUserUserId(userId).ifPresent { support.trackKisAccount(it.id!!) }
+
+        val response = service.getKisAccount(userId)
+
+        assertThat(response.appKey).contains("****")
+            .describedAs("appKey 는 마스킹 (앞4+뒤4 외 별표)")
+        assertThat(response.accountNumber).contains("****")
+            .describedAs("accountNumber 는 마스킹 (뒤4+상품코드 외 별표)")
+        assertThat(response.accountNumber).endsWith("-01")
+    }
+
+    @Test
+    fun `getTrashedKisAccount 는 휴지통 row 응답, 없으면 null`() {
+        val userId = createTestUser()
+        assertThat(service.getTrashedKisAccount(userId)).isNull()
+
+        tx.executeWithoutResult {
+            service.registerOrUpdateKisAccount(userId, registerRequest("PSKxAAAAAAAA", "secret_trash_test", KisAccountType.MOCK))
+        }
+        tx.executeWithoutResult { service.softDeleteActiveKisAccount(userId) }
+        em.clear()
+        kisRepo.findTrashedByUserUserId(userId).firstOrNull()?.let { support.trackKisAccount(it.id!!) }
+
+        val trashedResp = service.getTrashedKisAccount(userId)
+        assertThat(trashedResp).isNotNull
+        assertThat(trashedResp!!.deletedAt).isNotNull()
+    }
+
+    @Test
+    fun `hardDeleteExpired — 7일 경과 row 만 hard delete`() {
+        val userId = createTestUser()
+        tx.executeWithoutResult {
+            service.registerOrUpdateKisAccount(userId, registerRequest("PSKxAAAAAAAA", "secret_expire_test", KisAccountType.MOCK))
+        }
+        tx.executeWithoutResult { service.softDeleteActiveKisAccount(userId) }
+        em.clear()
+
+        // 휴지통 row 의 deleted_at 을 8일 전으로 인위적으로 변경 (만료 시뮬레이션).
+        val trashedId = kisRepo.findTrashedByUserUserId(userId).first().id!!
+        tx.executeWithoutResult {
+            em.createNativeQuery("UPDATE user_kis_accounts SET deleted_at = :ts WHERE id = :id")
+                .setParameter("ts", java.time.LocalDateTime.now().minusDays(8))
+                .setParameter("id", trashedId)
+                .executeUpdate()
+        }
+        em.clear()
+
+        val deleted = tx.execute { service.hardDeleteExpired() }!!
+        assertThat(deleted).isEqualTo(1)
+        assertThat(kisRepo.findById(trashedId)).isEmpty
+    }
+
+    private fun registerRequest(appKey: String, secret: String, type: KisAccountType): KisAccountRequest =
+        KisAccountRequest(
+            appKey = appKey,
+            appSecret = secret,
+            accountNumber = "12345678",
+            accountProductCode = "01",
+            accountType = type,
+            enabled = true
+        )
+
     @Test
     fun `getDecryptedAppSecret 는 v2 에서 복호화한다`() {
         val userId = createTestUser()

@@ -10,6 +10,7 @@ import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMock
 import org.springframework.boot.test.context.SpringBootTest
 import org.springframework.http.MediaType
 import org.springframework.test.web.servlet.MockMvc
+import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch
 import org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post
@@ -83,5 +84,45 @@ class UserKisAccountControllerAuthTest {
                 .param("enabled", "false")
                 .header("Authorization", bearer("attacker-user"))
         ).andExpect(status().isForbidden)
+    }
+
+    // ─────────────────────────────────────────────────
+    //  A+ 신규 엔드포인트 BOLA 회귀 가드
+    // ─────────────────────────────────────────────────
+
+    @Test
+    fun `타인 userId DELETE 는 403 (휴지통으로 이동 차단)`() {
+        mockMvc.perform(
+            delete("/api/v1/users/victim-user/kis-accounts")
+                .header("Authorization", bearer("attacker-user"))
+        ).andExpect(status().isForbidden)
+    }
+
+    @Test
+    fun `타인 userId GET trashed 는 403 (휴지통 조회 차단)`() {
+        mockMvc.perform(
+            get("/api/v1/users/victim-user/kis-accounts/trashed")
+                .header("Authorization", bearer("attacker-user"))
+        ).andExpect(status().isForbidden)
+    }
+
+    @Test
+    fun `타인 userId POST restore 는 403 (복원 차단)`() {
+        mockMvc.perform(
+            post("/api/v1/users/victim-user/kis-accounts/restore")
+                .header("Authorization", bearer("attacker-user"))
+        ).andExpect(status().isForbidden)
+    }
+
+    @Test
+    fun `비로그인 DELETE 는 401`() {
+        mockMvc.perform(delete("/api/v1/users/some-user/kis-accounts"))
+            .andExpect(status().isUnauthorized)
+    }
+
+    @Test
+    fun `비로그인 POST restore 는 401`() {
+        mockMvc.perform(post("/api/v1/users/some-user/kis-accounts/restore"))
+            .andExpect(status().isUnauthorized)
     }
 }
