@@ -815,15 +815,6 @@ class VertexAIHandler(MessageHandler):
                 # Slack 스레드 답글: "Job 제출 완료"
                 if thread_ts:
                     self._notify_job_submitted(thread_ts, result, start_time, env_vars)
-
-                if self.publisher:
-                    self.publisher.publish("VERTEX_AI_JOB_SUBMITTED", {
-                        "status": "success",
-                        "timestamp": datetime.now(KST).isoformat(),
-                        "requestId": message.request_id,
-                        "jobName": result.job_name,
-                        "duration": time.time() - start_time
-                    })
             else:
                 # 실패 원인 분석: 재시도 가능 여부 판별
                 error_msg = result.message or "Unknown error"
@@ -832,30 +823,12 @@ class VertexAIHandler(MessageHandler):
                 raise RuntimeError(error_msg)
 
         except NonRetryableError as e:
-            # NonRetryableError는 실패 이벤트 발행 후 그대로 re-raise → subscriber가 ACK 처리
+            # NonRetryableError → subscriber가 ACK 처리 (재시도 안 함)
             self._log_error("Vertex AI 예측 실행 (재시도 불가)", e)
-
-            if self.publisher:
-                self.publisher.publish("VERTEX_AI_JOB_FAILED", {
-                    "status": "failed",
-                    "timestamp": datetime.now(KST).isoformat(),
-                    "requestId": message.request_id,
-                    "error": str(e),
-                    "retryable": False
-                })
             raise
 
         except Exception as e:
             self._log_error("Vertex AI 예측 실행", e)
-
-            if self.publisher:
-                self.publisher.publish("VERTEX_AI_JOB_FAILED", {
-                    "status": "failed",
-                    "timestamp": datetime.now(KST).isoformat(),
-                    "requestId": message.request_id,
-                    "error": str(e),
-                    "retryable": True
-                })
             raise
 
 
