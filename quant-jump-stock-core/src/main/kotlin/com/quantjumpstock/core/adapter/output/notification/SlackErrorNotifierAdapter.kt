@@ -5,6 +5,7 @@ import com.quantjumpstock.core.domain.port.output.ErrorNotifier
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * [ErrorNotifier] 의 Slack 구현체. [SlackApiClient.notifyApiError] 에 위임하되,
@@ -32,17 +33,25 @@ class SlackErrorNotifierAdapter(
     ) {
         val key = "$context::$errorType"
         val now = System.currentTimeMillis()
-        val last = lastNotifiedAt[key]
-        if (last != null && (now - last) < COOLDOWN_MS) {
-            logger.info(
-                "⏳ 에러 알림 쿨다운 중 (스킵): key={} 남은={}s",
-                key, (COOLDOWN_MS - (now - last)) / 1000,
-            )
-            return
-        }
-        lastNotifiedAt[key] = now
 
-        // 메모리 누수 방지: 만료 항목 정리
+        // 원자적 check-then-set — 동시 호출에서 첫 알림이 중복 발송되는 race 차단
+        // compute() 는 키별 단일 락을 보장
+        val accepted = AtomicBoolean(false)
+        lastNotifiedAt.compute(key) { _, prev ->
+            if (prev != null && (now - prev) < COOLDOWN_MS) {
+                logger.info(
+                    "⏳ 에러 알림 쿨다운 중 (스킵): key={} 남은={}s",
+                    key, (COOLDOWN_MS - (now - prev)) / 1000,
+                )
+                prev
+            } else {
+                accepted.set(true)
+                now
+            }
+        }
+        if (!accepted.get()) return
+
+        // 메모리 누수 방지: 만료 항목 정리 (O(n) 이지만 cap 도달 시에만)
         if (lastNotifiedAt.size > MAX_HISTORY_SIZE) {
             val cutoff = now - COOLDOWN_MS
             lastNotifiedAt.entries.removeIf { it.value < cutoff }
@@ -65,10 +74,20 @@ class SlackErrorNotifierAdapter(
 
     /**
      * 에러 메시지에 포함될 수 있는 시크릿 평문을 *** 로 치환.
-     * 어제(2026-05-14) docker compose config 시크릿 노출 사고 후속 방어선.
+     * 2026-05-14 docker compose config / MongoDB URI 노출 사고 후속 방어선.
+     *
+     * 커버 패턴:
+     *  1. KEY=VALUE / KEY: VALUE (대소문자 무관)
+     *  2. JSON  "key": "value"
+     *  3. URI   scheme://user:password@host
      */
-    private fun maskSecrets(text: String): String =
-        SECRET_PATTERN.replace(text) { match -> "${match.groupValues[1]}=***" }
+    private fun maskSecrets(text: String): String {
+        var masked = SECRET_KV_PATTERN.replace(text) { m -> "${m.groupValues[1]}=***" }
+        masked = SECRET_JSON_PATTERN.replace(masked) { m -> "\"${m.groupValues[1]}\":\"***\"" }
+        masked = URI_CREDENTIAL_PATTERN.replace(masked) { m -> "${m.groupValues[1]}:***@" }
+        masked = BEARER_TOKEN_PATTERN.replace(masked) { m -> "${m.groupValues[1]} ***" }
+        return masked
+    }
 
     companion object {
         private const val COOLDOWN_MS = 5 * 60 * 1000L
@@ -76,9 +95,21 @@ class SlackErrorNotifierAdapter(
         private const val MESSAGE_MAX_LEN = 500
         private const val STACKTRACE_MAX_LEN = 1500
 
-        private val SECRET_PATTERN = Regex(
+        // KEY=VALUE / KEY: VALUE 형태
+        private val SECRET_KV_PATTERN = Regex(
             "(?i)\\b(password|passwd|secret|token|api[-_]?key|bearer|authorization|" +
                 "mongodb_uri|db_password|gcp_credentials)\\s*[=:]\\s*\\S+"
         )
+        // JSON {"password": "xxx"} 형태
+        private val SECRET_JSON_PATTERN = Regex(
+            "(?i)\"(password|passwd|secret|token|api[-_]?key|bearer|authorization|" +
+                "mongodb_uri|db_password|gcp_credentials)\"\\s*:\\s*\"[^\"]*\""
+        )
+        // URI scheme://user:password@host 형태 (MongoDB Atlas, Postgres connection string 등)
+        private val URI_CREDENTIAL_PATTERN = Regex(
+            "([a-zA-Z][a-zA-Z0-9+\\-.]*://[^:/?#@\\s]+):[^@\\s]+@"
+        )
+        // "Bearer <token>" 형태 (HTTP Authorization 헤더)
+        private val BEARER_TOKEN_PATTERN = Regex("(?i)\\b(Bearer)\\s+[A-Za-z0-9._\\-]+")
     }
 }

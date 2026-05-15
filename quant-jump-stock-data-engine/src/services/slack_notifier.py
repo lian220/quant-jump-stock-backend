@@ -33,19 +33,35 @@ _ERROR_NOTIFY_COOLDOWN_SEC = 300
 _error_notify_history: Dict[str, float] = {}
 _error_notify_lock = threading.Lock()
 
-# 민감정보 마스킹 — 어제 docker compose 시크릿 노출 사고 후속 방어선
-# key=value 패턴 (값이 공백/end-of-string까지) 또는 Bearer xxx 토큰을 *** 로 치환
-_SECRET_PATTERN = re.compile(
-    r'(?i)(password|passwd|secret|token|api[-_]?key|bearer|authorization|'
+# 민감정보 마스킹 — 2026-05-14 docker compose / MongoDB URI 노출 사고 후속 방어선
+# 커버 패턴:
+#   1. KEY=VALUE / KEY: VALUE
+#   2. JSON  "key": "value"
+#   3. URI   scheme://user:password@host
+_SECRET_KV_PATTERN = re.compile(
+    r'(?i)\b(password|passwd|secret|token|api[-_]?key|bearer|authorization|'
     r'mongodb_uri|db_password|gcp_credentials)\s*[=:]\s*\S+',
 )
+_SECRET_JSON_PATTERN = re.compile(
+    r'(?i)"(password|passwd|secret|token|api[-_]?key|bearer|authorization|'
+    r'mongodb_uri|db_password|gcp_credentials)"\s*:\s*"[^"]*"',
+)
+_URI_CREDENTIAL_PATTERN = re.compile(
+    r'([a-zA-Z][a-zA-Z0-9+\-.]*://[^:/?#@\s]+):[^@\s]+@'
+)
+# "Bearer <token>" 형태 (HTTP Authorization 헤더 등)
+_BEARER_TOKEN_PATTERN = re.compile(r'(?i)\b(Bearer)\s+[A-Za-z0-9._\-]+')
 
 
 def _mask_secrets(text: str) -> str:
     """KIS/Atlas/Auth 응답 등에 포함될 수 있는 시크릿 평문을 마스킹."""
     if not text:
         return text
-    return _SECRET_PATTERN.sub(r'\1=***', text)
+    text = _SECRET_KV_PATTERN.sub(r'\1=***', text)
+    text = _SECRET_JSON_PATTERN.sub(r'"\1":"***"', text)
+    text = _URI_CREDENTIAL_PATTERN.sub(r'\1:***@', text)
+    text = _BEARER_TOKEN_PATTERN.sub(r'\1 ***', text)
+    return text
 
 
 def _get_bot_client() -> SlackBotClient:

@@ -112,10 +112,12 @@ async def _validation_exception_passthrough(request: Request, exc: RequestValida
     return await request_validation_exception_handler(request, exc)
 
 
+_unhandled_logger = logging.getLogger(__name__)
+
+
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
-    logger = logging.getLogger(__name__)
-    logger.exception(
+    _unhandled_logger.exception(
         f"❌ Unhandled exception: {request.method} {request.url.path} - {exc}"
     )
     try:
@@ -127,7 +129,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
             retryable=False,
         )
     except Exception as notify_err:
-        logger.warning(f"Slack 에러 알림 실패: {notify_err}")
+        _unhandled_logger.warning(f"Slack 에러 알림 실패: {notify_err}")
     return JSONResponse(
         status_code=500,
         content={"error": "Internal Server Error", "message": "Unexpected error"},

@@ -29,6 +29,6 @@ interface ErrorNotifier {
         context: String,
         errorType: String,
         errorMessage: String,
-        stackTrace: String? = null,
+        stackTrace: String?,
     )
 }

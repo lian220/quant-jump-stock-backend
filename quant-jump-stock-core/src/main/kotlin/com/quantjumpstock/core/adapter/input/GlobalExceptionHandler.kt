@@ -229,18 +229,21 @@ class GlobalExceptionHandler(
 
     /**
      * 모든 예외 처리 (최종 fallback).
-     * ErrorNotifier 어댑터가 폭주 방지 / 시크릿 마스킹 / 전송 실패 흡수를 책임짐.
+     * ErrorNotifier 어댑터가 폭주 방지 / 시크릿 마스킹 / 전송 실패 흡수를 책임지지만,
+     * 다른 구현체가 계약을 어길 경우의 방어선으로 runCatching 으로 한 번 더 흡수.
      */
     @ExceptionHandler(Exception::class)
     fun handleGenericException(ex: Exception, request: HttpServletRequest): ResponseEntity<ErrorResponse> {
         logger.error("❌ Unexpected error occurred", ex)
 
-        errorNotifier.notify(
-            context = "${request.method} ${request.requestURI}",
-            errorType = ex.javaClass.simpleName,
-            errorMessage = ex.message ?: "Unknown error",
-            stackTrace = ex.stackTrace.take(10).joinToString("\n") { it.toString() },
-        )
+        runCatching {
+            errorNotifier.notify(
+                context = "${request.method} ${request.requestURI}",
+                errorType = ex.javaClass.simpleName,
+                errorMessage = ex.message ?: "Unknown error",
+                stackTrace = ex.stackTrace.take(10).joinToString("\n") { it.toString() },
+            )
+        }.onFailure { e -> logger.warn("ErrorNotifier 호출 실패 (흡수)", e) }
 
         return ResponseEntity
             .status(HttpStatus.INTERNAL_SERVER_ERROR)
