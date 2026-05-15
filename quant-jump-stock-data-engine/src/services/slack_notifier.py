@@ -5,6 +5,8 @@ Bot Token 우선, Webhook fallback.
 Bot Token 사용 시 스레드 답글(thread_ts) 지원.
 """
 
+import re
+import time
 import requests
 import logging
 import threading
@@ -25,6 +27,41 @@ logger = logging.getLogger(__name__)
 # Bot Client 싱글톤 (thread-safe)
 _bot_client: Optional[SlackBotClient] = None
 _bot_client_lock = threading.Lock()
+
+# 에러 알림 폭주 방지: 동일 (topic, error_type) 5분 쿨다운
+_ERROR_NOTIFY_COOLDOWN_SEC = 300
+_error_notify_history: Dict[str, float] = {}
+_error_notify_lock = threading.Lock()
+
+# 민감정보 마스킹 — 2026-05-14 docker compose / MongoDB URI 노출 사고 후속 방어선
+# 커버 패턴:
+#   1. KEY=VALUE / KEY: VALUE
+#   2. JSON  "key": "value"
+#   3. URI   scheme://user:password@host
+_SECRET_KV_PATTERN = re.compile(
+    r'(?i)\b(password|passwd|secret|token|api[-_]?key|bearer|authorization|'
+    r'mongodb_uri|db_password|gcp_credentials)\s*[=:]\s*\S+',
+)
+_SECRET_JSON_PATTERN = re.compile(
+    r'(?i)"(password|passwd|secret|token|api[-_]?key|bearer|authorization|'
+    r'mongodb_uri|db_password|gcp_credentials)"\s*:\s*"[^"]*"',
+)
+_URI_CREDENTIAL_PATTERN = re.compile(
+    r'([a-zA-Z][a-zA-Z0-9+\-.]*://[^:/?#@\s]+):[^@\s]+@'
+)
+# "Bearer <token>" 형태 (HTTP Authorization 헤더 등)
+_BEARER_TOKEN_PATTERN = re.compile(r'(?i)\b(Bearer)\s+[A-Za-z0-9._\-]+')
+
+
+def _mask_secrets(text: str) -> str:
+    """KIS/Atlas/Auth 응답 등에 포함될 수 있는 시크릿 평문을 마스킹."""
+    if not text:
+        return text
+    text = _SECRET_KV_PATTERN.sub(r'\1=***', text)
+    text = _SECRET_JSON_PATTERN.sub(r'"\1":"***"', text)
+    text = _URI_CREDENTIAL_PATTERN.sub(r'\1:***@', text)
+    text = _BEARER_TOKEN_PATTERN.sub(r'\1 ***', text)
+    return text
 
 
 def _get_bot_client() -> SlackBotClient:
@@ -242,6 +279,90 @@ class SlackNotifier:
             text=text,
             attachments=attachments,
             thread_ts=thread_ts,
+        )
+
+    # ============================================================
+    # Pub/Sub 핸들러 공통 에러 알림
+    # ============================================================
+
+    @staticmethod
+    def _should_notify_error(topic: str, error_type: str) -> bool:
+        """
+        동일 (topic, error_type) 조합에 대해 5분 내 1회만 알림 발송.
+
+        Cloud Scheduler가 반복 발행하는 메시지에서 동일 버그가 매번 트리거되면
+        Slack 채널이 같은 메시지로 채워지는 폭주를 방지.
+        """
+        key = f"{topic}::{error_type}"
+        now = time.monotonic()
+        with _error_notify_lock:
+            last = _error_notify_history.get(key)
+            if last is not None and (now - last) < _ERROR_NOTIFY_COOLDOWN_SEC:
+                logger.info(
+                    f"⏳ 에러 알림 쿨다운 중 (스킵): key={key} 남은={int(_ERROR_NOTIFY_COOLDOWN_SEC - (now - last))}s"
+                )
+                return False
+            _error_notify_history[key] = now
+            # 메모리 누수 방지: 만료된 항목 정리
+            if len(_error_notify_history) > 100:
+                cutoff = now - _ERROR_NOTIFY_COOLDOWN_SEC
+                expired = [k for k, t in _error_notify_history.items() if t < cutoff]
+                for k in expired:
+                    _error_notify_history.pop(k, None)
+        return True
+
+    @staticmethod
+    def notify_handler_error(
+        topic: str,
+        error: str,
+        error_type: str,
+        request_id: Optional[str] = None,
+        retryable: bool = False,
+    ):
+        """
+        Pub/Sub push 핸들러 공통 에러 알림.
+
+        push_handler.py 의 catch-all 블록에서 호출되어 모든 핸들러 예외를
+        에러 채널로 통합 전송. 알림 실패는 호출 측에서 흡수 (응답 영향 X).
+
+        Args:
+            topic: 핸들러 토픽 (dot notation, e.g. "vertex.ai.run.request")
+            error: 에러 메시지 (앞 500자만 사용)
+            error_type: 예외 클래스명 (e.g. "RuntimeError", "NonRetryableError")
+            request_id: 메시지 추적용 ID (있으면)
+            retryable: 재시도 여부 (False: ACK 처리됨)
+        """
+        # Rate-limit dedup: 동일 (topic, error_type) 조합 5분 쿨다운
+        if not SlackNotifier._should_notify_error(topic, error_type):
+            return
+
+        # 민감정보 마스킹 (KIS/Atlas 에러 메시지에 토큰/비밀번호 누출 방지)
+        safe_error = _mask_secrets(error[:500] if error else "(no message)")
+
+        status_label = "🔁 Retryable" if retryable else "🛑 Non-retryable (ACK)"
+        text = f"❌ Pub/Sub Handler Error: `{topic}`"
+        attachments = [
+            {
+                "color": "#dc3545",
+                "title": f"{error_type} in {topic}",
+                "text": safe_error,
+                "fields": [
+                    {"title": "Topic", "value": topic, "short": True},
+                    {"title": "Error Type", "value": error_type, "short": True},
+                    {"title": "Request ID", "value": request_id or "n/a", "short": True},
+                    {"title": "Status", "value": status_label, "short": True},
+                    {"title": "Timestamp", "value": datetime.now(KST).isoformat(), "short": False},
+                ],
+                "footer": "Quantiq Data Engine — push_handler",
+                "ts": int(datetime.now(KST).timestamp())
+            }
+        ]
+
+        SlackNotifier._post_message(
+            channel=SlackNotifier._get_error_channel(),
+            webhook_url=SlackNotifier._get_error_webhook(),
+            text=text,
+            attachments=attachments,
         )
 
     # ============================================================

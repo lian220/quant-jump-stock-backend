@@ -1,8 +1,8 @@
 package com.quantjumpstock.core.adapter.input
 
-import com.quantjumpstock.core.adapter.output.notification.slack.SlackApiClient
 import com.quantjumpstock.core.application.auth.AuthException
 import com.quantjumpstock.core.application.marketplace.StrategyNotFoundException
+import com.quantjumpstock.core.domain.port.output.ErrorNotifier
 import com.quantjumpstock.core.infrastructure.security.AccessDeniedException
 import com.quantjumpstock.core.infrastructure.security.UnauthorizedException
 import jakarta.servlet.http.HttpServletRequest
@@ -23,7 +23,7 @@ import org.springframework.web.servlet.resource.NoResourceFoundException
  */
 @RestControllerAdvice
 class GlobalExceptionHandler(
-    private val slackApiClient: SlackApiClient
+    private val errorNotifier: ErrorNotifier
 ) {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -228,23 +228,22 @@ class GlobalExceptionHandler(
     }
 
     /**
-     * 모든 예외 처리 (최종 fallback)
+     * 모든 예외 처리 (최종 fallback).
+     * ErrorNotifier 어댑터가 폭주 방지 / 시크릿 마스킹 / 전송 실패 흡수를 책임지지만,
+     * 다른 구현체가 계약을 어길 경우의 방어선으로 runCatching 으로 한 번 더 흡수.
      */
     @ExceptionHandler(Exception::class)
     fun handleGenericException(ex: Exception, request: HttpServletRequest): ResponseEntity<ErrorResponse> {
         logger.error("❌ Unexpected error occurred", ex)
 
-        // Slack 에러 알림 전송 (비동기적으로 처리, 실패해도 응답에 영향 없음)
-        try {
-            slackApiClient.notifyApiError(
+        runCatching {
+            errorNotifier.notify(
+                context = "${request.method} ${request.requestURI}",
                 errorType = ex.javaClass.simpleName,
                 errorMessage = ex.message ?: "Unknown error",
-                requestPath = "${request.method} ${request.requestURI}",
-                stackTrace = ex.stackTrace.take(10).joinToString("\n") { it.toString() }
+                stackTrace = ex.stackTrace.take(10).joinToString("\n") { it.toString() },
             )
-        } catch (e: Exception) {
-            logger.warn("Failed to send Slack error notification", e)
-        }
+        }.onFailure { e -> logger.warn("ErrorNotifier 호출 실패 (흡수)", e) }
 
         return ResponseEntity
             .status(HttpStatus.INTERNAL_SERVER_ERROR)

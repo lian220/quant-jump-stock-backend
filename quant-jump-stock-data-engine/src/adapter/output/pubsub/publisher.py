@@ -113,9 +113,6 @@ class PubSubPublisherAdapter:
             # 백테스트
             "BACKTEST_COMPLETED": "quantiq.backtest.completed",
             "BACKTEST_FAILED": "quantiq.backtest.failed",
-            # Vertex AI
-            "VERTEX_AI_JOB_SUBMITTED": "vertex.ai.run.submitted",
-            "VERTEX_AI_JOB_FAILED": "vertex.ai.run.failed",
             # News
             "NEWS_COLLECTED": "quantiq.news.collected",
             "NEWS_COLLECTION_FAILED": "quantiq.news.collection.failed",

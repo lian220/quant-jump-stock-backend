@@ -4,6 +4,7 @@ import com.quantjumpstock.core.domain.model.trading.TradeSide
 import com.quantjumpstock.core.domain.model.trading.TradeSignal
 import com.quantjumpstock.core.domain.model.trading.TradeSignalExecuted
 import com.quantjumpstock.core.domain.port.output.AccountRepository
+import com.quantjumpstock.core.domain.port.output.ErrorNotifier
 import com.quantjumpstock.core.domain.port.output.TradeRepository
 import com.quantjumpstock.core.domain.port.output.TradeSignalExecutedRepository
 import com.quantjumpstock.core.domain.trading.port.output.TradingApiPort
@@ -38,7 +39,8 @@ class OrderExecutionListener(
     private val tradingApiPort: TradingApiPort,
     private val tradeRepository: TradeRepository,
     private val accountRepository: AccountRepository,
-    private val tradeSignalExecutedRepository: TradeSignalExecutedRepository
+    private val tradeSignalExecutedRepository: TradeSignalExecutedRepository,
+    private val errorNotifier: ErrorNotifier,
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -69,10 +71,12 @@ class OrderExecutionListener(
                 } else {
                     val errorMsg = result["msg1"] as? String ?: "Unknown error"
                     logger.error("❌ KIS order failed: ${event.ticker} - $errorMsg")
+                    notifyOrderFailure(event, orderType, "KIS API error", errorMsg, null)
                     handleFailure(event, "KIS API error: $errorMsg")
                 }
             } catch (e: Exception) {
                 logger.error("❌ Exception during KIS order: ${event.ticker}", e)
+                notifyOrderFailure(event, orderType, "KIS Exception", e.message ?: "Unknown", e)
                 handleFailure(event, "Exception: ${e.message}")
             }
         } catch (uncaught: Throwable) {
@@ -84,8 +88,34 @@ class OrderExecutionListener(
                     "lockedAmount={} ticker={}. 수동 보상 필요: Trade fail + Account unlockCash.",
                 event.tradeId, event.userId, event.lockedAmount, event.ticker, uncaught,
             )
+            notifyOrderFailure(
+                event, orderType, "CRITICAL 보상 실패 (수동 조치 필요)",
+                "lockedCash unlock 누락 가능 — 원인: ${uncaught.message ?: uncaught::class.simpleName} " +
+                    "(운영자 확인)",
+                uncaught,
+            )
             throw uncaught
         }
+    }
+
+    /**
+     * KIS 주문 실패 / 보상 실패 시 에러 알림.
+     * [ErrorNotifier] 어댑터가 폭주 방지/시크릿 마스킹/전송 실패 흡수를 책임짐.
+     */
+    private fun notifyOrderFailure(
+        event: OrderExecutionRequestEvent,
+        orderType: String,
+        kind: String,
+        message: String,
+        ex: Throwable?,
+    ) {
+        errorNotifier.notify(
+            context = "OrderExecutionListener",
+            errorType = kind,
+            errorMessage = "trade=${event.tradeId} user=${event.userId} " +
+                "$orderType ${event.ticker} x${event.quantity}: $message",
+            stackTrace = ex?.stackTrace?.take(10)?.joinToString("\n") { it.toString() },
+        )
     }
 
     private fun handleSuccess(event: OrderExecutionRequestEvent, kisOrderId: String?) {

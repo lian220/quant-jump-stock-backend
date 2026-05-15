@@ -20,7 +20,14 @@ import threading
 from datetime import datetime
 from pytz import timezone
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import (
+    http_exception_handler,
+    request_validation_exception_handler,
+)
+from starlette.exceptions import HTTPException as StarletteHTTPException
 import uvicorn
 
 # Config
@@ -85,6 +92,48 @@ app = FastAPI(
 app.include_router(economic_router)
 app.include_router(ml_router.router)
 app.include_router(analysis_router.router)
+
+
+# ============================================================
+# 전역 예외 핸들러 — 5xx 발생 시 Slack 에러 채널 자동 알림
+# ============================================================
+# 핸들러 등록 순서 주의: HTTPException / RequestValidationError 를 명시적으로
+# 먼저 등록하지 않으면, catch-all Exception 핸들러가 4xx 응답을 가로채서 모두
+# 500 으로 응답되고 Slack 알림이 폭주할 수 있음 (Starlette/FastAPI 등록 순서
+# 의존성). 명시 등록으로 짜잘한 4xx 는 기본 핸들러가 처리하도록 보장.
+
+@app.exception_handler(StarletteHTTPException)
+async def _http_exception_passthrough(request: Request, exc: StarletteHTTPException):
+    return await http_exception_handler(request, exc)
+
+
+@app.exception_handler(RequestValidationError)
+async def _validation_exception_passthrough(request: Request, exc: RequestValidationError):
+    return await request_validation_exception_handler(request, exc)
+
+
+_unhandled_logger = logging.getLogger(__name__)
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    _unhandled_logger.exception(
+        f"❌ Unhandled exception: {request.method} {request.url.path} - {exc}"
+    )
+    try:
+        SlackNotifier.notify_handler_error(
+            topic=f"HTTP {request.method} {request.url.path}",
+            error=str(exc),
+            error_type=type(exc).__name__,
+            request_id=request.headers.get("x-request-id"),
+            retryable=False,
+        )
+    except Exception as notify_err:
+        _unhandled_logger.warning(f"Slack 에러 알림 실패: {notify_err}")
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal Server Error", "message": "Unexpected error"},
+    )
 
 
 @app.get("/")

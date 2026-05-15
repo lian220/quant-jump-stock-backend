@@ -104,6 +104,7 @@ async def handle_push_message(topic_name: str, request: Request) -> Response:
         return Response(status_code=200, content="No handler (ACK)")
 
     # 메시지 처리
+    parsed = None
     try:
         parsed = _parse_push_message(dot_topic, payload)
         message_id = message.get("messageId", "unknown")
@@ -120,9 +121,27 @@ async def handle_push_message(topic_name: str, request: Request) -> Response:
     except Exception as e:
         # NonRetryableError 포함 모든 예외를 구분
         from .subscriber import NonRetryableError
-        if isinstance(e, NonRetryableError):
-            logger.error(f"Non-retryable error for {dot_topic} (ACK): {e}")
-            return Response(status_code=200, content="Non-retryable error (ACK)")
+        is_non_retryable = isinstance(e, NonRetryableError)
+        request_id = parsed.request_id if parsed is not None else None
 
-        logger.exception(f"Handler error for {dot_topic} (ACK처리, 재시도 안함): {e}")
+        if is_non_retryable:
+            logger.error(f"Non-retryable error for {dot_topic} (ACK): {e}")
+        else:
+            logger.exception(f"Handler error for {dot_topic} (ACK처리, 재시도 안함): {e}")
+
+        # Slack 에러 채널 알림 (실패해도 응답에 영향 X)
+        try:
+            from services.slack_notifier import SlackNotifier
+            SlackNotifier.notify_handler_error(
+                topic=dot_topic,
+                error=str(e),
+                error_type=type(e).__name__,
+                request_id=request_id,
+                retryable=False,  # 두 경우 모두 ACK 처리되어 재시도 안 됨
+            )
+        except Exception as notify_err:
+            logger.warning(f"Slack 에러 알림 실패: {notify_err}")
+
+        if is_non_retryable:
+            return Response(status_code=200, content="Non-retryable error (ACK)")
         return Response(status_code=200, content="Handler error (ACK, no retry)")
