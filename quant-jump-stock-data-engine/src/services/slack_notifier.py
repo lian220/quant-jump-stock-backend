@@ -282,6 +282,55 @@ class SlackNotifier:
         )
 
     # ============================================================
+    # 데이터 freshness 알람 (2026-05-18 사고 후속 — 매일 23:00 KST 자동 체크)
+    # ============================================================
+
+    @staticmethod
+    def notify_freshness_alert(
+        check_date: str,
+        stock_predictions_count: int,
+        stock_recommendations_count: int,
+        threshold: int,
+    ):
+        """
+        데이터 freshness 알람 — 매일 23:00 KST Cloud Scheduler 트리거.
+
+        stock_predictions 또는 stock_recommendations 가 threshold 미만이면
+        다음날 추천 사고 사전 차단을 위해 운영자 알림.
+
+        배경:
+          - 2026-05-14 Vertex AI Job SUCCEEDED 인데 stock_predictions 0건
+          - 운영자 미인지 → 5/15 23:20 KST "추천 0개" 사용자 노출
+          - 사전 freshness probe 로 동일 사고 차단
+        """
+        text = "🚨 데이터 freshness 부족 — 다음 추천 사고 위험"
+        attachments = [
+            {
+                "color": "#dc3545",
+                "title": f"{check_date} 데이터 freshness 알람",
+                "text": (
+                    f"임계 ({threshold}건) 미만 컬렉션 감지. "
+                    f"다음 cron 발화 시 추천 0개 위험 — 즉시 파이프라인 점검 필요."
+                ),
+                "fields": [
+                    {"title": "분석일", "value": check_date, "short": True},
+                    {"title": "임계", "value": f"{threshold}건", "short": True},
+                    {"title": "stock_predictions", "value": f"{stock_predictions_count}건", "short": True},
+                    {"title": "stock_recommendations", "value": f"{stock_recommendations_count}건", "short": True},
+                    {"title": "조치", "value": "Vertex AI Job 상태 + technical_analysis 실행 점검", "short": False},
+                ],
+                "footer": "Quantiq Data Engine — freshness probe",
+                "ts": int(datetime.now(KST).timestamp())
+            }
+        ]
+        SlackNotifier._post_message(
+            channel=SlackNotifier._get_error_channel(),
+            webhook_url=SlackNotifier._get_error_webhook(),
+            text=text,
+            attachments=attachments,
+        )
+
+    # ============================================================
     # Pre-flight 데이터 결손 알림 (2026-05-15 사고 후속)
     # ============================================================
 

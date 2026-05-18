@@ -20,6 +20,8 @@ import threading
 from datetime import datetime
 from pytz import timezone
 
+from typing import Optional
+
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
@@ -158,6 +160,63 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "alive", "timestamp": datetime.now(KST).isoformat()}
+
+
+@app.post("/admin/freshness/check")
+def freshness_check(date: Optional[str] = None, threshold: int = 30):
+    """
+    데이터 freshness 사전 점검 — 매일 23:00 KST Cloud Scheduler 트리거.
+
+    2026-05-14 사고 회고:
+      Vertex AI Job SUCCEEDED 인데 stock_predictions 0건. 운영자 미인지로
+      다음날 23:20 KST 자연 발화 시 "추천 0개" 사용자 노출.
+      본 endpoint 가 자연 발화 전 데이터 부재 감지 → 운영자 사전 통지.
+
+    Args:
+      date: YYYY-MM-DD (default: KST 오늘 — latest_complete_bar_date 미사용,
+            단순 KST today 기준. cron 발화 시각이 23:00 KST 이므로 당일 데이터 체크 적절)
+      threshold: 컬렉션별 최소 문서 수 (default: 30 — 36개 종목 중 일부 누락 허용)
+
+    Returns:
+      JSON: {status, check_date, stock_predictions_count, stock_recommendations_count,
+             alert_sent}
+    """
+    from core.database import MongoDB
+
+    check_date = date or datetime.now(KST).strftime("%Y-%m-%d")
+    dt = datetime.strptime(check_date, "%Y-%m-%d")
+    start_utc = datetime(dt.year, dt.month, dt.day, 0, 0, 0)
+    end_utc = datetime(dt.year, dt.month, dt.day, 23, 59, 59, 999000)
+
+    db = MongoDB.get_db()
+    sp_count = db.stock_predictions.count_documents({
+        "date": {"$gte": start_utc, "$lte": end_utc}
+    })
+    sr_count = db.stock_recommendations.count_documents({
+        "date": {"$gte": start_utc, "$lte": end_utc}
+    })
+
+    alert_sent = False
+    if sp_count < threshold or sr_count < threshold:
+        try:
+            SlackNotifier.notify_freshness_alert(
+                check_date=check_date,
+                stock_predictions_count=sp_count,
+                stock_recommendations_count=sr_count,
+                threshold=threshold,
+            )
+            alert_sent = True
+        except Exception as e:
+            logging.getLogger(__name__).warning(f"freshness 알림 전송 실패: {e}")
+
+    return {
+        "status": "alert" if alert_sent else "ok",
+        "check_date": check_date,
+        "stock_predictions_count": sp_count,
+        "stock_recommendations_count": sr_count,
+        "threshold": threshold,
+        "alert_sent": alert_sent,
+    }
 
 
 @app.post("/api/v1/recommendations/sync")
