@@ -537,9 +537,33 @@ class StockRecommendationHandler(MessageHandler):
                     total_candidate_count += candidate_count
                     total_near_miss_count += near_miss_count
 
-                    # 분석 채널: 종합 리포트 독립 메시지
-                    SlackNotifier.notify_comprehensive_report(report, thread_ts=None)
-                    logger.info(f"종합 리포트 Slack 발송 완료 ({analysis_date}): 추천 {candidate_count}개, 근접 탈락 {near_miss_count}개")
+                    # Pre-flight sanity gate (2026-05-15 사고 후속)
+                    # 입력 데이터(AI 예측) 결손 시 0개 추천 평문 노출 차단.
+                    # 사용자가 "시장 빈손" vs "시스템 결함" 자의 해석 → 신뢰 손상 + 법적 책임 위험.
+                    # 결손은 운영자만 인지, 사용자 채널은 송출 보류.
+                    total_analyzed = report.get("total_analyzed", 0)
+                    prediction_count = report.get("prediction_count", 0)
+                    sentiment_count = report.get("sentiment_count", 0)
+                    if total_analyzed == 0 or prediction_count == 0:
+                        logger.warning(
+                            "⚠️ Pre-flight gate: 입력 결손으로 추천 송출 차단 "
+                            f"(date={analysis_date}, analyzed={total_analyzed}, "
+                            f"ai_pred={prediction_count}, sentiment={sentiment_count}, tech={len(tech_docs)})"
+                        )
+                        SlackNotifier.notify_recommendation_data_gap(
+                            analysis_date=analysis_date,
+                            total_analyzed=total_analyzed,
+                            ai_prediction_count=prediction_count,
+                            sentiment_count=sentiment_count,
+                            tech_count=len(tech_docs),
+                        )
+                    else:
+                        # 분석 채널: 종합 리포트 독립 메시지
+                        SlackNotifier.notify_comprehensive_report(report, thread_ts=None)
+                        logger.info(
+                            f"종합 리포트 Slack 발송 완료 ({analysis_date}): "
+                            f"추천 {candidate_count}개, 근접 탈락 {near_miss_count}개"
+                        )
                 except DailyDataNotCollectedError as e:
                     logger.error(str(e))
                     SlackNotifier.notify_daily_data_missing(analysis_date)

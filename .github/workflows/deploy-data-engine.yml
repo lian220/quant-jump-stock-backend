@@ -56,12 +56,16 @@ jobs:
           service: ${{ env.CLOUD_RUN_SERVICE }}
           image: ${{ env.AR_REPO }}/qjs-data-engine:latest
           region: ${{ env.REGION }}
+          # 2026-05-15 사고 후속 — Pub/Sub publish background thread CPU starvation 차단
+          # --no-cpu-throttling: 인스턴스 살아있는 동안 항상 CPU 할당 (SDK background thread 보장)
+          # --min-instances=1: cold start cascade 방지 (cron 발화 시 publish stall 차단)
+          # 비용 영향: idle 1 vCPU ≈ $5/월 (수용 가능)
           flags: >-
             --no-allow-unauthenticated
             --memory=1Gi --cpu=1
-            --min-instances=0 --max-instances=3
+            --min-instances=1 --max-instances=3
             --port=8080 --timeout=600
-            --cpu-throttling
+            --no-cpu-throttling
             --service-account=qjs-data-engine@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
           env_vars: |
             PUBSUB_MODE=push

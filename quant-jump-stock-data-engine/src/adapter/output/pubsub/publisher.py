@@ -50,7 +50,14 @@ class PubSubPublisherAdapter:
 
     def publish(self, event_type: str, data: Dict[str, Any]) -> None:
         """
-        이벤트 발행
+        이벤트 발행.
+
+        타임아웃 처리 (2026-05-15 21:07 사고 후 정착):
+          - publish ack 대기 5초 (이전 30초 → cold start cascade 위험 차단)
+          - TimeoutError 만 흡수: SDK 가 background 에서 retry 계속 (at-least-once),
+            비즈니스 핸들러는 데이터 처리 완료 직후 호출이므로 raise 하면 false alarm.
+            대신 Slack 운영 채널로 직접 알림 (rate-limit 적용).
+          - 그 외 예외 (404/IAM/serialize) 는 raise → push_handler 글로벌 핸들러 알림.
 
         Args:
             event_type: 이벤트 타입 (토픽 결정에 사용)
@@ -72,13 +79,36 @@ class PubSubPublisherAdapter:
             topic_path = publisher.topic_path(self._project_id, pubsub_topic)
 
             future = publisher.publish(topic_path, message)
-            future.result(timeout=30)  # 발행 완료 대기 (30초 타임아웃)
+            future.result(timeout=5)  # 5초 fail-fast (이전 30초)
 
             logger.debug(f"Event published: {event_type} -> {pubsub_topic}")
+
+        except TimeoutError:
+            logger.warning(
+                f"Pub/Sub publish timeout (>5s) for {event_type} → {pubsub_topic}. "
+                f"SDK background retry 진행 중 (at-least-once eventual delivery 신뢰)."
+            )
+            self._notify_publish_timeout(event_type, pubsub_topic, event["eventId"])
+            # 흡수 — 비즈니스 핸들러는 이미 데이터 처리 완료 상태
 
         except Exception as e:
             logger.error(f"Failed to publish event {event_type}: {e}")
             raise
+
+    def _notify_publish_timeout(self, event_type: str, pubsub_topic: str, event_id: str) -> None:
+        """publish timeout 시 Slack 에러 채널 알림. 알림 자체 실패는 흡수."""
+        try:
+            from services.slack_notifier import SlackNotifier
+            SlackNotifier.notify_handler_error(
+                topic=f"PubSubPublisher::{pubsub_topic}",
+                error=f"event_type={event_type} publish ack timeout (>5s). "
+                      f"SDK background retry 진행 중 — eventual delivery 가능.",
+                error_type="PublishTimeout",
+                request_id=event_id,
+                retryable=False,
+            )
+        except Exception as notify_err:
+            logger.warning(f"Publish timeout 알림 전송 실패 (흡수): {notify_err}")
 
     def _resolve_topic(self, event_type: str) -> str:
         """
