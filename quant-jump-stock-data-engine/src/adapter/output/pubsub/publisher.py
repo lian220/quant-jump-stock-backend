@@ -84,31 +84,21 @@ class PubSubPublisherAdapter:
             logger.debug(f"Event published: {event_type} -> {pubsub_topic}")
 
         except TimeoutError:
+            # 2026-05-18 사용자 결정: publish timeout Slack 알림 제거.
+            # SDK at-least-once retry 가 background 에서 진행되므로 메시지 누락 가능성 낮음.
+            # 매 cron 발화마다 N개 토픽 publish timeout = N개 Slack 노이즈 → 차단.
+            # 진짜 메시지 누락은 (1) 구독자 측 수신 카운터 metric (별도 task)
+            # (2) 추천 산출 직전 pre-flight gate 로 감지.
             logger.warning(
                 f"Pub/Sub publish timeout (>5s) for {event_type} → {pubsub_topic}. "
-                f"SDK background retry 진행 중 (at-least-once eventual delivery 신뢰)."
+                f"SDK background retry 진행 중 (at-least-once eventual delivery 신뢰). "
+                f"event_id={event['eventId']}"
             )
-            self._notify_publish_timeout(event_type, pubsub_topic, event["eventId"])
             # 흡수 — 비즈니스 핸들러는 이미 데이터 처리 완료 상태
 
         except Exception as e:
             logger.error(f"Failed to publish event {event_type}: {e}")
             raise
-
-    def _notify_publish_timeout(self, event_type: str, pubsub_topic: str, event_id: str) -> None:
-        """publish timeout 시 Slack 에러 채널 알림. 알림 자체 실패는 흡수."""
-        try:
-            from services.slack_notifier import SlackNotifier
-            SlackNotifier.notify_handler_error(
-                topic=f"PubSubPublisher::{pubsub_topic}",
-                error=f"event_type={event_type} publish ack timeout (>5s). "
-                      f"SDK background retry 진행 중 — eventual delivery 가능.",
-                error_type="PublishTimeout",
-                request_id=event_id,
-                retryable=False,
-            )
-        except Exception as notify_err:
-            logger.warning(f"Publish timeout 알림 전송 실패 (흡수): {notify_err}")
 
     def _resolve_topic(self, event_type: str) -> str:
         """
