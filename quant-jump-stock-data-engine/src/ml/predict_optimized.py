@@ -1530,15 +1530,25 @@ else:
 
 # 결과를 MongoDB에 저장
 def save_predictions_to_db(result_df):
+    """stock_predictions 저장.
+
+    2026-05-18 사고 후 silent failure → raise 로 전환 (backend 권고):
+      - 입력 비어있음 / DB 없음 / bulk_write 전부 실패 시 raise
+      - Job SUCCEEDED 인데 데이터 0건인 cascade 차단
+    """
     try:
-        # 입력 데이터 검증
+        # 입력 데이터 검증 — raise 강제
         if result_df is None or len(result_df) == 0:
-            print("경고: 저장할 데이터가 없습니다.")
-            return False
+            raise RuntimeError(
+                "save_predictions_to_db: 입력 result_df 가 비어있음 "
+                "(상위 main 흐름이 빈 결과 전달 — Vertex AI 추론 실패 가능)"
+            )
 
         if db is None:
-            print("❌ MongoDB 연결이 없습니다. 저장을 건너뜁니다.")
-            return False
+            raise RuntimeError(
+                "save_predictions_to_db: MongoDB 연결 없음 "
+                "(인증/네트워크 실패 — Job SUCCEEDED 마킹 차단)"
+            )
 
         # 저장 전 최종 검증
         print("\n=== 저장 전 최종 검증 ===")
@@ -1760,57 +1770,74 @@ def save_predictions_to_db(result_df):
                         print(f"⚠️ {date_str} 날짜 처리 실패: {str(e)}")
                 
                 # Bulk write 실행 (배치 크기 증가로 성능 최적화)
-                if stock_predictions_updates:
-                    # 배치 크기를 5000으로 증가하여 네트워크 왕복 횟수 감소 (성능 최적화)
-                    batch_size = 5000
-                    total_processed = 0
-                    
-                    for i in range(0, len(stock_predictions_updates), batch_size):
-                        batch = stock_predictions_updates[i:i + batch_size]
-                        try:
-                            result = db.stock_predictions.bulk_write(batch, ordered=False)
-                            total_processed += result.upserted_count + result.modified_count
-                            print(f"  배치 {i//batch_size + 1}: {len(batch)}개 처리 완료 (총 {total_processed}개)")
-                        except Exception as e:
-                            print(f"⚠️ stock_predictions batch {i//batch_size + 1} bulk_write 실패: {str(e)}")
-                            # 실패 시 개별 업데이트로 fallback
-                            # 실패한 배치에 해당하는 원본 데이터로 재시도
-                            batch_data = stock_predictions_data[i:i + batch_size]
+                # 2026-05-18: stock_predictions_updates 비어있으면 raise (silent skip 차단)
+                if not stock_predictions_updates:
+                    raise RuntimeError(
+                        f"save_predictions_to_db: stock_predictions_updates 비어있음 "
+                        f"(records={len(records)}, 매핑 실패 또는 모든 ticker fallback 실패)"
+                    )
 
-                            for date_obj, ticker, pred_data in batch_data:
-                                try:
-                                    db.stock_predictions.update_one(
-                                        {"date": date_obj, "ticker": ticker},
-                                        {
-                                            "$set": {
-                                                "predicted_price": pred_data.get('predicted_price'),
-                                                "actual_price": pred_data.get('actual_price'),
-                                                "forecast_horizon": 14,
-                                                "updated_at": now_utc
-                                            },
-                                            "$setOnInsert": {
-                                                "created_at": now_utc
-                                            }
+                # 배치 크기를 5000으로 증가하여 네트워크 왕복 횟수 감소 (성능 최적화)
+                batch_size = 5000
+                total_processed = 0
+
+                for i in range(0, len(stock_predictions_updates), batch_size):
+                    batch = stock_predictions_updates[i:i + batch_size]
+                    try:
+                        result = db.stock_predictions.bulk_write(batch, ordered=False)
+                        total_processed += result.upserted_count + result.modified_count
+                        print(f"  배치 {i//batch_size + 1}: {len(batch)}개 처리 완료 (총 {total_processed}개)")
+                    except Exception as e:
+                        print(f"⚠️ stock_predictions batch {i//batch_size + 1} bulk_write 실패: {str(e)}")
+                        # 실패 시 개별 업데이트로 fallback
+                        batch_data = stock_predictions_data[i:i + batch_size]
+
+                        for date_obj, ticker, pred_data in batch_data:
+                            try:
+                                db.stock_predictions.update_one(
+                                    {"date": date_obj, "ticker": ticker},
+                                    {
+                                        "$set": {
+                                            "predicted_price": pred_data.get('predicted_price'),
+                                            "actual_price": pred_data.get('actual_price'),
+                                            "forecast_horizon": 14,
+                                            "updated_at": now_utc
                                         },
-                                        upsert=True
-                                    )
-                                except Exception as fallback_e:
-                                    print(f"⚠️ {ticker} ({date_obj.strftime('%Y-%m-%d')}) Fallback 업데이트 실패: {str(fallback_e)}")
-                    
-                    print(f"✅ MongoDB stock_predictions 컬렉션에 총 {total_processed}개 문서 저장 완료")
-                
+                                        "$setOnInsert": {
+                                            "created_at": now_utc
+                                        }
+                                    },
+                                    upsert=True
+                                )
+                                total_processed += 1
+                            except Exception as fallback_e:
+                                print(f"⚠️ {ticker} ({date_obj.strftime('%Y-%m-%d')}) Fallback 업데이트 실패: {str(fallback_e)}")
+
+                print(f"✅ MongoDB stock_predictions 컬렉션에 총 {total_processed}개 문서 저장 완료")
+
+                # 2026-05-18: 모든 저장 시도가 0건이면 raise (Job SUCCEEDED 거짓 마킹 차단)
+                if total_processed == 0:
+                    raise RuntimeError(
+                        f"save_predictions_to_db: 저장된 문서 0건 "
+                        f"(시도 {len(stock_predictions_updates)}건 — bulk_write + fallback 전체 실패)"
+                    )
+
+            except RuntimeError:
+                raise  # silent failure 차단 raise 는 그대로 전파
             except Exception as mongo_error:
                 print(f"⚠️ MongoDB 저장 중 오류 발생: {str(mongo_error)}")
                 import traceback
                 traceback.print_exc()
-                return False
-        
+                raise  # 2026-05-18: silent return False → raise
+
         return True
     except Exception as e:
+        # 2026-05-18: 모든 예외 raise (silent return False 제거)
+        # Job SUCCEEDED 마킹 차단 — 운영자가 실패 인지하도록.
         print(f"데이터베이스 저장 오류: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        raise
 
 # [중요] 예측 결과를 predicted_stocks 테이블에 저장
 # 이 부분이 실행되어야 predicted_stocks 테이블에 데이터가 생성됩니다!
@@ -2031,15 +2058,26 @@ def get_predictions_from_db(chunk_size=1000):
 
 # 결과를 MongoDB에 저장
 def save_analysis_to_db(result_df):
+    """stock_analysis_results 저장 — sync_service 가 메인으로 사용하는 컬렉션.
+
+    2026-05-18 사고 후 silent failure → raise (backend 권고):
+      - sync_service.py:115 가 stock_analysis_results 우선 사용
+      - 본 함수가 silent 실패 시 sync 가 5/13 분 fallback 사용 → 며칠째 stale 데이터
+      - Job SUCCEEDED 인데 데이터 0건인 cascade 차단
+    """
     try:
-        # 입력 데이터 검증
+        # 입력 데이터 검증 — raise 강제
         if result_df is None or len(result_df) == 0:
-            print("경고: 저장할 분석 결과 데이터가 없습니다.")
-            return False
-        
+            raise RuntimeError(
+                "save_analysis_to_db: 입력 result_df 가 비어있음 "
+                "(상위 main 흐름이 빈 분석 결과 전달)"
+            )
+
         if db is None:
-            print("❌ MongoDB 연결이 없습니다. 저장을 건너뜁니다.")
-            return False
+            raise RuntimeError(
+                "save_analysis_to_db: MongoDB 연결 없음 "
+                "(Job SUCCEEDED 마킹 차단)"
+            )
         
         # NaN/inf 값 처리
         result_df_clean = result_df.copy()
@@ -2169,28 +2207,37 @@ def save_analysis_to_db(result_df):
                     if skipped_stocks:
                         print(f"   건너뛴 종목 목록: {', '.join(skipped_stocks[:10])}" + (f" 외 {len(skipped_stocks) - 10}개" if len(skipped_stocks) > 10 else ""))
                 
-                if stock_analysis_updates:
-                    # 배치 크기를 5000으로 증가하여 네트워크 왕복 횟수 감소 (성능 최적화)
-                    batch_size = 5000
-                    total_processed = 0
-                    
-                    for i in range(0, len(stock_analysis_updates), batch_size):
-                        batch = stock_analysis_updates[i:i + batch_size]
-                        try:
-                            result = db.stock_analysis_results.bulk_write(batch, ordered=False)
-                            total_processed += result.upserted_count + result.modified_count
-                            print(f"  배치 {i//batch_size + 1}: {len(batch)}개 처리 완료 (총 {total_processed}개)")
-                        except Exception as e:
-                            print(f"⚠️ stock_analysis_results batch {i//batch_size + 1} bulk_write 실패: {str(e)}")
-                            # 배치 실패는 로그만 남기고 계속 진행
-                            # UpdateOne의 private attribute 접근을 피하기 위해 fallback 생략
-                            print(f"⚠️ 배치 {i//batch_size + 1} ({len(batch)}개)의 일부 또는 전체가 실패했습니다.")
-                            print("   → MongoDB 연결 상태를 확인하거나 수동으로 재시도가 필요할 수 있습니다.")
-                    
-                    print(f"✅ MongoDB stock_analysis_results 컬렉션에 총 {total_processed}개 문서 저장 완료")
-                else:
-                    print(f"⚠️ stock_analysis_updates가 비어있습니다. 저장할 데이터가 없습니다.")
-                
+                # 2026-05-18: stock_analysis_updates 비어있으면 raise (silent skip 차단)
+                if not stock_analysis_updates:
+                    raise RuntimeError(
+                        f"save_analysis_to_db: stock_analysis_updates 비어있음 "
+                        f"(records={len(records)}, 매핑 실패 또는 모든 ticker 분석 실패)"
+                    )
+
+                # 배치 크기를 5000으로 증가하여 네트워크 왕복 횟수 감소 (성능 최적화)
+                batch_size = 5000
+                total_processed = 0
+                batch_failures = 0
+
+                for i in range(0, len(stock_analysis_updates), batch_size):
+                    batch = stock_analysis_updates[i:i + batch_size]
+                    try:
+                        result = db.stock_analysis_results.bulk_write(batch, ordered=False)
+                        total_processed += result.upserted_count + result.modified_count
+                        print(f"  배치 {i//batch_size + 1}: {len(batch)}개 처리 완료 (총 {total_processed}개)")
+                    except Exception as e:
+                        batch_failures += 1
+                        print(f"⚠️ stock_analysis_results batch {i//batch_size + 1} bulk_write 실패: {str(e)}")
+
+                print(f"✅ MongoDB stock_analysis_results 컬렉션에 총 {total_processed}개 문서 저장 완료")
+
+                # 2026-05-18: 모든 저장 시도가 0건이면 raise (Job SUCCEEDED 거짓 마킹 차단)
+                if total_processed == 0:
+                    raise RuntimeError(
+                        f"save_analysis_to_db: 저장된 문서 0건 "
+                        f"(시도 {len(stock_analysis_updates)}건, batch 실패 {batch_failures}건 — 전체 bulk_write 실패)"
+                    )
+
                 # daily_stock_data 업데이트
                 if analysis_data:
                     try:
@@ -2206,20 +2253,24 @@ def save_analysis_to_db(result_df):
                         )
                         print(f"✅ MongoDB daily_stock_data.analysis 저장 완료: {len(analysis_data)}개 종목")
                     except Exception as e:
+                        # daily_stock_data 는 보조 — 실패해도 raise X (메인 stock_analysis_results 는 이미 저장됨)
                         print(f"⚠️ daily_stock_data.analysis 저장 실패: {str(e)}")
-                
+
+            except RuntimeError:
+                raise  # silent failure 차단 raise 는 그대로 전파
             except Exception as mongo_error:
                 print(f"⚠️ MongoDB 저장 중 오류 발생: {str(mongo_error)}")
                 import traceback
                 traceback.print_exc()
-                return False
+                raise  # 2026-05-18: silent return False → raise
         
         return True
     except Exception as e:
+        # 2026-05-18: 모든 예외 raise (silent return False 제거)
         print(f"데이터베이스 저장 오류: {e}")
         import traceback
         traceback.print_exc()
-        return False
+        raise
 
 ######################
 # (1) Evaluation Function
