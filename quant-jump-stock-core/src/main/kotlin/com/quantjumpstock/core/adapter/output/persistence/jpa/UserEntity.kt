@@ -51,8 +51,9 @@ class UserEntity(
     @OneToOne(mappedBy = "user", cascade = [CascadeType.ALL], fetch = FetchType.LAZY)
     var accountBalance: AccountBalanceEntity? = null,
 
-    @OneToOne(mappedBy = "user", cascade = [CascadeType.ALL], fetch = FetchType.LAZY)
-    var kisAccount: UserKisAccountEntity? = null,
+    // UserKisAccount 는 A+ 모델 (단일 활성 + 7일 휴지통) 도입으로 사용자당 N row 보유 가능.
+    // 활성/휴지통 row 조회는 UserKisAccountRepository 의 명시적 메서드를 통해서만 한다.
+    // 따라서 UserEntity 의 역방향 필드 제거 (사용처 없었음).
 
     @OneToMany(mappedBy = "user", cascade = [CascadeType.ALL], fetch = FetchType.LAZY)
     val trades: MutableList<TradeEntity> = mutableListOf(),

@@ -7,11 +7,14 @@ import com.quantjumpstock.core.adapter.output.persistence.jpa.KisAccountType as 
 import com.quantjumpstock.core.domain.model.user.KisAccountType
 import com.quantjumpstock.core.domain.model.user.UserKisAccount
 import com.quantjumpstock.core.domain.port.output.UserKisAccountRepository
+import java.time.LocalDateTime
 import org.springframework.stereotype.Component
 
 /**
  * UserKisAccount Persistence Adapter (Output Adapter)
  * UserKisAccountRepository 인터페이스를 구현하여 JPA와 연동합니다.
+ *
+ * A+ 모델: 활성/휴지통 row 모두 영속 가능. 일반 조회는 활성만 반환.
  */
 @Component
 class UserKisAccountPersistenceAdapter(
@@ -20,8 +23,11 @@ class UserKisAccountPersistenceAdapter(
 ) : UserKisAccountRepository {
 
     override fun save(kisAccount: UserKisAccount): UserKisAccount {
+        // saveAndFlush 사용 이유: A+ 모델에서 softDelete + 새 row INSERT 가 동일 트랜잭션 안에
+        // 일어날 때, partial unique index `(user_id) WHERE deleted_at IS NULL` 가 잠시라도
+        // 활성 row 가 두 개로 보이면 위반된다. flush 로 SQL 순서를 강제하여 충돌 방지.
         val entity = toEntity(kisAccount)
-        val saved = kisAccountJpaRepository.save(entity)
+        val saved = kisAccountJpaRepository.saveAndFlush(entity)
         return toDomain(saved)
     }
 
@@ -30,15 +36,23 @@ class UserKisAccountPersistenceAdapter(
     }
 
     override fun findByUserId(userId: Long): UserKisAccount? {
-        return kisAccountJpaRepository.findByUserId(userId).orElse(null)?.let { toDomain(it) }
+        return kisAccountJpaRepository.findActiveByUserId(userId).orElse(null)?.let { toDomain(it) }
     }
 
     override fun findByUserUserId(userId: String): UserKisAccount? {
-        return kisAccountJpaRepository.findByUserUserId(userId).orElse(null)?.let { toDomain(it) }
+        return kisAccountJpaRepository.findActiveByUserUserId(userId).orElse(null)?.let { toDomain(it) }
     }
 
     override fun findActiveByUserUserId(userId: String): UserKisAccount? {
         return kisAccountJpaRepository.findActiveByUserUserId(userId).orElse(null)?.let { toDomain(it) }
+    }
+
+    override fun findTrashedByUserUserId(userId: String): UserKisAccount? {
+        return kisAccountJpaRepository.findTrashedByUserUserId(userId).firstOrNull()?.let { toDomain(it) }
+    }
+
+    override fun findExpiredTrashed(thresholdAt: LocalDateTime): List<UserKisAccount> {
+        return kisAccountJpaRepository.findExpiredTrashed(thresholdAt).map { toDomain(it) }
     }
 
     override fun findByUserIdAndAccountType(userId: Long, accountType: KisAccountType): UserKisAccount? {
@@ -48,10 +62,12 @@ class UserKisAccountPersistenceAdapter(
 
     override fun deleteById(id: Long) {
         kisAccountJpaRepository.deleteById(id)
+        // evictTrashIfPresent → softDelete → insert 순서에서 partial unique 위반 방지.
+        kisAccountJpaRepository.flush()
     }
 
     override fun existsByUserId(userId: Long): Boolean {
-        return kisAccountJpaRepository.findByUserId(userId).isPresent
+        return kisAccountJpaRepository.findActiveByUserId(userId).isPresent
     }
 
     // ===== Mapping Functions =====
@@ -69,7 +85,8 @@ class UserKisAccountPersistenceAdapter(
             enabled = entity.enabled,
             lastUsedAt = entity.lastUsedAt,
             createdAt = entity.createdAt,
-            updatedAt = entity.updatedAt
+            updatedAt = entity.updatedAt,
+            deletedAt = entity.deletedAt
         )
     }
 
@@ -89,7 +106,8 @@ class UserKisAccountPersistenceAdapter(
             enabled = domain.enabled,
             lastUsedAt = domain.lastUsedAt,
             createdAt = domain.createdAt,
-            updatedAt = domain.updatedAt
+            updatedAt = domain.updatedAt,
+            deletedAt = domain.deletedAt
         )
     }
 

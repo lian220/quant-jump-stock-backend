@@ -16,8 +16,11 @@ class UserKisAccountEntity(
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,
 
-    @OneToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "user_id", nullable = false, unique = true)
+    // user_id 의 unique 제약은 partial unique index (V61) 가 담당:
+    // (user_id) WHERE deleted_at IS NULL → 활성 row 1개 강제, 휴지통 row 공존 허용.
+    // 따라서 JPA 레벨에서 unique=true 를 걸면 schema validate 모드와 충돌하므로 제거.
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", nullable = false)
     val user: UserEntity,
 
     @Column(name = "app_key", nullable = false, length = 100)
@@ -25,7 +28,7 @@ class UserKisAccountEntity(
 
     /**
      * 암호화된 App Secret (V1: AES/ECB - legacy)
-     * Phase 1A PRE-요구사항 P3: V61 backfill 후 V62에서 제거 예정.
+     * Phase 1A PRE-요구사항 P3: V62 backfill 후 V63에서 제거 예정.
      */
     @Column(name = "app_secret_encrypted", nullable = false, length = 500)
     val appSecretEncrypted: String,
@@ -76,7 +79,15 @@ class UserKisAccountEntity(
 
     @UpdateTimestamp
     @Column(name = "updated_at")
-    var updatedAt: LocalDateTime = LocalDateTime.now()
+    var updatedAt: LocalDateTime = LocalDateTime.now(),
+
+    /**
+     * Soft delete 휴지통 마커.
+     * NULL = 활성 (partial unique 가 사용자당 1개 강제),
+     * NOT NULL = 휴지통 row (7일 경과 시 Cloud Scheduler 가 hard delete).
+     */
+    @Column(name = "deleted_at")
+    var deletedAt: LocalDateTime? = null
 ) {
     /**
      * 복호화된 App Secret 반환

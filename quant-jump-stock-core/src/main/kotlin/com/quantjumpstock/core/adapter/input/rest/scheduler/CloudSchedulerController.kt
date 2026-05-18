@@ -3,6 +3,7 @@ package com.quantjumpstock.core.adapter.input.rest.scheduler
 import com.quantjumpstock.core.application.backtest.BacktestCleanupService
 import com.quantjumpstock.core.application.backtest.CanonicalBacktestService
 import com.quantjumpstock.core.application.trading.AutoTradingService
+import com.quantjumpstock.core.application.user.UserKisAccountService
 import org.slf4j.LoggerFactory
 import org.springframework.cache.CacheManager
 import org.springframework.http.HttpStatus
@@ -27,6 +28,7 @@ class CloudSchedulerController(
     private val autoTradingService: AutoTradingService,
     private val canonicalBacktestService: CanonicalBacktestService,
     private val backtestCleanupService: BacktestCleanupService,
+    private val userKisAccountService: UserKisAccountService,
     private val cacheManager: CacheManager
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -166,6 +168,31 @@ class CloudSchedulerController(
             logger.error("백테스트 데이터 정리 실행 중 오류", e)
             ResponseEntity.internalServerError()
                 .body(mapOf("status" to "error", "job" to "backtest-cleanup"))
+        }
+    }
+
+    /**
+     * KIS 계좌 휴지통 정리 (Cloud Scheduler: 03:30 KST daily).
+     * `deleted_at + 7일` 경과 row 를 hard delete.
+     */
+    @PostMapping("/kis-account-trash-cleanup")
+    fun kisAccountTrashCleanup(): ResponseEntity<Map<String, Any>> {
+        logger.info("=".repeat(80))
+        logger.info("KIS 계좌 휴지통 정리 시작 (Cloud Scheduler)")
+        logger.info("=".repeat(80))
+
+        return try {
+            val deleted = userKisAccountService.hardDeleteExpired()
+            logger.info("KIS 계좌 휴지통 정리 완료: deleted=$deleted rows")
+            ResponseEntity.ok(mapOf(
+                "status" to "success",
+                "job" to "kis-account-trash-cleanup",
+                "deletedCount" to deleted
+            ))
+        } catch (e: Exception) {
+            logger.error("KIS 계좌 휴지통 정리 실행 중 오류", e)
+            ResponseEntity.internalServerError()
+                .body(mapOf("status" to "error", "job" to "kis-account-trash-cleanup"))
         }
     }
 
