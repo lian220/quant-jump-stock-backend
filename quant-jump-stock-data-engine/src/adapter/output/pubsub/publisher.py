@@ -21,8 +21,9 @@ Pub/Sub Publisher Adapter
 import base64
 import logging
 import json
+import os
 import uuid
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from datetime import datetime, timezone
 
 import google.auth
@@ -33,7 +34,7 @@ from config.settings import Settings
 
 logger = logging.getLogger(__name__)
 
-_PUBSUB_API_BASE = "https://pubsub.googleapis.com/v1"
+_PUBSUB_API_BASE_PROD = "https://pubsub.googleapis.com/v1"
 _DEFAULT_TIMEOUT = 10  # HTTPS publish ack 대기
 
 
@@ -60,22 +61,35 @@ class PubSubPublisherAdapter:
     def __init__(self, settings: Settings):
         self.settings = settings
         self._project_id = settings.pubsub.project_id
-        self._session: Optional[AuthorizedSession] = None
+        self._session: Optional[Union[AuthorizedSession, requests.Session]] = None
+        # Emulator 환경 자동 감지 (로컬 docker-compose / 단위 테스트 / Pub/Sub emulator)
+        self._emulator_host = os.environ.get("PUBSUB_EMULATOR_HOST", "").strip()
+        self._api_base = (
+            f"http://{self._emulator_host}/v1"
+            if self._emulator_host
+            else _PUBSUB_API_BASE_PROD
+        )
 
-    def _get_session(self) -> AuthorizedSession:
-        """HTTPS publish용 인증 세션 (Lazy init).
+    def _get_session(self) -> Union[AuthorizedSession, requests.Session]:
+        """HTTPS publish용 세션 (Lazy init).
 
-        google.auth.default() 가 Cloud Run metadata server 또는 ADC에서 credentials 자동 발견.
-        AuthorizedSession은 토큰 자동 갱신 + requests 호환.
+        - Emulator: 인증 없는 requests.Session — 로컬 docker-compose 환경
+        - Production: AuthorizedSession (ADC 토큰 자동 갱신) — Cloud Run SA
         """
         if self._session is None:
-            credentials, _ = google.auth.default(
-                scopes=["https://www.googleapis.com/auth/pubsub"]
-            )
-            self._session = AuthorizedSession(credentials)
-            logger.info(
-                f"Pub/Sub REST session created: project={self._project_id}"
-            )
+            if self._emulator_host:
+                self._session = requests.Session()
+                logger.info(
+                    f"Pub/Sub REST session (emulator): host={self._emulator_host}"
+                )
+            else:
+                credentials, _ = google.auth.default(
+                    scopes=["https://www.googleapis.com/auth/pubsub"]
+                )
+                self._session = AuthorizedSession(credentials)
+                logger.info(
+                    f"Pub/Sub REST session (prod): project={self._project_id}"
+                )
         return self._session
 
     def publish(self, event_type: str, data: Dict[str, Any]) -> None:
@@ -107,7 +121,7 @@ class PubSubPublisherAdapter:
 
         message_bytes = json.dumps(event, default=_json_serializer).encode('utf-8')
         encoded = base64.b64encode(message_bytes).decode('ascii')
-        url = f"{_PUBSUB_API_BASE}/projects/{self._project_id}/topics/{pubsub_topic}:publish"
+        url = f"{self._api_base}/projects/{self._project_id}/topics/{pubsub_topic}:publish"
         body = {"messages": [{"data": encoded}]}
 
         try:
