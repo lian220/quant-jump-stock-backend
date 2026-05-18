@@ -282,6 +282,53 @@ class SlackNotifier:
         )
 
     # ============================================================
+    # Pre-flight 데이터 결손 알림 (2026-05-15 사고 후속)
+    # ============================================================
+
+    @staticmethod
+    def notify_recommendation_data_gap(
+        analysis_date: str,
+        total_analyzed: int,
+        ai_prediction_count: int,
+        sentiment_count: int,
+        tech_count: int,
+    ):
+        """
+        추천 산출 입력 데이터 결손 시 운영자 채널 알림.
+
+        사용자 분석 채널 대신 에러 채널로 발송 — "0개 추천" 평문 노출 차단.
+        TALEB 권고: 0개 추천 → 사용자 매수 보류 → 종목 급등 시 책임론 위험.
+        MEADOWS leverage: 메시지 정책이 아니라 pre-flight gate가 진짜 개입점.
+        """
+        text = "⚠️ 추천 산출 보류 — 입력 데이터 결손"
+        attachments = [
+            {
+                "color": "#ffc107",
+                "title": f"분석일 {analysis_date} 추천 송출 보류",
+                "text": (
+                    "AI 예측 또는 분석 입력이 결손되어 사용자 채널 송출을 차단했습니다. "
+                    "데이터 파이프라인 복구 후 재처리 필요."
+                ),
+                "fields": [
+                    {"title": "분석일", "value": analysis_date, "short": True},
+                    {"title": "총 분석", "value": f"{total_analyzed}개", "short": True},
+                    {"title": "AI 예측", "value": f"{ai_prediction_count}개", "short": True},
+                    {"title": "감정 분석", "value": f"{sentiment_count}개", "short": True},
+                    {"title": "기술 분석", "value": f"{tech_count}개", "short": True},
+                    {"title": "조치", "value": "파이프라인 점검 + 데이터 백필", "short": False},
+                ],
+                "footer": "Quantiq Data Engine — pre-flight gate",
+                "ts": int(datetime.now(KST).timestamp())
+            }
+        ]
+        SlackNotifier._post_message(
+            channel=SlackNotifier._get_error_channel(),
+            webhook_url=SlackNotifier._get_error_webhook(),
+            text=text,
+            attachments=attachments,
+        )
+
+    # ============================================================
     # Pub/Sub 핸들러 공통 에러 알림
     # ============================================================
 
