@@ -17,7 +17,20 @@ import atexit
 import json
 from datetime import datetime, timedelta, timezone, date
 from sklearn.metrics import mean_absolute_error, mean_squared_error
-from core.timezone import latest_complete_bar_date
+import pytz
+
+# core.timezone inline 복사 — Vertex AI Job 패키지가 단일 파일 (predict_optimized.py)
+# 만 tar.gz 로 포장하므로 외부 모듈 import 가 불가. 본 함수 한 줄에서만 사용 (line ~1325).
+_ET_BAR = pytz.timezone("America/New_York")
+_MARKET_CLOSE_BUFFER_HOUR = 17  # 4PM 장마감 + 1시간 버퍼
+
+def latest_complete_bar_date() -> date:
+    """마지막 완성된 미국 거래일 바 날짜 (5PM ET 기준 + 주말 금요일 롤백)."""
+    now = datetime.now(_ET_BAR)
+    candidate = now.date() if now.hour >= _MARKET_CLOSE_BUFFER_HOUR else (now - timedelta(days=1)).date()
+    while candidate.weekday() >= 5:
+        candidate -= timedelta(days=1)
+    return candidate
 
 # ============================================
 # FINE_TUNE_MODE / TARGET_DATE 자체 판단
