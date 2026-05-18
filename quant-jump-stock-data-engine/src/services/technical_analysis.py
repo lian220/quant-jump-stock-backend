@@ -144,8 +144,14 @@ class TechnicalAnalysisService:
                 sma_score = 1.0 if golden_cross else 0.0
                 recommendation_score = (sma_score * 0.4) + (rsi_score * 0.3) + (macd_score * 0.3)
 
+                # 2026-05-18: date 를 ISODate(datetime) 으로 저장.
+                # 이전 string 저장 → sync_service.py 가 Date 타입 query 할 때 만성적
+                # "can't convert from BSON type string to Date" 에러 발생.
+                # 마이그레이션 스크립트: scripts/migrate_recommendations_date.py
+                date_dt = datetime(latest_date.year, latest_date.month, latest_date.day)
+
                 rec_data = {
-                    "date": latest_date.strftime("%Y-%m-%d"),
+                    "date": date_dt,
                     "ticker": ticker,
                     "stock_name": ticker_to_name.get(ticker, ticker),
                     "technical_indicators": {
@@ -162,9 +168,9 @@ class TechnicalAnalysisService:
                     "updated_at": datetime.utcnow()
                 }
 
-                # Save to MongoDB (stock_recommendations)
+                # Save to MongoDB (stock_recommendations) — date ISODate 기반 idempotent upsert
                 db.stock_recommendations.update_one(
-                    {"ticker": ticker, "date": rec_data["date"]},
+                    {"ticker": ticker, "date": date_dt},
                     {"$set": rec_data},
                     upsert=True
                 )
