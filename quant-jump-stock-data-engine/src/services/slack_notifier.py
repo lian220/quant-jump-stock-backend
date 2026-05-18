@@ -159,7 +159,7 @@ class SlackNotifier:
 
     @staticmethod
     def _get_error_webhook() -> str:
-        return getattr(settings, 'SLACK_WEBHOOK_URL_ERROR', '') or settings.SLACK_WEBHOOK_URL
+        return getattr(settings, 'SLACK_WEBHOOK_URL_ERROR', '')
 
     @staticmethod
     def _get_analysis_webhook() -> str:

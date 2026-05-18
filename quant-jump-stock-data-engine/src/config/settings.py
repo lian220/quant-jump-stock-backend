@@ -51,11 +51,11 @@ class DatabaseSettings(BaseSettings):
     model_config = SettingsConfigDict(env_file=_env_files, env_prefix="", extra="ignore")
 
     # MongoDB
-    mongodb_uri: str = Field(default="mongodb://localhost:27017", alias="MONGODB_URI")
+    mongodb_uri: str = Field(default="", alias="MONGODB_URI")
     mongodb_db_name: str = Field(default="stock_trading", alias="MONGODB_DB_NAME")
 
     # PostgreSQL
-    postgres_host: str = Field(default="localhost", alias="DB_HOST")
+    postgres_host: str = Field(default="", alias="DB_HOST")
     postgres_port: int = Field(default=5432, alias="DB_PORT")
     postgres_db: str = Field(default="quantiq", alias="DB_NAME")
     postgres_user: str = Field(default="postgres", alias="DB_USER")
@@ -66,7 +66,7 @@ class PubSubSettings(BaseSettings):
     """Pub/Sub 설정"""
     model_config = SettingsConfigDict(env_file=_env_files, env_prefix="", extra="ignore")
 
-    project_id: str = Field(default="quantiq-local", alias="PUBSUB_PROJECT_ID")
+    project_id: str = Field(default="", alias="PUBSUB_PROJECT_ID")
     emulator_host: str = Field(default="", alias="PUBSUB_EMULATOR_HOST")
     mode: str = Field(default="pull", alias="PUBSUB_MODE")  # pull | push
 
@@ -176,7 +176,7 @@ class CoreApiSettings(BaseSettings):
     """Core API 서버 설정 (캐시 eviction 등 내부 통신)"""
     model_config = SettingsConfigDict(env_file=_env_files, env_prefix="", extra="ignore")
 
-    base_url: str = Field(default="http://localhost:10010", alias="CORE_API_URL")
+    base_url: str = Field(default="", alias="CORE_API_URL")
 
 
 class Settings(BaseSettings):
