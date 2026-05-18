@@ -2,18 +2,39 @@
 Pub/Sub Publisher Adapter
 
 이벤트를 Google Cloud Pub/Sub으로 발행하는 어댑터.
+
+2026-05-18 사고 우회 — REST API 직접 호출로 전환:
+  - 2026-05-15부터 Cloud Run 컨테이너 안에서 google-cloud-pubsub SDK의
+    gRPC publish가 stall (5~30초 ack 미수신).
+  - 로컬 gcloud → publish 즉시 ack (0.8초). GCP 인프라 자체는 정상.
+  - Cloud Run egress의 HTTPS(Slack, MongoDB)는 정상 → gRPC channel만 문제.
+  - SDK의 `transport='rest'` 옵션은 high-level PublisherClient 미지원이라
+    `google-auth` + `requests` 로 REST API 직접 호출.
+
+진단 근거 — `gcloud logging read` 결과:
+  - 5/13 (image b06472): publish ack 즉시
+  - 5/15+ (image 6b55f7~41fd67): 5~30초 timeout
+  - poetry.lock 무변경 → SDK 버전 동일 → SDK 자체 문제 아님
+  - IAM 변경 0건 → 권한 문제 아님
 """
 
+import base64
 import logging
 import json
 import uuid
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
-from google.cloud import pubsub_v1
+
+import google.auth
+import requests
+from google.auth.transport.requests import AuthorizedSession
 
 from config.settings import Settings
 
 logger = logging.getLogger(__name__)
+
+_PUBSUB_API_BASE = "https://pubsub.googleapis.com/v1"
+_DEFAULT_TIMEOUT = 10  # HTTPS publish ack 대기
 
 
 def _json_serializer(obj):
@@ -39,25 +60,36 @@ class PubSubPublisherAdapter:
     def __init__(self, settings: Settings):
         self.settings = settings
         self._project_id = settings.pubsub.project_id
-        self._publisher: Optional[pubsub_v1.PublisherClient] = None
+        self._session: Optional[AuthorizedSession] = None
 
-    def _get_publisher(self) -> pubsub_v1.PublisherClient:
-        """Publisher 인스턴스 반환 (Lazy init)"""
-        if self._publisher is None:
-            self._publisher = pubsub_v1.PublisherClient()
-            logger.debug(f"Pub/Sub publisher created: {self._project_id}")
-        return self._publisher
+    def _get_session(self) -> AuthorizedSession:
+        """HTTPS publish용 인증 세션 (Lazy init).
+
+        google.auth.default() 가 Cloud Run metadata server 또는 ADC에서 credentials 자동 발견.
+        AuthorizedSession은 토큰 자동 갱신 + requests 호환.
+        """
+        if self._session is None:
+            credentials, _ = google.auth.default(
+                scopes=["https://www.googleapis.com/auth/pubsub"]
+            )
+            self._session = AuthorizedSession(credentials)
+            logger.info(
+                f"Pub/Sub REST session created: project={self._project_id}"
+            )
+        return self._session
 
     def publish(self, event_type: str, data: Dict[str, Any]) -> None:
         """
-        이벤트 발행.
+        이벤트 발행 — REST API 직접 호출 (gRPC 우회).
 
-        타임아웃 처리 (2026-05-15 21:07 사고 후 정착):
-          - publish ack 대기 5초 (이전 30초 → cold start cascade 위험 차단)
-          - TimeoutError 만 흡수: SDK 가 background 에서 retry 계속 (at-least-once),
-            비즈니스 핸들러는 데이터 처리 완료 직후 호출이므로 raise 하면 false alarm.
-            대신 Slack 운영 채널로 직접 알림 (rate-limit 적용).
-          - 그 외 예외 (404/IAM/serialize) 는 raise → push_handler 글로벌 핸들러 알림.
+        흐름:
+          1. POST https://pubsub.googleapis.com/v1/projects/{p}/topics/{t}:publish
+          2. body: {"messages": [{"data": <base64>}]}
+          3. ack 대기 _DEFAULT_TIMEOUT (10초)
+
+        에러 처리:
+          - requests.Timeout / ConnectionError → 흡수 + WARNING (비즈니스 raise 차단)
+          - HTTP 4xx/5xx → raise (404/IAM/serialize 등 즉시 실패)
 
         Args:
             event_type: 이벤트 타입 (토픽 결정에 사용)
@@ -73,42 +105,39 @@ class PubSubPublisherAdapter:
             "payload": data
         }
 
+        message_bytes = json.dumps(event, default=_json_serializer).encode('utf-8')
+        encoded = base64.b64encode(message_bytes).decode('ascii')
+        url = f"{_PUBSUB_API_BASE}/projects/{self._project_id}/topics/{pubsub_topic}:publish"
+        body = {"messages": [{"data": encoded}]}
+
         try:
-            publisher = self._get_publisher()
-            message = json.dumps(event, default=_json_serializer).encode('utf-8')
-            topic_path = publisher.topic_path(self._project_id, pubsub_topic)
-
-            future = publisher.publish(topic_path, message)
-            future.result(timeout=5)  # 5초 fail-fast (이전 30초)
-
-            logger.debug(f"Event published: {event_type} -> {pubsub_topic}")
-
-        except TimeoutError:
-            logger.warning(
-                f"Pub/Sub publish timeout (>5s) for {event_type} → {pubsub_topic}. "
-                f"SDK background retry 진행 중 (at-least-once eventual delivery 신뢰)."
+            session = self._get_session()
+            resp = session.post(url, json=body, timeout=_DEFAULT_TIMEOUT)
+            resp.raise_for_status()
+            message_ids = resp.json().get("messageIds", [])
+            logger.debug(
+                f"Event published (REST): {event_type} → {pubsub_topic} "
+                f"messageIds={message_ids}"
             )
-            self._notify_publish_timeout(event_type, pubsub_topic, event["eventId"])
-            # 흡수 — 비즈니스 핸들러는 이미 데이터 처리 완료 상태
+
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            # 일시적 네트워크 이슈 — 흡수. 비즈니스 핸들러는 이미 데이터 처리 완료 상태.
+            # 진짜 메시지 누락 감지는 pre-flight gate(추천 산출 직전) + 구독자 수신 metric.
+            logger.warning(
+                f"Pub/Sub REST publish 네트워크 이슈 흡수 — {event_type} → {pubsub_topic} "
+                f"event_id={event['eventId']} err={type(e).__name__}: {e}"
+            )
+
+        except requests.exceptions.HTTPError as e:
+            # 404 (토픽 없음) / 403 (IAM) / 400 (페이로드 오류) 등 — raise → push_handler 알림
+            logger.error(
+                f"Failed to publish event {event_type}: HTTP {resp.status_code} {resp.text[:200]}"
+            )
+            raise
 
         except Exception as e:
             logger.error(f"Failed to publish event {event_type}: {e}")
             raise
-
-    def _notify_publish_timeout(self, event_type: str, pubsub_topic: str, event_id: str) -> None:
-        """publish timeout 시 Slack 에러 채널 알림. 알림 자체 실패는 흡수."""
-        try:
-            from services.slack_notifier import SlackNotifier
-            SlackNotifier.notify_handler_error(
-                topic=f"PubSubPublisher::{pubsub_topic}",
-                error=f"event_type={event_type} publish ack timeout (>5s). "
-                      f"SDK background retry 진행 중 — eventual delivery 가능.",
-                error_type="PublishTimeout",
-                request_id=event_id,
-                retryable=False,
-            )
-        except Exception as notify_err:
-            logger.warning(f"Publish timeout 알림 전송 실패 (흡수): {notify_err}")
 
     def _resolve_topic(self, event_type: str) -> str:
         """
@@ -158,11 +187,11 @@ class PubSubPublisherAdapter:
         return topic
 
     def close(self) -> None:
-        """Publisher 종료"""
-        if self._publisher:
-            self._publisher.stop()
-            self._publisher = None
-            logger.info("Pub/Sub publisher closed")
+        """Publisher 세션 종료"""
+        if self._session:
+            self._session.close()
+            self._session = None
+            logger.info("Pub/Sub REST session closed")
 
     def __enter__(self):
         return self
