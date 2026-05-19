@@ -32,7 +32,8 @@ class StrategySubscriptionPersistenceAdapter(
                 val strategyId = entity.strategy.id ?: return@mapNotNull null
                 StrategySubscriptionView(
                     strategyId = strategyId,
-                    preferredUniverseType = entity.preferredUniverseType
+                    preferredUniverseType = entity.preferredUniverseType,
+                    brokerAccountId = entity.brokerAccountId,
                 )
             }
     }
@@ -129,6 +130,15 @@ class StrategySubscriptionPersistenceAdapter(
         return true
     }
 
+    @Transactional
+    override fun updateBrokerAccountId(subscriptionId: Long, brokerAccountId: Long?): Boolean {
+        val entity = jpaRepository.findById(subscriptionId).orElse(null) ?: return false
+        if (entity.status != SubscriptionStatus.ACTIVE) return false
+        entity.brokerAccountId = brokerAccountId
+        jpaRepository.save(entity)
+        return true
+    }
+
     override fun existsActiveByUserIdAndStrategyId(userDbId: Long, strategyId: Long): Boolean {
         return jpaRepository.existsByUserIdAndStrategyIdAndStatus(userDbId, strategyId, SubscriptionStatus.ACTIVE)
     }
@@ -180,7 +190,8 @@ class StrategySubscriptionPersistenceAdapter(
             isPremiumStrategy = entity.strategy.isPremium,
             alertEnabled = entity.notifySignals || entity.notifyRebalance,
             preferredUniverseType = entity.preferredUniverseType,
-            subscribedAt = entity.subscribedAt
+            subscribedAt = entity.subscribedAt,
+            brokerAccountId = entity.brokerAccountId,
         )
     }
 }

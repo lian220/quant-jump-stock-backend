@@ -122,11 +122,44 @@ class StrategySubscriptionService(
                 isPremiumStrategy = d.isPremiumStrategy,
                 alertEnabled = d.alertEnabled,
                 preferredUniverseType = d.preferredUniverseType.name,
-                subscribedAt = d.subscribedAt
+                subscribedAt = d.subscribedAt,
+                brokerAccountId = d.brokerAccountId,
             )
         }
 
         return MySubscriptionsResponse(subscriptions = summaries, total = summaries.size)
+    }
+
+    /**
+     * 구독의 실행 계좌 변경 (Phase 1B v2.1).
+     * - subscriptionId 소유권 검증 (BOLA/IDOR)
+     * - brokerAccountId != null → user_broker_accounts 의 row 가 user 소유인지 확인 (다음 PR 에서 가드 강화)
+     */
+    @Transactional
+    fun updateBrokerAccount(
+        userId: String,
+        subscriptionId: Long,
+        brokerAccountId: Long?,
+    ): BrokerAccountUpdateResponse {
+        val user = userRepository.findByUserId(userId)
+            ?: throw SubscriptionException("USER_NOT_FOUND", "사용자를 찾을 수 없습니다.", 404)
+        val userDbId = user.id ?: throw SubscriptionException("USER_NOT_FOUND", "사용자 ID를 찾을 수 없습니다.", 404)
+
+        subscriptionRepository.findByIdAndUserId(subscriptionId, userDbId)
+            ?: throw SubscriptionException("SUBSCRIPTION_NOT_FOUND", "구독을 찾을 수 없습니다.", 404)
+
+        subscriptionRepository.updateBrokerAccountId(subscriptionId, brokerAccountId)
+
+        logger.info(
+            "구독 broker_account_id 변경: userId={}, subscriptionId={}, brokerAccountId={}",
+            userId, subscriptionId, brokerAccountId,
+        )
+
+        return BrokerAccountUpdateResponse(
+            subscriptionId = subscriptionId,
+            brokerAccountId = brokerAccountId,
+            message = if (brokerAccountId != null) "실행 계좌가 설정되었습니다." else "실행 계좌가 해제되었습니다 (legacy fallback).",
+        )
     }
 
     @Transactional

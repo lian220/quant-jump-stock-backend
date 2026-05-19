@@ -77,6 +77,14 @@ class AutoTradingService(
         var totalTradesCreated = 0
         var totalTradesSkipped = 0
 
+        // Phase 1B v2.1: 활성 구독 캐시. 주문 발행 시 broker_account_id hint 추출용.
+        // 현재 한계: prediction 에 strategyId 가 없어 사용자의 활성 구독 중 첫 번째 매핑 사용.
+        // 정확한 strategy → account 매핑은 prediction 모델 확장 후 별도 phase.
+        val activeSubscriptionsByUser: Map<Long, List<com.quantjumpstock.core.domain.port.output.StrategySubscriptionView>> =
+            activeConfigs.associate { cfg ->
+                cfg.userId to strategySubscriptionRepository.findActiveByUserId(cfg.userId)
+            }
+
         activeConfigs.forEach configLoop@{ tradingConfig ->
             try {
                 val userId = tradingConfig.userId
@@ -185,6 +193,14 @@ class AutoTradingService(
                         //    - 트랜잭션 안에서는 PENDING Trade 저장 + 이벤트 발행만 수행
                         //    - OrderExecutionListener 가 KIS placeOrder 수행 → 성공: Trade.execute,
                         //      실패: Trade.fail + 현금 잠금 해제 + 신호 FAILED 로그
+                        // Phase 1B v2.1: subscription 의 broker_account_id 라우팅 hint.
+                        // 한계: prediction 에 strategyId 가 없어 어느 구독의 신호인지 확정 불가.
+                        // 현재는 사용자의 활성 구독 중 첫 번째의 broker_account_id 사용 (없으면 null).
+                        // null → OrderExecutionListener 가 사용자 활성 계좌 1개 자동 선택 (legacy).
+                        // 정확한 strategy → account 매핑은 prediction 모델 확장 후 별도 phase.
+                        val brokerAccountIdHint: Long? = activeSubscriptionsByUser[userId]
+                            ?.firstNotNullOfOrNull { it.brokerAccountId }
+
                         applicationEventPublisher.publishEvent(
                             OrderExecutionRequestEvent(
                                 tradeId = savedTrade.id!!,
@@ -196,7 +212,8 @@ class AutoTradingService(
                                 priceForKis = "0", // 시장가 주문
                                 lockedAmount = totalAmount,
                                 predictionId = predictionId,
-                                compositeScore = prediction.compositeScore.toDouble()
+                                compositeScore = prediction.compositeScore.toDouble(),
+                                brokerAccountId = brokerAccountIdHint,
                             )
                         )
 

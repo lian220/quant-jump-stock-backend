@@ -48,6 +48,14 @@ class StrategySubscriptionEntity(
     @Column(name = "cancelled_at")
     var cancelledAt: LocalDateTime? = null,
 
+    /**
+     * 본 구독 전략 실행 시 사용할 user_broker_accounts.id (Phase 1B v2.1).
+     * NULL = 사용자의 활성 계좌 중 첫 번째 자동 선택 (legacy fallback).
+     * FK 가 ON DELETE SET NULL — 계좌 hard delete 시 자동 NULL 처리.
+     */
+    @Column(name = "broker_account_id")
+    var brokerAccountId: Long? = null,
+
     @CreationTimestamp
     @Column(name = "created_at", updatable = false)
     val createdAt: LocalDateTime = LocalDateTime.now()

@@ -99,6 +99,25 @@ class StrategySubscriptionController(
         }
     }
 
+    @PatchMapping("/api/v1/subscriptions/{subscriptionId}/broker-account")
+    @Operation(summary = "구독 실행 계좌 변경", description = "전략 구독의 실행 계좌를 변경합니다 (Phase 1B v2.1).")
+    fun updateBrokerAccount(
+        @RequestHeader("Authorization", required = false) authorization: String?,
+        @PathVariable subscriptionId: Long,
+        @RequestBody request: BrokerAccountUpdateRequest,
+    ): ResponseEntity<Any> {
+        val userId = extractUserId(authorization)
+            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(mapOf("error" to "UNAUTHORIZED", "message" to "인증이 필요합니다."))
+
+        return try {
+            val response = subscriptionService.updateBrokerAccount(userId, subscriptionId, request.brokerAccountId)
+            ResponseEntity.ok(response)
+        } catch (e: SubscriptionException) {
+            ResponseEntity.status(e.httpStatus).body(buildErrorBody(e))
+        }
+    }
+
     private fun extractUserId(authorization: String?): String? {
         if (authorization == null || !authorization.startsWith("Bearer ")) return null
         val token = authorization.removePrefix("Bearer ")
