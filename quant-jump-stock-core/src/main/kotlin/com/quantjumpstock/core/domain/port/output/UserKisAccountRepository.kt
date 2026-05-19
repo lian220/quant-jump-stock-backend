@@ -7,11 +7,16 @@ import java.time.LocalDateTime
 /**
  * UserKisAccount Repository Port
  *
- * A+ 모델 (단일 활성 + 7일 휴지통) 도입:
- * - 활성 row (`deleted_at IS NULL`): 사용자당 1개. 일반 조회 메서드 (`findByUserId`, `findActive*`) 가 반환.
- * - 휴지통 row (`deleted_at IS NOT NULL`): 사용자당 0~1개 (정책). `findTrashed*` 로 접근.
+ * 모델 변천:
+ * - A+ (V61): 사용자당 활성 1개 row (partial unique `(user_id) WHERE deleted_at IS NULL`).
+ * - 1B (V63): 사용자당 account_type 별 활성 1개 row (`(user_id, account_type) WHERE deleted_at IS NULL`).
  *
- * 기존 시그니처 (`findByUserId` 등) 는 호환을 위해 활성 row 만 반환하도록 의미를 좁혔다.
+ * 시그니처 정책:
+ * - `*ByUserIdAndType(userId, accountType)` — 1B 권장 시그니처. 활성 row 단건 반환.
+ * - `findAllActiveByUserId(userId)` — 1B 신규. type 무관 활성 row 전부 반환 (MOCK + REAL).
+ * - 기존 `findActiveByUserUserId(userId)`, `findByUserId(userId)` 등 단건 메서드는 호환 유지.
+ *   1B 에서는 "사용자의 마지막 활성 row 1개" 의미로 좁아짐 (다중 활성 row 존재 시 임의 1개).
+ *   호출부 마이그레이션은 S3 에서 수행.
  */
 interface UserKisAccountRepository {
     fun save(kisAccount: UserKisAccount): UserKisAccount
@@ -37,4 +42,24 @@ interface UserKisAccountRepository {
 
     /** 활성 row 존재 여부. */
     fun existsByUserId(userId: Long): Boolean
+
+    // ===== 1B 신규 시그니처 (account_type 별 분리) =====
+
+    /** 활성 row (deleted_at IS NULL) 중 특정 account_type 1개 반환. */
+    fun findActiveByUserIdAndType(userId: Long, accountType: KisAccountType): UserKisAccount?
+
+    /** 활성 row (deleted_at IS NULL) 중 특정 account_type 1개 반환. (String userId) */
+    fun findActiveByUserUserIdAndType(userId: String, accountType: KisAccountType): UserKisAccount?
+
+    /** 사용자의 활성 row 전부 반환 (MOCK + REAL). */
+    fun findAllActiveByUserId(userId: Long): List<UserKisAccount>
+
+    /** 사용자의 활성 row 전부 반환 (MOCK + REAL). (String userId) */
+    fun findAllActiveByUserUserId(userId: String): List<UserKisAccount>
+
+    /** 휴지통 row 중 특정 account_type 의 가장 최근 1개. */
+    fun findTrashedByUserIdAndType(userId: Long, accountType: KisAccountType): UserKisAccount?
+
+    /** 휴지통 row 중 특정 account_type 의 가장 최근 1개. (String userId) */
+    fun findTrashedByUserUserIdAndType(userId: String, accountType: KisAccountType): UserKisAccount?
 }

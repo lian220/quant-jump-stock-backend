@@ -56,6 +56,56 @@ interface UserKisAccountJpaRepository : JpaRepository<UserKisAccountEntity, Long
         @Param("accountType") accountType: KisAccountType
     ): Optional<UserKisAccountEntity>
 
+    // ===== Phase 1B (V63) 신규 — account_type 별 조회 =====
+
+    /** 사용자의 활성 row 중 특정 account_type 1개. */
+    @Query(
+        "SELECT k FROM UserKisAccountEntity k WHERE k.user.id = :userId " +
+            "AND k.accountType = :accountType AND k.deletedAt IS NULL"
+    )
+    fun findActiveByUserIdAndType(
+        @Param("userId") userId: Long,
+        @Param("accountType") accountType: KisAccountType
+    ): Optional<UserKisAccountEntity>
+
+    /** 사용자의 활성 row 중 특정 account_type 1개. (String userId) */
+    @Query(
+        "SELECT k FROM UserKisAccountEntity k JOIN k.user u WHERE u.userId = :userId " +
+            "AND k.accountType = :accountType AND k.deletedAt IS NULL"
+    )
+    fun findActiveByUserUserIdAndType(
+        @Param("userId") userId: String,
+        @Param("accountType") accountType: KisAccountType
+    ): Optional<UserKisAccountEntity>
+
+    /** 사용자의 활성 row 전부 (MOCK + REAL). */
+    @Query("SELECT k FROM UserKisAccountEntity k WHERE k.user.id = :userId AND k.deletedAt IS NULL")
+    fun findAllActiveByUserId(@Param("userId") userId: Long): List<UserKisAccountEntity>
+
+    /** 사용자의 활성 row 전부 (MOCK + REAL). (String userId) */
+    @Query("SELECT k FROM UserKisAccountEntity k JOIN k.user u WHERE u.userId = :userId AND k.deletedAt IS NULL")
+    fun findAllActiveByUserUserId(@Param("userId") userId: String): List<UserKisAccountEntity>
+
+    /** 사용자의 휴지통 row 중 특정 account_type. 가장 최근 1개. */
+    @Query(
+        "SELECT k FROM UserKisAccountEntity k WHERE k.user.id = :userId " +
+            "AND k.accountType = :accountType AND k.deletedAt IS NOT NULL ORDER BY k.deletedAt DESC"
+    )
+    fun findTrashedByUserIdAndType(
+        @Param("userId") userId: Long,
+        @Param("accountType") accountType: KisAccountType
+    ): List<UserKisAccountEntity>
+
+    /** 사용자의 휴지통 row 중 특정 account_type. 가장 최근 1개. (String userId) */
+    @Query(
+        "SELECT k FROM UserKisAccountEntity k JOIN k.user u WHERE u.userId = :userId " +
+            "AND k.accountType = :accountType AND k.deletedAt IS NOT NULL ORDER BY k.deletedAt DESC"
+    )
+    fun findTrashedByUserUserIdAndType(
+        @Param("userId") userId: String,
+        @Param("accountType") accountType: KisAccountType
+    ): List<UserKisAccountEntity>
+
     /**
      * V2(GCM) backfill 대상 row 의 PK 만 조회. entity full load 회피.
      *

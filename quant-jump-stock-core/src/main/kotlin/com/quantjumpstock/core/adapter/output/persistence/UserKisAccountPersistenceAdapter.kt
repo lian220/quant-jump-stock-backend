@@ -70,6 +70,40 @@ class UserKisAccountPersistenceAdapter(
         return kisAccountJpaRepository.findActiveByUserId(userId).isPresent
     }
 
+    // ===== Phase 1B (V63) 신규 — account_type 별 조회 =====
+
+    override fun findActiveByUserIdAndType(userId: Long, accountType: KisAccountType): UserKisAccount? {
+        return kisAccountJpaRepository
+            .findActiveByUserIdAndType(userId, mapAccountType(accountType))
+            .orElse(null)?.let { toDomain(it) }
+    }
+
+    override fun findActiveByUserUserIdAndType(userId: String, accountType: KisAccountType): UserKisAccount? {
+        return kisAccountJpaRepository
+            .findActiveByUserUserIdAndType(userId, mapAccountType(accountType))
+            .orElse(null)?.let { toDomain(it) }
+    }
+
+    override fun findAllActiveByUserId(userId: Long): List<UserKisAccount> {
+        return kisAccountJpaRepository.findAllActiveByUserId(userId).map { toDomain(it) }
+    }
+
+    override fun findAllActiveByUserUserId(userId: String): List<UserKisAccount> {
+        return kisAccountJpaRepository.findAllActiveByUserUserId(userId).map { toDomain(it) }
+    }
+
+    override fun findTrashedByUserIdAndType(userId: Long, accountType: KisAccountType): UserKisAccount? {
+        return kisAccountJpaRepository
+            .findTrashedByUserIdAndType(userId, mapAccountType(accountType))
+            .firstOrNull()?.let { toDomain(it) }
+    }
+
+    override fun findTrashedByUserUserIdAndType(userId: String, accountType: KisAccountType): UserKisAccount? {
+        return kisAccountJpaRepository
+            .findTrashedByUserUserIdAndType(userId, mapAccountType(accountType))
+            .firstOrNull()?.let { toDomain(it) }
+    }
+
     // ===== Mapping Functions =====
 
     private fun toDomain(entity: UserKisAccountEntity): UserKisAccount {
