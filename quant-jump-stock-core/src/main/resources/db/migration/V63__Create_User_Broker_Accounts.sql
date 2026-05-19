@@ -32,7 +32,7 @@ COMMENT ON COLUMN user_broker_accounts.account_type IS
     '계좌 유형. AccountType enum: MOCK (모의), REAL (실전).';
 
 COMMENT ON COLUMN user_broker_accounts.account_alias IS
-    '사용자 별명 (예: "메인 계좌", "분리 운용"). NULL 허용 — 미설정 시 ${broker} ${type} ${maskedNumber} 자동 표시.';
+    '사용자 별명 (예: 메인 계좌, 분리 운용). NULL 허용 — 미설정 시 broker + accountType + maskedAccountNumber 자동 표시.';
 
 COMMENT ON COLUMN user_broker_accounts.app_secret_encrypted IS
     'GCM 암호화된 app_secret. Base64(IV(12B) || ciphertext+tag(16B)). v1 ECB 컬럼 제거됨 (V62 backfill 완료 후).';
