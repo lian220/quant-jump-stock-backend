@@ -62,6 +62,28 @@ patterns=(
 
     # 8. grep으로 .env 파일에서 값 부분까지 출력 (키 이름만이 아니라 = 뒤까지)
     'grep[ \t]+[^|]*[A-Z_]+=.*\.env\.(prod|local|common|db)'
+
+    # 9. Python 코드 형태 시크릿 inject 블록 출력 — 2026-05-19 사고 패턴
+    #    Vertex AI task.py 안의 os.environ.setdefault('DB_PASSWORD', '...') 같은 줄을
+    #    grep / sed / awk / cat 로 출력 시 비번이 stdout 노출됨.
+    'os\.environ\.setdefault\([^)]*(PASSWORD|SECRET|TOKEN|MONGODB_URI|API_KEY|CREDENTIAL|WEBHOOK|APP_KEY|ENCRYPTION_KEY|AWS_SECRET|GCP_CREDENTIALS_ENCODED)'
+
+    # 10. MongoDB URI 평문 (cluster credentials 가 URI 안에 박힘)
+    #     mongodb+srv://user:password@host  — :password@ 구간이 grep 출력에 노출되면 차단
+    'mongodb(\+srv)?://[^[:space:]/@]+:[^[:space:]/@]+@'
+
+    # 11. tar 압축 archive 의 내용을 cat/grep/head/tail 로 출력 (z/j 옵션 포함)
+    'tar[ \t]+[xtvzjf]*[ \t]+[^|]*\.(tar|tar\.gz|tgz|tar\.bz2)[^|]*\|[ \t]*(cat|grep|head|tail|less|more)'
+
+    # 12a. ML 패키지 task.py 직접 출력 — cat/less/more/bat/head/tail
+    #     실제 사고: `cat task.py`, `head task.py` 가 DB_PASSWORD 평문 노출
+    '(cat|less|more|bat|head|tail)[ \t]+[^|;&]*\btask\.py\b'
+
+    # 12b. grep task.py — 옵션 유무 상관 없이 차단
+    'grep[ \t]+[^|;&]*\btask\.py\b'
+
+    # 13. tar 로 task.py 만 stdout 추출 (`tar xzOf pkg.tar.gz task.py`)
+    'tar[ \t]+[xtvzjOf]*O[xtvzjOf]*[ \t]+[^|]*\.(tar|tar\.gz|tgz)[ \t]+[^|]*task\.py'
 )
 
 for p in "${patterns[@]}"; do
