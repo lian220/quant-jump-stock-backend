@@ -32,5 +32,11 @@ data class OrderExecutionRequestEvent(
     val lockedAmount: BigDecimal,
     val predictionId: String,
     val compositeScore: Double,
-    val requestedAt: Instant = Instant.now()
+    val requestedAt: Instant = Instant.now(),
+    /**
+     * 본 주문을 실행할 broker account (Phase 1B v2.1).
+     * null = legacy fallback (OrderExecutionListener 가 사용자 활성 계좌 자동 선택).
+     * 향후 모든 흐름이 broker_account_id 명시로 전환되면 null 허용 제거 가능.
+     */
+    val brokerAccountId: Long? = null,
 )

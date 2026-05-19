@@ -7,7 +7,8 @@ import com.quantjumpstock.core.domain.model.backtest.UniverseType
  */
 data class StrategySubscriptionView(
     val strategyId: Long,
-    val preferredUniverseType: UniverseType
+    val preferredUniverseType: UniverseType,
+    val brokerAccountId: Long? = null,
 )
 
 /**
@@ -21,7 +22,8 @@ data class SubscriptionDetail(
     val isPremiumStrategy: Boolean,
     val alertEnabled: Boolean,
     val preferredUniverseType: UniverseType,
-    val subscribedAt: java.time.LocalDateTime
+    val subscribedAt: java.time.LocalDateTime,
+    val brokerAccountId: Long? = null,
 )
 
 interface StrategySubscriptionRepository {
@@ -49,6 +51,12 @@ interface StrategySubscriptionRepository {
 
     /** 알림 설정 변경 */
     fun updateAlertEnabled(subscriptionId: Long, alertEnabled: Boolean): Boolean
+
+    /**
+     * 구독 → 계좌 매핑 변경 (Phase 1B v2.1).
+     * `brokerAccountId = null` 이면 legacy fallback (사용자 활성 계좌 자동 선택).
+     */
+    fun updateBrokerAccountId(subscriptionId: Long, brokerAccountId: Long?): Boolean
 
     /** 이미 구독 중인지 확인 */
     fun existsActiveByUserIdAndStrategyId(userDbId: Long, strategyId: Long): Boolean
