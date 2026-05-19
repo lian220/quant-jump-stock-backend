@@ -147,7 +147,24 @@ class SlackNotifier:
 
     @staticmethod
     def _get_error_channel() -> str:
+        # 2026-05-19: 에러 알림은 webhook 직행 (_post_error). 이 함수는 deprecated.
         return getattr(settings, 'SLACK_CHANNEL_ERROR', '')
+
+    @staticmethod
+    def _post_error(text: str, attachments: list = None, blocks: list = None) -> None:
+        """에러 알림은 항상 SLACK_WEBHOOK_URL_ERROR 로 직행 (Bot Token / channel ID 우회).
+
+        배경 (2026-05-19):
+          SLACK_CHANNEL_SCHEDULER / _ANALYSIS / _ERROR / _TRADING 가 동일 채널 ID 로 설정되어
+          Bot Token 사용 시 에러 알림이 스케줄러 채널로 라우팅되는 버그. 에러는 thread reply
+          가치 낮고 webhook URL 이 정확한 에러 채널을 가지므로 webhook 직행이 단순/안전.
+        """
+        SlackNotifier._post_to_webhook(
+            SlackNotifier._get_error_webhook(),
+            text,
+            attachments=attachments,
+            blocks=blocks,
+        )
 
     @staticmethod
     def _get_analysis_channel() -> str:
@@ -273,13 +290,7 @@ class SlackNotifier:
             }
         ]
 
-        SlackNotifier._post_message(
-            channel=SlackNotifier._get_error_channel(),
-            webhook_url=SlackNotifier._get_error_webhook(),
-            text=text,
-            attachments=attachments,
-            thread_ts=thread_ts,
-        )
+        SlackNotifier._post_error(text=text, attachments=attachments)
 
     # ============================================================
     # 데이터 freshness 알람 (2026-05-18 사고 후속 — 매일 23:00 KST 자동 체크)
@@ -323,12 +334,7 @@ class SlackNotifier:
                 "ts": int(datetime.now(KST).timestamp())
             }
         ]
-        SlackNotifier._post_message(
-            channel=SlackNotifier._get_error_channel(),
-            webhook_url=SlackNotifier._get_error_webhook(),
-            text=text,
-            attachments=attachments,
-        )
+        SlackNotifier._post_error(text=text, attachments=attachments)
 
     # ============================================================
     # Pre-flight 데이터 결손 알림 (2026-05-15 사고 후속)
@@ -370,12 +376,7 @@ class SlackNotifier:
                 "ts": int(datetime.now(KST).timestamp())
             }
         ]
-        SlackNotifier._post_message(
-            channel=SlackNotifier._get_error_channel(),
-            webhook_url=SlackNotifier._get_error_webhook(),
-            text=text,
-            attachments=attachments,
-        )
+        SlackNotifier._post_error(text=text, attachments=attachments)
 
     # ============================================================
     # Pub/Sub 핸들러 공통 에러 알림
@@ -454,12 +455,7 @@ class SlackNotifier:
             }
         ]
 
-        SlackNotifier._post_message(
-            channel=SlackNotifier._get_error_channel(),
-            webhook_url=SlackNotifier._get_error_webhook(),
-            text=text,
-            attachments=attachments,
-        )
+        SlackNotifier._post_error(text=text, attachments=attachments)
 
     # ============================================================
     # 종합 분석 리포트
@@ -732,12 +728,7 @@ class SlackNotifier:
                 "ts": int(datetime.now(KST).timestamp())
             }
         ]
-        SlackNotifier._post_message(
-            channel=SlackNotifier._get_error_channel(),
-            webhook_url=SlackNotifier._get_error_webhook(),
-            text=text,
-            attachments=attachments,
-        )
+        SlackNotifier._post_error(text=text, attachments=attachments)
 
     @staticmethod
     def notify_yahoo_finance_error(ticker: str, error: str):
@@ -756,12 +747,7 @@ class SlackNotifier:
                 "ts": int(datetime.now(KST).timestamp())
             }
         ]
-        SlackNotifier._post_message(
-            channel=SlackNotifier._get_error_channel(),
-            webhook_url=SlackNotifier._get_error_webhook(),
-            text=text,
-            attachments=attachments,
-        )
+        SlackNotifier._post_error(text=text, attachments=attachments)
 
     @staticmethod
     def notify_daily_data_missing(analysis_date: str):
@@ -783,12 +769,7 @@ class SlackNotifier:
                 "ts": int(datetime.now(KST).timestamp()),
             }
         ]
-        SlackNotifier._post_message(
-            channel=SlackNotifier._get_error_channel(),
-            webhook_url=SlackNotifier._get_error_webhook(),
-            text=text,
-            attachments=attachments,
-        )
+        SlackNotifier._post_error(text=text, attachments=attachments)
 
     @staticmethod
     def notify_report_generation_error(analysis_date: str, error: str):
@@ -807,12 +788,7 @@ class SlackNotifier:
                 "ts": int(datetime.now(KST).timestamp()),
             }
         ]
-        SlackNotifier._post_message(
-            channel=SlackNotifier._get_error_channel(),
-            webhook_url=SlackNotifier._get_error_webhook(),
-            text=text,
-            attachments=attachments,
-        )
+        SlackNotifier._post_error(text=text, attachments=attachments)
 
     @staticmethod
     def send_thread_message(text: str, thread_ts: str, channel: Optional[str] = None):
