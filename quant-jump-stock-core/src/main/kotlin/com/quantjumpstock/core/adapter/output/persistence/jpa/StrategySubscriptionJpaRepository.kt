@@ -79,4 +79,19 @@ interface StrategySubscriptionJpaRepository : JpaRepository<StrategySubscription
 
     @Query("SELECT ss.user.id, COUNT(ss) FROM StrategySubscriptionEntity ss WHERE ss.user.id IN :userIds AND ss.status = 'ACTIVE' GROUP BY ss.user.id")
     fun countActiveByUserIdIn(userIds: List<Long>): List<Array<Any>>
+
+    // Phase 1C — 계좌-구독 1:1 제약 검사용.
+    // 동일 broker_account_id 를 가진 다른 ACTIVE 구독 lookup.
+    // excludeSubscriptionId 는 현재 PATCH 대상 구독 (자기 자신 매핑은 conflict 아님).
+    @Query("""
+        SELECT ss FROM StrategySubscriptionEntity ss
+        JOIN FETCH ss.strategy s
+        WHERE ss.brokerAccountId = :brokerAccountId
+          AND ss.status = 'ACTIVE'
+          AND (:excludeSubscriptionId IS NULL OR ss.id <> :excludeSubscriptionId)
+    """)
+    fun findActiveByBrokerAccountId(
+        brokerAccountId: Long,
+        excludeSubscriptionId: Long?,
+    ): List<StrategySubscriptionEntity>
 }

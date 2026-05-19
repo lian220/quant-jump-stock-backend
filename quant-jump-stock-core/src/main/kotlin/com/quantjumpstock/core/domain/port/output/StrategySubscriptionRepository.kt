@@ -58,6 +58,17 @@ interface StrategySubscriptionRepository {
      */
     fun updateBrokerAccountId(subscriptionId: Long, brokerAccountId: Long?): Boolean
 
+    /**
+     * Phase 1C — 계좌-구독 1:1 제약 검사.
+     * 같은 broker_account_id 를 가진 다른 ACTIVE 구독을 lookup.
+     * @param excludeSubscriptionId 현재 PATCH 대상 구독 (자기 자신은 conflict 아님). null 이면 제외 없음.
+     * @return 충돌 구독 (없으면 null). 1:1 제약으로 결과는 최대 1건.
+     */
+    fun findActiveSubscriptionByBrokerAccountId(
+        brokerAccountId: Long,
+        excludeSubscriptionId: Long?,
+    ): SubscriptionDetail?
+
     /** 이미 구독 중인지 확인 */
     fun existsActiveByUserIdAndStrategyId(userDbId: Long, strategyId: Long): Boolean
 

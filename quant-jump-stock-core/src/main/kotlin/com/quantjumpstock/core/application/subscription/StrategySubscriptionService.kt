@@ -148,6 +148,28 @@ class StrategySubscriptionService(
         subscriptionRepository.findByIdAndUserId(subscriptionId, userDbId)
             ?: throw SubscriptionException("SUBSCRIPTION_NOT_FOUND", "구독을 찾을 수 없습니다.", 404)
 
+        // Phase 1C — 계좌-구독 1:1 제약 검사.
+        // brokerAccountId != null 일 때만 검사 (NULL 매핑은 무제한 허용).
+        // 자기 자신 구독은 conflict 아님 (excludeSubscriptionId).
+        if (brokerAccountId != null) {
+            val conflict = subscriptionRepository.findActiveSubscriptionByBrokerAccountId(
+                brokerAccountId = brokerAccountId,
+                excludeSubscriptionId = subscriptionId,
+            )
+            if (conflict != null) {
+                throw SubscriptionException(
+                    errorCode = "ACCOUNT_ALREADY_MAPPED",
+                    message = "이 계좌는 이미 다른 전략 '${conflict.strategyName}' 에 매핑되어 있습니다. 먼저 해당 전략의 계좌를 해제하세요.",
+                    httpStatus = 412,
+                    extra = mapOf(
+                        "conflictSubscriptionId" to conflict.subscriptionId,
+                        "conflictStrategyId" to conflict.strategyId,
+                        "conflictStrategyName" to conflict.strategyName,
+                    ),
+                )
+            }
+        }
+
         subscriptionRepository.updateBrokerAccountId(subscriptionId, brokerAccountId)
 
         logger.info(
@@ -158,7 +180,7 @@ class StrategySubscriptionService(
         return BrokerAccountUpdateResponse(
             subscriptionId = subscriptionId,
             brokerAccountId = brokerAccountId,
-            message = if (brokerAccountId != null) "실행 계좌가 설정되었습니다." else "실행 계좌가 해제되었습니다 (legacy fallback).",
+            message = if (brokerAccountId != null) "실행 계좌가 설정되었습니다." else "실행 계좌가 해제되었습니다.",
         )
     }
 
