@@ -34,13 +34,14 @@ import os
 import sys
 from datetime import datetime
 
-from pymongo import MongoClient
-from pymongo.errors import PyMongoError
+from pymongo import MongoClient, UpdateOne
+from pymongo.errors import PyMongoError, BulkWriteError
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(levelname)s] %(message)s')
 logger = logging.getLogger(__name__)
 
 COLLECTION_NAME = "stock_recommendations"
+BATCH_SIZE = 1000  # bulk_write 배치 크기 (60K건 기준 60 RTT 로 끝남)
 
 
 def main(dry_run: bool = False) -> int:
@@ -76,17 +77,46 @@ def main(dry_run: bool = False) -> int:
 
     converted = 0
     failed = 0
+    batch: list[UpdateOne] = []
+
+    def _flush(ops: list[UpdateOne]) -> tuple[int, int]:
+        """배치 bulk_write 실행. (matched, errors) 반환."""
+        if not ops:
+            return 0, 0
+        try:
+            result = col.bulk_write(ops, ordered=False)
+            return result.matched_count, 0
+        except BulkWriteError as bwe:
+            # 일부 doc 실패해도 나머지는 적용됨 (ordered=False)
+            matched = bwe.details.get("nMatched", 0)
+            errs = len(bwe.details.get("writeErrors", []))
+            for err in bwe.details.get("writeErrors", [])[:3]:
+                logger.warning(f"  bulk write error: {err}")
+            return matched, errs
+
     cursor = col.find({"date": {"$type": "string"}}, {"_id": 1, "date": 1})
     for doc in cursor:
         try:
             dt = datetime.strptime(doc["date"], "%Y-%m-%d")
-            col.update_one({"_id": doc["_id"]}, {"$set": {"date": dt}})
-            converted += 1
-            if converted % 100 == 0:
-                logger.info(f"  진행: {converted}/{string_count}")
-        except (ValueError, PyMongoError) as e:
+            batch.append(UpdateOne({"_id": doc["_id"]}, {"$set": {"date": dt}}))
+        except ValueError as e:
             failed += 1
             logger.warning(f"  skip _id={doc['_id']} (date={doc.get('date')!r}): {e}")
+            continue
+
+        if len(batch) >= BATCH_SIZE:
+            m, e = _flush(batch)
+            converted += m
+            failed += e
+            batch = []
+            logger.info(f"  진행: {converted}/{string_count} (실패 {failed})")
+
+    # 잔여 배치 flush
+    if batch:
+        m, e = _flush(batch)
+        converted += m
+        failed += e
+        logger.info(f"  진행: {converted}/{string_count} (실패 {failed})")
 
     # 검증
     remaining = col.count_documents({"date": {"$type": "string"}})
