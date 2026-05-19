@@ -60,6 +60,9 @@ class UserBrokerAccountPersistenceAdapter(
     override fun findExpiredTrashed(thresholdAt: LocalDateTime): List<UserBrokerAccount> =
         jpaRepository.findExpiredTrashed(thresholdAt).map { toDomain(it) }
 
+    override fun findFirstActiveKisByUserLoginId(loginUserId: String): UserBrokerAccount? =
+        jpaRepository.findFirstActiveKisByUserLoginId(loginUserId).orElse(null)?.let { toDomain(it) }
+
     override fun deleteById(id: Long) {
         jpaRepository.deleteById(id)
         jpaRepository.flush()

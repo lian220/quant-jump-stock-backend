@@ -36,7 +36,7 @@ class KisTokenEntity(
 
     @Enumerated(EnumType.STRING)
     @Column(name = "account_type", nullable = false, length = 10)
-    val accountType: KisAccountType,
+    val accountType: AccountTypeEntityEnum,
 
     @Column(name = "access_token", nullable = false, columnDefinition = "TEXT")
     var accessToken: String,

@@ -3,7 +3,7 @@ package com.quantjumpstock.core.adapter.input.rest.scheduler
 import com.quantjumpstock.core.application.backtest.BacktestCleanupService
 import com.quantjumpstock.core.application.backtest.CanonicalBacktestService
 import com.quantjumpstock.core.application.trading.AutoTradingService
-import com.quantjumpstock.core.application.user.UserKisAccountService
+import com.quantjumpstock.core.application.broker.UserBrokerAccountService
 import org.slf4j.LoggerFactory
 import org.springframework.cache.CacheManager
 import org.springframework.http.HttpStatus
@@ -28,7 +28,7 @@ class CloudSchedulerController(
     private val autoTradingService: AutoTradingService,
     private val canonicalBacktestService: CanonicalBacktestService,
     private val backtestCleanupService: BacktestCleanupService,
-    private val userKisAccountService: UserKisAccountService,
+    private val userBrokerAccountService: UserBrokerAccountService,
     private val cacheManager: CacheManager
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -172,27 +172,30 @@ class CloudSchedulerController(
     }
 
     /**
-     * KIS 계좌 휴지통 정리 (Cloud Scheduler: 03:30 KST daily).
-     * `deleted_at + 7일` 경과 row 를 hard delete.
+     * Broker 계좌 휴지통 정리 (Cloud Scheduler: 03:30 KST daily).
+     * `deleted_at + 7일` 경과 row 를 hard delete. KIS / Toss / 향후 추가 broker 모두 대상.
+     *
+     * Phase 1D 마이그 (2026-05-19): `user_kis_accounts` → `user_broker_accounts`.
+     * Cloud Scheduler 의 URL path 는 호환성을 위해 유지하되 동작은 broker 통합.
      */
     @PostMapping("/kis-account-trash-cleanup")
-    fun kisAccountTrashCleanup(): ResponseEntity<Map<String, Any>> {
+    fun brokerAccountTrashCleanup(): ResponseEntity<Map<String, Any>> {
         logger.info("=".repeat(80))
-        logger.info("KIS 계좌 휴지통 정리 시작 (Cloud Scheduler)")
+        logger.info("Broker 계좌 휴지통 정리 시작 (Cloud Scheduler)")
         logger.info("=".repeat(80))
 
         return try {
-            val deleted = userKisAccountService.hardDeleteExpired()
-            logger.info("KIS 계좌 휴지통 정리 완료: deleted=$deleted rows")
+            val deleted = userBrokerAccountService.hardDeleteExpired()
+            logger.info("Broker 계좌 휴지통 정리 완료: deleted=$deleted rows")
             ResponseEntity.ok(mapOf(
                 "status" to "success",
-                "job" to "kis-account-trash-cleanup",
+                "job" to "broker-account-trash-cleanup",
                 "deletedCount" to deleted
             ))
         } catch (e: Exception) {
-            logger.error("KIS 계좌 휴지통 정리 실행 중 오류", e)
+            logger.error("Broker 계좌 휴지통 정리 실행 중 오류", e)
             ResponseEntity.internalServerError()
-                .body(mapOf("status" to "error", "job" to "kis-account-trash-cleanup"))
+                .body(mapOf("status" to "error", "job" to "broker-account-trash-cleanup"))
         }
     }
 

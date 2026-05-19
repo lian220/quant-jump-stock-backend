@@ -7,7 +7,7 @@ import com.quantjumpstock.core.domain.model.AccountSummary
 import com.quantjumpstock.core.domain.model.trading.Account
 import com.quantjumpstock.core.domain.port.output.AccountRepository
 import com.quantjumpstock.core.domain.port.output.UserRepository
-import com.quantjumpstock.core.domain.port.output.UserKisAccountRepository
+import com.quantjumpstock.core.domain.port.output.UserBrokerAccountRepository
 import java.math.BigDecimal
 import java.time.LocalDateTime
 import org.slf4j.LoggerFactory
@@ -19,7 +19,7 @@ class BalanceService(
     private val tradingApiPort: TradingApiPort,
     private val accountRepository: AccountRepository,
     private val userRepository: UserRepository,
-    private val userKisAccountRepository: UserKisAccountRepository
+    private val userBrokerAccountRepository: UserBrokerAccountRepository
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -184,9 +184,9 @@ class BalanceService(
     fun getBalanceWithProfit(userId: String): BalanceWithProfitResponse {
         logger.info("💰 Fetching balance and profit for user: $userId")
 
-        // 1. 사용자 KIS 계정 정보 조회
-        val kisAccount = userKisAccountRepository.findActiveByUserUserId(userId)
-            ?: throw IllegalArgumentException("User KIS account not found or not active: $userId")
+        // 1. 사용자 KIS broker 계좌 정보 조회 (Phase 1D: user_broker_accounts 사용)
+        val kisAccount = userBrokerAccountRepository.findFirstActiveKisByUserLoginId(userId)
+            ?: throw IllegalArgumentException("User KIS broker account not found or not active: $userId")
 
         // 2. KIS API 호출 (사용자별 인증 정보 사용)
         val kisResponse = tradingApiPort.getOverseasBalance(userId)

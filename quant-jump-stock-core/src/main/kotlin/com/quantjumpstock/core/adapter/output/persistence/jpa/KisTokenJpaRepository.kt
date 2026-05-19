@@ -25,7 +25,7 @@ interface KisTokenJpaRepository : JpaRepository<KisTokenEntity, Long> {
     """)
     fun findLatestTokenByUserIdAndAccountType(
         @Param("userId") userId: String,
-        @Param("accountType") accountType: KisAccountType
+        @Param("accountType") accountType: AccountTypeEntityEnum
     ): Optional<KisTokenEntity>
 
     /**
@@ -39,7 +39,7 @@ interface KisTokenJpaRepository : JpaRepository<KisTokenEntity, Long> {
     """)
     fun findAllByUserIdAndAccountType(
         @Param("userId") userId: String,
-        @Param("accountType") accountType: KisAccountType
+        @Param("accountType") accountType: AccountTypeEntityEnum
     ): List<KisTokenEntity>
 
     /**
@@ -66,8 +66,8 @@ interface KisTokenJpaRepository : JpaRepository<KisTokenEntity, Long> {
     """)
     fun deactivateUserTokens(
         @Param("userId") userId: Long,
-        @Param("accountType") accountType: KisAccountType,
-        @Param("now") now: LocalDateTime
+        @Param("accountType") accountType: AccountTypeEntityEnum,
+        @Param("now") now: LocalDateTime,
     ): Int
 
     /**

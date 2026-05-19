@@ -40,5 +40,14 @@ interface UserBrokerAccountRepository {
     /** Scheduler 가 호출. `deleted_at < thresholdAt` 인 모든 휴지통 row. */
     fun findExpiredTrashed(thresholdAt: LocalDateTime): List<UserBrokerAccount>
 
+    /**
+     * Phase 1D — legacy KIS 호출 경로용 (BalanceService 가 사용).
+     * 사용자의 login id (String) 로 활성 KIS 계좌 단건 lookup.
+     * 다중 KIS 계좌 보유 시 첫 번째 (createdAt 오름차순).
+     * Phase 1B 의 strategy_subscriptions.broker_account_id 가 정확한 매핑을 담당하므로
+     * 본 메서드는 fallback / 잔고 조회 (전략 비특정 경로) 용도.
+     */
+    fun findFirstActiveKisByUserLoginId(loginUserId: String): UserBrokerAccount?
+
     fun deleteById(id: Long)
 }

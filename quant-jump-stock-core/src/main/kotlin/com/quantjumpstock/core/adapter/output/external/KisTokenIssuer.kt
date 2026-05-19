@@ -1,8 +1,7 @@
 package com.quantjumpstock.core.adapter.output.external
 
-import com.quantjumpstock.core.adapter.output.persistence.jpa.KisAccountType
-import com.quantjumpstock.core.adapter.output.persistence.jpa.KisTokenJpaRepository
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserKisAccountEntity
+import com.quantjumpstock.core.adapter.output.persistence.jpa.AccountTypeEntityEnum
+import com.quantjumpstock.core.adapter.output.persistence.jpa.UserBrokerAccountEntity
 import com.quantjumpstock.core.config.KisConfig
 import com.quantjumpstock.core.infrastructure.security.AppSecretCipher
 import org.slf4j.LoggerFactory
@@ -45,7 +44,7 @@ class KisTokenIssuer(
      * **트랜잭션 경계 없음** — KIS HTTP 호출은 트랜잭션 밖. DB 저장은 [KisTokenStore.persist]
      * 가 자체 `@Transactional` 로 처리.
      */
-    fun issueNewToken(userId: String, kisAccount: UserKisAccountEntity): IssuedToken {
+    fun issueNewToken(userId: String, kisAccount: UserBrokerAccountEntity): IssuedToken {
         logger.info("Refreshing KIS access token: user=$userId type=${kisAccount.accountType}")
 
         // 1. KIS HTTP 호출 (네트워크 latency, 트랜잭션 밖)
@@ -79,15 +78,15 @@ class KisTokenIssuer(
     }
 
     /**
-     * AppSecret 복호화. fallback 정책은 [AppSecretCipher] 가 단일 소스.
+     * AppSecret 복호화. UserBrokerAccount 는 GCM 단일 컬럼만 보유 (v1 ECB 컬럼 V63 에서 제거).
      */
-    private fun decryptAppSecret(entity: UserKisAccountEntity): String =
-        appSecretCipher.decrypt(entity.appSecretEncryptedV2, entity.appSecretEncrypted)
+    private fun decryptAppSecret(entity: UserBrokerAccountEntity): String =
+        appSecretCipher.decrypt(entity.appSecretEncrypted, "")
 
     /**
      * OAuth 토큰 발급용 단발성 RestClient. 캐싱 가치가 낮으므로 매번 새로 만든다.
      */
-    private fun buildOauthClient(accountType: KisAccountType): RestClient {
+    private fun buildOauthClient(accountType: AccountTypeEntityEnum): RestClient {
         val baseUrl = KisConfig.getBaseUrlForAccountType(accountType)
         return RestClient.builder()
             .baseUrl(baseUrl)
