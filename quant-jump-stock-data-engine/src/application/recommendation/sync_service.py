@@ -286,29 +286,18 @@ class RecommendationSyncService:
             return {}
 
     def _query_recommendations_by_date(self, dt_date: datetime, date_str: str) -> list:
-        """날짜별 stock_recommendations 조회 (ISODate, 문자열, $expr 순서)"""
+        """날짜별 stock_recommendations 조회 (ISODate 단일 경로).
+
+        2026-05-19 migrate_recommendations_date.py 로 60115건 전건 ISODate 변환 완료.
+        writer (technical_analysis.py) 도 ISODate 로 저장하므로 string / $expr fallback 불필요.
+        date_str 파라미터는 호환성 유지 목적 (호출처 시그니처 변경 없음).
+        """
         start_utc = datetime(dt_date.year, dt_date.month, dt_date.day, 0, 0, 0)
         end_utc = start_utc + timedelta(days=1)
 
-        recommendations = list(self.mongo_db.stock_recommendations.find(
+        return list(self.mongo_db.stock_recommendations.find(
             {"date": {"$gte": start_utc, "$lt": end_utc}}
         ))
-        if not recommendations:
-            recommendations = list(self.mongo_db.stock_recommendations.find(
-                {"date": date_str}
-            ))
-        if not recommendations:
-            y, m, d = dt_date.year, dt_date.month, dt_date.day
-            recommendations = list(self.mongo_db.stock_recommendations.find({
-                "$expr": {
-                    "$and": [
-                        {"$eq": [{"$year": "$date"}, y]},
-                        {"$eq": [{"$month": "$date"}, m]},
-                        {"$eq": [{"$dayOfMonth": "$date"}, d]},
-                    ]
-                }
-            }))
-        return recommendations
 
     def _fetch_current_prices(self, analysis_date: str) -> Dict[str, float]:
         """
