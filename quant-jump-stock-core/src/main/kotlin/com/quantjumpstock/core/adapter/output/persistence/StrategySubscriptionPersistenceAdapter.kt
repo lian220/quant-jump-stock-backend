@@ -150,6 +150,14 @@ class StrategySubscriptionPersistenceAdapter(
             ?.id
     }
 
+    override fun findActiveSubscriptionByBrokerAccountId(
+        brokerAccountId: Long,
+        excludeSubscriptionId: Long?,
+    ): SubscriptionDetail? {
+        return jpaRepository.findActiveByBrokerAccountId(brokerAccountId, excludeSubscriptionId)
+            .firstNotNullOfOrNull { toSubscriptionDetail(it) }
+    }
+
     override fun findAdminSubscriptions(strategyId: Long?, userId: Long?, page: Int, size: Int): AdminSubscriptionPage {
         val safeSize = size.coerceIn(1, 100)
         val pageable = PageRequest.of(page, safeSize, Sort.by(Sort.Direction.DESC, "subscribedAt"))
