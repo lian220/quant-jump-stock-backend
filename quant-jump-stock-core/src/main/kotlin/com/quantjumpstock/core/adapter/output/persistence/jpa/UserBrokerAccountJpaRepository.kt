@@ -46,4 +46,22 @@ interface UserBrokerAccountJpaRepository : JpaRepository<UserBrokerAccountEntity
             "WHERE a.deletedAt IS NOT NULL AND a.deletedAt < :thresholdAt"
     )
     fun findExpiredTrashed(@Param("thresholdAt") thresholdAt: LocalDateTime): List<UserBrokerAccountEntity>
+
+    /**
+     * Phase 1D — legacy KIS 호출 경로용 (BalanceService / KisApiAdapter).
+     * 사용자의 login id (String) 로 활성 KIS 계좌 단건 lookup.
+     * 다중 KIS 계좌 보유 시 첫 번째 (createdAt 오름차순). 정확한 전략→계좌 매핑은
+     * `strategy_subscriptions.broker_account_id` (Phase 1B) 가 따로 담당.
+     */
+    @Query(
+        "SELECT a FROM UserBrokerAccountEntity a " +
+            "JOIN a.user u " +
+            "WHERE u.userId = :loginUserId " +
+            "AND a.broker = com.quantjumpstock.core.adapter.output.persistence.jpa.BrokerEntityEnum.KIS " +
+            "AND a.deletedAt IS NULL " +
+            "AND a.enabled = true " +
+            "ORDER BY a.createdAt ASC " +
+            "LIMIT 1"
+    )
+    fun findFirstActiveKisByUserLoginId(@Param("loginUserId") loginUserId: String): Optional<UserBrokerAccountEntity>
 }

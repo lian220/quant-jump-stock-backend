@@ -1,55 +1,47 @@
 package com.quantjumpstock.core.adapter.output.external
 
-import com.quantjumpstock.core.adapter.output.persistence.jpa.KisAccountType
+import com.quantjumpstock.core.adapter.output.persistence.jpa.AccountTypeEntityEnum
+import com.quantjumpstock.core.adapter.output.persistence.jpa.BrokerEntityEnum
 import com.quantjumpstock.core.adapter.output.persistence.jpa.KisTokenJpaRepository
+import com.quantjumpstock.core.adapter.output.persistence.jpa.UserBrokerAccountEntity
+import com.quantjumpstock.core.adapter.output.persistence.jpa.UserBrokerAccountJpaRepository
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserEntity
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserKisAccountEntity
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserKisAccountJpaRepository
-import com.quantjumpstock.core.adapter.output.persistence.jpa.UserStatus
 import com.quantjumpstock.core.adapter.output.persistence.jpa.UserRole
+import com.quantjumpstock.core.adapter.output.persistence.jpa.UserStatus
 import com.quantjumpstock.core.infrastructure.security.AppSecretCipher
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verify
 import org.assertj.core.api.Assertions.assertThat
 import org.junit.jupiter.api.Test
-import java.util.Optional
 
 /**
- * Phase 1A PRE Task 10 — KisApiAdapter 의 두 가지 결함 검증.
+ * KisApiAdapter 핵심 동작 검증.
  *
- * 1. `restClientCache` 단일키(userId) 결함:
- *    같은 userId 가 계정 타입을 MOCK→REAL 로 바꾸면 캐시된 RestClient 의 baseURL 이
- *    이전 환경(MOCK)으로 고정되어 신규 거래가 잘못된 엔드포인트로 향한다.
- *    → 캐시 키를 (userId, accountType) 복합키로 분리해야 한다.
- *
- * 2. AppSecret 복호화가 항상 v1(ECB) 컬럼만 사용하는 결함 (Task 7 도입 후 회귀):
- *    Task 7 이후 신규 등록은 `appSecretEncrypted = ""` + `appSecretEncryptedV2 = GCM(...)` 로 저장됨.
- *    어댑터가 v1 만 보면 빈 시크릿으로 KIS 인증이 실패한다.
- *    → v2 우선, v2 가 null/공백이면 v1 legacy fallback 으로 복호화해야 한다.
- *
- * Step 1 시점: `internal fun getOrCreateRestClient(userId, accountType)` / `internal fun decryptAppSecret(entity)`
- * 가 노출되어 있지 않으므로 컴파일 실패 (intentional, TDD).
+ * Phase 1D (2026-05-19): user_kis_accounts → user_broker_accounts 마이그 반영.
+ *  - 계좌 lookup 은 UserBrokerAccountJpaRepository.findFirstActiveKisByUserLoginId 로 변경.
+ *  - AppSecret 복호화는 GCM 단일 컬럼 (v1 ECB fallback 인자는 빈 문자열).
+ *  - RestClient 캐시 키는 여전히 (userId, accountType) 복합키.
  */
 class KisApiAdapterTest {
 
-    private val userKisRepo: UserKisAccountJpaRepository = mockk()
+    private val userBrokerRepo: UserBrokerAccountJpaRepository = mockk()
     private val cipher: AppSecretCipher = mockk()
     private val tokenRepo: KisTokenJpaRepository = mockk(relaxed = true)
     private val tokenIssuer: KisTokenIssuer = mockk(relaxed = true)
 
-    private val adapter = KisApiAdapter(userKisRepo, cipher, tokenRepo, tokenIssuer)
+    private val adapter = KisApiAdapter(userBrokerRepo, cipher, tokenRepo, tokenIssuer)
 
     @Test
     fun `getOrCreateRestClient 는 (userId, accountType) 복합키로 캐시한다`() {
         val userId = "trader-${System.nanoTime()}"
 
-        val mockClient = adapter.getOrCreateRestClient(userId, KisAccountType.MOCK)
-        val realClient = adapter.getOrCreateRestClient(userId, KisAccountType.REAL)
-        val mockClientAgain = adapter.getOrCreateRestClient(userId, KisAccountType.MOCK)
+        val mockClient = adapter.getOrCreateRestClient(userId, AccountTypeEntityEnum.MOCK)
+        val realClient = adapter.getOrCreateRestClient(userId, AccountTypeEntityEnum.REAL)
+        val mockClientAgain = adapter.getOrCreateRestClient(userId, AccountTypeEntityEnum.MOCK)
 
         assertThat(mockClient)
-            .describedAs("같은 userId 라도 accountType 이 다르면 다른 RestClient 인스턴스를 사용해야 한다 (baseURL 분리)")
+            .describedAs("같은 userId 라도 accountType 이 다르면 다른 RestClient (baseURL 분리)")
             .isNotSameAs(realClient)
         assertThat(mockClient)
             .describedAs("동일한 (userId, accountType) 은 동일 인스턴스 재사용")
@@ -57,43 +49,20 @@ class KisApiAdapterTest {
     }
 
     @Test
-    fun `decryptAppSecret 은 AppSecretCipher 에 v2 v1 을 그대로 위임한다`() {
-        val entity = userKisEntity(v1Cipher = "ECB_V1", v2Cipher = "GCM_V2")
-        every { cipher.decrypt("GCM_V2", "ECB_V1") } returns "PLAIN_FROM_GCM"
+    fun `decryptAppSecret 은 entity 의 GCM 컬럼을 cipher 에 위임 (v1 은 빈 문자열)`() {
+        val entity = userBrokerEntity(gcmCipher = "GCM_V2_CIPHER")
+        every { cipher.decrypt("GCM_V2_CIPHER", "") } returns "PLAIN_FROM_GCM"
 
         val result = adapter.decryptAppSecret(entity)
 
         assertThat(result).isEqualTo("PLAIN_FROM_GCM")
-        verify(exactly = 1) { cipher.decrypt("GCM_V2", "ECB_V1") }
+        verify(exactly = 1) { cipher.decrypt("GCM_V2_CIPHER", "") }
     }
 
-    @Test
-    fun `decryptAppSecret 은 v2 가 null 이어도 cipher 에 그대로 위임 (fallback 정책은 cipher 책임)`() {
-        val entity = userKisEntity(v1Cipher = "ECB_V1", v2Cipher = null)
-        every { cipher.decrypt(null, "ECB_V1") } returns "PLAIN_FROM_LEGACY"
-
-        val result = adapter.decryptAppSecret(entity)
-
-        assertThat(result).isEqualTo("PLAIN_FROM_LEGACY")
-        verify(exactly = 1) { cipher.decrypt(null, "ECB_V1") }
-    }
-
-    @Test
-    fun `decryptAppSecret 은 v2 가 빈 문자열이어도 cipher 에 그대로 위임`() {
-        val entity = userKisEntity(v1Cipher = "ECB_V1", v2Cipher = "")
-        every { cipher.decrypt("", "ECB_V1") } returns "PLAIN_FROM_LEGACY"
-
-        val result = adapter.decryptAppSecret(entity)
-
-        assertThat(result).isEqualTo("PLAIN_FROM_LEGACY")
-        verify(exactly = 1) { cipher.decrypt("", "ECB_V1") }
-    }
-
-    private fun userKisEntity(
-        v1Cipher: String,
-        v2Cipher: String?,
-        accountType: KisAccountType = KisAccountType.MOCK
-    ): UserKisAccountEntity {
+    private fun userBrokerEntity(
+        gcmCipher: String,
+        accountType: AccountTypeEntityEnum = AccountTypeEntityEnum.MOCK,
+    ): UserBrokerAccountEntity {
         val user = UserEntity(
             id = 1L,
             userId = "trader-${System.nanoTime()}",
@@ -101,18 +70,18 @@ class KisApiAdapterTest {
             email = "t@example.com",
             passwordHash = "hash",
             role = UserRole.USER,
-            status = UserStatus.ACTIVE
+            status = UserStatus.ACTIVE,
         )
-        return UserKisAccountEntity(
+        return UserBrokerAccountEntity(
             id = 1L,
             user = user,
-            appKey = "PSKxAPPKEY",
-            appSecretEncrypted = v1Cipher,
-            appSecretEncryptedV2 = v2Cipher,
+            broker = BrokerEntityEnum.KIS,
+            accountType = accountType,
             accountNumber = "12345678",
             accountProductCode = "01",
-            accountType = accountType,
-            enabled = true
+            appKey = "PSKxAPPKEY",
+            appSecretEncrypted = gcmCipher,
+            enabled = true,
         )
     }
 }
