@@ -16,8 +16,9 @@ class UserKisAccountEntity(
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long? = null,
 
-    // user_id 의 unique 제약은 partial unique index (V61) 가 담당:
-    // (user_id) WHERE deleted_at IS NULL → 활성 row 1개 강제, 휴지통 row 공존 허용.
+    // user_id 의 unique 제약은 partial unique index 가 담당:
+    //   V61 (A+):     (user_id)                WHERE deleted_at IS NULL
+    //   V63 (1B):     (user_id, account_type)  WHERE deleted_at IS NULL
     // 따라서 JPA 레벨에서 unique=true 를 걸면 schema validate 모드와 충돌하므로 제거.
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
