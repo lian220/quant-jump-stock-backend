@@ -109,14 +109,9 @@ class RecommendationSyncService:
         - metrics.accuracy: 모델 정확도
         """
         try:
-            target_date = datetime.strptime(analysis_date, "%Y-%m-%d")
-            # date 필드가 ISODate 또는 String일 수 있으므로 둘 다 검색
-            target_date_str = target_date.strftime("%Y-%m-%dT00:00:00.000Z")
+            # 2026-05-20: stock_analysis_results.date 도 string 통일.
             results = list(self.mongo_db.stock_analysis_results.find({
-                "$or": [
-                    {"date": target_date},
-                    {"date": target_date_str},
-                ]
+                "date": analysis_date
             }))
 
             output = {}
@@ -183,14 +178,10 @@ class RecommendationSyncService:
         - rise_probability 없으면 predicted_price/actual_price로 계산 후 0~1 정규화.
         """
         try:
-            dt_date = datetime.strptime(analysis_date, "%Y-%m-%d")
-
+            # 2026-05-20: stock_predictions.date 도 string 통일.
             # 정확한 날짜 매칭만. fallback 없음 (가짜 적재 차단)
             predictions = list(self.mongo_db.stock_predictions.find({
-                "$or": [
-                    {"date": dt_date},
-                    {"date": analysis_date},
-                ]
+                "date": analysis_date
             }))
 
             if not predictions:
@@ -247,12 +238,10 @@ class RecommendationSyncService:
     def _fetch_technical_analysis(self, analysis_date: str) -> Dict[str, Dict]:
         """
         기술적 분석 데이터 조회 (MongoDB stock_recommendations).
-        date 필드 문자열/ISODate 둘 다 매칭.
-        데이터 없으면 analysis_date 이전 최근 날짜로 fallback.
+        2026-05-20: date 는 string 통일. 단순 매칭.
         """
         try:
-            dt_date = datetime.strptime(analysis_date, "%Y-%m-%d")
-            recommendations = self._query_recommendations_by_date(dt_date, analysis_date)
+            recommendations = self._query_recommendations_by_date(analysis_date)
 
             # fallback: 데이터 없으면 이전 최근 날짜 조회
             if not recommendations:
@@ -285,19 +274,12 @@ class RecommendationSyncService:
             logger.warning(f"기술적 분석 조회 실패: {e}")
             return {}
 
-    def _query_recommendations_by_date(self, dt_date: datetime, date_str: str) -> list:
-        """날짜별 stock_recommendations 조회 (ISODate 단일 경로).
+    def _query_recommendations_by_date(self, date_str: str) -> list:
+        """날짜별 stock_recommendations 조회.
 
-        2026-05-19 migrate_recommendations_date.py 로 60115건 전건 ISODate 변환 완료.
-        writer (technical_analysis.py) 도 ISODate 로 저장하므로 string / $expr fallback 불필요.
-        date_str 파라미터는 호환성 유지 목적 (호출처 시그니처 변경 없음).
+        2026-05-20: 전체 컬렉션 string 통일 (NYSE 거래일, timezone-independent).
         """
-        start_utc = datetime(dt_date.year, dt_date.month, dt_date.day, 0, 0, 0)
-        end_utc = start_utc + timedelta(days=1)
-
-        return list(self.mongo_db.stock_recommendations.find(
-            {"date": {"$gte": start_utc, "$lt": end_utc}}
-        ))
+        return list(self.mongo_db.stock_recommendations.find({"date": date_str}))
 
     def _fetch_current_prices(self, analysis_date: str) -> Dict[str, float]:
         """

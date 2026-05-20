@@ -1750,15 +1750,15 @@ def save_predictions_to_db(result_df):
                 stock_predictions_updates = []
                 stock_predictions_data = []  # fallback용 원본 데이터 저장
 
+                # 2026-05-20: date 를 string ("%Y-%m-%d") 으로 통일 저장.
+                # 전체 컬렉션 (daily_stock_data / sentiment_analysis / stock_recommendations) 와 일관.
                 for date_str, ticker_predictions in date_predictions.items():
                     try:
-                        date_obj = datetime.strptime(date_str, '%Y-%m-%d')
-
                         for ticker, pred_data in ticker_predictions.items():
                             try:
                                 update_op = UpdateOne(
                                     {
-                                        "date": date_obj,
+                                        "date": date_str,
                                         "ticker": ticker
                                     },
                                     {
@@ -1776,7 +1776,7 @@ def save_predictions_to_db(result_df):
                                 )
                                 stock_predictions_updates.append(update_op)
                                 # fallback용 원본 데이터 저장 (tuple)
-                                stock_predictions_data.append((date_obj, ticker, pred_data))
+                                stock_predictions_data.append((date_str, ticker, pred_data))
                             except Exception as e:
                                 print(f"⚠️ {ticker} ({date_str}) 데이터 준비 실패: {str(e)}")
                     except Exception as e:
@@ -1805,10 +1805,10 @@ def save_predictions_to_db(result_df):
                         # 실패 시 개별 업데이트로 fallback
                         batch_data = stock_predictions_data[i:i + batch_size]
 
-                        for date_obj, ticker, pred_data in batch_data:
+                        for date_str_iter, ticker, pred_data in batch_data:
                             try:
                                 db.stock_predictions.update_one(
-                                    {"date": date_obj, "ticker": ticker},
+                                    {"date": date_str_iter, "ticker": ticker},
                                     {
                                         "$set": {
                                             "predicted_price": pred_data.get('predicted_price'),
@@ -2179,10 +2179,11 @@ def save_analysis_to_db(result_df):
                         }
                         
                         # 1. stock_analysis_results 컬렉션용 업데이트 추가
+                        # 2026-05-20: date 는 string ("%Y-%m-%d") 통일 (today_str = TARGET_DATE).
                         stock_analysis_updates.append(
                             UpdateOne(
                                 {
-                                    "date": today_obj,
+                                    "date": today_str,
                                     "ticker": ticker,
                                     "user_id": None  # 전역 분석
                                 },

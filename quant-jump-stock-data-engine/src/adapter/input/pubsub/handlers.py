@@ -514,21 +514,12 @@ class StockRecommendationHandler(MessageHandler):
 
                 # 종합 분석 리포트: 기술적 + AI 예측 + 감정 분석 결합 후 Slack 발송
                 try:
-                    # ISODate range query 우선, string 날짜 fallback
-                    dt_date = datetime.strptime(analysis_date, "%Y-%m-%d")
-                    start_utc = datetime(dt_date.year, dt_date.month, dt_date.day, 0, 0, 0)
-                    end_utc = start_utc + timedelta(days=1)
+                    # 2026-05-20: date 는 string 통일. 단순 매칭.
                     tech_docs = list(report_db.stock_recommendations.find(
-                        {"date": {"$gte": start_utc, "$lt": end_utc}},
+                        {"date": analysis_date},
                         {"_id": 0, "ticker": 1, "stock_name": 1, "date": 1,
                          "technical_indicators": 1, "is_recommended": 1}
                     ))
-                    if not tech_docs:
-                        tech_docs = list(report_db.stock_recommendations.find(
-                            {"date": analysis_date},
-                            {"_id": 0, "ticker": 1, "stock_name": 1, "date": 1,
-                             "technical_indicators": 1, "is_recommended": 1}
-                        ))
                     logger.info(f"종합 리포트: 기술적 분석 {len(tech_docs)}개 종목 ({analysis_date})")
                     # tech_docs 없어도 AI/감정 데이터로 리포트 생성 + Slack 발송
                     report = report_service.generate_report(tech_docs, analysis_date)

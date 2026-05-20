@@ -32,39 +32,19 @@ class DailyDataNotCollectedError(Exception):
 def _query_stock_predictions_by_date(db, analysis_date: str, target_date: datetime):
     """
     stock_predictions 컬렉션에서 해당 분석일 문서 조회.
-    MongoDB date가 ISODate(UTC)로 저장된 경우를 위해 여러 쿼리 시도.
 
+    2026-05-20: date 는 NYSE 거래일 string 통일. 단순 매칭.
     ADR 0001 진정성 규칙: 정확한 날짜만 매칭. fallback 없음.
-    데이터 없으면 빈 list 반환 → 호출자가 "AI 데이터 부재"로 처리.
     """
-    # rise_probability 도 projection에 포함 — 저장된 값을 그대로 사용 (sync_service와 일치)
     projection = {
         "_id": 0, "ticker": 1,
         "predicted_price": 1, "actual_price": 1, "rise_probability": 1,
     }
 
-    # 1) Naive UTC 당일 범위
-    start_utc = datetime(target_date.year, target_date.month, target_date.day, 0, 0, 0)
-    end_utc = start_utc + timedelta(days=1)
-    preds = list(db.stock_predictions.find(
-        {"date": {"$gte": start_utc, "$lt": end_utc}}, projection,
-    ))
-    if preds:
-        return preds
-    # 2) timezone-aware UTC 범위
-    start_utc_tz = start_utc.replace(tzinfo=timezone.utc)
-    end_utc_tz = end_utc.replace(tzinfo=timezone.utc)
-    preds = list(db.stock_predictions.find(
-        {"date": {"$gte": start_utc_tz, "$lt": end_utc_tz}}, projection,
-    ))
-    if preds:
-        return preds
-    # 3) 문자열 날짜
     preds = list(db.stock_predictions.find({"date": analysis_date}, projection))
     if preds:
         return preds
 
-    # ADR 0001: fallback 폐기 (옛 결함: 75일 정지 시절 옛 데이터를 새 라벨로 가짜 적재)
     logger.warning(
         f"stock_predictions 데이터 없음 (date={analysis_date}). "
         f"fallback 비활성화 — AI 데이터 누락으로 처리."
@@ -140,27 +120,21 @@ class ComprehensiveReportService:
         result = {}
 
         # 3. stock_analysis_results 조회 (정확한 날짜, 풍부한 데이터)
-        analysis_docs = list(db.stock_analysis_results.find({
-            "$or": [{"date": target_date}, {"date": target_date_str}]
-        }))
+        # 2026-05-20: date 는 string 통일.
+        analysis_docs = list(db.stock_analysis_results.find({"date": analysis_date_str}))
 
         # Fallback: 정확한 날짜에 없으면 이전 최근 날짜 (최대 _MAX_PREDICTION_LOOKBACK_DAYS일)
         if not analysis_docs:
-            min_lookback = target_date - timedelta(days=_MAX_PREDICTION_LOOKBACK_DAYS)
+            min_lookback_str = (target_date - timedelta(days=_MAX_PREDICTION_LOOKBACK_DAYS)).strftime("%Y-%m-%d")
             latest = db.stock_analysis_results.find_one(
-                {"date": {"$gte": min_lookback, "$lte": target_date}},
+                {"date": {"$gte": min_lookback_str, "$lte": analysis_date_str}},
                 sort=[("date", -1)],
             )
             if latest:
-                fallback_date = latest["date"]
+                fallback_date = latest["date"]  # string
                 analysis_docs = list(db.stock_analysis_results.find({"date": fallback_date}))
-                fallback_label = (
-                    fallback_date.strftime("%Y-%m-%d")
-                    if isinstance(fallback_date, datetime)
-                    else str(fallback_date)[:10]
-                )
                 logger.info(
-                    f"stock_analysis_results 날짜 fallback: {analysis_date_str} → {fallback_label} ({len(analysis_docs)}건)"
+                    f"stock_analysis_results 날짜 fallback: {analysis_date_str} → {fallback_date} ({len(analysis_docs)}건)"
                 )
             else:
                 logger.warning(
