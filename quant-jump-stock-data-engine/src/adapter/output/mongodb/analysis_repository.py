@@ -102,11 +102,18 @@ class MongoAnalysisResultRepository(AnalysisResultRepositoryPort):
         logger.info(f"Saved {len(results)} technical analysis results")
 
     def _to_document(self, result: TechnicalResult) -> dict:
-        """TechnicalResult → MongoDB 문서"""
+        """TechnicalResult → MongoDB 문서.
+
+        2026-05-20 hotfix: `date` 는 ISODate 로 통일 저장. 만약 legacy string 이
+        흘러들어와도 BSON 직전에 datetime 으로 안전 변환 (defensive).
+        """
+        date_value = result.date
+        if isinstance(date_value, str):
+            date_value = datetime.strptime(date_value, "%Y-%m-%d")
         return {
             "ticker": result.ticker,
             "stock_name": result.stock_name,
-            "date": result.date,
+            "date": date_value,
             "technical_indicators": {
                 "sma20": result.sma20,
                 "sma50": result.sma50,

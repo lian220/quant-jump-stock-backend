@@ -126,8 +126,10 @@ tmp/
 *.bak
 *~.nib
 
-# Test files
-test_*.py
+# Test files — 루트 ad-hoc test_*.py 만 무시.
+# 의도된 tests/ 디렉토리 안의 정규 테스트는 추적해야 함 (2026-05-20 fix).
+/test_*.py
+!**/tests/**/test_*.py
 **/src/scripts/
 
 # SQL scripts with credentials

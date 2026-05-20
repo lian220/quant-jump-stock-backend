@@ -297,10 +297,19 @@ class TechnicalAnalysisApplicationService:
         macd_buy = latest_macd > latest_signal
         is_recommended = golden_cross and (latest_rsi < rsi_threshold) and macd_buy
 
+        # 2026-05-20 hotfix: MongoDB stock_recommendations.date 는 ISODate 통일.
+        # store_date (str "%Y-%m-%d") 또는 target_dt (pd.Timestamp) 를 datetime 으로 정규화.
+        if store_date:
+            result_date = datetime.strptime(store_date, "%Y-%m-%d")
+        elif isinstance(target_dt, pd.Timestamp):
+            result_date = target_dt.to_pydatetime()
+        else:
+            result_date = target_dt
+
         return TechnicalResult(
             ticker=ticker,
             stock_name=stock_name,
-            date=store_date if store_date else target_dt.strftime("%Y-%m-%d"),
+            date=result_date,
             sma20=float(latest_sma20),
             sma50=float(latest_sma50),
             rsi=float(latest_rsi) if not pd.isna(latest_rsi) else 50.0,
