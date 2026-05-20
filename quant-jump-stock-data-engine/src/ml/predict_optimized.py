@@ -1956,6 +1956,8 @@ def get_predictions_from_db(chunk_size=1000):
             return str(value)
 
         # 최근 데이터만 조회 (기본 365일) + 활성 종목 필터
+        # 2026-05-20: stock_predictions.date 는 string ("%Y-%m-%d") 통일.
+        # cutoff 도 string 으로 만들어서 query (string 비교는 lexicographic 으로 동작).
         lookback_days = int(os.getenv("PREDICTIONS_LOOKBACK_DAYS", "365"))
         latest_doc = db.stock_predictions.find_one(
             {},
@@ -1966,8 +1968,8 @@ def get_predictions_from_db(chunk_size=1000):
         if latest_doc and latest_doc.get("date"):
             latest_date = _to_datetime(latest_doc["date"])
             if latest_date is not None:
-                cutoff = latest_date - timedelta(days=lookback_days)
-                query_filter["date"] = {"$gte": cutoff}
+                cutoff_str = (latest_date - timedelta(days=lookback_days)).strftime("%Y-%m-%d")
+                query_filter["date"] = {"$gte": cutoff_str}
 
         active_tickers = list(ticker_to_name.keys())
         if active_tickers:
