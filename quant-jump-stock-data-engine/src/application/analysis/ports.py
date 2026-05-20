@@ -32,10 +32,15 @@ class DailyPrice:
 
 @dataclass
 class TechnicalResult:
-    """기술적 분석 결과"""
+    """기술적 분석 결과.
+
+    `date` 는 MongoDB `stock_recommendations.date` 컬럼에 ISODate 로 직저장 (2026-05-20 hotfix).
+    이전: `str` ("%Y-%m-%d") 저장 → PR #103 migration 이후 형식 불일치로 sync_service 가
+    조회 실패 → freshness probe 알람. 본 dataclass 에서 datetime 으로 통일.
+    """
     ticker: str
     stock_name: str
-    date: str
+    date: datetime
     sma20: float
     sma50: float
     rsi: float
