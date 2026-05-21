@@ -109,6 +109,18 @@ class ScoringPolicy:
     def min_composite_score(self) -> Decimal:
         return Decimal(str(self._spec["recommendation_filter"]["min_composite_score"]))
 
+    # ── Private: clipped normalized → AI score (공통 tail) ──────
+    def _score_from_clipped_normalized(self, normalized: Decimal) -> Decimal:
+        """0~1 normalized probability → AI score (0~max_ai).
+
+        공통 tail: 0.5 미만 → 0 (현행 보존, PR 3에서 veto). 이상 → (n-0.5)*2*max, quantize HALF_UP.
+        """
+        clipped = max(Decimal("0"), min(Decimal("1"), normalized))
+        if clipped < Decimal("0.5"):
+            return Decimal("0")
+        ai_max = Decimal(str(self.axes["ai"]["max"]))
+        return ((clipped - Decimal("0.5")) * Decimal("2") * ai_max).quantize(_QTZ_2, rounding=ROUND_HALF_UP)
+
     # ── Public: raw % → AI 점수 변환 (리뷰 C2) ──────────
     def normalize_rise_pct_to_score(self, rise_pct: Optional[Decimal]) -> Decimal:
         """raw rise percentage (%, 예: 20.0) → AI score (0~max_ai).
@@ -122,12 +134,7 @@ class ScoringPolicy:
             return Decimal("0")
         cap = self.ai_cap_pct
         normalized = Decimal("0.5") + rise_pct / (Decimal("2") * cap)
-        normalized = max(Decimal("0"), min(Decimal("1"), normalized))
-        if normalized < Decimal("0.5"):
-            return Decimal("0")
-        ai_max = Decimal(str(self.axes["ai"]["max"]))
-        v = (normalized - Decimal("0.5")) * Decimal("2") * ai_max
-        return v.quantize(_QTZ_2, rounding=ROUND_HALF_UP)
+        return self._score_from_clipped_normalized(normalized)
 
     # ── Public: tech indicators → tech score ─────────────
     def tech_score_from_indicators(self, indicators: Optional[Dict[str, Any]]) -> Decimal:
@@ -167,12 +174,7 @@ class ScoringPolicy:
         """
         if normalized is None:
             return Decimal("0")
-        v = Decimal(str(normalized))
-        v = max(Decimal("0"), min(Decimal("1"), v))
-        if v < Decimal("0.5"):
-            return Decimal("0")
-        ai_max = Decimal(str(self.axes["ai"]["max"]))
-        return ((v - Decimal("0.5")) * Decimal("2") * ai_max).quantize(_QTZ_2, rounding=ROUND_HALF_UP)
+        return self._score_from_clipped_normalized(Decimal(str(normalized)))
 
     # ── Public: sentiment (-1~+1) → sentiment score ─────
     def sentiment_score_from_raw(self, sentiment: Optional[Decimal]) -> Decimal:
