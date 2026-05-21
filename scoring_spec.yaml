@@ -1,0 +1,59 @@
+# 점수 모델 SSoT — PR 1 (현행 행동 보존형 중앙화)
+# 본 파일은 backend repo 루트. Data Engine 이미지 빌드 시 COPY 됨.
+# Python ScoringPolicy 가 SCORING_SPEC_PATH env 또는 default 경로로 로드.
+# 본 PR 에서는 현행 가중치/임계/cap 값과 100% 일치 (regression 0 변화 목표).
+# 행동 변경 (disagreement/veto/redistribute/VIX) 은 PR 3/4/5 에서 적용.
+
+spec_version: "1.0.0"
+formula_version: "1.0.0"  # 본 PR 은 현행 보존 → 1.0.0. 행동 변경 시 1.1.0+
+description: |
+  AI 예측 + 뉴스 감정 + 기술 분석 가중 합산. 현행 산식 100% 일치 보존.
+  본 spec 변경 시 quant-jump-stock-data-engine 테스트 (golden + property +
+  regression) 재실행 필수.
+
+consumers:
+  - python_data_engine
+# PR 2 이후 kotlin_core_api 추가 — contract 변경 PR 강제
+
+axes:
+  ai:
+    weight: 0.3
+    max: 10.0
+    cap_strategy: fixed_pct
+    cap_threshold_pct: 20.0       # 현행 유지 (vol_normalized 는 PR 후속)
+    missing_policy: zero           # 현행 유지
+    negative_policy: zero          # 현행 유지 (PR 3 에서 veto 로 변경)
+  technical:
+    weight: 0.4
+    max: 3.5
+    components:
+      golden_cross: 1.5
+      rsi_below_threshold: 1.0
+      macd_buy_signal: 1.0
+    rsi_threshold: 70
+    missing_policy: zero
+  sentiment:
+    weight: 0.3
+    max: 10.0
+    missing_policy: zero           # 현행 유지 (PR 4 에서 redistribute 검토)
+
+composite_max: 7.4                 # derived: 0.3*10 + 0.4*3.5 + 0.3*10. load 시 검증
+
+grades:
+  S: { min: 6.0, label: "매우 강한 매수", color: emerald }
+  A: { min: 4.5, label: "강한 매수",     color: cyan }
+  B: { min: 3.0, label: "보통 매수",     color: yellow }
+  C: { min: 1.5, label: "약한 매수",     color: orange }
+  D: { min: 0.0, label: "신호 없음",     color: red }
+
+# Slack 표시 라벨 — 본 PR 은 현행 RecommendationGrade.from_scores() 매핑 100% 보존
+# 즉, confidence + tech_signals 기반 임계. PR 2 에서 grade 기반으로 변경 예정.
+recommendation_labels:
+  STRONG:    { min_confidence: 0.65, min_tech_signals: 3, label: "강력 추천", emoji: "🟢" }
+  RECOMMEND: { min_confidence: 0.45, min_tech_signals: 2, label: "추천",       emoji: "🟡" }
+  WATCH:     { min_confidence: 0.30, min_tech_signals: 1, label: "관심 종목",  emoji: "🟠" }
+  NONE:      { label: "추천 없음", emoji: "⚪" }
+
+recommendation_filter:
+  min_composite_score: 2.0          # 현행 유지 (PR 3 에서 3.0 검토)
+  max_recommendations: 5
