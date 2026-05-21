@@ -68,6 +68,9 @@ from adapter.output.mongodb.analysis_repository import (
 from adapter.output.slack import SlackAnalysisNotifierAdapter
 from adapter.output.core_api import CoreCacheClient
 
+# Scoring SSoT — startup validation (fail-fast on spec misconfiguration)
+from domain.recommendation.scoring_policy import ScoringPolicy
+
 # Heavy 패키지(pandas, numpy, yfinance) Cold Start 최적화:
 # EconomicDataService, RecommendationService, TechnicalAnalysisApplicationService,
 # RecommendationApplicationService, BacktestApplicationService
@@ -84,6 +87,31 @@ logger = logging.getLogger(__name__)
 
 # Settings
 settings = get_settings()
+
+
+# ============================================================
+# Scoring spec — startup validation (fail-fast)
+# ============================================================
+def _validate_scoring_spec_on_startup() -> None:
+    """Cloud Run startup 시 scoring_spec 로드 + invariant 검증.
+
+    실패 시 즉시 fail-fast — Cloud Run 이 instance 를 재시작 또는 deployment fail.
+    """
+    try:
+        p = ScoringPolicy.load_default()
+        logger.info(
+            "✅ scoring_spec loaded: version=%s, composite_max=%s, path=%s",
+            p.formula_version,
+            p.composite_max,
+            os.environ.get("SCORING_SPEC_PATH", "<fallback>"),
+        )
+    except Exception as e:
+        logger.critical("❌ scoring_spec load failed at startup: %s", e)
+        raise
+
+
+_validate_scoring_spec_on_startup()
+
 
 # FastAPI (Read-Only Status API)
 app = FastAPI(
