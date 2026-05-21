@@ -40,62 +40,30 @@ def test_load_missing_file_raises():
 
 # ── Invariant ────────────────────────────────────────────
 
-def _write_spec(tmp_path, override):
-    base = {
-        "spec_version": "1.0.0",
-        "formula_version": "1.0.0",
-        "axes": {
-            "ai":        {"weight": 0.3, "max": 10.0, "cap_strategy": "fixed_pct",
-                          "cap_threshold_pct": 20.0, "missing_policy": "zero",
-                          "negative_policy": "zero"},
-            "technical": {"weight": 0.4, "max": 3.5,
-                          "components": {"golden_cross": 1.5, "rsi_below_threshold": 1.0,
-                                         "macd_buy_signal": 1.0},
-                          "rsi_threshold": 70, "missing_policy": "zero"},
-            "sentiment": {"weight": 0.3, "max": 10.0, "missing_policy": "zero"},
-        },
-        "composite_max": 7.4,
-        "grades": {"S": {"min": 6.0, "label": "S"}, "A": {"min": 4.5, "label": "A"},
-                   "B": {"min": 3.0, "label": "B"}, "C": {"min": 1.5, "label": "C"},
-                   "D": {"min": 0.0, "label": "D"}},
-        "recommendation_labels": {"NONE": {"label": "x", "emoji": "x"}},
-    }
-    # deep merge override
-    for k, v in (override or {}).items():
-        if isinstance(v, dict) and isinstance(base.get(k), dict):
-            base[k].update(v)
-        else:
-            base[k] = v
-    import yaml
-    p = tmp_path / "bad.yaml"
-    p.write_text(yaml.dump(base))
-    return p
-
-
-def test_invariant_weights_must_sum_to_one(tmp_path):
-    bad = _write_spec(tmp_path, {"axes": {"ai": {"weight": 0.5, "max": 10.0,
-                                                 "cap_strategy": "fixed_pct",
-                                                 "cap_threshold_pct": 20.0,
-                                                 "missing_policy": "zero",
-                                                 "negative_policy": "zero"}}})
+def test_invariant_weights_must_sum_to_one(make_spec, tmp_path):
+    bad = make_spec(tmp_path, axes={"ai": {"weight": 0.5, "max": 10.0,
+                                           "cap_strategy": "fixed_pct",
+                                           "cap_threshold_pct": 20.0,
+                                           "missing_policy": "zero",
+                                           "negative_policy": "zero"}})
     with pytest.raises(SpecValidationError, match="weights sum"):
         ScoringPolicy.load(str(bad))
 
 
-def test_invariant_composite_max_matches_derived(tmp_path):
-    bad = _write_spec(tmp_path, {"composite_max": 99.9})
+def test_invariant_composite_max_matches_derived(make_spec, tmp_path):
+    bad = make_spec(tmp_path, composite_max=99.9)
     with pytest.raises(SpecValidationError, match="composite_max mismatch"):
         ScoringPolicy.load(str(bad))
 
 
-def test_invariant_grade_thresholds_monotonic(tmp_path):
-    bad = _write_spec(tmp_path, {"grades": {
+def test_invariant_grade_thresholds_monotonic(make_spec, tmp_path):
+    bad = make_spec(tmp_path, grades={
         "S": {"min": 4.0, "label": "S"},
         "A": {"min": 5.0, "label": "A"},  # 단조성 위반
         "B": {"min": 3.0, "label": "B"},
         "C": {"min": 1.5, "label": "C"},
         "D": {"min": 0.0, "label": "D"},
-    }})
+    })
     with pytest.raises(SpecValidationError, match="grade thresholds"):
         ScoringPolicy.load(str(bad))
 
