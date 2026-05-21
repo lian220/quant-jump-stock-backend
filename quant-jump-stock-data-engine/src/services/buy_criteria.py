@@ -170,6 +170,9 @@ class BuyCriteria:
             "max_possible": round(float(score.composite_max), 4),
             "confidence": round(float(score.confidence), 4),
             "missing_axes": list(score.missing_axes),
+            # Task 2.3: Score 객체를 다운스트림(Slack)에서 분모(composite_max) 동적 사용.
+            # 내부 전용 필드 (underscore prefix). 외부 API/저장 경로엔 노출 금지.
+            "_score_obj": score,
         }
 
     # ── 등급 결정 ──────────────────────────────────────
