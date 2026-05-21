@@ -98,3 +98,69 @@ def test_invariant_grade_thresholds_monotonic(tmp_path):
     }})
     with pytest.raises(SpecValidationError, match="grade thresholds"):
         ScoringPolicy.load(str(bad))
+
+
+# ── compose_components / score_from_raw_signals 현행 동작 검증 ──────────────
+
+
+def test_score_all_signals_strong_matches_current():
+    """현행 sync_service 결과와 동일: AI=10, Tech=3.5, Sent=5 → composite 5.9 / grade A."""
+    p = ScoringPolicy.load_default()
+    s = p.compose_components(
+        ai_score=Decimal("10"),
+        tech_score=Decimal("3.5"),
+        sentiment_score=Decimal("5"),
+        has_ai=True,
+        has_tech=True,
+        has_sentiment=True,
+        tech_signal_count=3,
+    )
+    assert s.composite_score == Decimal("5.90")
+    assert s.composite_max == Decimal("7.40")
+    assert s.confidence == Decimal("0.797")
+    assert s.grade == "A"
+    assert s.recommendation_label == "STRONG"  # confidence 0.797 >= 0.65, signals 3 >= 3
+    assert s.missing_axes == ()
+
+
+def test_score_sentiment_missing_zero_policy_preserved():
+    """본 PR: sentiment N/A → 0점 처리 보존 (PR 4 에서 재분배 적용)."""
+    p = ScoringPolicy.load_default()
+    s = p.compose_components(
+        ai_score=Decimal("10"),
+        tech_score=Decimal("3.5"),
+        sentiment_score=Decimal("0"),
+        has_ai=True,
+        has_tech=True,
+        has_sentiment=False,         # 누락
+        tech_signal_count=3,
+    )
+    # 현행: 0.3*10 + 0.4*3.5 + 0.3*0 = 4.4. composite_max 는 7.4 유지 (재분배 없음)
+    assert s.composite_score == Decimal("4.40")
+    assert s.composite_max == Decimal("7.40")
+    assert "sentiment" in s.missing_axes
+
+
+def test_score_raw_rise_pct_20_pct_full_score():
+    """raw +20% → AI score 10 (현행 cap 동작)."""
+    p = ScoringPolicy.load_default()
+    score = p.score_from_raw_signals(
+        rise_pct=Decimal("20"),
+        sentiment_raw=Decimal("0.5"),
+        tech_indicators={"golden_cross": True, "rsi": 50, "macd_buy_signal": True},
+    )
+    # AI=10, Tech=3.5, Sent=5 → composite 5.9
+    assert score.composite_score == Decimal("5.90")
+
+
+def test_score_negative_rise_pct_zero_policy_preserved():
+    """본 PR: -15% → AI score 0 (veto 없이 0점). PR 3 에서 veto 로 변경."""
+    p = ScoringPolicy.load_default()
+    score = p.score_from_raw_signals(
+        rise_pct=Decimal("-15"),
+        sentiment_raw=Decimal("0.5"),
+        tech_indicators={"golden_cross": True, "rsi": 50, "macd_buy_signal": True},
+    )
+    # AI=0, Tech=3.5, Sent=5 → composite 0 + 1.4 + 1.5 = 2.9
+    assert score.composite_score == Decimal("2.90")
+    assert score.veto_reasons == ()  # 본 PR 은 veto 미적용
