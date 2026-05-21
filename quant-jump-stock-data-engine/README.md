@@ -56,6 +56,30 @@ pytest tests/ -v --cov=src
 - `tests/test_prediction_service.py`: ML 예측 서비스 (15개)
 - **Total: 36 tests**
 
+## 점수 모델 SSoT (PR 1, 2026-05-21)
+
+추천 산식은 `quant-jump-stock-backend/scoring_spec.yaml` (backend repo 루트) 가 **단일 진실원**.
+`src/domain/recommendation/scoring_policy.py` 의 `ScoringPolicy` 가 spec 을 로드하여 4 호출처(`sync_service`, `buy_criteria`, `slack_notifier`, `comprehensive_report`)에 public API 제공.
+
+### 로컬 vs 운영 spec 경로 차이
+
+| 환경 | `SCORING_SPEC_PATH` |
+|------|---------------------|
+| Cloud Run (운영) | `/app/scoring_spec.yaml` (Dockerfile `COPY scoring_spec.yaml /app/`) |
+| docker-compose (로컬) | `/spec/scoring_spec.yaml` (별도 볼륨 마운트) |
+| pytest (로컬) | 미설정 (Python fallback: `Path(__file__).parents[4] / "scoring_spec.yaml"`) |
+
+> **로컬은 왜 `/spec/`?** docker-compose 의 `./quant-jump-stock-data-engine:/app` 볼륨이 `/app/scoring_spec.yaml` 마운트 포인트와 충돌하여 host data-engine 디렉토리에 stray empty file 을 만들어버림. `/spec/` 으로 분리하여 회피.
+
+### spec 변경 워크플로우
+
+1. `scoring_spec.yaml` 수정 (backend repo 루트)
+2. `poetry run pytest tests/` 통과 확인 (특히 `tests/domain/recommendation/test_golden.py` 50 케이스)
+3. **운영자**가 `docs/runbook/scoring-regression-prod.md` 절차에 따라 prod regression 실행
+4. drift JSON 첨부 후 PR 머지 → CI 자동 redeploy (workflow path filter 에 `scoring_spec.yaml` 포함)
+
+> ⚠ spec 의 weights / max / grade thresholds 는 `ScoringPolicy` startup invariant 검증이 보호한다. 부정합 spec 은 Cloud Run startup probe 실패로 즉시 차단됨.
+
 ## 환경변수
 
 | 변수 | 설명 | 기본값 |
@@ -64,6 +88,7 @@ pytest tests/ -v --cov=src
 | `KAFKA_BOOTSTRAP_SERVERS` | Kafka 서버 | `localhost:9092` |
 | `GCP_PROJECT_ID` | GCP 프로젝트 ID | - |
 | `GCP_BUCKET_NAME` | GCS 버킷 이름 | - |
+| `SCORING_SPEC_PATH` | scoring_spec.yaml 컨테이너 내 경로 | `/app/scoring_spec.yaml` (Dockerfile) |
 
 ### Vertex AI 환경변수 (Job 실행 시)
 | 변수 | 설명 |
