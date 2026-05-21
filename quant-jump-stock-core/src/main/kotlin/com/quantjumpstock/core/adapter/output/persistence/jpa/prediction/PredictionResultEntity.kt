@@ -114,6 +114,13 @@ class PredictionResultEntity(
     @Column(name = "price_recommendation", length = 20)
     val priceRecommendation: String? = null,
 
+    // PR 2 (2026-05-21): ScoringPolicy 라벨 SSoT + AI 예측 출처 날짜
+    @Column(name = "recommendation_label", length = 20)
+    val recommendationLabel: String? = null,
+
+    @Column(name = "effective_prediction_date")
+    val effectivePredictionDate: LocalDate? = null,
+
     // 메타데이터
     @Column(name = "created_at", nullable = false, updatable = false)
     val createdAt: LocalDateTime = LocalDateTime.now(),
@@ -151,7 +158,9 @@ class PredictionResultEntity(
             currentPrice = currentPrice,
             targetPrice = targetPrice,
             upsidePercent = upsidePercent,
-            priceRecommendation = priceRecommendation  // String 그대로 전달
+            priceRecommendation = priceRecommendation,  // String 그대로 전달
+            recommendationLabel = recommendationLabel,
+            effectivePredictionDate = effectivePredictionDate
         )
     }
 
@@ -186,7 +195,9 @@ class PredictionResultEntity(
                 currentPrice = domain.currentPrice,
                 targetPrice = domain.targetPrice,
                 upsidePercent = domain.upsidePercent,
-                priceRecommendation = domain.priceRecommendation  // String 그대로
+                priceRecommendation = domain.priceRecommendation,  // String 그대로
+                recommendationLabel = domain.recommendationLabel,
+                effectivePredictionDate = domain.effectivePredictionDate
             )
         }
     }

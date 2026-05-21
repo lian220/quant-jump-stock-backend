@@ -438,6 +438,9 @@ class RecommendationSyncService:
                 "target_price": target_price,
                 "upside_percent": round(upside_percent, 2) if upside_percent is not None else None,
                 "price_recommendation": price_recommendation,
+                # 🆕 PR 2 (2026-05-21): ScoringPolicy 라벨 SSoT + AI 예측 출처 추적
+                "recommendation_label": score_result.recommendation_label,
+                "effective_prediction_date": None,  # sync_service 는 fallback 없음 (ADR 0001)
             })
 
         # Composite Score 내림차순 정렬
@@ -532,6 +535,7 @@ class RecommendationSyncService:
             composite_score, composite_grade,
             is_recommended, recommendation_reason,
             current_price, target_price, upside_percent, price_recommendation,
+            recommendation_label, effective_prediction_date,
             updated_at
         ) VALUES %s
         ON CONFLICT (ticker, analysis_date)
@@ -560,10 +564,12 @@ class RecommendationSyncService:
             target_price = EXCLUDED.target_price,
             upside_percent = EXCLUDED.upside_percent,
             price_recommendation = EXCLUDED.price_recommendation,
+            recommendation_label = EXCLUDED.recommendation_label,
+            effective_prediction_date = EXCLUDED.effective_prediction_date,
             updated_at = CURRENT_TIMESTAMP
         """
 
-        row_template = "(" + ",".join(["%s"] * 26) + ", CURRENT_TIMESTAMP)"
+        row_template = "(" + ",".join(["%s"] * 28) + ", CURRENT_TIMESTAMP)"
         rows = [
             (
                 data["ticker"], data["stock_name"], analysis_date,
@@ -576,6 +582,7 @@ class RecommendationSyncService:
                 data["composite_score"], data["composite_grade"],
                 data["is_recommended"], data["recommendation_reason"],
                 data["current_price"], data["target_price"], data["upside_percent"], data["price_recommendation"],
+                data.get("recommendation_label"), data.get("effective_prediction_date"),
             )
             for data in merged_data
         ]
