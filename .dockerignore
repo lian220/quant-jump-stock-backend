@@ -1,0 +1,52 @@
+# Exclude other backend service (Kotlin Core) — data engine image does not need it
+quant-jump-stock-core/
+
+# Git / CI metadata
+.git/
+.github/
+.gitignore
+.worktrees/
+
+# Docs (large + irrelevant at runtime)
+docs/
+*.md
+quant-jump-stock-data-engine/docs/
+claudedocs/
+
+# Terraform / IaC / ops scripts
+terraform/
+deploy/
+nginx/
+scripts/
+
+# Local seed / cached data (huge, never needed in image)
+data/
+
+# Credentials (NEVER ship into image)
+credentials/
+
+# Don't ship Dockerfiles into the image
+quant-jump-stock-data-engine/Dockerfile
+quant-jump-stock-data-engine/.dockerignore
+.dockerignore
+
+# Python noise
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/.pytest_cache/
+**/.coverage
+**/htmlcov/
+**/.mypy_cache/
+**/.ruff_cache/
+
+# Local env files (NEVER ship secrets in image)
+**/.env
+**/.env.*
+!**/.env.example
+
+# IDE / OS
+.vscode/
+.idea/
+.claude/
+.DS_Store

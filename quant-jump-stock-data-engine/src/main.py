@@ -17,10 +17,11 @@ import os
 import logging
 import time
 import threading
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pytz import timezone
 
-from typing import Optional
+from typing import AsyncIterator, Optional
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
@@ -68,6 +69,10 @@ from adapter.output.mongodb.analysis_repository import (
 from adapter.output.slack import SlackAnalysisNotifierAdapter
 from adapter.output.core_api import CoreCacheClient
 
+# Scoring SSoT — startup validation (fail-fast on spec misconfiguration)
+from domain.recommendation.scoring_policy import ScoringPolicy
+from domain.recommendation.exceptions import SpecValidationError, SpecNotFoundError
+
 # Heavy 패키지(pandas, numpy, yfinance) Cold Start 최적화:
 # EconomicDataService, RecommendationService, TechnicalAnalysisApplicationService,
 # RecommendationApplicationService, BacktestApplicationService
@@ -85,10 +90,48 @@ logger = logging.getLogger(__name__)
 # Settings
 settings = get_settings()
 
+
+# ============================================================
+# Scoring spec — startup validation (fail-fast)
+# ============================================================
+# Import-time side effect 제거 (PR 1 리뷰 반영, 2026-05-21):
+# main.py 를 import 만 해도 spec 검증이 일어나면 tests/tooling 이
+# spec 파일 없는 환경에서 import 못 함. 대신 (a) FastAPI lifespan 안에서
+# Cloud Run startup 시 검증, (b) main() 진입 시 명시 호출로 pull-mode 도 보호.
+def _validate_scoring_spec() -> None:
+    """scoring_spec 로드 + invariant 검증. 실패 시 fail-fast (RuntimeError raise)."""
+    try:
+        p = ScoringPolicy.load_default()
+        logger.info(
+            "✅ scoring_spec loaded: version=%s, composite_max=%s, path=%s",
+            p.formula_version,
+            p.composite_max,
+            os.environ.get("SCORING_SPEC_PATH", "<fallback>"),
+        )
+    except (SpecValidationError, SpecNotFoundError) as e:
+        logger.critical("❌ scoring_spec load failed at startup: %s", e)
+        raise
+    except Exception as e:
+        logger.critical(
+            "❌ scoring_spec load failed (unexpected): %s — Cloud Run startup probe fail",
+            e,
+        )
+        raise
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """FastAPI lifespan — Cloud Run startup probe 실패로 즉시 차단."""
+    _validate_scoring_spec()
+    yield
+    # shutdown phase 는 현재 명시 cleanup 없음
+
+
 # FastAPI (Read-Only Status API)
 app = FastAPI(
     title="Quantiq Data Engine",
-    description="Message Processing Worker (Hexagonal Architecture)"
+    description="Message Processing Worker (Hexagonal Architecture)",
+    lifespan=_lifespan,
 )
 
 app.include_router(economic_router)
@@ -464,6 +507,10 @@ def _init_services():
 
 
 def main():
+    # Spec 검증 — push 모드는 lifespan 이 한 번 더 보장하지만, pull 모드는
+    # subscriber 가 API thread 와 무관하게 시작하므로 진입 시 명시 검증 필요.
+    _validate_scoring_spec()
+
     pubsub_mode = settings.pubsub.mode.lower()
 
     logger.info("=" * 80)

@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - 'quant-jump-stock-data-engine/**'
+      - 'scoring_spec.yaml'
       - '.github/workflows/deploy-data-engine.yml'
       - '!**.md'
       - '!docs/**'
@@ -40,7 +41,8 @@ jobs:
       - name: Build & Push Data Engine
         uses: docker/build-push-action@v6
         with:
-          context: ./quant-jump-stock-data-engine
+          context: .
+          file: ./quant-jump-stock-data-engine/Dockerfile
           push: true
           tags: ${{ env.AR_REPO }}/qjs-data-engine:latest
           platforms: linux/amd64

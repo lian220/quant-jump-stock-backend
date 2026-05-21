@@ -18,11 +18,26 @@ from typing import Optional, Dict, List
 from adapter.output.slack.bot_client import SlackBotClient
 from config.settings import get_settings
 from domain.recommendation.composite_grade import RecommendationGrade
+from domain.recommendation.score import Score
+from domain.recommendation.scoring_policy import ScoringPolicy
 
 KST = timezone('Asia/Seoul')
 EST = timezone('America/New_York')
 
 logger = logging.getLogger(__name__)
+
+
+# ─── 점수 표시 (분모 ScoringPolicy.composite_max SSoT) ─────────────────────
+def _format_score_for_slack(score: Score) -> str:
+    """Score → Slack 표시 (분모를 score.composite_max 에서 동적으로).
+
+    하드코딩 `7.4` 폐기. spec 변경 시 표시도 자동 추종.
+    현행 spec 의 composite_max=7.4 → "x.xx/7.40" 형태 그대로.
+    """
+    return (
+        f"종합점수: `{float(score.composite_score):.2f}/{float(score.composite_max):.2f}` "
+        f"(달성도 {float(score.confidence):.0%})"
+    )
 
 # Bot Client 싱글톤 (thread-safe)
 _bot_client: Optional[SlackBotClient] = None
@@ -483,6 +498,12 @@ class SlackNotifier:
         avg_composite = summary.get("avg_composite_score", 0)
         avg_rise = summary.get("avg_rise_probability", 0)
 
+        # Task 2.3: composite 분모는 ScoringPolicy.composite_max SSoT.
+        _policy = ScoringPolicy.load_default()
+        _composite_max = float(_policy.composite_max)
+        _ax = _policy.axes
+        _min_rec = float(_policy.min_composite_score)
+
         blocks = [
             {
                 "type": "header",
@@ -500,7 +521,7 @@ class SlackNotifier:
                 "fields": [
                     {"type": "mrkdwn", "text": f"*총 분석 종목*\n{total}개"},
                     {"type": "mrkdwn", "text": f"*최종 추천 종목*\n{candidate_count}개"},
-                    {"type": "mrkdwn", "text": f"*평균 종합 점수*\n{avg_composite:.2f} / 7.4"},
+                    {"type": "mrkdwn", "text": f"*평균 종합 점수*\n{avg_composite:.2f} / {_composite_max:.2f}"},
                     {"type": "mrkdwn", "text": f"*평균 상승 확률*\n{avg_rise:.1f}%"},
                 ]
             },
@@ -559,11 +580,24 @@ class SlackNotifier:
                 scores = rec.get("scores", {})
                 ticker = rec.get("ticker", "N/A")
                 stock_name = rec.get("stock_name", ticker)
-                composite = scores.get("composite_score", 0)
-                confidence = scores.get("confidence", 0)
                 grade = rec.get("grade")
                 grade_emoji = grade.emoji if hasattr(grade, "emoji") else "⚪"
                 grade_label = grade.label if hasattr(grade, "label") else str(grade)
+
+                # Task 2.3: 종합점수 분모 ScoringPolicy.composite_max SSoT.
+                # buy_criteria (filter_candidates / get_near_miss_candidates) 와 sync_service 둘 다
+                # 후보 dict 의 top-level "score" 키로 Score 객체를 올린다 — 단일 lookup.
+                # 둘 다 없으면 ScoringPolicy 직접 로드해 동적 분모 산출 (legacy defensive).
+                score_obj: Optional[Score] = rec.get("score") or scores.get("score_obj")
+                if score_obj is not None:
+                    score_str = _format_score_for_slack(score_obj)
+                else:
+                    composite = scores.get("composite_score", 0)
+                    confidence = scores.get("confidence", 0)
+                    score_str = (
+                        f"종합점수: `{composite:.2f}/{_composite_max:.2f}` "
+                        f"(달성도 {confidence:.0%})"
+                    )
 
                 ai_pred = rec.get("ai_prediction", {})
                 rise_prob = ai_pred.get("rise_probability", 0)
@@ -588,7 +622,7 @@ class SlackNotifier:
                         "type": "mrkdwn",
                         "text": (
                             f"*{grade_emoji} {i}. {stock_name}* (`{ticker}`) — {grade_label}\n"
-                            f"• 종합점수: `{composite:.2f}/7.4` (달성도 {confidence:.0%}) | 상승확률: `{rise_str}` | 감정: `{sent_str}`\n"
+                            f"• {score_str} | 상승확률: `{rise_str}` | 감정: `{sent_str}`\n"
                             f"• 기술신호: {signal_text}"
                         )
                     }
@@ -643,8 +677,11 @@ class SlackNotifier:
                 "elements": [
                     {"type": "mrkdwn", "text": (
                         f"⏰ {current_time} | "
-                        f"기준: 0.3×AI(0~10) + 0.4×기술(0~3.5) + 0.3×감정(0~10) → composite (max 7.4) | "
-                        f"AI/감정은 양수 예측만 점수, 매수 추천=composite≥3.0 + 가격 매수 | "
+                        f"기준: {_ax['ai']['weight']}×AI(0~{float(_ax['ai']['max']):.0f}) + "
+                        f"{_ax['technical']['weight']}×기술(0~{float(_ax['technical']['max']):.1f}) + "
+                        f"{_ax['sentiment']['weight']}×감정(0~{float(_ax['sentiment']['max']):.0f}) "
+                        f"→ composite (max {_composite_max:.1f}) | "
+                        f"AI/감정은 양수 예측만 점수, 매수 추천=composite≥{_min_rec:.1f} + 가격 매수 | "
                         f"Quantiq Data Engine"
                     )}
                 ]

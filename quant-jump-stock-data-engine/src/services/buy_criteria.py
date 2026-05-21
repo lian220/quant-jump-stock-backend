@@ -9,18 +9,25 @@ v2 변경사항:
 - 동적 가중치 재분배 (데이터 소스 부재 시 나머지에 가중치 분배)
 - confidence(신뢰도) 기반 등급 결정
 
-  composite_score = w_ai * ai_score + w_tech * tech_score + w_sent * sentiment_score
-  가중치는 가용 데이터에 따라 동적 재분배 (합계 항상 1.0)
+PR 1 (점수 모델 SSoT) 변경사항:
+- 점수 산식은 ScoringPolicy public API 로 위임 (분모 7.4 통일)
+- ScoreScale.CRITERIA_MAX_* 의존 제거 (composite_grade.py 의 deprecated 상수)
+- calculate_composite_score / filter_candidates / get_near_miss_candidates 모두
+  0-10 통일 스케일 입력을 기대 (sync_service, comprehensive_report 와 동일).
+  caller (comprehensive_report) 는 ScoringPolicy.normalize_rise_pct_to_score /
+  sentiment_score_from_raw 로 사전 정규화하여 전달.
 """
 from __future__ import annotations
 import logging
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Dict, Any, List
+from dataclasses import dataclass, field
+from decimal import Decimal
+from typing import TYPE_CHECKING, Dict, Any, List, Optional
 
 if TYPE_CHECKING:
     from config.settings import RecommendationCriteriaSettings
 
-from domain.recommendation.composite_grade import RecommendationGrade, ScoreScale
+from domain.recommendation.composite_grade import RecommendationGrade
+from domain.recommendation.scoring_policy import ScoringPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -50,8 +57,38 @@ class BuyCriteria:
     max_stocks_to_recommend: int = 5
     near_miss_top_n: int = 3
 
+    # ScoringPolicy (PR 1: SSoT 위임)
+    policy: Optional[ScoringPolicy] = field(default=None, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        if self.policy is None:
+            self.policy = ScoringPolicy.load_default()
+
+        # PR 1: BuyCriteria 의 weight/threshold 필드는 더 이상 산식을 구동하지 않는다 (ScoringPolicy SSoT).
+        # 그러나 from_settings(env) 호환을 위해 dataclass 필드는 유지. 운영자가 env 로 가중치를
+        # 바꿔봤는데 점수가 안 바뀌어 혼란스러워 하는 silent regression 을 막기 위해, 환경값과
+        # spec 값이 다르면 WARN. 실제 제거는 PR 2 (Kotlin Core 측정 계약 정리와 함께).
+        policy_w = {
+            "ai": float(self.policy.axes["ai"]["weight"]),
+            "technical": float(self.policy.axes["technical"]["weight"]),
+            "sentiment": float(self.policy.axes["sentiment"]["weight"]),
+        }
+        env_w = {"ai": self.weight_ai, "technical": self.weight_technical, "sentiment": self.weight_sentiment}
+        mismatches = [k for k in env_w if abs(env_w[k] - policy_w[k]) > 1e-6]
+        if mismatches:
+            logger.warning(
+                "BuyCriteria env 가중치가 ScoringPolicy spec 과 다릅니다 (산식엔 영향 없음): "
+                "mismatch=%s env=%s spec=%s. 산식 변경은 scoring_spec.yaml 만 영향. "
+                "env 가중치는 PR 2 에서 제거 예정.",
+                mismatches, env_w, policy_w,
+            )
+
     @classmethod
-    def from_settings(cls, settings: "RecommendationCriteriaSettings") -> "BuyCriteria":
+    def from_settings(
+        cls,
+        settings: "RecommendationCriteriaSettings",
+        policy: Optional[ScoringPolicy] = None,
+    ) -> "BuyCriteria":
         """RecommendationCriteriaSettings에서 BuyCriteria 생성 (환경변수로 제어)"""
         return cls(
             weight_ai=settings.weight_ai,
@@ -67,6 +104,7 @@ class BuyCriteria:
             min_tech_signals_without_sentiment=settings.min_tech_signals_without_sentiment,
             max_stocks_to_recommend=settings.max_stocks_to_recommend,
             near_miss_top_n=settings.near_miss_top_n,
+            policy=policy,
         )
 
     # ── 기술 지표 ──────────────────────────────────────
@@ -88,28 +126,6 @@ class BuyCriteria:
             "macd_buy_signal": stock.get("macd_buy_signal", False),
         }
 
-    def calculate_tech_score(self, indicators: Dict[str, Any]) -> float:
-        """기술적 점수 계산 (max 3.5)"""
-        score = 0.0
-        if indicators.get("golden_cross"):
-            score += self.golden_cross_score
-        if indicators.get("rsi", 100) < self.rsi_threshold:
-            score += self.rsi_below_score
-        if indicators.get("macd_buy_signal"):
-            score += self.macd_buy_score
-        return score
-
-    def count_tech_signals(self, indicators: Dict[str, Any]) -> int:
-        """충족된 기술적 신호 개수 (max 3)"""
-        count = 0
-        if indicators.get("golden_cross"):
-            count += 1
-        if indicators.get("rsi", 100) < self.rsi_threshold:
-            count += 1
-        if indicators.get("macd_buy_signal"):
-            count += 1
-        return count
-
     # ── Composite Score (ADR 0001 진정성 규칙) ──────────────
 
     # 정적 가중치 = 0.3 AI + 0.4 Tech + 0.3 Sent, max = 7.4 (고정)
@@ -121,22 +137,25 @@ class BuyCriteria:
     def calculate_composite_score(
         self,
         indicators: Dict[str, Any],
-        ai_score: float = 0.0,
-        sentiment_score: float = 0.0,
+        ai_score: float = 0.0,        # 이미 normalized (0~10, sync_service 와 동일 스케일)
+        sentiment_score: float = 0.0, # 이미 normalized (0~10)
         has_ai: bool = True,
         has_sentiment: bool = True,
         has_tech: bool = True,
     ) -> Dict[str, Any]:
         """
-        Composite Score 계산 (ADR 0001 진정성 규칙)
+        Composite Score 계산 — ScoringPolicy public API 위임.
 
-        정적 가중치 0.3/0.4/0.3 적용, max = 7.4 고정.
-        부재 축은 0으로 처리 (부분 점수도 그대로 산출, 자연히 낮은 점수).
+        분모 7.4 통일 (현행 buy_criteria 2.75 스케일 → sync_service 와 동일 7.4).
+        부재 축은 0으로 처리 (재분배 없음, 자연히 낮은 점수).
         - 옛 _dynamic_weights 폐기: 부재 축의 가중치를 다른 축에 재분배해 "100% 강력 추천"
           같은 인플레 거짓을 만들던 결함의 원천.
         - missing_axes 정보는 보존 (UI/디버깅 용도).
 
         Args:
+            indicators: 기술 지표 dict (golden_cross, rsi, macd_buy_signal)
+            ai_score: 이미 0~10 normalized AI score
+            sentiment_score: 이미 0~10 normalized sentiment score
             has_ai/has_sentiment/has_tech: 데이터 *부재* 여부 (sync_service와 동일 의미).
               True = 데이터 가용, False = 데이터 부재. tech_score가 0이어도 *분석은 정상 수행*
               한 경우는 has_tech=True (신호 없음 ≠ 데이터 부재).
@@ -145,39 +164,35 @@ class BuyCriteria:
             {tech_score, tech_signals, ai_score, sentiment_score,
              composite_score, max_possible, confidence, missing_axes}
         """
-        tech_score = self.calculate_tech_score(indicators)
-        tech_signals = self.count_tech_signals(indicators)
+        policy = self.policy  # __post_init__ 보장
+        assert policy is not None  # mypy/runtime safety
 
-        # 부재 축은 0으로 처리 (그 축의 가중치 × 0 = 0 기여)
-        effective_ai = ai_score if has_ai else 0.0
-        effective_tech = tech_score if has_tech else 0.0
-        effective_sent = sentiment_score if has_sentiment else 0.0
+        tech_score = policy.tech_score_from_indicators(indicators) if has_tech else Decimal("0")
+        tech_signals = policy.count_tech_signals(indicators) if has_tech else 0
 
-        composite = (
-            self.weight_ai * effective_ai
-            + self.weight_technical * effective_tech
-            + self.weight_sentiment * effective_sent
+        score = policy.compose_components(
+            ai_score=Decimal(str(ai_score)) if has_ai else Decimal("0"),
+            tech_score=tech_score,
+            sentiment_score=Decimal(str(sentiment_score)) if has_sentiment else Decimal("0"),
+            has_ai=has_ai,
+            has_tech=has_tech,
+            has_sentiment=has_sentiment,
+            tech_signal_count=tech_signals,
         )
-        max_possible = (
-            self.weight_ai * ScoreScale.CRITERIA_MAX_AI
-            + self.weight_technical * ScoreScale.CRITERIA_MAX_TECH
-            + self.weight_sentiment * ScoreScale.CRITERIA_MAX_SENTIMENT
-        )
-        confidence = composite / max_possible if max_possible > 0 else 0.0
 
         return {
-            "tech_score": tech_score,
+            "tech_score": float(score.tech_score),
             "tech_signals": tech_signals,
-            "ai_score": effective_ai,
-            "sentiment_score": effective_sent,
-            "composite_score": round(composite, 4),
-            "max_possible": round(max_possible, 4),
-            "confidence": round(confidence, 4),
-            "missing_axes": [
-                name for name, present in [
-                    ("ai", has_ai), ("tech", has_tech), ("sentiment", has_sentiment)
-                ] if not present
-            ],
+            "ai_score": float(score.ai_score),
+            "sentiment_score": float(score.sentiment_score),
+            "composite_score": round(float(score.composite_score), 4),
+            "max_possible": round(float(score.composite_max), 4),
+            "confidence": round(float(score.confidence), 4),
+            "missing_axes": list(score.missing_axes),
+            # Task 2.3: 다운스트림(Slack)이 score.composite_max 를 동적 분모로 사용.
+            # filter_candidates / get_near_miss_candidates 가 후보 dict 의 top-level "score" 키로 끌어올린다.
+            # 외부 API/저장 경로엔 노출 금지 — Slack/내부 렌더링 전용.
+            "score_obj": score,
         }
 
     # ── 등급 결정 ──────────────────────────────────────
@@ -206,6 +221,10 @@ class BuyCriteria:
         - composite_score 기반 grade 임계로 자연 컷오프
         - 부분 데이터 종목도 점수 그대로 산출. 점수 낮으면 grade 자동 NONE으로 떨어짐
         - max_stocks_to_recommend 개수 제한 (상위 N개)
+
+        PR 1: ai_scores / sentiment_scores 는 0-10 통일 SSoT 스케일.
+        caller (comprehensive_report) 가 ScoringPolicy.normalize_rise_pct_to_score /
+        sentiment_score_from_raw 로 사전 정규화하여 전달. rescale 어댑터 폐기.
         """
         if ai_scores is None:
             ai_scores = {}
@@ -222,11 +241,10 @@ class BuyCriteria:
             has_sentiment = ticker in sentiment_scores
             has_tech = bool(indicators)  # 기술 분석이 수행됐는가 (신호 부재 ≠ 데이터 부재)
 
-            ai = ai_scores.get(ticker, 0.0)
-            sentiment = sentiment_scores.get(ticker, 0.0)
-
             scores = self.calculate_composite_score(
-                indicators, ai, sentiment,
+                indicators,
+                ai_score=ai_scores.get(ticker, 0.0),
+                sentiment_score=sentiment_scores.get(ticker, 0.0),
                 has_ai=has_ai, has_sentiment=has_sentiment, has_tech=has_tech,
             )
 
@@ -234,7 +252,12 @@ class BuyCriteria:
             if grade == RecommendationGrade.NONE:
                 continue
 
-            candidates.append({**stock, "scores": scores, "grade": grade})
+            candidates.append({
+                **stock,
+                "scores": scores,
+                "grade": grade,
+                "score": scores.get("score_obj"),  # Slack 렌더링 직접 접근용 (Task 2.3)
+            })
 
         # 등급 우선 → 같은 등급 내에서 composite_score 내림차순
         candidates.sort(
@@ -266,6 +289,8 @@ class BuyCriteria:
     ) -> List[Dict[str, Any]]:
         """
         필터 미통과 종목 중 composite_score 상위 near-miss 후보 반환.
+
+        ai_scores / sentiment_scores 는 0-10 통일 SSoT 스케일 (filter_candidates 와 동일).
         """
         if ai_scores is None:
             ai_scores = {}
@@ -284,10 +309,10 @@ class BuyCriteria:
             has_ai = ticker in ai_scores
             has_sentiment = ticker in sentiment_scores
             has_tech = bool(indicators)
-            ai = ai_scores.get(ticker, 0.0)
-            sentiment = sentiment_scores.get(ticker, 0.0)
             scores = self.calculate_composite_score(
-                indicators, ai, sentiment,
+                indicators,
+                ai_score=ai_scores.get(ticker, 0.0),
+                sentiment_score=sentiment_scores.get(ticker, 0.0),
                 has_ai=has_ai, has_sentiment=has_sentiment, has_tech=has_tech,
             )
             grade = self.determine_grade(scores)
@@ -315,6 +340,7 @@ class BuyCriteria:
                 **stock,
                 "scores": scores,
                 "grade": grade,
+                "score": scores.get("score_obj"),  # Slack 렌더링 직접 접근용 (Task 2.3)
                 "missing_conditions": missing,
                 "met_conditions": met,
             })

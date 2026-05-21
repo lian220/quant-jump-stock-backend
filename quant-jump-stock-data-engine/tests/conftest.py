@@ -13,6 +13,97 @@ from unittest.mock import MagicMock, AsyncMock
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Score / spec 빌더 (PR 1 점수 모델 SSoT, 2026-05-21)
+#
+# 사용 예:
+#   def test_something(make_score):
+#       s = make_score(grade="D", missing_axes=("ai",))
+#
+#   def test_invariant(make_spec, tmp_path):
+#       bad_spec_path = make_spec(tmp_path, composite_max=99.9)
+#
+# Default 는 PR 1 "5.90/A/STRONG" 케이스. 향후 PR 3/5 가 Score 필드 추가 시 빌더만 수정.
+# ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.fixture
+def make_score():
+    """Score 인스턴스 factory. Default = 5.90/A/STRONG. overrides 로 필드 교체."""
+    from decimal import Decimal
+    from domain.recommendation.score import Score
+
+    def _factory(**overrides):
+        defaults = dict(
+            ai_score=Decimal("3.00"),
+            tech_score=Decimal("3.50"),
+            sentiment_score=Decimal("5.00"),
+            composite_score=Decimal("5.90"),
+            composite_max=Decimal("7.40"),
+            confidence=Decimal("0.797"),
+            grade="A",
+            recommendation_label="STRONG",
+            missing_axes=(),
+            veto_reasons=(),
+            warnings=(),
+        )
+        defaults.update(overrides)
+        return Score(**defaults)
+    return _factory
+
+
+@pytest.fixture
+def make_spec():
+    """tmp_path 안에 spec yaml 파일 생성하고 경로 반환. invariant 위반 케이스 작성에 사용."""
+    import yaml
+
+    def _default_spec():
+        return {
+            "spec_version": "1.0.0",
+            "formula_version": "1.0.0",
+            "axes": {
+                "ai": {
+                    "weight": 0.3, "max": 10.0, "cap_strategy": "fixed_pct",
+                    "cap_threshold_pct": 20.0, "missing_policy": "zero", "negative_policy": "zero",
+                },
+                "technical": {
+                    "weight": 0.4, "max": 3.5,
+                    "components": {"golden_cross": 1.5, "rsi_below_threshold": 1.0, "macd_buy_signal": 1.0},
+                    "rsi_threshold": 70, "missing_policy": "zero",
+                },
+                "sentiment": {
+                    "weight": 0.3, "max": 10.0, "missing_policy": "zero",
+                },
+            },
+            "composite_max": 7.4,
+            "grades": {
+                "S": {"min": 6.0, "label": "S"}, "A": {"min": 4.5, "label": "A"},
+                "B": {"min": 3.0, "label": "B"}, "C": {"min": 1.5, "label": "C"},
+                "D": {"min": 0.0, "label": "D"},
+            },
+            "recommendation_labels": {
+                "STRONG":    {"min_confidence": 0.65, "min_tech_signals": 3, "label": "강력 추천", "emoji": "🟢"},
+                "RECOMMEND": {"min_confidence": 0.45, "min_tech_signals": 2, "label": "추천", "emoji": "🟡"},
+                "WATCH":     {"min_confidence": 0.30, "min_tech_signals": 1, "label": "관심 종목", "emoji": "🟠"},
+                "NONE":      {"label": "추천 없음", "emoji": "⚪"},
+            },
+            "recommendation_filter": {
+                "min_composite_score": 2.0, "max_recommendations": 5,
+            },
+        }
+
+    def _factory(tmp_path, **overrides):
+        spec = _default_spec()
+        for k, v in (overrides or {}).items():
+            if isinstance(v, dict) and isinstance(spec.get(k), dict):
+                spec[k].update(v)
+            else:
+                spec[k] = v
+        p = tmp_path / "test_spec.yaml"
+        p.write_text(yaml.dump(spec), encoding="utf-8")
+        return p
+    return _factory
+
+
 @pytest.fixture
 def mock_mongodb():
     """MongoDB Mock 픽스처"""

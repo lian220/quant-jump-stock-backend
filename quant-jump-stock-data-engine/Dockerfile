@@ -10,18 +10,22 @@ RUN apt-get update && apt-get install -y \
 # Install Poetry
 RUN pip install poetry
 
-# Copy configuration
-COPY pyproject.toml poetry.lock* ./
+# Layer 1: deps (cached unless pyproject/lock changes)
+# Build context is now backend repo root → data-engine paths need explicit prefix
+COPY quant-jump-stock-data-engine/pyproject.toml quant-jump-stock-data-engine/poetry.lock* ./
 
-# Install dependencies
 RUN poetry config virtualenvs.create false \
     && poetry install --no-interaction --no-ansi --no-root
 
-# Copy source code
-COPY . .
+# Layer 2: data-engine source
+COPY quant-jump-stock-data-engine/ ./
 
-# Set Python path to include src directory
+# Layer 3: scoring SSoT spec (backend repo root)
+COPY scoring_spec.yaml /app/scoring_spec.yaml
+
+# Python path + scoring spec path
 ENV PYTHONPATH=/app/src
+ENV SCORING_SPEC_PATH=/app/scoring_spec.yaml
 
 # Cloud Run은 PORT 환경변수 사용 (기본 8080), VM은 10020
 EXPOSE ${PORT:-10020}
