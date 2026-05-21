@@ -132,6 +132,11 @@ tmp/
 !**/tests/**/test_*.py
 **/src/scripts/
 
+# Golden / fixture 데이터 파일: tests/data/ 는 추적 대상 (2026-05-21).
+# data/ 와 *.csv 전역 무시 규칙을 tests/data 에 대해서만 해제.
+!**/tests/data/
+!**/tests/data/**
+
 # SQL scripts with credentials
 update_kis_credentials.sql
 
