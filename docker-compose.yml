@@ -160,9 +160,13 @@ services:
       # PostgreSQL Pool Size (Supabase Session 모드 연결 수 제한 대응)
       PG_POOL_MAX_CONN: 2
       PG_POOL_MIN_CONN: 1
+      # Scoring SSoT — backend repo 루트의 spec 을 host 마운트로 사용 (PR 1)
+      # 마운트 타겟이 /app/scoring_spec.yaml 이면 host /app 마운트 위에 mount-point
+      # empty 파일이 생성되는 부작용. /spec/ 으로 분리하여 회피.
+      SCORING_SPEC_PATH: "/spec/scoring_spec.yaml"
     volumes:
       - ./quant-jump-stock-data-engine:/app
-      - ./scoring_spec.yaml:/app/scoring_spec.yaml:ro
+      - ./scoring_spec.yaml:/spec/scoring_spec.yaml:ro
       - ./credentials:/app/credentials
       - ./scripts:/scripts
       - ./.env.db.prod:/config/.env.db.prod:ro
