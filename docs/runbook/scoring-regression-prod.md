@@ -20,15 +20,17 @@
 
 ## 사전 준비
 
-### 1. read-only MongoDB URI 확보
+### 1. read-only PostgreSQL 자격증명 확보
+
+**⚠ 2026-05-21 변경**: composite_score 는 PostgreSQL `prediction_results` 테이블 (sync_service 가 write) 에 저장됨. **MongoDB 가 아님**. 스크립트는 PG SELECT 만 수행.
 
 | 출처 | 위치 |
 |------|------|
-| **GCP Secret Manager** | `qjs-mongodb-uri-readonly` (운영팀 키 이름 — Secret Manager 콘솔에서 확인) |
-| **Atlas UI** | Database Access → 본인 계정 권한 `readAnyDatabase`만 있는지 재확인 |
-| **본인 노트북** | `~/.config/qjs/mongodb-readonly` (개인 보관, 절대 repo 커밋 금지) |
+| **Supabase Dashboard** | Project → Database → Roles → `readonly` (또는 운영팀이 별도 생성한 RO role) |
+| **GCP Secret Manager** | `qjs-pg-readonly-credentials` (운영팀 키 이름 — 콘솔 확인) |
+| **본인 노트북** | `~/.config/qjs/pg-readonly` (개인 보관, 절대 repo 커밋 금지) |
 
-**🚨 절대 사용 금지**: `MONGODB_URI` (write 권한 있는 운영 URI), `.env.db.prod` 의 URI (write 권한 포함). 본 스크립트는 read-only를 강제하지 않으므로 URI 자체로 권한을 분리한다.
+**🚨 절대 사용 금지**: `.env.db.prod` 의 `DB_USER`/`DB_PASSWORD` (대개 write 권한 포함). 본 스크립트는 read-only를 강제하지 않으므로 계정 자체로 권한을 분리한다.
 
 ### 2. spec 파일 경로 확인
 
@@ -52,8 +54,11 @@ poetry install   # pymongo + ScoringPolicy 의존성 보장
 ```bash
 cd quant-jump-stock-backend/quant-jump-stock-data-engine
 
-MONGODB_URI_RO='mongodb+srv://<readonly-user>:<password>@<cluster>/stock_trading?retryWrites=false&readPreference=secondary' \
-MONGODB_DB_NAME=stock_trading \
+PG_HOST_RO=<supabase-host> \
+PG_PORT_RO=5432 \
+PG_USER_RO=<readonly-user> \
+PG_PASSWORD_RO=<password> \
+PG_NAME_RO=<dbname> \
 SCORING_SPEC_PATH=/Users/<you>/.../quant-jump-stock-backend/scoring_spec.yaml \
   poetry run python scripts/scoring_regression_prod.py --days 7 --threshold 0.01
 ```
@@ -73,7 +78,7 @@ SCORING_SPEC_PATH=/Users/<you>/.../quant-jump-stock-backend/scoring_spec.yaml \
 |------|------|------|
 | **0** | drift 없음 또는 대상 0건 | PR 머지 진행 가능 |
 | **1** | drift 있음 — JSON 첨부됨 | 아래 "결과 해석" 참조 |
-| **2** | 환경변수 오류 | `MONGODB_URI_RO` 설정 확인 |
+| **2** | 환경변수 오류 | `PG_*_RO` 설정 확인 |
 
 ## 결과 해석
 
@@ -89,15 +94,19 @@ SCORING_SPEC_PATH=/Users/<you>/.../quant-jump-stock-backend/scoring_spec.yaml \
   "threshold": 0.01,
   "total_processed": 132,
   "drift_count": 8,
+  "grade_changes": 2,
   "drifts": [
     {
       "ticker": "AAPL",
+      "stock_name": "Apple Inc.",
       "date": "2026-05-15",
       "old_composite": 4.32,
       "new_composite": 4.85,
       "delta": 0.53,
+      "old_grade": "B",
       "new_grade": "A",
       "new_label": "RECOMMEND",
+      "grade_changed": true,
       "missing_axes": []
     }
   ]
@@ -131,17 +140,17 @@ PR 1 실행 시 drift가 plan과 일치하면 머지 진행. 그 외 패턴은 �
 
 | 증상 | 원인 / 해결 |
 |------|------------|
-| `MONGODB_URI_RO env 필수` | 환경변수 누락. shell 에서 `echo $MONGODB_URI_RO` 확인 |
+| `필수 환경변수 누락` | `PG_HOST_RO`/`PG_USER_RO`/`PG_PASSWORD_RO`/`PG_NAME_RO` 중 누락. shell 에서 `env \| grep PG_` 확인 |
 | `SpecNotFoundError` | `SCORING_SPEC_PATH` 절대경로 확인. backend repo 루트의 `scoring_spec.yaml` |
-| `pymongo` 미설치 | `poetry install` 재실행. Python 3.11 환경인지 확인 |
-| Atlas 연결 실패 (`ServerSelectionTimeoutError`) | (a) VPN/회사망 IP가 Atlas allow-list에 있는지 확인 (b) URI에 `&tls=true` 추가 (c) Atlas 콘솔에서 클러스터 활성 상태 확인 |
-| 첫 실행에서 `regression 대상 0건` | (a) `--days` 늘려보기 (default 7 → 30) (b) MongoDB `stock_recommendations.is_recommended=true` 필터에 걸리는 데이터가 N일치 안에 없음. plan 산정 시점 확인 |
+| `psycopg2` 미설치 | `poetry install` 재실행. Python 3.11 환경인지 확인 |
+| Supabase 연결 실패 (`psycopg2.OperationalError`) | (a) VPN/회사망 IP가 Supabase allow-list 에 있는지 (b) `PG_PORT_RO=5432` 명시 (c) SSL 옵션 필요 시 URI 방식 (`postgresql://...?sslmode=require`) |
+| 첫 실행에서 `regression 대상 0건` | (a) `--days` 늘려보기 (default 7 → 30) (b) `prediction_results.is_recommended=TRUE` 필터에 걸리는 데이터가 N일치 안에 없음. sync_service 실행 시점 확인 |
 
 ## 보안 점검
 
-- ✅ 스크립트는 `.find(...)` / `.find_one(...)` 외 호출 없음 (write 0)
+- ✅ 스크립트는 `SELECT` 만 사용 (`INSERT`/`UPDATE`/`DELETE` 없음 — `grep` 으로 확인)
 - ✅ JSON 출력에 URI/credential 포함 안 함 (스크립트 검토로 확인)
-- ✅ `regression_unexpected.json`은 ticker/date/composite만 — 비공개 가격/매매 정보 없음
+- ✅ `regression_unexpected.json`은 ticker/date/composite/grade 만 — 비공개 가격/매매 정보 없음
 - ⚠ 그래도 JSON에 운영 종목 리스트가 노출되므로 **PR description 첨부 후 PR 검토 종료 시 GitHub 첨부 파일 삭제 권장** (또는 GitHub PR description 외 비공개 채널에서 공유)
 
 ## 변경 이력
@@ -149,3 +158,4 @@ PR 1 실행 시 drift가 plan과 일치하면 머지 진행. 그 외 패턴은 �
 | 날짜 | 작성자 | 변경 |
 |------|--------|------|
 | 2026-05-21 | Claude (Opus 4.7) | PR 1 머지 직전 작성. 운영자가 직접 실행하는 책임 분리 명시 |
+| 2026-05-21 | Claude (Opus 4.7) | **MongoDB → PostgreSQL prediction_results 로 데이터 소스 변경**. plan 작성 시점에 composite 저장처를 mongo 로 잘못 가정. PR 1 머지 직전 실제 prod E2E 검증 중 발견 후 정정. 환경변수 `MONGODB_URI_RO` → `PG_*_RO` (5개). |
