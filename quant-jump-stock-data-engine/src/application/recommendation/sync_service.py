@@ -68,7 +68,7 @@ class RecommendationSyncService:
             동기화 결과 요약
         """
         try:
-            logger.info(f"🔄 [Sync] MongoDB → PostgreSQL 동기화 시작 (date={analysis_date})")
+            logger.info("🔄 [Sync] MongoDB → PostgreSQL 동기화 시작 (date=%s)", analysis_date)
 
             # 1. MongoDB에서 데이터 조회
             ai_predictions = self._fetch_ai_predictions(analysis_date)
@@ -81,8 +81,9 @@ class RecommendationSyncService:
             ai_predictions = self._merge_ai_sources(ai_predictions, ai_analysis_results)
 
             logger.info(
-                f"[Sync] 조회 완료: AI={len(ai_predictions)}, Sentiment={len(sentiment_analysis)}, "
-                f"Tech={len(technical_analysis)}, Prices={len(current_prices)} (date={analysis_date})"
+                "[Sync] 조회 완료: AI=%d, Sentiment=%d, Tech=%d, Prices=%d (date=%s)",
+                len(ai_predictions), len(sentiment_analysis), len(technical_analysis),
+                len(current_prices), analysis_date,
             )
 
             # 2. 종목별로 데이터 병합
@@ -94,13 +95,13 @@ class RecommendationSyncService:
             )
 
             if not merged_data:
-                logger.warning(f"⚠️ [Sync] 병합된 데이터 없음 (date={analysis_date})")
+                logger.warning("⚠️ [Sync] 병합된 데이터 없음 (date=%s)", analysis_date)
                 return {"status": "success", "synced_count": 0, "message": "No data to sync"}
 
             # 3. PostgreSQL에 저장
             synced_count = self._save_to_postgresql(merged_data, analysis_date)
 
-            logger.info(f"✅ [Sync] 동기화 완료: {synced_count}개 종목")
+            logger.info("✅ [Sync] 동기화 완료: %d개 종목", synced_count)
 
             return {
                 "status": "success",
@@ -112,7 +113,7 @@ class RecommendationSyncService:
             }
 
         except Exception as e:
-            logger.exception(f"❌ [Sync] 동기화 실패: {e}")
+            logger.exception("❌ [Sync] 동기화 실패: %s", e)
             return {"status": "failed", "error": str(e)}
 
     def _fetch_stock_analysis_results(self, analysis_date: str) -> Dict[str, Dict]:
@@ -138,11 +139,13 @@ class RecommendationSyncService:
                 predictions = r.get("predictions", {})
                 rise_pct = predictions.get("rise_probability")  # 상승 예상 % (e.g. 16.25)
 
-                # rise_probability (%) → 0~1 정규화
+                # rise_probability (%) → 0~1 정규화 (Decimal end-to-end, PR 1 일관성)
                 # 0% = 0.5 (중립), +20% = 1.0 (최대 강세), -20% = 0.0 (최대 약세)
                 rise_prob_normalized = None
                 if rise_pct is not None:
-                    rise_prob_normalized = max(0.0, min(1.0, 0.5 + rise_pct / 40.0))
+                    rise_pct_d = Decimal(str(rise_pct))
+                    normalized = Decimal("0.5") + rise_pct_d / Decimal("40")
+                    rise_prob_normalized = float(max(Decimal("0"), min(Decimal("1"), normalized)))
 
                 output[r["ticker"]] = {
                     "predicted_price": predictions.get("predicted_future_price"),
@@ -154,7 +157,7 @@ class RecommendationSyncService:
             return output
 
         except Exception as e:
-            logger.warning(f"AI 분석 결과 조회 실패: {e}")
+            logger.warning("AI 분석 결과 조회 실패: %s", e)
             return {}
 
     def _merge_ai_sources(
@@ -230,7 +233,7 @@ class RecommendationSyncService:
                 }
             return out
         except Exception as e:
-            logger.warning(f"AI 예측 조회 실패: {e}", exc_info=True)
+            logger.warning("AI 예측 조회 실패: %s", e, exc_info=True)
             return {}
 
     def _fetch_sentiment_analysis(self, analysis_date: str) -> Dict[str, Dict]:
@@ -248,7 +251,7 @@ class RecommendationSyncService:
                 } for sent in sentiments if "ticker" in sent
             }
         except Exception as e:
-            logger.warning(f"감정 분석 조회 실패: {e}")
+            logger.warning("감정 분석 조회 실패: %s", e)
             return {}
 
     def _fetch_technical_analysis(self, analysis_date: str) -> Dict[str, Dict]:
@@ -287,7 +290,7 @@ class RecommendationSyncService:
             return results
 
         except Exception as e:
-            logger.warning(f"기술적 분석 조회 실패: {e}")
+            logger.warning("기술적 분석 조회 실패: %s", e)
             return {}
 
     def _query_recommendations_by_date(self, date_str: str) -> list:
@@ -325,7 +328,7 @@ class RecommendationSyncService:
             if daily_data and daily_data.get("stocks"):
                 prices = _extract_prices(daily_data)
                 if prices:
-                    logger.info(f"[Sync] 기준가 조회 완료 (date={analysis_date}, 종목수={len(prices)})")
+                    logger.info("[Sync] 기준가 조회 완료 (date=%s, 종목수=%d)", analysis_date, len(prices))
                     return prices
 
             # 2차: fallback — analysis_date 이전 가장 최근 거래일 종가 사용
@@ -338,7 +341,7 @@ class RecommendationSyncService:
             )
 
             if not fallback_doc:
-                logger.warning(f"⚠️ [Sync] fallback 데이터도 없음 (date<{analysis_date})")
+                logger.warning("⚠️ [Sync] fallback 데이터도 없음 (date<%s)", analysis_date)
                 return {}
 
             prices = _extract_prices(fallback_doc)
@@ -349,7 +352,7 @@ class RecommendationSyncService:
             return prices
 
         except Exception as e:
-            logger.warning(f"기준가 조회 실패: {e}")
+            logger.warning("기준가 조회 실패: %s", e)
             return {}
 
     def _merge_analysis_data(
@@ -374,13 +377,16 @@ class RecommendationSyncService:
             if not ai and not sentiment and not tech:
                 continue
 
-            # rise_probability가 없지만 predicted_price가 있으면 직접 계산
+            # rise_probability가 없지만 predicted_price가 있으면 직접 계산 (Decimal end-to-end)
             rise_probability = ai.get("rise_probability")
             current_price = price_data.get(ticker)
             if rise_probability is None and ai.get("predicted_price") and current_price:
-                ratio = (ai["predicted_price"] - current_price) / current_price
-                # _fetch_stock_analysis_results와 동일 스케일: 0.5 + rise_pct/40.0
-                rise_probability = max(0.0, min(1.0, 0.5 + ratio * 2.5))
+                predicted_d = Decimal(str(ai["predicted_price"]))
+                current_d = Decimal(str(current_price))
+                ratio = (predicted_d - current_d) / current_d
+                # _fetch_stock_analysis_results와 동일 스케일: 0.5 + rise_pct/40 (ratio×2.5 ≈ rise_pct/40)
+                normalized = Decimal("0.5") + ratio * Decimal("2.5")
+                rise_probability = float(max(Decimal("0"), min(Decimal("1"), normalized)))
 
             # ScoringPolicy SSoT 위임 (PR 1)
             ai_score = self._policy.ai_score_from_normalized(
@@ -608,7 +614,7 @@ class RecommendationSyncService:
                     )
             return len(rows)
         except Exception as batch_error:
-            logger.exception(f"❌ [Sync] 배치 upsert 실패, 개별 저장으로 폴백: {batch_error}")
+            logger.exception("❌ [Sync] 배치 upsert 실패, 개별 저장으로 폴백: %s", batch_error)
 
         # 폴백: 개별 쿼리 (기존 방식)
         synced_count = 0
@@ -618,5 +624,5 @@ class RecommendationSyncService:
                 PostgreSQL.execute_query(fallback_sql, row, fetch_all=False)
                 synced_count += 1
             except Exception as row_error:
-                logger.exception(f"❌ [Sync] 개별 저장 실패 (ticker={row[0]}): {row_error}")
+                logger.exception("❌ [Sync] 개별 저장 실패 (ticker=%s): %s", row[0], row_error)
         return synced_count
