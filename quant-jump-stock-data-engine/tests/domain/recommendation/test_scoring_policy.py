@@ -141,3 +141,22 @@ def test_ai_score_from_normalized_matches_current_sync_service():
     assert p.ai_score_from_normalized(Decimal("0.5")) == Decimal("0")
     assert p.ai_score_from_normalized(Decimal("0.75")) == Decimal("5.00")
     assert p.ai_score_from_normalized(None) == Decimal("0")
+
+
+def test_label_metadata_returns_spec_label_emoji():
+    """PR 2: label_metadata 가 spec 의 label/emoji 반환."""
+    p = ScoringPolicy.load_default()
+    strong = p.label_metadata("STRONG")
+    assert strong["label"] == "강력 추천"
+    assert strong["emoji"] == "🟢"
+    none = p.label_metadata("NONE")
+    assert none["label"] == "추천 없음"
+    assert none["emoji"] == "⚪"
+
+
+def test_label_metadata_unknown_key_falls_back_to_none():
+    """unknown key → NONE 매핑 (없으면 default)."""
+    p = ScoringPolicy.load_default()
+    out = p.label_metadata("UNKNOWN_GRADE")
+    assert out["label"] == "추천 없음"
+    assert out["emoji"] == "⚪"

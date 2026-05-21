@@ -48,7 +48,11 @@ data class PredictionResult(
     val currentPrice: BigDecimal? = null,       // 현재가 (최신 종가)
     val targetPrice: BigDecimal? = null,        // 목표가 (AI 예측 가격, aiPredictedPrice와 동일)
     val upsidePercent: BigDecimal? = null,      // 상승여력 (%)
-    val priceRecommendation: String? = null  // 가격 추천 등급 (강력매수/매수/보유/매도)
+    val priceRecommendation: String? = null,    // 가격 추천 등급 (강력매수/매수/보유/매도)
+
+    // PR 2 (2026-05-21): ScoringPolicy 라벨 SSoT + AI 예측 출처 추적
+    val recommendationLabel: String? = null,    // STRONG/RECOMMEND/WATCH/NONE — ScoringPolicy 라벨
+    val effectivePredictionDate: LocalDate? = null  // AI 예측 데이터 실제 사용 날짜 (analysis_date 와 다르면 fallback)
 ) {
     companion object {
         /**

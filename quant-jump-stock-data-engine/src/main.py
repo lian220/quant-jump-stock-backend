@@ -99,24 +99,44 @@ settings = get_settings()
 # spec 파일 없는 환경에서 import 못 함. 대신 (a) FastAPI lifespan 안에서
 # Cloud Run startup 시 검증, (b) main() 진입 시 명시 호출로 pull-mode 도 보호.
 def _validate_scoring_spec() -> None:
-    """scoring_spec 로드 + invariant 검증. 실패 시 fail-fast (RuntimeError raise)."""
+    """scoring_spec 로드 + invariant 검증. 실패 시 fail-fast (RuntimeError raise).
+
+    실패 알림은 best-effort 로 Slack 에 발송 (PR 2). Slack 자체가 죽어도
+    startup 실패는 그대로 propagate.
+    """
+    spec_path = os.environ.get("SCORING_SPEC_PATH", "<fallback>")
     try:
         p = ScoringPolicy.load_default()
         logger.info(
             "✅ scoring_spec loaded: version=%s, composite_max=%s, path=%s",
             p.formula_version,
             p.composite_max,
-            os.environ.get("SCORING_SPEC_PATH", "<fallback>"),
+            spec_path,
         )
     except (SpecValidationError, SpecNotFoundError) as e:
         logger.critical("❌ scoring_spec load failed at startup: %s", e)
+        _notify_spec_load_failure(spec_path, e)
         raise
     except Exception as e:
         logger.critical(
             "❌ scoring_spec load failed (unexpected): %s — Cloud Run startup probe fail",
             e,
         )
+        _notify_spec_load_failure(spec_path, e)
         raise
+
+
+def _notify_spec_load_failure(spec_path: str, error: Exception) -> None:
+    """Slack 알림 best-effort — Slack 모듈 자체가 실패해도 startup raise 가 우선."""
+    try:
+        from services.slack_notifier import SlackNotifier
+        SlackNotifier.notify_spec_load_failed(
+            spec_path=spec_path,
+            error=str(error),
+            error_type=type(error).__name__,
+        )
+    except Exception as send_err:
+        logger.warning("Spec 실패 Slack 알림 자체가 실패 (무시): %s", send_err)
 
 
 @asynccontextmanager

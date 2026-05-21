@@ -287,3 +287,13 @@ class ScoringPolicy:
             if confidence >= min_c and tech_signals >= min_s:
                 return key
         return "NONE"
+
+    # ── Public: label_metadata (PR 2, label/emoji SSoT) ──
+    def label_metadata(self, key: str) -> dict[str, str]:
+        """recommendation_labels[key] 의 label/emoji 를 반환. unknown key 는 NONE 매핑."""
+        labels = self._spec.get("recommendation_labels") or {}
+        cfg = labels.get(key) or labels.get("NONE") or {}
+        return {
+            "label": cfg.get("label", "추천 없음"),
+            "emoji": cfg.get("emoji", "⚪"),
+        }
