@@ -123,8 +123,8 @@ services:
   # ========================================
   quant-jump-stock-data-engine:
     build:
-      context: ./quant-jump-stock-data-engine
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: ./quant-jump-stock-data-engine/Dockerfile
     container_name: qjs-data-engine
     ports:
       - "${DATA_ENGINE_PORT:-10020}:${DATA_ENGINE_PORT:-10020}"
@@ -162,6 +162,7 @@ services:
       PG_POOL_MIN_CONN: 1
     volumes:
       - ./quant-jump-stock-data-engine:/app
+      - ./scoring_spec.yaml:/app/scoring_spec.yaml:ro
       - ./credentials:/app/credentials
       - ./scripts:/scripts
       - ./.env.db.prod:/config/.env.db.prod:ro
