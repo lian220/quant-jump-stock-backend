@@ -501,6 +501,8 @@ class SlackNotifier:
         # Task 2.3: composite 분모는 ScoringPolicy.composite_max SSoT.
         _policy = ScoringPolicy.load_default()
         _composite_max = float(_policy.composite_max)
+        _ax = _policy.axes
+        _min_rec = float(_policy.min_composite_score)
 
         blocks = [
             {
@@ -675,8 +677,11 @@ class SlackNotifier:
                 "elements": [
                     {"type": "mrkdwn", "text": (
                         f"⏰ {current_time} | "
-                        f"기준: 0.3×AI(0~10) + 0.4×기술(0~3.5) + 0.3×감정(0~10) → composite (max {_composite_max:.1f}) | "
-                        f"AI/감정은 양수 예측만 점수, 매수 추천=composite≥3.0 + 가격 매수 | "
+                        f"기준: {_ax['ai']['weight']}×AI(0~{float(_ax['ai']['max']):.0f}) + "
+                        f"{_ax['technical']['weight']}×기술(0~{float(_ax['technical']['max']):.1f}) + "
+                        f"{_ax['sentiment']['weight']}×감정(0~{float(_ax['sentiment']['max']):.0f}) "
+                        f"→ composite (max {_composite_max:.1f}) | "
+                        f"AI/감정은 양수 예측만 점수, 매수 추천=composite≥{_min_rec:.1f} + 가격 매수 | "
                         f"Quantiq Data Engine"
                     )}
                 ]

@@ -117,7 +117,7 @@ class ScoreScale:
     호출처가 모두 ScoringPolicy public API 로 이전 완료 (Task 2.1/2.2/2.3):
     - sync_service → policy.compose_components / ai_score_from_normalized 등
     - buy_criteria → policy.tech_score_from_indicators / compose_components
-    - slack_notifier → policy.composite_max / label_metadata
+    - slack_notifier → policy.composite_max / policy.axes / policy.min_composite_score
     - comprehensive_report → policy.normalize_rise_pct_to_score / sentiment_score_from_raw
 
     상수 자체는 외부 import (deprecated) 와 PR 1 머지 후 1주일 호환을 위해 유지.

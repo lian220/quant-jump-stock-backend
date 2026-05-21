@@ -287,7 +287,3 @@ class ScoringPolicy:
             if confidence >= min_c and tech_signals >= min_s:
                 return key
         return "NONE"
-
-    def label_metadata(self, label_key: str) -> dict[str, str]:
-        cfg = self._spec["recommendation_labels"].get(label_key) or {}
-        return {"label": cfg.get("label", ""), "emoji": cfg.get("emoji", "⚪")}

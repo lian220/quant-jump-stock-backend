@@ -17,15 +17,12 @@ Grade 기준: S≥6.0, A≥4.5, B≥3.0, C≥1.5, D<1.5
 """
 
 import logging
-from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 from decimal import Decimal
 from psycopg2.extras import execute_values
 
 from core.database import MongoDB, PostgreSQL
-from config.settings import RecommendationCriteriaSettings
 from domain.recommendation.scoring_policy import ScoringPolicy
-from domain.recommendation.score import Score
 
 logger = logging.getLogger(__name__)
 
@@ -35,27 +32,8 @@ class RecommendationSyncService:
 
     def __init__(self, policy: Optional[ScoringPolicy] = None):
         self.mongo_db = MongoDB.get_db()
-        # settings (legacy compat — 미사용이지만 backward compat 보존)
-        self._settings = RecommendationCriteriaSettings()
         # ScoringPolicy SSoT (PR 1)
         self._policy = policy or ScoringPolicy.load_default()
-
-    # ── Backward-compat properties (ScoringPolicy 위임) ────────
-    @property
-    def weight_ai(self) -> Decimal:
-        return Decimal(str(self._policy.axes["ai"]["weight"]))
-
-    @property
-    def weight_tech(self) -> Decimal:
-        return Decimal(str(self._policy.axes["technical"]["weight"]))
-
-    @property
-    def weight_sentiment(self) -> Decimal:
-        return Decimal(str(self._policy.axes["sentiment"]["weight"]))
-
-    @property
-    def rsi_threshold(self) -> Decimal:
-        return self._policy.rsi_threshold
 
     def sync_latest_recommendations(self, analysis_date: str) -> Dict[str, Any]:
         """
