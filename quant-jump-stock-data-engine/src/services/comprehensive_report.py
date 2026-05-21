@@ -91,17 +91,22 @@ class ComprehensiveReportService:
         logger.debug(f"감정 분석 로드: {analysis_date} → {len(scores)}개 종목")
         return scores
 
-    def load_ai_predictions(self, analysis_date) -> Dict[str, Dict[str, float]]:
+    def load_ai_predictions(self, analysis_date) -> tuple[Dict[str, Dict[str, float]], Optional[str]]:
         """
         MongoDB에서 AI 예측 데이터 로드 (정확한 날짜 매칭).
 
         stock_analysis_results (우선) + stock_predictions (보충) 둘 다 조회.
+        analysis_results 가 없으면 7일 fallback 발동. fallback 발생 시 두 번째
+        반환값(effective_prediction_date)이 실제 사용된 이전 날짜로 채워진다.
 
         Args:
             analysis_date: 분석 날짜 (str "YYYY-MM-DD" 또는 datetime)
 
         Returns:
-            {ticker: {"predicted_price": ..., "current_price": ..., "rise_probability": ...}}
+            (predictions_dict, effective_prediction_date)
+            - predictions_dict: {ticker: {"predicted_price", "current_price", "rise_probability"}}
+            - effective_prediction_date: fallback 발생 시 실제 사용된 이전 날짜 (예: "2026-05-18"),
+              fallback 미발동 시 None.
         """
         db = MongoDB.get_db()
 
@@ -133,12 +138,10 @@ class ComprehensiveReportService:
 
         # Fallback: 정확한 날짜에 없으면 이전 최근 날짜 (최대 _MAX_PREDICTION_LOOKBACK_DAYS일)
         #
-        # ⚠ Idempotency trade-off (PR 1, 2026-05-21):
-        #   sync_service 는 ADR 0001 에 따라 fallback 없이 정확한 날짜만 사용.
-        #   comprehensive_report 는 일일 분석 알림이 늦은 데이터 때문에 누락되는 걸 막기 위해
-        #   fallback 유지. 같은 analysis_date 로 다른 시점 재실행 시 다른 prediction_date 가
-        #   선택될 수 있어 결과 재현성이 깨질 수 있음. fallback 발생 시 INFO 로그로 추적.
-        #   PR 2 에서 effective_prediction_date 를 result 에 노출하여 재현성 복구 예정.
+        # PR 2 (2026-05-21): fallback 발생 시 effective_prediction_date 를 호출자에게 노출하여
+        # 재현성 가시화. sync_service 는 ADR 0001 따라 fallback 없음 (정확한 날짜만), 비대칭은
+        # 의도된 trade-off — comprehensive_report 는 일일 분석 알림이 늦은 데이터로 누락되는 걸 막기 위해.
+        effective_prediction_date: Optional[str] = None
         if not analysis_docs:
             min_lookback_str = (target_date - timedelta(days=_MAX_PREDICTION_LOOKBACK_DAYS)).strftime("%Y-%m-%d")
             latest = db.stock_analysis_results.find_one(
@@ -148,6 +151,7 @@ class ComprehensiveReportService:
             if latest:
                 fallback_date = latest["date"]  # string
                 analysis_docs = list(db.stock_analysis_results.find({"date": fallback_date}))
+                effective_prediction_date = fallback_date
                 logger.info(
                     f"stock_analysis_results 날짜 fallback: {analysis_date_str} → {fallback_date} ({len(analysis_docs)}건)"
                 )
@@ -214,9 +218,10 @@ class ComprehensiveReportService:
 
         logger.debug(
             f"AI 예측 로드: {analysis_date} → {len(result)}개 종목 "
-            f"(analysis_results={len(analysis_docs)}, predictions 보충={pred_count})"
+            f"(analysis_results={len(analysis_docs)}, predictions 보충={pred_count}, "
+            f"effective_prediction_date={effective_prediction_date})"
         )
-        return result
+        return result, effective_prediction_date
 
     def generate_report(
         self,
@@ -242,7 +247,7 @@ class ComprehensiveReportService:
         """
         # 1. 보조 데이터 로드
         sentiment_scores = self.load_sentiment_scores(analysis_date)
-        ai_predictions = self.load_ai_predictions(analysis_date)
+        ai_predictions, effective_prediction_date = self.load_ai_predictions(analysis_date)
 
         # 2. Composite Score 계산 + 필터링
         # SSoT 정규화: rise_pct (%) → AI score (0-10), sentiment (-1~1) → sentiment score (0-10)
@@ -333,6 +338,9 @@ class ComprehensiveReportService:
 
         report = {
             "analysis_date": analysis_date,
+            # PR 2: fallback 발생 시 AI 예측 실제 사용 날짜. fallback 미발동 시 None.
+            # Slack/PG 가 "데이터가 실제로 어느 날짜에서 왔는지" 표시할 수 있게 함.
+            "effective_prediction_date": effective_prediction_date,
             "total_analyzed": len(technical_results),
             "sentiment_count": len(sentiment_scores),
             "prediction_count": len(ai_predictions),

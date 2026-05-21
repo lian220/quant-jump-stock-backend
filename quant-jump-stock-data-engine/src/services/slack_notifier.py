@@ -543,6 +543,15 @@ class SlackNotifier:
         _ax = _policy.axes
         _min_rec = float(_policy.min_composite_score)
 
+        # PR 2: AI 예측 fallback 표시 (analysis_date 와 다른 날짜로 fallback 시)
+        effective_prediction_date = report.get("effective_prediction_date")
+        header_text = f"기술적 분석, AI 예측, 감정 분석을 종합한 투자 추천이 완료되었습니다. ({analysis_date})"
+        if effective_prediction_date and effective_prediction_date != analysis_date:
+            header_text += (
+                f"\n\n⚠ AI 예측 데이터는 `{analysis_date}` 자료가 없어 "
+                f"`{effective_prediction_date}` 기준값을 사용했습니다."
+            )
+
         blocks = [
             {
                 "type": "header",
@@ -550,10 +559,7 @@ class SlackNotifier:
             },
             {
                 "type": "section",
-                "text": {
-                    "type": "mrkdwn",
-                    "text": f"기술적 분석, AI 예측, 감정 분석을 종합한 투자 추천이 완료되었습니다. ({analysis_date})"
-                }
+                "text": {"type": "mrkdwn", "text": header_text}
             },
             {
                 "type": "section",
