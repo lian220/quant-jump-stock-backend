@@ -104,42 +104,9 @@ class RecommendationGrade(Enum):
         return RecommendationGrade.NONE
 
 
-# ═══════════════════════════════════════════════════════════════
-# 3. 점수 스케일 상수
-# ═══════════════════════════════════════════════════════════════
-
-class ScoreScale:
-    """
-    ⚠ DEPRECATED (PR 1, 2026-05-21): ScoringPolicy.axes 가 SSoT.
-
-    이 클래스는 PR 2 에서 완전 삭제 예정. 본 PR (점수 모델 SSoT 중앙화) 머지 시점부터
-    이 클래스의 모든 상수는 `scoring_spec.yaml` + `ScoringPolicy` 가 단일 진실원이다.
-    호출처가 모두 ScoringPolicy public API 로 이전 완료 (Task 2.1/2.2/2.3):
-    - sync_service → policy.compose_components / ai_score_from_normalized 등
-    - buy_criteria → policy.tech_score_from_indicators / compose_components
-    - slack_notifier → policy.composite_max / policy.axes / policy.min_composite_score
-    - comprehensive_report → policy.normalize_rise_pct_to_score / sentiment_score_from_raw
-
-    상수 자체는 외부 import (deprecated) 와 PR 1 머지 후 1주일 호환을 위해 유지.
-    PR 2 에서 본 클래스 + 위 import 모두 삭제.
-
-    구 의미 (참고):
-    - sync_service 스케일: AI(0-10), Tech(0-3.5), Sentiment(0-10) → 최대 7.4
-    - buy_criteria 스케일: AI(0-3.5), Tech(0-3.5), Sentiment(0-1) → 최대 ~2.75
-    """
-
-    # ── sync_service 스케일 (PostgreSQL 저장) ──
-    SYNC_MAX_AI = Decimal("10")         # rise_probability × 10
-    SYNC_MAX_TECH = Decimal("3.5")      # golden_cross(1.5) + RSI(1.0) + MACD(1.0)
-    SYNC_MAX_SENTIMENT = Decimal("10")  # (sentiment+1)/2 × 10
-    SYNC_MAX_COMPOSITE = Decimal("7.4") # 0.3×10 + 0.4×3.5 + 0.3×10
-
-    # ── buy_criteria 스케일 (Slack 리포트) ──
-    CRITERIA_MAX_AI = 3.5               # rise_probability / 10, capped at 3.5
-    CRITERIA_MAX_TECH = 3.5             # golden_cross(1.5) + RSI(1.0) + MACD(1.0)
-    CRITERIA_MAX_SENTIMENT = 1.0        # raw average_sentiment_score 범위 0~1
-
-    # ── 공통 가중치 (기본값) ──
-    DEFAULT_WEIGHT_AI = Decimal("0.3")
-    DEFAULT_WEIGHT_TECH = Decimal("0.4")
-    DEFAULT_WEIGHT_SENTIMENT = Decimal("0.3")
+# ScoreScale 클래스는 PR 2 (2026-05-21) 에서 완전 제거됨.
+# 모든 상수는 `scoring_spec.yaml` + `ScoringPolicy` 가 SSoT.
+# - 가중치/max: policy.axes
+# - composite_max: policy.composite_max
+# - rsi_threshold: policy.rsi_threshold
+# - ai_cap_pct: policy.ai_cap_pct
