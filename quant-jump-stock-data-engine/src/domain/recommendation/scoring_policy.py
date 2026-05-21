@@ -86,10 +86,6 @@ class ScoringPolicy:
 
     # ── 속성 ─────────────────────────────────────────
     @property
-    def spec(self) -> Dict[str, Any]:
-        return self._spec
-
-    @property
     def formula_version(self) -> str:
         return self._spec["formula_version"]
 
@@ -147,7 +143,7 @@ class ScoringPolicy:
             s += Decimal(str(comps["rsi_below_threshold"]))
         if indicators.get("macd_buy_signal"):
             s += Decimal(str(comps["macd_buy_signal"]))
-        return s
+        return s.quantize(_QTZ_2, rounding=ROUND_HALF_UP)
 
     def count_tech_signals(self, indicators: Optional[Dict[str, Any]]) -> int:
         if not indicators:
