@@ -583,9 +583,10 @@ class SlackNotifier:
                 grade_label = grade.label if hasattr(grade, "label") else str(grade)
 
                 # Task 2.3: 종합점수 분모 ScoringPolicy.composite_max SSoT.
-                # 우선 buy_criteria 가 심어둔 Score 객체 사용, 없으면 sync_service `score` 경로,
+                # buy_criteria (filter_candidates / get_near_miss_candidates) 와 sync_service 둘 다
+                # 후보 dict 의 top-level "score" 키로 Score 객체를 올린다 — 단일 lookup.
                 # 둘 다 없으면 ScoringPolicy 직접 로드해 동적 분모 산출 (legacy defensive).
-                score_obj: Optional[Score] = scores.get("_score_obj") or rec.get("score")
+                score_obj: Optional[Score] = rec.get("score") or scores.get("score_obj")
                 if score_obj is not None:
                     score_str = _format_score_for_slack(score_obj)
                 else:

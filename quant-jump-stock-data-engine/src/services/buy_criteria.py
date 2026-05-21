@@ -64,6 +64,25 @@ class BuyCriteria:
         if self.policy is None:
             self.policy = ScoringPolicy.load_default()
 
+        # PR 1: BuyCriteria 의 weight/threshold 필드는 더 이상 산식을 구동하지 않는다 (ScoringPolicy SSoT).
+        # 그러나 from_settings(env) 호환을 위해 dataclass 필드는 유지. 운영자가 env 로 가중치를
+        # 바꿔봤는데 점수가 안 바뀌어 혼란스러워 하는 silent regression 을 막기 위해, 환경값과
+        # spec 값이 다르면 WARN. 실제 제거는 PR 2 (Kotlin Core 측정 계약 정리와 함께).
+        policy_w = {
+            "ai": float(self.policy.axes["ai"]["weight"]),
+            "technical": float(self.policy.axes["technical"]["weight"]),
+            "sentiment": float(self.policy.axes["sentiment"]["weight"]),
+        }
+        env_w = {"ai": self.weight_ai, "technical": self.weight_technical, "sentiment": self.weight_sentiment}
+        mismatches = [k for k in env_w if abs(env_w[k] - policy_w[k]) > 1e-6]
+        if mismatches:
+            logger.warning(
+                "BuyCriteria env 가중치가 ScoringPolicy spec 과 다릅니다 (산식엔 영향 없음): "
+                "mismatch=%s env=%s spec=%s. 산식 변경은 scoring_spec.yaml 만 영향. "
+                "env 가중치는 PR 2 에서 제거 예정.",
+                mismatches, env_w, policy_w,
+            )
+
     @classmethod
     def from_settings(
         cls,
@@ -170,9 +189,10 @@ class BuyCriteria:
             "max_possible": round(float(score.composite_max), 4),
             "confidence": round(float(score.confidence), 4),
             "missing_axes": list(score.missing_axes),
-            # Task 2.3: Score 객체를 다운스트림(Slack)에서 분모(composite_max) 동적 사용.
-            # 내부 전용 필드 (underscore prefix). 외부 API/저장 경로엔 노출 금지.
-            "_score_obj": score,
+            # Task 2.3: 다운스트림(Slack)이 score.composite_max 를 동적 분모로 사용.
+            # filter_candidates / get_near_miss_candidates 가 후보 dict 의 top-level "score" 키로 끌어올린다.
+            # 외부 API/저장 경로엔 노출 금지 — Slack/내부 렌더링 전용.
+            "score_obj": score,
         }
 
     # ── 등급 결정 ──────────────────────────────────────
@@ -232,7 +252,12 @@ class BuyCriteria:
             if grade == RecommendationGrade.NONE:
                 continue
 
-            candidates.append({**stock, "scores": scores, "grade": grade})
+            candidates.append({
+                **stock,
+                "scores": scores,
+                "grade": grade,
+                "score": scores.get("score_obj"),  # Slack 렌더링 직접 접근용 (Task 2.3)
+            })
 
         # 등급 우선 → 같은 등급 내에서 composite_score 내림차순
         candidates.sort(
@@ -315,6 +340,7 @@ class BuyCriteria:
                 **stock,
                 "scores": scores,
                 "grade": grade,
+                "score": scores.get("score_obj"),  # Slack 렌더링 직접 접근용 (Task 2.3)
                 "missing_conditions": missing,
                 "met_conditions": met,
             })

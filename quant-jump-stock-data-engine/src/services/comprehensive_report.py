@@ -132,6 +132,13 @@ class ComprehensiveReportService:
         analysis_docs = list(db.stock_analysis_results.find({"date": analysis_date_str}))
 
         # Fallback: 정확한 날짜에 없으면 이전 최근 날짜 (최대 _MAX_PREDICTION_LOOKBACK_DAYS일)
+        #
+        # ⚠ Idempotency trade-off (PR 1, 2026-05-21):
+        #   sync_service 는 ADR 0001 에 따라 fallback 없이 정확한 날짜만 사용.
+        #   comprehensive_report 는 일일 분석 알림이 늦은 데이터 때문에 누락되는 걸 막기 위해
+        #   fallback 유지. 같은 analysis_date 로 다른 시점 재실행 시 다른 prediction_date 가
+        #   선택될 수 있어 결과 재현성이 깨질 수 있음. fallback 발생 시 INFO 로그로 추적.
+        #   PR 2 에서 effective_prediction_date 를 result 에 노출하여 재현성 복구 예정.
         if not analysis_docs:
             min_lookback_str = (target_date - timedelta(days=_MAX_PREDICTION_LOOKBACK_DAYS)).strftime("%Y-%m-%d")
             latest = db.stock_analysis_results.find_one(
