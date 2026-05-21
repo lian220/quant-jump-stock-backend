@@ -28,9 +28,9 @@ import json
 import logging
 import os
 import sys
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 try:
     from pymongo import MongoClient
@@ -53,7 +53,7 @@ def _add_repo_root_to_path() -> None:
         sys.path.insert(0, src)
 
 
-def main(days: int, threshold: float, output_path: str, limit: Optional[int]) -> int:
+def main(days: int, threshold: float, output_path: str, limit: int | None) -> int:
     logger = _setup_logging()
     _add_repo_root_to_path()
 
@@ -65,9 +65,6 @@ def main(days: int, threshold: float, output_path: str, limit: Optional[int]) ->
         logger.error("MONGODB_URI_RO 환경변수 필수 (read-only 계정 권장).")
         return 2
 
-    # 연결 (read-only intent — uri 에서 권한 제어)
-    client = MongoClient(uri, serverSelectionTimeoutMS=10000)
-    db = client[db_name]
     policy = ScoringPolicy.load_default()
     logger.info(
         "✓ ScoringPolicy 로드: version=%s, composite_max=%s",
@@ -75,7 +72,22 @@ def main(days: int, threshold: float, output_path: str, limit: Optional[int]) ->
         policy.composite_max,
     )
 
-    cutoff = (datetime.utcnow() - timedelta(days=days)).strftime("%Y-%m-%d")
+    # 연결 (read-only intent — uri 에서 권한 제어). context manager 로 보장 close.
+    with MongoClient(uri, serverSelectionTimeoutMS=10000) as client:
+        db = client[db_name]
+        return _run_regression(db, policy, days, threshold, output_path, limit, logger)
+
+
+def _run_regression(
+    db: Any,
+    policy: Any,
+    days: int,
+    threshold: float,
+    output_path: str,
+    limit: int | None,
+    logger: logging.Logger,
+) -> int:
+    cutoff = (datetime.now(timezone.utc) - timedelta(days=days)).strftime("%Y-%m-%d")
 
     # 추천 이력 일괄 조회 (저장된 composite_score 포함)
     query = {"date": {"$gte": cutoff}, "is_recommended": True}
@@ -103,14 +115,14 @@ def main(days: int, threshold: float, output_path: str, limit: Optional[int]) ->
     tickers = list({d["ticker"] for d in rec_docs})
     dates = list({d["date"] for d in rec_docs})
 
-    ar_map: Dict[tuple, Dict[str, Any]] = {}
+    ar_map: dict[tuple, dict[str, Any]] = {}
     for d in db.stock_analysis_results.find(
         {"ticker": {"$in": tickers}, "date": {"$in": dates}},
         {"ticker": 1, "date": 1, "predictions": 1},
     ):
         ar_map[(d["ticker"], d["date"])] = d
 
-    sentiment_map: Dict[tuple, float] = {}
+    sentiment_map: dict[tuple, float] = {}
     for d in db.sentiment_analysis.find(
         {"ticker": {"$in": tickers}, "date": {"$in": dates}},
         {"ticker": 1, "date": 1, "average_sentiment_score": 1},
@@ -124,7 +136,7 @@ def main(days: int, threshold: float, output_path: str, limit: Optional[int]) ->
     )
 
     # 신 산식 재계산 및 비교
-    drifts: List[Dict[str, Any]] = []
+    drifts: list[dict[str, Any]] = []
     processed = 0
 
     for doc in rec_docs:

@@ -8,9 +8,10 @@ ScoringPolicy 의 점수 계산 메서드들이 반환하는 값 객체.
   - veto_reasons: 정책상 추천 제외 사유 (PR 3 에서 "ai_negative" 등 추가)
   - warnings: 사용자 노출용 경고 (PR 5 에서 VIX 등)
 """
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Tuple
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +24,6 @@ class Score:
     confidence: Decimal
     grade: str                       # "S" / "A" / "B" / "C" / "D"
     recommendation_label: str        # "STRONG" / "RECOMMEND" / "WATCH" / "NONE"
-    missing_axes: Tuple[str, ...] = field(default=())
-    veto_reasons: Tuple[str, ...] = field(default=())
-    warnings: Tuple[str, ...] = field(default=())
+    missing_axes: tuple[str, ...] = field(default=())
+    veto_reasons: tuple[str, ...] = field(default=())
+    warnings: tuple[str, ...] = field(default=())

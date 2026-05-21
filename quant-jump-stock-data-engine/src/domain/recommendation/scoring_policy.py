@@ -12,7 +12,7 @@ import os
 from decimal import Decimal, ROUND_HALF_UP
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any
 
 import yaml
 
@@ -29,7 +29,7 @@ _QTZ_2 = Decimal("0.01")
 class ScoringPolicy:
     """spec 파일로부터 로드된 점수 정책 (immutable after load)."""
 
-    def __init__(self, spec: Dict[str, Any]):
+    def __init__(self, spec: dict[str, Any]):
         self._spec = spec
         self._validate_invariants(spec)
 
@@ -56,7 +56,7 @@ class ScoringPolicy:
 
     # ── invariant 검증 ─────────────────────────────────
     @staticmethod
-    def _validate_invariants(spec: Dict[str, Any]) -> None:
+    def _validate_invariants(spec: dict[str, Any]) -> None:
         axes = spec.get("axes") or {}
         if set(axes.keys()) != {"ai", "technical", "sentiment"}:
             raise SpecValidationError(
@@ -94,7 +94,7 @@ class ScoringPolicy:
         return Decimal(str(self._spec["composite_max"]))
 
     @property
-    def axes(self) -> Dict[str, Dict[str, Any]]:
+    def axes(self) -> dict[str, dict[str, Any]]:
         return self._spec["axes"]
 
     @property
@@ -122,7 +122,7 @@ class ScoringPolicy:
         return ((clipped - Decimal("0.5")) * Decimal("2") * ai_max).quantize(_QTZ_2, rounding=ROUND_HALF_UP)
 
     # ── Public: raw % → AI 점수 변환 (리뷰 C2) ──────────
-    def normalize_rise_pct_to_score(self, rise_pct: Optional[Decimal]) -> Decimal:
+    def normalize_rise_pct_to_score(self, rise_pct: Decimal | None) -> Decimal:
         """raw rise percentage (%, 예: 20.0) → AI score (0~max_ai).
 
         현행 산식 100% 보존:
@@ -137,7 +137,7 @@ class ScoringPolicy:
         return self._score_from_clipped_normalized(normalized)
 
     # ── Public: tech indicators → tech score ─────────────
-    def tech_score_from_indicators(self, indicators: Optional[Dict[str, Any]]) -> Decimal:
+    def tech_score_from_indicators(self, indicators: dict[str, Any] | None) -> Decimal:
         if not indicators:
             return Decimal("0")
         cfg = self.axes["technical"]
@@ -152,7 +152,7 @@ class ScoringPolicy:
             s += Decimal(str(comps["macd_buy_signal"]))
         return s.quantize(_QTZ_2, rounding=ROUND_HALF_UP)
 
-    def count_tech_signals(self, indicators: Optional[Dict[str, Any]]) -> int:
+    def count_tech_signals(self, indicators: dict[str, Any] | None) -> int:
         if not indicators:
             return 0
         cnt = 0
@@ -166,7 +166,7 @@ class ScoringPolicy:
         return cnt
 
     # ── Public: normalized AI probability (0~1) → AI score ──────
-    def ai_score_from_normalized(self, normalized: Optional[Decimal]) -> Decimal:
+    def ai_score_from_normalized(self, normalized: Decimal | None) -> Decimal:
         """이미 normalized 된 rise_probability (0~1) → AI score (0~max_ai).
 
         sync_service 가 이미 normalized 한 값을 가지고 있는 경우 사용.
@@ -177,7 +177,7 @@ class ScoringPolicy:
         return self._score_from_clipped_normalized(Decimal(str(normalized)))
 
     # ── Public: sentiment (-1~+1) → sentiment score ─────
-    def sentiment_score_from_raw(self, sentiment: Optional[Decimal]) -> Decimal:
+    def sentiment_score_from_raw(self, sentiment: Decimal | None) -> Decimal:
         if sentiment is None:
             return Decimal("0")
         v = Decimal(str(sentiment))
@@ -250,9 +250,9 @@ class ScoringPolicy:
     # ── Public: raw signals → Score (one-shot) ──────────
     def score_from_raw_signals(
         self,
-        rise_pct: Optional[Decimal],
-        sentiment_raw: Optional[Decimal],
-        tech_indicators: Optional[Dict[str, Any]],
+        rise_pct: Decimal | None,
+        sentiment_raw: Decimal | None,
+        tech_indicators: dict[str, Any] | None,
     ) -> Score:
         """raw input (rise % / sentiment -1~+1 / tech indicators) → Score 단일 호출."""
         ai_s = self.normalize_rise_pct_to_score(rise_pct)
@@ -288,6 +288,6 @@ class ScoringPolicy:
                 return key
         return "NONE"
 
-    def label_metadata(self, label_key: str) -> Dict[str, str]:
+    def label_metadata(self, label_key: str) -> dict[str, str]:
         cfg = self._spec["recommendation_labels"].get(label_key) or {}
         return {"label": cfg.get("label", ""), "emoji": cfg.get("emoji", "⚪")}
