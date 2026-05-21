@@ -158,6 +158,22 @@ class ScoringPolicy:
             cnt += 1
         return cnt
 
+    # ── Public: normalized AI probability (0~1) → AI score ──────
+    def ai_score_from_normalized(self, normalized: Optional[Decimal]) -> Decimal:
+        """이미 normalized 된 rise_probability (0~1) → AI score (0~max_ai).
+
+        sync_service 가 이미 normalized 한 값을 가지고 있는 경우 사용.
+        raw rise_pct 가 있다면 normalize_rise_pct_to_score() 사용.
+        """
+        if normalized is None:
+            return Decimal("0")
+        v = Decimal(str(normalized))
+        v = max(Decimal("0"), min(Decimal("1"), v))
+        if v < Decimal("0.5"):
+            return Decimal("0")
+        ai_max = Decimal(str(self.axes["ai"]["max"]))
+        return ((v - Decimal("0.5")) * Decimal("2") * ai_max).quantize(_QTZ_2, rounding=ROUND_HALF_UP)
+
     # ── Public: sentiment (-1~+1) → sentiment score ─────
     def sentiment_score_from_raw(self, sentiment: Optional[Decimal]) -> Decimal:
         if sentiment is None:

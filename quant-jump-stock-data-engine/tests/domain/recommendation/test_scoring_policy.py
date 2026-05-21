@@ -164,3 +164,12 @@ def test_score_negative_rise_pct_zero_policy_preserved():
     # AI=0, Tech=3.5, Sent=5 → composite 0 + 1.4 + 1.5 = 2.9
     assert score.composite_score == Decimal("2.90")
     assert score.veto_reasons == ()  # 본 PR 은 veto 미적용
+
+
+def test_ai_score_from_normalized_matches_current_sync_service():
+    """sync_service 에서 normalized 1.0 → 10 (max)."""
+    p = ScoringPolicy.load_default()
+    assert p.ai_score_from_normalized(Decimal("1.0")) == Decimal("10.00")
+    assert p.ai_score_from_normalized(Decimal("0.5")) == Decimal("0")
+    assert p.ai_score_from_normalized(Decimal("0.75")) == Decimal("5.00")
+    assert p.ai_score_from_normalized(None) == Decimal("0")
