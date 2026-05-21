@@ -31,3 +31,13 @@ def test_buy_criteria_does_not_call_private_policy_methods():
     assert "_compose" not in source
     assert "_calc_sentiment_score" not in source
     assert "_calc_ai_score" not in source
+
+
+def test_filter_candidates_uses_ssot_scale_directly():
+    """comprehensive_report 가 normalize 한 0-10 스케일 ai/sent 를 그대로 사용 (rescale 어댑터 없음)."""
+    from services.buy_criteria import BuyCriteria
+    from domain.recommendation.scoring_policy import ScoringPolicy
+    policy = ScoringPolicy.load_default()
+    bc = BuyCriteria(policy=policy)
+    # rescale 메서드 부재 확인
+    assert not hasattr(bc, "_rescale_legacy_inputs"), "rescale 어댑터는 제거되어야 함"

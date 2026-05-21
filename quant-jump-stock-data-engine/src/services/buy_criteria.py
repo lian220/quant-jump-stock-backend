@@ -12,9 +12,10 @@ v2 변경사항:
 PR 1 (점수 모델 SSoT) 변경사항:
 - 점수 산식은 ScoringPolicy public API 로 위임 (분모 7.4 통일)
 - ScoreScale.CRITERIA_MAX_* 의존 제거 (composite_grade.py 의 deprecated 상수)
-- calculate_composite_score 의 ai_score / sentiment_score 는 0~10 normalized 스케일
-  (sync_service 와 동일). filter_candidates 는 레거시 caller 호환을 위해 내부에서
-  0-3.5 / 0-1 입력을 0-10 로 rescale 후 호출. confidence 는 동일 (max 와 비례 확대됨).
+- calculate_composite_score / filter_candidates / get_near_miss_candidates 모두
+  0-10 통일 스케일 입력을 기대 (sync_service, comprehensive_report 와 동일).
+  caller (comprehensive_report) 는 ScoringPolicy.normalize_rise_pct_to_score /
+  sentiment_score_from_raw 로 사전 정규화하여 전달.
 """
 from __future__ import annotations
 import logging
@@ -183,17 +184,6 @@ class BuyCriteria:
 
     # ── 필터링 ──────────────────────────────────────
 
-    def _rescale_legacy_inputs(self, ai_legacy: float, sentiment_legacy: float) -> tuple[float, float]:
-        """레거시 caller (comprehensive_report) 가 0-3.5 / 0-1 스케일로 ai/sentiment 를 전달.
-        본 함수는 SSoT 통일 분모(7.4)에 맞춰 0-10 스케일로 변환.
-        confidence = composite / max 는 max 도 함께 확대되므로 동일 → grade 컷오프 보존.
-        """
-        # AI: legacy max 3.5 → unified max 10 (linear rescale)
-        ai_normalized = (ai_legacy / 3.5) * 10.0 if ai_legacy else 0.0
-        # Sentiment: legacy 0~1 → unified 0~10
-        sent_normalized = sentiment_legacy * 10.0 if sentiment_legacy else 0.0
-        return ai_normalized, sent_normalized
-
     def filter_candidates(
         self,
         all_results: List[Dict[str, Any]],
@@ -209,8 +199,9 @@ class BuyCriteria:
         - 부분 데이터 종목도 점수 그대로 산출. 점수 낮으면 grade 자동 NONE으로 떨어짐
         - max_stocks_to_recommend 개수 제한 (상위 N개)
 
-        PR 1: ai_scores (0-3.5) / sentiment_scores (0-1) 레거시 스케일을
-        0-10 로 변환하여 calculate_composite_score 호출. confidence 는 보존됨.
+        PR 1: ai_scores / sentiment_scores 는 0-10 통일 SSoT 스케일.
+        caller (comprehensive_report) 가 ScoringPolicy.normalize_rise_pct_to_score /
+        sentiment_score_from_raw 로 사전 정규화하여 전달. rescale 어댑터 폐기.
         """
         if ai_scores is None:
             ai_scores = {}
@@ -227,12 +218,10 @@ class BuyCriteria:
             has_sentiment = ticker in sentiment_scores
             has_tech = bool(indicators)  # 기술 분석이 수행됐는가 (신호 부재 ≠ 데이터 부재)
 
-            ai_legacy = ai_scores.get(ticker, 0.0)
-            sentiment_legacy = sentiment_scores.get(ticker, 0.0)
-            ai_norm, sent_norm = self._rescale_legacy_inputs(ai_legacy, sentiment_legacy)
-
             scores = self.calculate_composite_score(
-                indicators, ai_norm, sent_norm,
+                indicators,
+                ai_score=ai_scores.get(ticker, 0.0),
+                sentiment_score=sentiment_scores.get(ticker, 0.0),
                 has_ai=has_ai, has_sentiment=has_sentiment, has_tech=has_tech,
             )
 
@@ -272,6 +261,8 @@ class BuyCriteria:
     ) -> List[Dict[str, Any]]:
         """
         필터 미통과 종목 중 composite_score 상위 near-miss 후보 반환.
+
+        ai_scores / sentiment_scores 는 0-10 통일 SSoT 스케일 (filter_candidates 와 동일).
         """
         if ai_scores is None:
             ai_scores = {}
@@ -290,11 +281,10 @@ class BuyCriteria:
             has_ai = ticker in ai_scores
             has_sentiment = ticker in sentiment_scores
             has_tech = bool(indicators)
-            ai_legacy = ai_scores.get(ticker, 0.0)
-            sentiment_legacy = sentiment_scores.get(ticker, 0.0)
-            ai_norm, sent_norm = self._rescale_legacy_inputs(ai_legacy, sentiment_legacy)
             scores = self.calculate_composite_score(
-                indicators, ai_norm, sent_norm,
+                indicators,
+                ai_score=ai_scores.get(ticker, 0.0),
+                sentiment_score=sentiment_scores.get(ticker, 0.0),
                 has_ai=has_ai, has_sentiment=has_sentiment, has_tech=has_tech,
             )
             grade = self.determine_grade(scores)

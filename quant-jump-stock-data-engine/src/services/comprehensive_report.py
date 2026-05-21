@@ -5,12 +5,14 @@ ComprehensiveReportService - Quantiq 종합 분석 리포트
 Composite Score 기반 종합 리포트를 생성한다.
 """
 import logging
+from decimal import Decimal
 from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone, timedelta
 
 from core.database import MongoDB
 from config.settings import get_settings
 from services.buy_criteria import BuyCriteria
+from domain.recommendation.scoring_policy import ScoringPolicy
 
 logger = logging.getLogger(__name__)
 
@@ -55,11 +57,17 @@ def _query_stock_predictions_by_date(db, analysis_date: str, target_date: dateti
 class ComprehensiveReportService:
     """기술적 분석 + AI 예측 + 감정 분석 종합 리포트"""
 
-    def __init__(self, buy_criteria: Optional[BuyCriteria] = None):
+    def __init__(
+        self,
+        buy_criteria: Optional[BuyCriteria] = None,
+        policy: Optional[ScoringPolicy] = None,
+    ):
         if buy_criteria is None:
             settings = get_settings()
             buy_criteria = BuyCriteria.from_settings(settings.recommendation)
         self.buy_criteria = buy_criteria
+        # SSoT: BuyCriteria 와 동일 policy 공유 (없으면 default)
+        self.policy = policy or buy_criteria.policy or ScoringPolicy.load_default()
 
     def load_sentiment_scores(self, analysis_date: str) -> Dict[str, float]:
         """
@@ -230,17 +238,27 @@ class ComprehensiveReportService:
         ai_predictions = self.load_ai_predictions(analysis_date)
 
         # 2. Composite Score 계산 + 필터링
-        # AI rise_probability를 0-3.5 스케일로 정규화 (tech_score와 동일 범위)
-        # 10% 상승 → 1.0, 20% 상승 → 2.0, 35% 이상 → 3.5
-        ai_scores = {
-            ticker: min(data["rise_probability"] / 10.0, 3.5)
-            for ticker, data in ai_predictions.items()
-        }
+        # SSoT 정규화: rise_pct (%) → AI score (0-10), sentiment (-1~1) → sentiment score (0-10)
+        # ScoringPolicy public API 위임 — buy_criteria 내부 rescale 어댑터 폐기 (PR 1 Task 2.2 후속).
+        ai_scores: Dict[str, float] = {}
+        for ticker, data in ai_predictions.items():
+            rise_pct = data.get("rise_probability")
+            if rise_pct is not None:
+                ai_scores[ticker] = float(
+                    self.policy.normalize_rise_pct_to_score(Decimal(str(rise_pct)))
+                )
+
+        # sentiment_scores 는 위에서 raw -1~1 로 로드됨. 0-10 SSoT 스케일로 정규화하여 필터에 전달.
+        sentiment_scores_normalized: Dict[str, float] = {}
+        for ticker, raw_score in sentiment_scores.items():
+            sentiment_scores_normalized[ticker] = float(
+                self.policy.sentiment_score_from_raw(Decimal(str(raw_score)))
+            )
 
         buy_candidates = self.buy_criteria.filter_candidates(
             technical_results,
             ai_scores=ai_scores,
-            sentiment_scores=sentiment_scores,
+            sentiment_scores=sentiment_scores_normalized,
         )
 
         # 3. 아깝게 탈락한 종목 (near-miss TOP3)
@@ -249,7 +267,7 @@ class ComprehensiveReportService:
             technical_results,
             excluded_tickers=excluded_tickers,
             ai_scores=ai_scores,
-            sentiment_scores=sentiment_scores,
+            sentiment_scores=sentiment_scores_normalized,
         )
         # near-miss에도 AI/감정 상세 데이터 추가
         for nm in near_miss_candidates:
