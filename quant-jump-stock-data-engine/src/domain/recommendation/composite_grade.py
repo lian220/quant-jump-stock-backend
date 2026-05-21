@@ -17,6 +17,18 @@ from enum import Enum
 from typing import Dict, Any
 
 
+def _spec_label(key: str) -> str:
+    """recommendation_labels[key].label — ScoringPolicy lazy 로드."""
+    # 순환 import 방지: 함수 내부 import
+    from domain.recommendation.scoring_policy import ScoringPolicy
+    return ScoringPolicy.load_default().label_metadata(key)["label"]
+
+
+def _spec_emoji(key: str) -> str:
+    from domain.recommendation.scoring_policy import ScoringPolicy
+    return ScoringPolicy.load_default().label_metadata(key)["emoji"]
+
+
 # ═══════════════════════════════════════════════════════════════
 # 1. CompositeGrade: PostgreSQL 저장용 등급 (Kotlin 매칭)
 # ═══════════════════════════════════════════════════════════════
@@ -71,16 +83,26 @@ class RecommendationGrade(Enum):
 
     confidence(%) + tech_signals 조합으로 결정.
     buy_criteria.filter_candidates() → comprehensive_report → Slack 알림에서 사용.
-    """
-    STRONG = ("강력 추천", "🟢", 0)
-    RECOMMEND = ("추천", "🟡", 1)
-    WATCH = ("관심 종목", "🟠", 2)
-    NONE = ("추천 없음", "⚪", 3)
 
-    def __init__(self, label: str, emoji: str, priority: int):
-        self.label = label
-        self.emoji = emoji
+    PR 2 (2026-05-21): label / emoji 는 `scoring_spec.yaml.recommendation_labels` SSoT.
+    enum 인스턴스 자체는 priority 만 정적, label/emoji 는 `ScoringPolicy.label_metadata` 에서
+    lazy 로드 (spec 갱신 시 재배포만으로 반영).
+    """
+    STRONG = 0
+    RECOMMEND = 1
+    WATCH = 2
+    NONE = 3
+
+    def __init__(self, priority: int):
         self.priority = priority
+
+    @property
+    def label(self) -> str:
+        return _spec_label(self.name)
+
+    @property
+    def emoji(self) -> str:
+        return _spec_emoji(self.name)
 
     @staticmethod
     def from_scores(scores: Dict[str, Any]) -> "RecommendationGrade":

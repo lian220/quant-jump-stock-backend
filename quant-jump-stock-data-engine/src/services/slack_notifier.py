@@ -394,6 +394,45 @@ class SlackNotifier:
         SlackNotifier._post_error(text=text, attachments=attachments)
 
     # ============================================================
+    # Startup 결함 알림 (PR 2, 2026-05-21)
+    # ============================================================
+
+    @staticmethod
+    def notify_spec_load_failed(spec_path: str, error: str, error_type: str):
+        """ScoringPolicy.load_default() 실패 시 운영자 알림.
+
+        Cloud Run lifespan/startup hook 에서 호출. 컨테이너는 어쨌든 fail-fast 로
+        시작 안 되지만, 운영자가 Cloud Run console 로그를 보기 전 즉시 인지하도록
+        에러 채널에 알림 발송. 메시지 전송 실패해도 startup 은 그대로 실패시킴.
+        """
+        text = "🚨 ScoringPolicy spec 로드 실패 — 컨테이너 startup 차단"
+        attachments = [
+            {
+                "color": "#dc3545",
+                "title": "scoring_spec.yaml 로드/검증 실패",
+                "text": (
+                    "Cloud Run 새 revision 의 startup 단계에서 spec 로드가 실패했습니다. "
+                    "이전 revision 이 트래픽을 유지 — 사용자 영향 없음. "
+                    "운영자 즉시 점검 필요."
+                ),
+                "fields": [
+                    {"title": "Spec Path", "value": spec_path or "(unknown)", "short": False},
+                    {"title": "Error Type", "value": error_type, "short": True},
+                    {"title": "Timestamp", "value": datetime.now(KST).isoformat(), "short": True},
+                    {"title": "Error", "value": _mask_secrets((error or "(no message)")[:500]), "short": False},
+                    {"title": "조치", "value": "scoring_spec.yaml 형식/invariant 검증 + 이미지 재배포", "short": False},
+                ],
+                "footer": "Quantiq Data Engine — startup gate",
+                "ts": int(datetime.now(KST).timestamp())
+            }
+        ]
+        try:
+            SlackNotifier._post_error(text=text, attachments=attachments)
+        except Exception as send_err:
+            # Slack 자체가 죽었어도 startup 실패는 그대로 propagate
+            logger.warning("notify_spec_load_failed Slack 발송 실패 (무시): %s", send_err)
+
+    # ============================================================
     # Pub/Sub 핸들러 공통 에러 알림
     # ============================================================
 
