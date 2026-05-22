@@ -57,6 +57,26 @@ else:
     else:
         print("✅ Docker/Cloud Run 환경 감지: 주입된 환경 변수 사용")
 
+    # 2026-05-22 강화: Cloud Run prod 환경 fail-fast 가드 (qjs-core 사고 후속).
+    # 글로벌 규칙: 12-Factor III + SRE "fail fast and loudly".
+    # K_SERVICE 가 있고 (Cloud Run) ENV != local 일 때 필수 secret 검증.
+    if is_cloud_run and os.getenv("ENV", "prod") != "local":
+        _required_for_prod = ["MONGODB_URI", "DB_PASSWORD", "DB_HOST"]
+        _missing = [k for k in _required_for_prod if not os.getenv(k)]
+        if _missing:
+            raise RuntimeError(
+                f"❌ FATAL: Cloud Run prod 환경에서 필수 env 누락: {_missing}. "
+                f"Secret Manager 마운트 또는 volume/mount 정합성 확인 필요. "
+                f"docs/infra/Cloud_Run_운영_규칙.md 참조."
+            )
+        # localhost fallback 사용 차단 (사고 직접 원인)
+        _mongo = os.getenv("MONGODB_URI", "")
+        if "localhost" in _mongo or "127.0.0.1" in _mongo:
+            raise RuntimeError(
+                f"❌ FATAL: Cloud Run prod 환경에서 MONGODB_URI 가 localhost 가리킴 — "
+                f"secret 마운트 실패 흔적. {_mongo[:50]}..."
+            )
+
 class Settings:
     # MongoDB
     MONGODB_URI = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
