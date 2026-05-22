@@ -7,7 +7,6 @@ Data Engine 테스트를 위한 공통 설정 및 픽스처.
 import pytest
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, AsyncMock
 
 # src 경로 추가
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -104,33 +103,11 @@ def make_spec():
     return _factory
 
 
-@pytest.fixture
-def mock_mongodb():
-    """MongoDB Mock 픽스처"""
-    mock = MagicMock()
-    mock.find = MagicMock(return_value=[])
-    mock.find_one = MagicMock(return_value=None)
-    mock.insert_one = MagicMock()
-    mock.update_one = MagicMock()
-    return mock
-
-
-@pytest.fixture
-def mock_kafka_producer():
-    """Kafka Producer Mock 픽스처"""
-    mock = AsyncMock()
-    mock.send_and_wait = AsyncMock()
-    return mock
-
-
-@pytest.fixture
-def mock_gcs_client():
-    """GCS Client Mock 픽스처"""
-    mock = MagicMock()
-    mock.bucket = MagicMock()
-    mock.bucket.return_value.blob = MagicMock()
-    return mock
-
+# cleanup PR (2026-05-22): mock_mongodb / mock_kafka_producer / mock_gcs_client 픽스처 제거.
+# - mock_mongodb: 사용처 0 — 실 테스트는 MagicMock 직접 (test_sync_integration.py 패턴) 또는 unittest.mock.patch 사용
+# - mock_kafka_producer: Kafka 폐기 (Pub/Sub 전환, 2026-02-14) 후 잔재
+# - mock_gcs_client: 사용처 0
+# sample_market_data 도 사용처 0 이라 제거.
 
 @pytest.fixture
 def sample_strategy_definition():
@@ -184,13 +161,3 @@ def sample_strategy_definition():
         "is_ai_generated": False,
         "tags": ["momentum", "trend-following"]
     }
-
-
-@pytest.fixture
-def sample_market_data():
-    """샘플 시장 데이터"""
-    return [
-        {"date": "2024-01-01", "open": 100, "high": 105, "low": 99, "close": 104, "volume": 1000000},
-        {"date": "2024-01-02", "open": 104, "high": 108, "low": 103, "close": 107, "volume": 1200000},
-        {"date": "2024-01-03", "open": 107, "high": 110, "low": 106, "close": 109, "volume": 1100000},
-    ]

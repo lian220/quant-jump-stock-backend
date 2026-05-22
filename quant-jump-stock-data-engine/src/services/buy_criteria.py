@@ -41,17 +41,17 @@ class BuyCriteria:
     weight_technical: float = 0.4
     weight_sentiment: float = 0.3
 
-    # 기술적 점수 개별 가중치
+    # 기술적 점수 개별 가중치 (settings.py 의 tech_sum invariant 검증용 — read by RecommendationCriteriaSettings)
     golden_cross_score: float = 1.5
     rsi_below_score: float = 1.0
     macd_buy_score: float = 1.0
     rsi_threshold: float = 70.0
 
-    # 레거시 필터 조건 (from_settings 호환용, 실제 필터에서 미사용)
+    # 레거시 필터 조건 — cleanup PR (2026-05-22) 에서 read-0 인 3개 필드 (min_sentiment_for_relaxed /
+    # min_tech_signals_with_sentiment / min_tech_signals_without_sentiment) 삭제됨.
+    # min_composite_score 는 from_settings 호환 + ScoringPolicy.min_composite_score 와 별개의 BuyCriteria
+    # 내부 필드 (현재 read 0 — 향후 별도 cleanup 가능)
     min_composite_score: float = 2.0
-    min_sentiment_for_relaxed: float = 0.15
-    min_tech_signals_with_sentiment: int = 2
-    min_tech_signals_without_sentiment: int = 3
 
     # 추천 설정
     max_stocks_to_recommend: int = 5
@@ -99,9 +99,6 @@ class BuyCriteria:
             macd_buy_score=settings.macd_buy_score,
             rsi_threshold=settings.rsi_threshold,
             min_composite_score=settings.min_composite_score,
-            min_sentiment_for_relaxed=settings.min_sentiment_for_relaxed,
-            min_tech_signals_with_sentiment=settings.min_tech_signals_with_sentiment,
-            min_tech_signals_without_sentiment=settings.min_tech_signals_without_sentiment,
             max_stocks_to_recommend=settings.max_stocks_to_recommend,
             near_miss_top_n=settings.near_miss_top_n,
             policy=policy,

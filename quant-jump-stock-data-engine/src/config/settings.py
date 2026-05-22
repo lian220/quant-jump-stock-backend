@@ -148,10 +148,10 @@ class RecommendationCriteriaSettings(BaseSettings):
     rsi_threshold: float = Field(default=70.0, ge=0.0, le=100.0, alias="RECOMMENDATION_RSI_THRESHOLD")
 
     # 필터 기준
+    # cleanup PR (2026-05-22): min_sentiment_for_relaxed / min_tech_signals_with_sentiment /
+    # min_tech_signals_without_sentiment 는 BuyCriteria/필터에서 read 0 이라 제거.
+    # ScoringPolicy 의 자연 grade 컷오프 (compose_components + recommendation_labels) 가 모두 대체.
     min_composite_score: float = Field(default=2.0, ge=0.0, alias="RECOMMENDATION_MIN_COMPOSITE_SCORE")
-    min_sentiment_for_relaxed: float = Field(default=0.15, ge=0.0, le=1.0, alias="RECOMMENDATION_MIN_SENTIMENT_RELAXED")
-    min_tech_signals_with_sentiment: int = Field(default=2, ge=0, alias="RECOMMENDATION_MIN_TECH_SIGNALS_WITH_SENTIMENT")
-    min_tech_signals_without_sentiment: int = Field(default=3, ge=0, alias="RECOMMENDATION_MIN_TECH_SIGNALS_WITHOUT_SENTIMENT")
 
     # 추천 설정
     max_stocks_to_recommend: int = Field(default=5, gt=0, alias="RECOMMENDATION_MAX_STOCKS")
