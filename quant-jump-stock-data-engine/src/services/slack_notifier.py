@@ -403,20 +403,22 @@ class SlackNotifier:
         vix_value: Optional[float],
         threshold: Optional[float],
     ):
-        """VIX 거시 변동성 임계 초과 시 운영자 채널 알림 + 사용자 채널 송출 차단.
+        """VIX 거시 변동성 임계 초과 시 양쪽 채널 알림 (운영자 + 사용자) + 송출 차단.
 
         TALEB asymmetric risk: 변동성 폭증 시 추천 신호의 노이즈 비율 급증.
                                 False positive (잘못된 추천 → 사용자 손실) 비용 비대칭.
         MEADOWS systems: 산식 외부 macro gate. 산식 자체는 그대로 유지.
+        DOUMONT clarity: 사용자가 "시스템 다운" 으로 오인하지 않도록 분석 채널에도 사유 공지.
         """
-        text = "⚠️ 추천 송출 보류 — 시장 변동성 임계 초과"
-        attachments = [
+        # 1. 운영자 채널 (상세 — 디버깅용)
+        ops_text = "⚠️ 추천 송출 보류 — 시장 변동성 임계 초과"
+        ops_attachments = [
             {
                 "color": "#ff6b6b",
                 "title": f"분석일 {analysis_date} VIX 거시 gate 발동",
                 "text": (
-                    f"VIX (시장 변동성 지수) 가 임계값 초과로 추천 송출을 차단했습니다. "
-                    f"변동성 폭증 시 신호 노이즈로 인한 사용자 손실 위험 회피 목적."
+                    "VIX (시장 변동성 지수) 가 임계값 초과로 추천 송출을 차단했습니다. "
+                    "변동성 폭증 시 신호 노이즈로 인한 사용자 손실 위험 회피 목적."
                 ),
                 "fields": [
                     {"title": "분석일", "value": analysis_date, "short": True},
@@ -429,7 +431,32 @@ class SlackNotifier:
                 "ts": int(datetime.now(KST).timestamp())
             }
         ]
-        SlackNotifier._post_error(text=text, attachments=attachments)
+        SlackNotifier._post_error(text=ops_text, attachments=ops_attachments)
+
+        # 2. 사용자(분석) 채널 (간결 — 신뢰 유지) — review 시나리오 5
+        user_text = "ℹ️ 오늘은 시장 변동성이 평소보다 높아 종목 추천을 일시 보류합니다."
+        vix_display = f"{vix_value:.1f}" if vix_value is not None else "결손"
+        user_attachments = [
+            {
+                "color": "#ffc107",
+                "title": f"{analysis_date} 추천 보류 안내",
+                "text": (
+                    f"시장 변동성 지수(VIX)가 {vix_display}로 평소 범위를 벗어났습니다. "
+                    f"변동성이 높은 날은 추천의 신뢰도가 낮아질 수 있어 자동으로 보류합니다.\n\n"
+                    f"시스템은 정상 동작 중이며, 변동성이 안정화되면 추천이 재개됩니다."
+                ),
+                "footer": "Quantiq — 안전 우선 정책",
+                "ts": int(datetime.now(KST).timestamp())
+            }
+        ]
+        analysis_webhook = SlackNotifier._get_analysis_webhook()
+        analysis_channel = SlackNotifier._get_analysis_channel()
+        SlackNotifier._post_message(
+            channel=analysis_channel,
+            webhook_url=analysis_webhook,
+            text=user_text,
+            attachments=user_attachments,
+        )
 
     # ============================================================
     # Startup 결함 알림 (PR 2, 2026-05-21)

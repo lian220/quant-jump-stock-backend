@@ -84,3 +84,42 @@ def test_invariant_rejects_invalid_missing_policy(tmp_path, make_spec):
     })
     with pytest.raises(SpecValidationError, match="missing_policy"):
         ScoringPolicy.load(str(bad))
+
+
+# ─── Review 후속 (2026-05-22) ──────────────────────────────────────────────────
+# Critical #1 code-reviewer: enabled=True 인데 threshold 누락 시 runtime KeyError 방지
+def test_invariant_rejects_enabled_gate_without_threshold(tmp_path, make_spec):
+    """enabled=true + threshold 누락 → SpecValidationError (silent KeyError 방지)."""
+    bad = make_spec(tmp_path, macro_gates={
+        "vix": {"enabled": True},  # threshold 누락
+    })
+    with pytest.raises(SpecValidationError, match="threshold required"):
+        ScoringPolicy.load(str(bad))
+
+
+# Review 시나리오 7: VIX sanity range 검증 (yfinance 비정상 값 방어)
+def test_should_block_rejects_negative_vix():
+    """음수 VIX → missing 처리 (skip default → False)."""
+    p = ScoringPolicy.load_default()
+    assert p.should_block_on_vix(-1.0) is False
+
+
+def test_should_block_rejects_extreme_vix():
+    """이상치 (200 이상) → missing 처리."""
+    p = ScoringPolicy.load_default()
+    assert p.should_block_on_vix(500.0) is False
+    assert p.should_block_on_vix(200.0) is False  # 경계 (sanity range = exclusive)
+
+
+def test_should_block_rejects_nan_vix():
+    """NaN VIX → missing 처리 (yfinance 결손 가능성)."""
+    p = ScoringPolicy.load_default()
+    nan = float("nan")
+    assert p.should_block_on_vix(nan) is False
+
+
+def test_should_block_normal_high_vix_still_blocks():
+    """정상 범위 (sanity 통과) + 임계 초과 → 차단 유지 (격리 검증)."""
+    p = ScoringPolicy.load_default()
+    assert p.should_block_on_vix(50.0) is True   # 0 < 50 < 200, 50 > 35
+    assert p.should_block_on_vix(150.0) is True  # sanity 통과 + 임계 초과 → 차단

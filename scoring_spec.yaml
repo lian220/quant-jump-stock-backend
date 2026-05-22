@@ -4,12 +4,12 @@
 # 본 PR 에서는 현행 가중치/임계/cap 값과 100% 일치 (regression 0 변화 목표).
 # 행동 변경 (disagreement/veto/redistribute/VIX) 은 PR 3/4/5 에서 적용.
 
-spec_version: "1.2.0"
-formula_version: "1.2.0"  # PR 5 (2026-05-22): VIX 거시 gate 추가
+spec_version: "1.2.0"        # PR 5 (2026-05-22): macro_gates 섹션 추가 (산식 외부 gate)
+formula_version: "1.1.0"     # 산식 자체는 PR 3b 그대로 (PR 5 는 외부 gate 라 formula 미변경)
 # 변경 이력:
-#   1.0.0 — PR 1 SSoT 중앙화 (현행 보존, 2026-05-21)
-#   1.1.0 — PR 3b negative AI veto: rise_pct<0 → composite=0 + grade=D + label=NONE (2026-05-22)
-#   1.2.0 — PR 5 VIX macro gate: 시장 변동성 임계 초과 시 추천 전체 차단 (2026-05-22)
+#   spec 1.0.0 / formula 1.0.0 — PR 1 SSoT 중앙화 (현행 보존, 2026-05-21)
+#   spec 1.1.0 / formula 1.1.0 — PR 3b negative AI veto: rise_pct<0 → composite=0 (2026-05-22)
+#   spec 1.2.0 / formula 1.1.0 — PR 5 VIX macro gate (산식 외부, formula 보존, 2026-05-22)
 description: |
   AI 예측 + 뉴스 감정 + 기술 분석 가중 합산. 현행 산식 100% 일치 보존.
   본 spec 변경 시 quant-jump-stock-data-engine 테스트 (golden + property +

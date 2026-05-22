@@ -15,7 +15,7 @@ def test_load_default_finds_backend_repo_root_spec(monkeypatch):
     monkeypatch.delenv("SCORING_SPEC_PATH", raising=False)
     ScoringPolicy._cached_default.cache_clear()  # 환경 영향 차단
     p = ScoringPolicy.load_default()
-    assert p.formula_version == "1.2.0"
+    assert p.formula_version == "1.1.0"
     assert p.composite_max == Decimal("7.4")
 
 
@@ -30,7 +30,7 @@ def test_load_via_env_path(tmp_path, monkeypatch):
     monkeypatch.setenv("SCORING_SPEC_PATH", str(custom))
     ScoringPolicy._cached_default.cache_clear()
     p = ScoringPolicy.load_default()
-    assert p.formula_version == "1.2.0"
+    assert p.formula_version == "1.1.0"
 
 
 def test_load_missing_file_raises():

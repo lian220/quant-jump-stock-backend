@@ -32,11 +32,20 @@ def _fetch_vix_for_date(db, analysis_date: str) -> Optional[float]:
     """daily_stock_data.yfinance_indicators.^VIX 값 조회. 없으면 None.
 
     PR 5 (2026-05-22): VIX 거시 gate 의 입력. close_price 또는 close 우선 사용.
+    Mongo 네트워크/timeout 오류 시 None 반환 + warning log (silent error 방지).
+    missing_policy 가 gate 의 None 처리 결정 — caller (ScoringPolicy.should_block_on_vix) 책임.
     """
-    doc = db.daily_stock_data.find_one(
-        {"date": analysis_date},
-        {"_id": 0, "yfinance_indicators.^VIX": 1},
-    )
+    try:
+        doc = db.daily_stock_data.find_one(
+            {"date": analysis_date},
+            {"_id": 0, "yfinance_indicators.^VIX": 1},
+        )
+    except Exception as e:
+        logger.warning(
+            "VIX 조회 실패 (date=%s, error=%s). gate missing_policy 적용.",
+            analysis_date, e,
+        )
+        return None
     if not doc:
         return None
     vix = (doc.get("yfinance_indicators") or {}).get("^VIX")

@@ -26,11 +26,12 @@ def _compose_with_raw_rise(p: ScoringPolicy, rise_pct, sentiment_raw, tech_indic
 
 
 def test_negative_veto_enabled_for_v1_1_0_spec():
-    """PR 3b spec → is_negative_veto_enabled True (negative veto 는 1.1.0부터 유지)."""
+    """PR 3b spec → is_negative_veto_enabled True. PR 5 가 formula 보존하므로 formula_version=1.1.0 유지."""
     p = ScoringPolicy.load_default()
     assert p.is_negative_veto_enabled() is True
-    # PR 5 머지 후 spec 1.2.0 (VIX gate). negative veto 자체는 1.1.0 부터 변경 없음.
-    assert p.formula_version >= "1.1.0"
+    # formula_version 은 산식 자체 버전 — PR 5 (외부 gate) 는 산식 안 변경. set membership 으로 비교
+    # (문자열 비교 시 "1.10.0" < "1.9.0" 같은 오판 회피).
+    assert p.formula_version in {"1.1.0", "1.2.0"}
 
 
 def test_negative_pct_vetoes():
