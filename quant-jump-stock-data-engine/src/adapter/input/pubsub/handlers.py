@@ -28,35 +28,8 @@ KST = timezone('Asia/Seoul')
 logger = logging.getLogger(__name__)
 
 
-def _fetch_vix_for_date(db, analysis_date: str) -> Optional[float]:
-    """daily_stock_data.yfinance_indicators.^VIX 값 조회. 없으면 None.
-
-    PR 5 (2026-05-22): VIX 거시 gate 의 입력. close_price 또는 close 우선 사용.
-    Mongo 네트워크/timeout 오류 시 None 반환 + warning log (silent error 방지).
-    missing_policy 가 gate 의 None 처리 결정 — caller (ScoringPolicy.should_block_on_vix) 책임.
-    """
-    try:
-        doc = db.daily_stock_data.find_one(
-            {"date": analysis_date},
-            {"_id": 0, "yfinance_indicators.^VIX": 1},
-        )
-    except Exception as e:
-        logger.warning(
-            "VIX 조회 실패 (date=%s, error=%s). gate missing_policy 적용.",
-            analysis_date, e,
-        )
-        return None
-    if not doc:
-        return None
-    vix = (doc.get("yfinance_indicators") or {}).get("^VIX")
-    if vix is None:
-        return None
-    if isinstance(vix, (int, float)):
-        return float(vix)
-    if isinstance(vix, dict):
-        val = vix.get("close_price") or vix.get("close")
-        return float(val) if val is not None else None
-    return None
+# PR 5 의 _fetch_vix_for_date 는 refactor (2026-05-22) 로 services/macro_gates.py 의
+# `MacroGateRunner.evaluate()` 안으로 이동. handler 는 runner.evaluate(date) 만 호출.
 
 
 class MessageHandler(ABC):
@@ -580,27 +553,33 @@ class StockRecommendationHandler(MessageHandler):
                             tech_count=len(tech_docs),
                         )
                     else:
-                        # PR 5 (2026-05-22): VIX 거시 gate — 시장 변동성 임계 초과 시 추천 송출 차단.
-                        # 산식 외부 pre-flight gate (산식 자체는 보존). spec.macro_gates.vix 가 SSoT.
-                        vix_value = _fetch_vix_for_date(report_db, analysis_date)
-                        policy = report_service.policy
-                        if policy.should_block_on_vix(vix_value):
-                            threshold = float(policy.vix_threshold) if policy.vix_threshold else None
+                        # PR 5 + refactor (2026-05-22): 산식 외부 macro gate runner.
+                        # VIX (현재) + 향후 DXY/실업률 등 추가 시 services/macro_gates.py 만 변경.
+                        from services.macro_gates import MacroGateRunner
+                        macro_result = MacroGateRunner(
+                            policy=report_service.policy,
+                            db=report_db,
+                        ).evaluate(analysis_date)
+                        if macro_result and macro_result.blocked:
                             logger.warning(
-                                "⚠️ VIX macro gate: 시장 변동성 임계 초과로 추천 송출 차단 "
-                                f"(date={analysis_date}, vix={vix_value}, threshold={threshold})"
+                                "⚠️ Macro gate '%s' 차단: 추천 송출 보류 "
+                                "(date=%s, value=%s, threshold=%s)",
+                                macro_result.gate_name, analysis_date,
+                                macro_result.value, macro_result.threshold,
                             )
-                            SlackNotifier.notify_vix_gate_triggered(
-                                analysis_date=analysis_date,
-                                vix_value=vix_value,
-                                threshold=threshold,
-                            )
+                            # 현재는 VIX 만 — Slack 알림 함수도 VIX 전용. 향후 일반화 시 dispatch.
+                            if macro_result.gate_name == "vix":
+                                SlackNotifier.notify_vix_gate_triggered(
+                                    analysis_date=analysis_date,
+                                    vix_value=macro_result.value,
+                                    threshold=macro_result.threshold,
+                                )
                         else:
                             # 분석 채널: 종합 리포트 독립 메시지
                             SlackNotifier.notify_comprehensive_report(report, thread_ts=None)
                             logger.info(
                                 f"종합 리포트 Slack 발송 완료 ({analysis_date}): "
-                                f"추천 {candidate_count}개, 근접 탈락 {near_miss_count}개, vix={vix_value}"
+                                f"추천 {candidate_count}개, 근접 탈락 {near_miss_count}개"
                             )
                 except DailyDataNotCollectedError as e:
                     logger.error(str(e))
