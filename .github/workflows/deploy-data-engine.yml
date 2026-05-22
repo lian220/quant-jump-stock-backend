@@ -90,6 +90,21 @@ jobs:
             --to-latest \
             --region ${{ env.REGION }}
 
+      # ── Verify volume/mount consistency (2026-05-22 사고 재발 방지) ──
+      - name: Verify volume/mount consistency
+        run: |
+          # qjs-core 사고와 동일 패턴 (--set-secrets stream stale) 가 data-engine 에도 발생 가능.
+          # array diff (mounts - volumes) 로 mismatch 즉시 catch.
+          MISMATCH=$(gcloud run services describe ${{ env.CLOUD_RUN_SERVICE }} \
+            --region ${{ env.REGION }} --format=json \
+            | jq -r '([.spec.template.spec.containers[0].volumeMounts[].name] - [.spec.template.spec.volumes[].name]) | join(",")')
+          if [ -n "$MISMATCH" ]; then
+            echo "❌ volumeMounts 가 존재하지 않는 volume 가리킴: $MISMATCH"
+            echo "   --update-secrets 재실행 필요"
+            exit 1
+          fi
+          echo "✅ volumeMounts ↔ volumes 정합성 OK"
+
       # ── Health Check ───────────────────────────────
       - name: Verify Deployment
         run: |
