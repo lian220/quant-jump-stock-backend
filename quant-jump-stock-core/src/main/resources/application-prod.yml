@@ -42,9 +42,11 @@ app:
   encryption-key: ${APP_ENCRYPTION_KEY}
   encryption-key-v2: ${APP_ENCRYPTION_KEY_V2}
 
-# Cloudflare Gateway secret — 빈 string default 폐기
-cloudflare:
-  gateway-secret: ${CLOUDFLARE_GATEWAY_SECRET}
+# Cloudflare Gateway secret — application.yml 의 빈 default 유지.
+# 이유: prod 에서 secret 미설정 가능 (filter 가 빈 값일 때 graceful disable).
+# fail-fast 시 prod 의 모든 인스턴스가 cloudflareGatewayFilter Bean 생성 실패로 부팅 차단.
+# 별도 follow-up: Secret Manager 에 값 채운 후 fail-fast 활성화 검토.
+# (cloudflare.gateway-secret 는 application.yml:${CLOUDFLARE_GATEWAY_SECRET:} 그대로 사용)
 
 # Actuator readiness 그룹 — DB/Mongo 의존성 명시 포함 (deploy verify gate 용)
 management:
