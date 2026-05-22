@@ -28,6 +28,28 @@ KST = timezone('Asia/Seoul')
 logger = logging.getLogger(__name__)
 
 
+def _fetch_vix_for_date(db, analysis_date: str) -> Optional[float]:
+    """daily_stock_data.yfinance_indicators.^VIX 값 조회. 없으면 None.
+
+    PR 5 (2026-05-22): VIX 거시 gate 의 입력. close_price 또는 close 우선 사용.
+    """
+    doc = db.daily_stock_data.find_one(
+        {"date": analysis_date},
+        {"_id": 0, "yfinance_indicators.^VIX": 1},
+    )
+    if not doc:
+        return None
+    vix = (doc.get("yfinance_indicators") or {}).get("^VIX")
+    if vix is None:
+        return None
+    if isinstance(vix, (int, float)):
+        return float(vix)
+    if isinstance(vix, dict):
+        val = vix.get("close_price") or vix.get("close")
+        return float(val) if val is not None else None
+    return None
+
+
 class MessageHandler(ABC):
     """메시지 핸들러 추상 클래스"""
 
@@ -549,12 +571,28 @@ class StockRecommendationHandler(MessageHandler):
                             tech_count=len(tech_docs),
                         )
                     else:
-                        # 분석 채널: 종합 리포트 독립 메시지
-                        SlackNotifier.notify_comprehensive_report(report, thread_ts=None)
-                        logger.info(
-                            f"종합 리포트 Slack 발송 완료 ({analysis_date}): "
-                            f"추천 {candidate_count}개, 근접 탈락 {near_miss_count}개"
-                        )
+                        # PR 5 (2026-05-22): VIX 거시 gate — 시장 변동성 임계 초과 시 추천 송출 차단.
+                        # 산식 외부 pre-flight gate (산식 자체는 보존). spec.macro_gates.vix 가 SSoT.
+                        vix_value = _fetch_vix_for_date(report_db, analysis_date)
+                        policy = report_service.policy
+                        if policy.should_block_on_vix(vix_value):
+                            threshold = float(policy.vix_threshold) if policy.vix_threshold else None
+                            logger.warning(
+                                "⚠️ VIX macro gate: 시장 변동성 임계 초과로 추천 송출 차단 "
+                                f"(date={analysis_date}, vix={vix_value}, threshold={threshold})"
+                            )
+                            SlackNotifier.notify_vix_gate_triggered(
+                                analysis_date=analysis_date,
+                                vix_value=vix_value,
+                                threshold=threshold,
+                            )
+                        else:
+                            # 분석 채널: 종합 리포트 독립 메시지
+                            SlackNotifier.notify_comprehensive_report(report, thread_ts=None)
+                            logger.info(
+                                f"종합 리포트 Slack 발송 완료 ({analysis_date}): "
+                                f"추천 {candidate_count}개, 근접 탈락 {near_miss_count}개, vix={vix_value}"
+                            )
                 except DailyDataNotCollectedError as e:
                     logger.error(str(e))
                     SlackNotifier.notify_daily_data_missing(analysis_date)

@@ -26,10 +26,11 @@ def _compose_with_raw_rise(p: ScoringPolicy, rise_pct, sentiment_raw, tech_indic
 
 
 def test_negative_veto_enabled_for_v1_1_0_spec():
-    """PR 3b spec → is_negative_veto_enabled True."""
+    """PR 3b spec → is_negative_veto_enabled True (negative veto 는 1.1.0부터 유지)."""
     p = ScoringPolicy.load_default()
     assert p.is_negative_veto_enabled() is True
-    assert p.formula_version == "1.1.0"
+    # PR 5 머지 후 spec 1.2.0 (VIX gate). negative veto 자체는 1.1.0 부터 변경 없음.
+    assert p.formula_version >= "1.1.0"
 
 
 def test_negative_pct_vetoes():

@@ -394,6 +394,44 @@ class SlackNotifier:
         SlackNotifier._post_error(text=text, attachments=attachments)
 
     # ============================================================
+    # VIX 거시 gate 알림 (PR 5, 2026-05-22)
+    # ============================================================
+
+    @staticmethod
+    def notify_vix_gate_triggered(
+        analysis_date: str,
+        vix_value: Optional[float],
+        threshold: Optional[float],
+    ):
+        """VIX 거시 변동성 임계 초과 시 운영자 채널 알림 + 사용자 채널 송출 차단.
+
+        TALEB asymmetric risk: 변동성 폭증 시 추천 신호의 노이즈 비율 급증.
+                                False positive (잘못된 추천 → 사용자 손실) 비용 비대칭.
+        MEADOWS systems: 산식 외부 macro gate. 산식 자체는 그대로 유지.
+        """
+        text = "⚠️ 추천 송출 보류 — 시장 변동성 임계 초과"
+        attachments = [
+            {
+                "color": "#ff6b6b",
+                "title": f"분석일 {analysis_date} VIX 거시 gate 발동",
+                "text": (
+                    f"VIX (시장 변동성 지수) 가 임계값 초과로 추천 송출을 차단했습니다. "
+                    f"변동성 폭증 시 신호 노이즈로 인한 사용자 손실 위험 회피 목적."
+                ),
+                "fields": [
+                    {"title": "분석일", "value": analysis_date, "short": True},
+                    {"title": "VIX", "value": f"{vix_value:.2f}" if vix_value is not None else "결손", "short": True},
+                    {"title": "임계값", "value": f"{threshold:.2f}" if threshold is not None else "—", "short": True},
+                    {"title": "정책", "value": "scoring_spec.yaml > macro_gates.vix", "short": True},
+                    {"title": "롤백", "value": "yaml flip: enabled: false 또는 threshold 상향", "short": False},
+                ],
+                "footer": "Quantiq Data Engine — PR 5 VIX macro gate",
+                "ts": int(datetime.now(KST).timestamp())
+            }
+        ]
+        SlackNotifier._post_error(text=text, attachments=attachments)
+
+    # ============================================================
     # Startup 결함 알림 (PR 2, 2026-05-21)
     # ============================================================
 
