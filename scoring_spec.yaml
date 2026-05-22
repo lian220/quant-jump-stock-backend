@@ -4,8 +4,11 @@
 # 본 PR 에서는 현행 가중치/임계/cap 값과 100% 일치 (regression 0 변화 목표).
 # 행동 변경 (disagreement/veto/redistribute/VIX) 은 PR 3/4/5 에서 적용.
 
-spec_version: "1.0.0"
-formula_version: "1.0.0"  # 본 PR 은 현행 보존 → 1.0.0. 행동 변경 시 1.1.0+
+spec_version: "1.1.0"
+formula_version: "1.1.0"  # PR 3b (2026-05-22): negative AI veto 첫 행동 변경
+# 변경 이력:
+#   1.0.0 — PR 1 SSoT 중앙화 (현행 보존, 2026-05-21)
+#   1.1.0 — PR 3b negative AI veto: rise_pct<0 → composite=0 + grade=D + label=NONE (2026-05-22)
 description: |
   AI 예측 + 뉴스 감정 + 기술 분석 가중 합산. 현행 산식 100% 일치 보존.
   본 spec 변경 시 quant-jump-stock-data-engine 테스트 (golden + property +
@@ -22,7 +25,7 @@ axes:
     cap_strategy: fixed_pct
     cap_threshold_pct: 20.0       # 현행 유지 (vol_normalized 는 PR 후속)
     missing_policy: zero           # 현행 유지
-    negative_policy: zero          # 현행 유지 (PR 3 에서 veto 로 변경)
+    negative_policy: veto          # PR 3b (2026-05-22): rise_pct<0 → composite=0 + grade=D + label=NONE. rollback: zero
   technical:
     weight: 0.4
     max: 3.5

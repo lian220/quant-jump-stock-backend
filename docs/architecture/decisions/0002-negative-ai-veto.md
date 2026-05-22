@@ -1,8 +1,8 @@
 # ADR 0002 — Negative AI Veto + Source Disagreement Policy
 
 > 작성: 2026-05-22 (PR 3a)
-> 상태: **Proposed** (PR 3b 머지 시 Accepted)
-> 관련 PR: lian220/quant-jump-stock-backend#3a (schema), #3b (negative veto), #3c (disagreement)
+> **Accepted: 2026-05-22 (PR 3b 머지)**
+> 관련 PR: #111 (3a schema), #(3b negative veto), TBD (3c disagreement)
 > 관련 plan: `docs/plans/점수모델_중앙화_구현계획.md` §1 PR 분리
 
 ## 배경
@@ -161,9 +161,28 @@ Zero-rec day 메시지 템플릿 (`SlackNotifier.notify_recommendation_data_gap`
 - Taleb *Antifragile* (2012) — via negativa 원칙
 - Christensen *JTBD* — 추천 코히어런스가 사용자 기대 job
 
+## PR 3b dry-run 측정 결과 (2026-05-22)
+
+**comprehensive_report.generate_report E2E 호출 + negative veto 시뮬레이션** (AI 데이터 가용 영업일 5일 한정):
+
+| 지표 | 값 | ADR 가드 | 평가 |
+|------|---|---|---|
+| 분석 일수 | 5 (5/12~5/19, AI 가용일만) | — | 한계: 통계 약함 |
+| 일평균 추천 (현재) | 5.00 | — | baseline |
+| 일평균 추천 (negative veto 후 추정) | **4.80** | 2-5 정상 | ✅ |
+| Zero-rec day | 0 / 5 (0%) | <20% 정상 | ✅ |
+| 추천 5개 중 음수 AI 종목 (5일 합계) | 1 (5/13) | — | 미미 |
+
+**한계 인지**:
+- AI 데이터 미수집일 (4/22~5/11, 5/19~5/20) 은 별도 이슈 (data freshness) — negative veto 와 무관
+- 5일 샘플 — 통계적으로 약함
+- 두 AI 소스 시계 비대칭 (PR 3c 보류 사유)
+
+머지 진행 OK, **2주 prod 분포 관찰 후 ADR 갱신 또는 PR 3d (min_composite_score 조정)** 진행.
+
 ## 결정 이력
 
 | 날짜 | 작성자 | 변경 |
 |------|--------|------|
 | 2026-05-22 | PR 3a | 초안 작성 — Proposed |
-| TBD | PR 3b 머지 | Accepted 처리 |
+| 2026-05-22 | PR 3b | **Accepted** — dry-run 측정 결과 ADR 가드 통과. 머지 진행. |

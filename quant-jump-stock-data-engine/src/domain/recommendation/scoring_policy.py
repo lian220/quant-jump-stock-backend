@@ -84,6 +84,13 @@ class ScoringPolicy:
                 f"grade thresholds must be monotonic decreasing; got {thresholds}"
             )
 
+        # PR 3b: negative_policy ∈ {zero, veto}
+        ai_negative_policy = (axes.get("ai") or {}).get("negative_policy", "zero")
+        if ai_negative_policy not in {"zero", "veto"}:
+            raise SpecValidationError(
+                f"axes.ai.negative_policy must be 'zero' or 'veto'; got '{ai_negative_policy}'"
+            )
+
     # ── 속성 ─────────────────────────────────────────
     @property
     def formula_version(self) -> str:
@@ -108,6 +115,11 @@ class ScoringPolicy:
     @property
     def min_composite_score(self) -> Decimal:
         return Decimal(str(self._spec["recommendation_filter"]["min_composite_score"]))
+
+    # PR 3b: negative AI veto 게이트
+    def is_negative_veto_enabled(self) -> bool:
+        """spec.axes.ai.negative_policy == 'veto' 여부. False (zero) 면 PR 1 동작 보존."""
+        return (self.axes.get("ai") or {}).get("negative_policy") == "veto"
 
     # ── Private: clipped normalized → AI score (공통 tail) ──────
     def _score_from_clipped_normalized(self, normalized: Decimal) -> Decimal:
@@ -196,10 +208,15 @@ class ScoringPolicy:
         has_tech: bool,
         has_sentiment: bool,
         tech_signal_count: int,
+        veto_reasons: tuple[str, ...] = (),
+        warnings: tuple[str, ...] = (),
     ) -> Score:
         """이미 normalized 된 component score 들로부터 Score 계산.
 
-        본 PR 은 현행 buy_criteria 동작 보존: missing 시 0점 처리 (재분배 없음).
+        PR 3b (2026-05-22): veto_reasons 비어있지 않고 spec.negative_policy=='veto' 면
+        composite_score=0, grade='D', label='NONE' 강제. caller 가 raw 신호 부호 판단해서 전달.
+
+        missing 시 0점 처리 (재분배 없음, PR 4 에서 검토).
         """
         ax = self.axes
         w_ai = Decimal(str(ax["ai"]["weight"]))
@@ -214,14 +231,24 @@ class ScoringPolicy:
             w_ai * effective_ai + w_tech * effective_tech + w_sent * effective_sent
         )
         composite_max = self.composite_max
+
+        # PR 3b: veto 발동 시 composite 강제 0. spec 의 negative_policy 가 veto 인 경우만 실행 (rollback safety).
+        veto_active = bool(veto_reasons) and self.is_negative_veto_enabled()
+        if veto_active:
+            composite = Decimal("0")
+
         confidence = (
             (composite / composite_max).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
             if composite_max > 0
             else Decimal("0")
         )
 
-        grade = self.grade_for_composite(composite)
-        label = self._label_from_confidence_and_signals(confidence, tech_signal_count)
+        if veto_active:
+            grade = "D"
+            label = "NONE"
+        else:
+            grade = self.grade_for_composite(composite)
+            label = self._label_from_confidence_and_signals(confidence, tech_signal_count)
 
         missing = tuple(
             name
@@ -233,6 +260,10 @@ class ScoringPolicy:
             if not present
         )
 
+        # spec.negative_policy=='zero' 일 때는 caller 가 veto_reasons 전달해도 무시 (rollback safety).
+        # 즉 zero 모드에선 항상 veto_reasons=() 반환.
+        final_veto = veto_reasons if self.is_negative_veto_enabled() else ()
+
         return Score(
             ai_score=effective_ai.quantize(_QTZ_2, rounding=ROUND_HALF_UP),
             tech_score=effective_tech.quantize(_QTZ_2, rounding=ROUND_HALF_UP),
@@ -243,8 +274,8 @@ class ScoringPolicy:
             grade=grade,
             recommendation_label=label,
             missing_axes=missing,
-            veto_reasons=(),  # PR 3 에서 채워짐
-            warnings=(),  # PR 5 에서 VIX 경고
+            veto_reasons=final_veto,
+            warnings=warnings,
         )
 
     # ── Public: raw signals → Score (one-shot) ──────────
@@ -254,10 +285,17 @@ class ScoringPolicy:
         sentiment_raw: Decimal | None,
         tech_indicators: dict[str, Any] | None,
     ) -> Score:
-        """raw input (rise % / sentiment -1~+1 / tech indicators) → Score 단일 호출."""
+        """raw input (rise % / sentiment -1~+1 / tech indicators) → Score 단일 호출.
+
+        PR 3b (2026-05-22): rise_pct < 0 자동 detection. spec.negative_policy='veto' 면
+        veto_reasons=('ai_negative',) 추가 → composite=0 강제 (compose_components 내부).
+        """
         ai_s = self.normalize_rise_pct_to_score(rise_pct)
         tech_s = self.tech_score_from_indicators(tech_indicators)
         sent_s = self.sentiment_score_from_raw(sentiment_raw)
+        veto: tuple[str, ...] = ()
+        if rise_pct is not None and Decimal(str(rise_pct)) < Decimal("0"):
+            veto = ("ai_negative",)
         return self.compose_components(
             ai_score=ai_s,
             tech_score=tech_s,
@@ -266,6 +304,7 @@ class ScoringPolicy:
             has_tech=bool(tech_indicators),
             has_sentiment=sentiment_raw is not None,
             tech_signal_count=self.count_tech_signals(tech_indicators),
+            veto_reasons=veto,
         )
 
     # ── Grade / Label ───────────────────────────────────

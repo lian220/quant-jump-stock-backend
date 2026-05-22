@@ -252,13 +252,16 @@ class ComprehensiveReportService:
         # 2. Composite Score 계산 + 필터링
         # SSoT 정규화: rise_pct (%) → AI score (0-10), sentiment (-1~1) → sentiment score (0-10)
         # ScoringPolicy public API 위임 — buy_criteria 내부 rescale 어댑터 폐기 (PR 1 Task 2.2 후속).
+        # PR 3b: raw rise_pct 도 같이 보존 → buy_criteria 가 부호 검사로 negative AI veto 적용.
         ai_scores: Dict[str, float] = {}
+        raw_rise_probabilities: Dict[str, float] = {}
         for ticker, data in ai_predictions.items():
             rise_pct = data.get("rise_probability")
             if rise_pct is not None:
                 ai_scores[ticker] = float(
                     self.policy.normalize_rise_pct_to_score(Decimal(str(rise_pct)))
                 )
+                raw_rise_probabilities[ticker] = float(rise_pct)
 
         # sentiment_scores 는 위에서 raw -1~1 로 로드됨. 0-10 SSoT 스케일로 정규화하여 필터에 전달.
         sentiment_scores_normalized: Dict[str, float] = {}
@@ -271,6 +274,7 @@ class ComprehensiveReportService:
             technical_results,
             ai_scores=ai_scores,
             sentiment_scores=sentiment_scores_normalized,
+            raw_rise_probabilities=raw_rise_probabilities,
         )
 
         # 3. 아깝게 탈락한 종목 (near-miss TOP3)
@@ -280,6 +284,7 @@ class ComprehensiveReportService:
             excluded_tickers=excluded_tickers,
             ai_scores=ai_scores,
             sentiment_scores=sentiment_scores_normalized,
+            raw_rise_probabilities=raw_rise_probabilities,
         )
         # near-miss에도 AI/감정 상세 데이터 추가
         for nm in near_miss_candidates:
@@ -336,6 +341,9 @@ class ComprehensiveReportService:
                 label = g.label if hasattr(g, "label") else str(g)
                 grade_summary[label] = grade_summary.get(label, 0) + 1
 
+        # PR 3b: AI veto 통계 (raw rise < 0 인 종목 — buy_criteria 가 NONE 으로 차단했을 종목)
+        ai_veto_count = sum(1 for r in raw_rise_probabilities.values() if r < 0)
+
         report = {
             "analysis_date": analysis_date,
             # PR 2: fallback 발생 시 AI 예측 실제 사용 날짜. fallback 미발동 시 None.
@@ -344,6 +352,8 @@ class ComprehensiveReportService:
             "total_analyzed": len(technical_results),
             "sentiment_count": len(sentiment_scores),
             "prediction_count": len(ai_predictions),
+            # PR 3b: AI 음수 예측으로 차단된 종목 수 (Slack 표시 + zero-day 메시지 컨텍스트)
+            "ai_veto_count": ai_veto_count,
             "candidate_count": len(buy_candidates),
             "buy_candidates": buy_candidates,
             "near_miss_candidates": near_miss_candidates,

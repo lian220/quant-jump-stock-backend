@@ -142,6 +142,7 @@ class BuyCriteria:
         has_ai: bool = True,
         has_sentiment: bool = True,
         has_tech: bool = True,
+        veto_reasons: tuple = (),     # PR 3b: caller 가 raw 신호 부호 판단해서 전달
     ) -> Dict[str, Any]:
         """
         Composite Score 계산 — ScoringPolicy public API 위임.
@@ -178,6 +179,7 @@ class BuyCriteria:
             has_tech=has_tech,
             has_sentiment=has_sentiment,
             tech_signal_count=tech_signals,
+            veto_reasons=veto_reasons,
         )
 
         return {
@@ -212,24 +214,22 @@ class BuyCriteria:
         all_results: List[Dict[str, Any]],
         ai_scores: Dict[str, float] | None = None,
         sentiment_scores: Dict[str, float] | None = None,
+        raw_rise_probabilities: Dict[str, float] | None = None,
     ) -> List[Dict[str, Any]]:
         """
         전체 분석 결과에서 등급 기반 매수 후보 필터링.
 
-        v3 (ADR 0001 진정성 규칙):
-        - 정적 가중치 + 부재 축 0 처리 (calculate_composite_score)
-        - composite_score 기반 grade 임계로 자연 컷오프
-        - 부분 데이터 종목도 점수 그대로 산출. 점수 낮으면 grade 자동 NONE으로 떨어짐
-        - max_stocks_to_recommend 개수 제한 (상위 N개)
-
         PR 1: ai_scores / sentiment_scores 는 0-10 통일 SSoT 스케일.
-        caller (comprehensive_report) 가 ScoringPolicy.normalize_rise_pct_to_score /
-        sentiment_score_from_raw 로 사전 정규화하여 전달. rescale 어댑터 폐기.
+        PR 3b (2026-05-22): raw_rise_probabilities (원본 raw % 또는 normalized<0.5 등 부호 신호)
+        가 전달되면, ticker 별로 < 0 (raw %) 또는 < 0.5 (0~1 normalized) 일 때 negative AI veto 적용.
+        comprehensive_report 가 raw 정보를 함께 전달해야 veto 발동 — 데이터 누락 시 PR 1 동작 유지.
         """
         if ai_scores is None:
             ai_scores = {}
         if sentiment_scores is None:
             sentiment_scores = {}
+        if raw_rise_probabilities is None:
+            raw_rise_probabilities = {}
 
         candidates = []
         for stock in all_results:
@@ -241,11 +241,18 @@ class BuyCriteria:
             has_sentiment = ticker in sentiment_scores
             has_tech = bool(indicators)  # 기술 분석이 수행됐는가 (신호 부재 ≠ 데이터 부재)
 
+            # PR 3b: raw rise probability < 0 (raw %) 또는 < 0.5 (normalized) 시 veto
+            veto_reasons: tuple = ()
+            raw_rise = raw_rise_probabilities.get(ticker)
+            if raw_rise is not None and float(raw_rise) < 0 and self.policy.is_negative_veto_enabled():
+                veto_reasons = ("ai_negative",)
+
             scores = self.calculate_composite_score(
                 indicators,
                 ai_score=ai_scores.get(ticker, 0.0),
                 sentiment_score=sentiment_scores.get(ticker, 0.0),
                 has_ai=has_ai, has_sentiment=has_sentiment, has_tech=has_tech,
+                veto_reasons=veto_reasons,
             )
 
             grade = self.determine_grade(scores)
@@ -286,16 +293,20 @@ class BuyCriteria:
         ai_scores: Dict[str, float] | None = None,
         sentiment_scores: Dict[str, float] | None = None,
         top_n: int | None = None,
+        raw_rise_probabilities: Dict[str, float] | None = None,
     ) -> List[Dict[str, Any]]:
         """
         필터 미통과 종목 중 composite_score 상위 near-miss 후보 반환.
 
         ai_scores / sentiment_scores 는 0-10 통일 SSoT 스케일 (filter_candidates 와 동일).
+        PR 3b: raw_rise_probabilities 전달 시 negative AI veto 적용 (filter_candidates 와 동일).
         """
         if ai_scores is None:
             ai_scores = {}
         if sentiment_scores is None:
             sentiment_scores = {}
+        if raw_rise_probabilities is None:
+            raw_rise_probabilities = {}
         if top_n is None:
             top_n = self.near_miss_top_n
 
@@ -309,11 +320,19 @@ class BuyCriteria:
             has_ai = ticker in ai_scores
             has_sentiment = ticker in sentiment_scores
             has_tech = bool(indicators)
+
+            # PR 3b: negative AI veto
+            veto_reasons: tuple = ()
+            raw_rise = raw_rise_probabilities.get(ticker)
+            if raw_rise is not None and float(raw_rise) < 0 and self.policy.is_negative_veto_enabled():
+                veto_reasons = ("ai_negative",)
+
             scores = self.calculate_composite_score(
                 indicators,
                 ai_score=ai_scores.get(ticker, 0.0),
                 sentiment_score=sentiment_scores.get(ticker, 0.0),
                 has_ai=has_ai, has_sentiment=has_sentiment, has_tech=has_tech,
+                veto_reasons=veto_reasons,
             )
             grade = self.determine_grade(scores)
 

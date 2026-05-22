@@ -15,7 +15,7 @@ def test_load_default_finds_backend_repo_root_spec(monkeypatch):
     monkeypatch.delenv("SCORING_SPEC_PATH", raising=False)
     ScoringPolicy._cached_default.cache_clear()  # 환경 영향 차단
     p = ScoringPolicy.load_default()
-    assert p.formula_version == "1.0.0"
+    assert p.formula_version == "1.1.0"
     assert p.composite_max == Decimal("7.4")
 
 
@@ -30,7 +30,7 @@ def test_load_via_env_path(tmp_path, monkeypatch):
     monkeypatch.setenv("SCORING_SPEC_PATH", str(custom))
     ScoringPolicy._cached_default.cache_clear()
     p = ScoringPolicy.load_default()
-    assert p.formula_version == "1.0.0"
+    assert p.formula_version == "1.1.0"
 
 
 def test_load_missing_file_raises():
@@ -122,16 +122,19 @@ def test_score_raw_rise_pct_20_pct_full_score():
 
 
 def test_score_negative_rise_pct_zero_policy_preserved():
-    """본 PR: -15% → AI score 0 (veto 없이 0점). PR 3 에서 veto 로 변경."""
+    """PR 3b (2026-05-22): -15% → veto 발동. composite=0, grade=D, label=NONE."""
     p = ScoringPolicy.load_default()
     score = p.score_from_raw_signals(
         rise_pct=Decimal("-15"),
         sentiment_raw=Decimal("0.5"),
         tech_indicators={"golden_cross": True, "rsi": 50, "macd_buy_signal": True},
     )
-    # AI=0, Tech=3.5, Sent=5 → composite 0 + 1.4 + 1.5 = 2.9
-    assert score.composite_score == Decimal("2.90")
-    assert score.veto_reasons == ()  # 본 PR 은 veto 미적용
+    # PR 1: composite 2.90, grade=C, label=WATCH
+    # PR 3b: rise<0 → veto 발동 → composite=0, grade=D, label=NONE, veto_reasons=("ai_negative",)
+    assert score.composite_score == Decimal("0.00")
+    assert score.grade == "D"
+    assert score.recommendation_label == "NONE"
+    assert score.veto_reasons == ("ai_negative",)
 
 
 def test_ai_score_from_normalized_matches_current_sync_service():
