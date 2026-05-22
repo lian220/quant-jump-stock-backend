@@ -3,6 +3,14 @@
 # ============================================
 #
 # 본 파일은 application.yml 위에 override. prod 전용 안전 설정만 명시.
+#
+# 2026-05-22 강화 (Cloud Run secret 마운트 사고 후속):
+#   application.yml 의 모든 보안 secret default (예: ${MONGODB_URI:mongodb://...localhost}) 가
+#   secret 마운트 실패 시 silent fallback 으로 localhost / 평문 dev key 사용 → 사고 원천.
+#   글로벌 규칙: 12-Factor III (Config in environment, no default in code) +
+#                OWASP A05:2021 (No default credentials in production).
+#   prod profile 에서 default 폐기 형태로 override → 누락 시 부팅 실패.
+#
 # Hibernate ddl-auto=validate 추가 사유 (2026-05-13 V60 사고 회고):
 #   prod DB schema 와 JPA entity 매핑이 어긋난 상태로 부팅되면 첫 query
 #   까지 fail 이 지연됨. validate 모드는 부팅 즉시 entity ↔ table 컬럼/
@@ -17,3 +25,32 @@ spring:
   jpa:
     hibernate:
       ddl-auto: ${HIBERNATE_DDL_AUTO:validate}
+
+  # ── prod fail-fast: secret default 폐기 ──────────────
+  # 누락 시 PropertyResolutionException 으로 부팅 즉시 실패. application.yml 의 default 무력화.
+  datasource:
+    password: ${DB_PASSWORD}     # localhost dev default 폐기 (사고 직접 원인)
+  data:
+    mongodb:
+      uri: ${MONGODB_URI}        # localhost dev default 폐기 (2026-05-22 사고)
+
+# JWT / 암호화 키 — 평문 dev default 폐기 (OWASP A05)
+auth:
+  jwt:
+    secret: ${JWT_SECRET}
+app:
+  encryption-key: ${APP_ENCRYPTION_KEY}
+  encryption-key-v2: ${APP_ENCRYPTION_KEY_V2}
+
+# Cloudflare Gateway secret — 빈 string default 폐기
+cloudflare:
+  gateway-secret: ${CLOUDFLARE_GATEWAY_SECRET}
+
+# Actuator readiness 그룹 — DB/Mongo 의존성 명시 포함 (deploy verify gate 용)
+management:
+  endpoint:
+    health:
+      group:
+        readiness:
+          include: readinessState, db, mongo, ping
+          # 의존성 부재 시 readiness DOWN → deploy verify 차단 (Cloud Run rollout gate)
