@@ -4,11 +4,12 @@
 # 본 PR 에서는 현행 가중치/임계/cap 값과 100% 일치 (regression 0 변화 목표).
 # 행동 변경 (disagreement/veto/redistribute/VIX) 은 PR 3/4/5 에서 적용.
 
-spec_version: "1.1.0"
-formula_version: "1.1.0"  # PR 3b (2026-05-22): negative AI veto 첫 행동 변경
+spec_version: "1.2.0"        # PR 5 (2026-05-22): macro_gates 섹션 추가 (산식 외부 gate)
+formula_version: "1.1.0"     # 산식 자체는 PR 3b 그대로 (PR 5 는 외부 gate 라 formula 미변경)
 # 변경 이력:
-#   1.0.0 — PR 1 SSoT 중앙화 (현행 보존, 2026-05-21)
-#   1.1.0 — PR 3b negative AI veto: rise_pct<0 → composite=0 + grade=D + label=NONE (2026-05-22)
+#   spec 1.0.0 / formula 1.0.0 — PR 1 SSoT 중앙화 (현행 보존, 2026-05-21)
+#   spec 1.1.0 / formula 1.1.0 — PR 3b negative AI veto: rise_pct<0 → composite=0 (2026-05-22)
+#   spec 1.2.0 / formula 1.1.0 — PR 5 VIX macro gate (산식 외부, formula 보존, 2026-05-22)
 description: |
   AI 예측 + 뉴스 감정 + 기술 분석 가중 합산. 현행 산식 100% 일치 보존.
   본 spec 변경 시 quant-jump-stock-data-engine 테스트 (golden + property +
@@ -58,5 +59,17 @@ recommendation_labels:
   NONE:      { label: "추천 없음", emoji: "⚪" }
 
 recommendation_filter:
-  min_composite_score: 2.0          # 현행 유지 (PR 3 에서 3.0 검토)
+  min_composite_score: 2.0          # 현행 유지 (PR 3d 에서 3.0 검토)
   max_recommendations: 5
+
+# PR 5 (2026-05-22): 거시 시장 변동성 gate.
+# 산식 외부 pre-flight gate — 산식 자체는 안 건드림. 추천 산출 후 송출 직전 검사.
+# 발동 시 사용자 채널 송출 차단 + 운영자 채널 알림. VIX 값 결손 시 gate skip (안전 default).
+# rollback: enabled: false 또는 threshold: 999 로 raise.
+macro_gates:
+  vix:
+    enabled: true
+    threshold: 35.0               # VIX > 35 시 차단. prod 최근 30일 평균 17.93 (저변동성), 여유.
+    source: "daily_stock_data.yfinance_indicators.^VIX"
+    missing_policy: skip          # skip = gate 미발동 (정상 진행) | block = 차단
+    description: "시장 변동성 과다 시 추천 전체 차단 (Taleb 비대칭 위험 — 변동성 폭증 시 신호 노이즈)"

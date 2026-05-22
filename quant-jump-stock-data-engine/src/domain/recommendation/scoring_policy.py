@@ -91,6 +91,32 @@ class ScoringPolicy:
                 f"axes.ai.negative_policy must be 'zero' or 'veto'; got '{ai_negative_policy}'"
             )
 
+        # PR 5: macro_gates.vix (선택 — 미정의 시 gate 비활성)
+        vix_gate = (spec.get("macro_gates") or {}).get("vix") or {}
+        if vix_gate:
+            # enabled=True 일 때 threshold 필수 — 누락 시 runtime KeyError 방지
+            enabled = vix_gate.get("enabled", True)
+            threshold = vix_gate.get("threshold")
+            if enabled and threshold is None:
+                raise SpecValidationError(
+                    "macro_gates.vix.threshold required when enabled=true"
+                )
+            if threshold is not None:
+                try:
+                    if Decimal(str(threshold)) <= 0:
+                        raise SpecValidationError(
+                            f"macro_gates.vix.threshold must be > 0; got {threshold}"
+                        )
+                except (ValueError, TypeError) as e:
+                    raise SpecValidationError(
+                        f"macro_gates.vix.threshold must be numeric; got {threshold!r}"
+                    ) from e
+            missing_policy = vix_gate.get("missing_policy", "skip")
+            if missing_policy not in {"skip", "block"}:
+                raise SpecValidationError(
+                    f"macro_gates.vix.missing_policy must be 'skip' or 'block'; got '{missing_policy}'"
+                )
+
     # ── 속성 ─────────────────────────────────────────
     @property
     def formula_version(self) -> str:
@@ -120,6 +146,52 @@ class ScoringPolicy:
     def is_negative_veto_enabled(self) -> bool:
         """spec.axes.ai.negative_policy == 'veto' 여부. False (zero) 면 PR 1 동작 보존."""
         return (self.axes.get("ai") or {}).get("negative_policy") == "veto"
+
+    # PR 5: VIX 거시 gate
+    @property
+    def vix_gate(self) -> dict[str, Any] | None:
+        """spec.macro_gates.vix dict 반환. 미정의 또는 enabled=False 면 None."""
+        gate = (self._spec.get("macro_gates") or {}).get("vix") or {}
+        if not gate or gate.get("enabled") is False:
+            return None
+        return gate
+
+    def is_vix_gate_enabled(self) -> bool:
+        """VIX gate 활성 여부."""
+        return self.vix_gate is not None
+
+    @property
+    def vix_threshold(self) -> Decimal | None:
+        """VIX > threshold 시 발동. gate 미활성 시 None."""
+        gate = self.vix_gate
+        if not gate:
+            return None
+        t = gate.get("threshold")
+        return Decimal(str(t)) if t is not None else None
+
+    def should_block_on_vix(self, vix_value: float | Decimal | None) -> bool:
+        """VIX 값 → gate 발동 여부 (True 면 추천 전체 차단).
+
+        - gate 미활성: 항상 False
+        - vix_value=None: missing_policy 에 따름 ('skip' 정상 진행 / 'block' 차단)
+        - 임계 초과: True
+        - 비정상 값 (NaN, negative, > 200): None 으로 간주 → missing_policy 적용
+        """
+        threshold = self.vix_threshold  # invariant 가 enabled=True 시 None 보장
+        if threshold is None:
+            return False
+        gate = self.vix_gate  # invariant 거친 dict
+        if vix_value is None:
+            return gate.get("missing_policy", "skip") == "block"
+        # PR 5 review #7: sanity range 검증 (yfinance 비정상 값 방어)
+        try:
+            v = Decimal(str(vix_value))
+        except Exception:
+            return gate.get("missing_policy", "skip") == "block"
+        # NaN 은 비교 자체가 InvalidOperation — 먼저 차단
+        if v.is_nan() or not (Decimal("0") < v < Decimal("200")):
+            return gate.get("missing_policy", "skip") == "block"
+        return v > threshold
 
     # ── Private: clipped normalized → AI score (공통 tail) ──────
     def _score_from_clipped_normalized(self, normalized: Decimal) -> Decimal:
