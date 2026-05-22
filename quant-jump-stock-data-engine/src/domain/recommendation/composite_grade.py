@@ -1,20 +1,12 @@
 """
-CompositeGrade - 종합 점수 등급 관리 (Domain Layer)
+RecommendationGrade - Slack 리포트 표시용 추천 등급 (Domain Layer).
 
-Kotlin Core API의 CompositeGrade enum과 1:1 매칭되는 Python 등급 시스템.
-두 가지 등급 체계를 통합 관리:
-
-1. CompositeGrade (S/A/B/C/D): PostgreSQL 저장용, 0-7.4 스케일
-   - Kotlin `CompositeGrade` enum과 동일 기준
-   - sync_service → prediction_results 테이블에 저장
-
-2. RecommendationGrade (강력추천/추천/관심종목): Slack 리포트용, confidence 기반
-   - buy_criteria → comprehensive_report → Slack 알림에 표시
-   - confidence(%) + tech_signals 조합으로 결정
+PR 1+2 가 산식 SSoT 를 `ScoringPolicy` + `scoring_spec.yaml` 로 통합 후,
+sync_service 는 `Score.grade` (문자열 "S"/"A"/"B"/"C"/"D") 를 직접 PG 에 저장.
+별도 `CompositeGrade` Python enum 은 불필요 → cleanup PR 에서 제거 (2026-05-22).
 """
-from decimal import Decimal
 from enum import Enum
-from typing import Dict, Any
+from typing import Any, Dict
 
 
 def _spec_label(key: str) -> str:
@@ -28,54 +20,6 @@ def _spec_emoji(key: str) -> str:
     from domain.recommendation.scoring_policy import ScoringPolicy
     return ScoringPolicy.load_default().label_metadata(key)["emoji"]
 
-
-# ═══════════════════════════════════════════════════════════════
-# 1. CompositeGrade: PostgreSQL 저장용 등급 (Kotlin 매칭)
-# ═══════════════════════════════════════════════════════════════
-
-class CompositeGrade(Enum):
-    """
-    Composite Score 기반 등급 (Kotlin CompositeGrade enum 매칭).
-
-    Composite Score 최대값 = 0.3×AI(10) + 0.4×Tech(3.5) + 0.3×Sentiment(10) = 7.4
-    """
-    S = ("6.0 ~ 7.5", "매우 강한 매수 신호", "emerald")
-    A = ("4.5 ~ 5.9", "강한 매수 신호", "cyan")
-    B = ("3.0 ~ 4.4", "보통 매수 신호", "yellow")
-    C = ("1.5 ~ 2.9", "약한 매수 신호", "orange")
-    D = ("0.0 ~ 1.4", "매수 신호 없음", "red")
-
-    def __init__(self, score_range: str, description: str, color: str):
-        self.score_range = score_range
-        self.description = description
-        self.color = color
-
-    @staticmethod
-    def from_score(composite_score: Decimal) -> "CompositeGrade":
-        """Composite Score(0-7.4) → 등급 판정"""
-        if composite_score >= Decimal("6.0"):
-            return CompositeGrade.S
-        elif composite_score >= Decimal("4.5"):
-            return CompositeGrade.A
-        elif composite_score >= Decimal("3.0"):
-            return CompositeGrade.B
-        elif composite_score >= Decimal("1.5"):
-            return CompositeGrade.C
-        else:
-            return CompositeGrade.D
-
-    @staticmethod
-    def from_string(value: str) -> "CompositeGrade":
-        """문자열 → CompositeGrade (Kotlin fromString 매칭)"""
-        try:
-            return CompositeGrade[value.upper()]
-        except KeyError:
-            raise ValueError(f"Invalid grade: {value}")
-
-
-# ═══════════════════════════════════════════════════════════════
-# 2. RecommendationGrade: Slack 리포트용 등급
-# ═══════════════════════════════════════════════════════════════
 
 class RecommendationGrade(Enum):
     """
@@ -124,11 +68,3 @@ class RecommendationGrade(Enum):
         if confidence >= 0.30 and tech_signals >= 1:
             return RecommendationGrade.WATCH
         return RecommendationGrade.NONE
-
-
-# ScoreScale 클래스는 PR 2 (2026-05-21) 에서 완전 제거됨.
-# 모든 상수는 `scoring_spec.yaml` + `ScoringPolicy` 가 SSoT.
-# - 가중치/max: policy.axes
-# - composite_max: policy.composite_max
-# - rsi_threshold: policy.rsi_threshold
-# - ai_cap_pct: policy.ai_cap_pct

@@ -110,12 +110,15 @@ def test_score_sentiment_missing_zero_policy_preserved():
 
 
 def test_score_raw_rise_pct_20_pct_full_score():
-    """raw +20% → AI score 10 (현행 cap 동작)."""
+    """raw +20% → AI score 10 (현행 cap 동작). compose_components 직접 호출 (cleanup PR 2026-05-22)."""
     p = ScoringPolicy.load_default()
-    score = p.score_from_raw_signals(
-        rise_pct=Decimal("20"),
-        sentiment_raw=Decimal("0.5"),
-        tech_indicators={"golden_cross": True, "rsi": 50, "macd_buy_signal": True},
+    ai_s = p.normalize_rise_pct_to_score(Decimal("20"))
+    tech_s = p.tech_score_from_indicators({"golden_cross": True, "rsi": 50, "macd_buy_signal": True})
+    sent_s = p.sentiment_score_from_raw(Decimal("0.5"))
+    score = p.compose_components(
+        ai_score=ai_s, tech_score=tech_s, sentiment_score=sent_s,
+        has_ai=True, has_tech=True, has_sentiment=True,
+        tech_signal_count=3,
     )
     # AI=10, Tech=3.5, Sent=5 → composite 5.9
     assert score.composite_score == Decimal("5.90")
@@ -124,12 +127,14 @@ def test_score_raw_rise_pct_20_pct_full_score():
 def test_score_negative_rise_pct_zero_policy_preserved():
     """PR 3b (2026-05-22): -15% → veto 발동. composite=0, grade=D, label=NONE."""
     p = ScoringPolicy.load_default()
-    score = p.score_from_raw_signals(
-        rise_pct=Decimal("-15"),
-        sentiment_raw=Decimal("0.5"),
-        tech_indicators={"golden_cross": True, "rsi": 50, "macd_buy_signal": True},
+    ai_s = p.normalize_rise_pct_to_score(Decimal("-15"))
+    tech_s = p.tech_score_from_indicators({"golden_cross": True, "rsi": 50, "macd_buy_signal": True})
+    sent_s = p.sentiment_score_from_raw(Decimal("0.5"))
+    score = p.compose_components(
+        ai_score=ai_s, tech_score=tech_s, sentiment_score=sent_s,
+        has_ai=True, has_tech=True, has_sentiment=True, tech_signal_count=3,
+        veto_reasons=("ai_negative",),  # caller (sync_service / buy_criteria) 가 raw<0 검사 후 전달
     )
-    # PR 1: composite 2.90, grade=C, label=WATCH
     # PR 3b: rise<0 → veto 발동 → composite=0, grade=D, label=NONE, veto_reasons=("ai_negative",)
     assert score.composite_score == Decimal("0.00")
     assert score.grade == "D"

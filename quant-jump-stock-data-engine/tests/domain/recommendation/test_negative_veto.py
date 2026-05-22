@@ -1,10 +1,28 @@
-"""PR 3b: negative AI veto unit tests."""
+"""PR 3b: negative AI veto unit tests (cleanup PR 2026-05-22: compose_components 직접 호출)."""
 from decimal import Decimal
 
 import pytest
 
 from domain.recommendation.scoring_policy import ScoringPolicy
 from domain.recommendation.exceptions import SpecValidationError
+
+
+def _compose_with_raw_rise(p: ScoringPolicy, rise_pct, sentiment_raw, tech_indicators):
+    """raw input → compose_components — score_from_raw_signals 헬퍼 제거 후 prod path 동일 흐름."""
+    ai_s = p.normalize_rise_pct_to_score(Decimal(str(rise_pct)) if rise_pct is not None else None)
+    tech_s = p.tech_score_from_indicators(tech_indicators)
+    sent_s = p.sentiment_score_from_raw(Decimal(str(sentiment_raw)) if sentiment_raw is not None else None)
+    veto: tuple = ()
+    if rise_pct is not None and Decimal(str(rise_pct)) < Decimal("0") and p.is_negative_veto_enabled():
+        veto = ("ai_negative",)
+    return p.compose_components(
+        ai_score=ai_s, tech_score=tech_s, sentiment_score=sent_s,
+        has_ai=rise_pct is not None,
+        has_tech=bool(tech_indicators),
+        has_sentiment=sentiment_raw is not None,
+        tech_signal_count=p.count_tech_signals(tech_indicators),
+        veto_reasons=veto,
+    )
 
 
 def test_negative_veto_enabled_for_v1_1_0_spec():
@@ -14,39 +32,27 @@ def test_negative_veto_enabled_for_v1_1_0_spec():
     assert p.formula_version == "1.1.0"
 
 
-def test_score_from_raw_signals_negative_pct_vetoes():
+def test_negative_pct_vetoes():
     """rise_pct < 0 → composite=0, grade=D, label=NONE, veto_reasons=('ai_negative',)."""
     p = ScoringPolicy.load_default()
-    s = p.score_from_raw_signals(
-        rise_pct=Decimal("-10"),
-        sentiment_raw=Decimal("0.5"),
-        tech_indicators={"golden_cross": True, "rsi": 30, "macd_buy_signal": True},
-    )
+    s = _compose_with_raw_rise(p, -10, 0.5, {"golden_cross": True, "rsi": 30, "macd_buy_signal": True})
     assert s.composite_score == Decimal("0.00")
     assert s.grade == "D"
     assert s.recommendation_label == "NONE"
     assert s.veto_reasons == ("ai_negative",)
 
 
-def test_score_from_raw_signals_zero_pct_no_veto():
+def test_zero_pct_no_veto():
     """rise_pct == 0 → veto 미발동 (산식상 normalized=0.5 = 보더)."""
     p = ScoringPolicy.load_default()
-    s = p.score_from_raw_signals(
-        rise_pct=Decimal("0"),
-        sentiment_raw=Decimal("0.3"),
-        tech_indicators={"golden_cross": True, "rsi": 50, "macd_buy_signal": True},
-    )
+    s = _compose_with_raw_rise(p, 0, 0.3, {"golden_cross": True, "rsi": 50, "macd_buy_signal": True})
     assert s.veto_reasons == ()
 
 
-def test_score_from_raw_signals_positive_pct_no_veto():
+def test_positive_pct_no_veto():
     """rise_pct > 0 → veto 미발동, 정상 composite."""
     p = ScoringPolicy.load_default()
-    s = p.score_from_raw_signals(
-        rise_pct=Decimal("15"),
-        sentiment_raw=Decimal("0.5"),
-        tech_indicators={"golden_cross": True, "rsi": 30, "macd_buy_signal": True},
-    )
+    s = _compose_with_raw_rise(p, 15, 0.5, {"golden_cross": True, "rsi": 30, "macd_buy_signal": True})
     assert s.veto_reasons == ()
     assert s.composite_score > Decimal("0")
 

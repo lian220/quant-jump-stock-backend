@@ -278,34 +278,9 @@ class ScoringPolicy:
             warnings=warnings,
         )
 
-    # ── Public: raw signals → Score (one-shot) ──────────
-    def score_from_raw_signals(
-        self,
-        rise_pct: Decimal | None,
-        sentiment_raw: Decimal | None,
-        tech_indicators: dict[str, Any] | None,
-    ) -> Score:
-        """raw input (rise % / sentiment -1~+1 / tech indicators) → Score 단일 호출.
-
-        PR 3b (2026-05-22): rise_pct < 0 자동 detection. spec.negative_policy='veto' 면
-        veto_reasons=('ai_negative',) 추가 → composite=0 강제 (compose_components 내부).
-        """
-        ai_s = self.normalize_rise_pct_to_score(rise_pct)
-        tech_s = self.tech_score_from_indicators(tech_indicators)
-        sent_s = self.sentiment_score_from_raw(sentiment_raw)
-        veto: tuple[str, ...] = ()
-        if rise_pct is not None and Decimal(str(rise_pct)) < Decimal("0"):
-            veto = ("ai_negative",)
-        return self.compose_components(
-            ai_score=ai_s,
-            tech_score=tech_s,
-            sentiment_score=sent_s,
-            has_ai=rise_pct is not None,
-            has_tech=bool(tech_indicators),
-            has_sentiment=sentiment_raw is not None,
-            tech_signal_count=self.count_tech_signals(tech_indicators),
-            veto_reasons=veto,
-        )
+    # score_from_raw_signals 헬퍼는 cleanup PR (2026-05-22) 에서 제거됨.
+    # prod path (sync_service / buy_criteria) 는 자체 veto detection 후 compose_components 직접 호출 —
+    # 호출처가 raw 신호의 부호를 알아야 일관 처리 가능. test 도 compose_components 직접 사용.
 
     # ── Grade / Label ───────────────────────────────────
     def grade_for_composite(self, composite: Decimal) -> str:

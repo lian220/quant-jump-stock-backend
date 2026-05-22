@@ -5,7 +5,7 @@
 
 ## 목적
 
-`scoring_spec.yaml` 또는 `ScoringPolicy` 산식이 바뀌는 PR을 머지하기 전, 운영 MongoDB의 최근 N일치 추천 데이터에 대해 **신 산식**으로 composite_score를 재계산하여 **저장된 구 값과의 drift**를 정량화한다. drift JSON을 PR description에 첨부하여 리뷰어가 변경 영향을 판단할 수 있게 한다.
+`scoring_spec.yaml` 또는 `ScoringPolicy` 산식이 바뀌는 PR을 머지하기 전, 운영 PostgreSQL `prediction_results` 의 최근 N일치 추천 데이터에 대해 **신 산식**으로 composite_score를 재계산하여 **저장된 구 값과의 drift**를 정량화한다. drift JSON을 PR description에 첨부하여 리뷰어가 변경 영향을 판단할 수 있게 한다.
 
 ## 언제 실행
 
