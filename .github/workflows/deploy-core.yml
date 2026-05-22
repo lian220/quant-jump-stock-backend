@@ -105,13 +105,11 @@ jobs:
         run: |
           # 2026-05-22 사고: --set-secrets 가 volumeMounts/volumes mismatch 만든 사례.
           # spec drift 즉시 catch — mismatch 있으면 deploy 실패 처리.
+          # 2026-05-22 fix: 이전 jq IN($vols) stream binding 가 single-value 오작동 → false positive.
+          #                 array diff (mounts - volumes) 로 정확한 검증.
           MISMATCH=$(gcloud run services describe qjs-core \
             --region ${{ env.REGION }} --format=json \
-            | jq -r '
-              .spec.template.spec.volumes[].name as $vols
-              | [.spec.template.spec.containers[0].volumeMounts[].name]
-              | map(select(IN($vols) | not)) | join(",")
-            ')
+            | jq -r '([.spec.template.spec.containers[0].volumeMounts[].name] - [.spec.template.spec.volumes[].name]) | join(",")')
           if [ -n "$MISMATCH" ]; then
             echo "❌ volumeMounts 가 존재하지 않는 volume 가리킴: $MISMATCH"
             echo "   --update-secrets 재실행 필요 (또는 GitHub action deploy-cloudrun@v3 마이그레이션)"
