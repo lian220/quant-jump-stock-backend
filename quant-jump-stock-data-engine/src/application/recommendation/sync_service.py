@@ -381,6 +381,17 @@ class RecommendationSyncService:
             has_sentiment = sent_raw is not None
             has_tech = bool(tech)
 
+            # PR 3b (2026-05-22): negative AI veto.
+            # rise_probability 는 0~1 normalized (raw <0 → normalized <0.5).
+            # spec.negative_policy=='veto' 면 compose_components 가 composite=0 강제.
+            veto_reasons: tuple[str, ...] = ()
+            if (
+                rise_probability is not None
+                and Decimal(str(rise_probability)) < Decimal("0.5")
+                and self._policy.is_negative_veto_enabled()
+            ):
+                veto_reasons = ("ai_negative",)
+
             score_result = self._policy.compose_components(
                 ai_score=ai_score,
                 tech_score=tech_score,
@@ -389,6 +400,7 @@ class RecommendationSyncService:
                 has_tech=has_tech,
                 has_sentiment=has_sentiment,
                 tech_signal_count=tech_signals_count,
+                veto_reasons=veto_reasons,
             )
             composite_score = score_result.composite_score
             grade = score_result.grade
@@ -441,6 +453,9 @@ class RecommendationSyncService:
                 # 🆕 PR 2 (2026-05-21): ScoringPolicy 라벨 SSoT + AI 예측 출처 추적
                 "recommendation_label": score_result.recommendation_label,
                 "effective_prediction_date": None,  # sync_service 는 fallback 없음 (ADR 0001)
+                # 🆕 PR 3a (2026-05-22): 정책 차단 사유 + 비차단 경고 (PR 3b 부터 채워짐)
+                "veto_reasons": list(score_result.veto_reasons) or None,
+                "warnings": list(score_result.warnings) or None,
             })
 
         # Composite Score 내림차순 정렬

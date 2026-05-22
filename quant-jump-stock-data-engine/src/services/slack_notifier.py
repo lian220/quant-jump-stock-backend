@@ -570,8 +570,19 @@ class SlackNotifier:
                     {"type": "mrkdwn", "text": f"*평균 상승 확률*\n{avg_rise:.1f}%"},
                 ]
             },
-            {"type": "divider"},
         ]
+
+        # PR 3b: AI 음수 예측으로 차단된 종목 수 표시 (사용자가 추천 적은 이유 이해)
+        ai_veto_count = report.get("ai_veto_count", 0)
+        if ai_veto_count > 0:
+            blocks.append({
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": (
+                    f"ℹ️ *AI 하락 예측 차단*: {ai_veto_count}개 종목이 AI 의 음수 예측으로 추천 대상에서 제외되었습니다."
+                )}
+            })
+
+        blocks.append({"type": "divider"})
 
         tech_info = breakdown.get("technical", {})
         ai_info = breakdown.get("ai_prediction", {})
