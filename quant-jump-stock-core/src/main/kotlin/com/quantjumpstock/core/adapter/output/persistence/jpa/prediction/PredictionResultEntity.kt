@@ -121,6 +121,14 @@ class PredictionResultEntity(
     @Column(name = "effective_prediction_date")
     val effectivePredictionDate: LocalDate? = null,
 
+    // PR 3a (2026-05-22): 정책 차단 사유 + 비차단 경고 — PG TEXT[] 매핑
+    // PR 3b 부터 채워짐 (negative AI veto 등). PR 3a 는 schema 만 준비.
+    @Column(name = "veto_reasons", columnDefinition = "text[]")
+    val vetoReasons: Array<String>? = null,
+
+    @Column(name = "warnings", columnDefinition = "text[]")
+    val warnings: Array<String>? = null,
+
     // 메타데이터
     @Column(name = "created_at", nullable = false, updatable = false)
     val createdAt: LocalDateTime = LocalDateTime.now(),
@@ -160,7 +168,9 @@ class PredictionResultEntity(
             upsidePercent = upsidePercent,
             priceRecommendation = priceRecommendation,  // String 그대로 전달
             recommendationLabel = recommendationLabel,
-            effectivePredictionDate = effectivePredictionDate
+            effectivePredictionDate = effectivePredictionDate,
+            vetoReasons = vetoReasons?.toList() ?: emptyList(),
+            warnings = warnings?.toList() ?: emptyList()
         )
     }
 
@@ -197,7 +207,9 @@ class PredictionResultEntity(
                 upsidePercent = domain.upsidePercent,
                 priceRecommendation = domain.priceRecommendation,  // String 그대로
                 recommendationLabel = domain.recommendationLabel,
-                effectivePredictionDate = domain.effectivePredictionDate
+                effectivePredictionDate = domain.effectivePredictionDate,
+                vetoReasons = domain.vetoReasons.takeIf { it.isNotEmpty() }?.toTypedArray(),
+                warnings = domain.warnings.takeIf { it.isNotEmpty() }?.toTypedArray()
             )
         }
     }

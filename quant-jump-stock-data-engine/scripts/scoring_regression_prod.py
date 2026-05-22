@@ -116,12 +116,14 @@ def _run_regression(
     cutoff_date = (datetime.now(timezone.utc) - timedelta(days=days)).date()
 
     # prediction_results: 신호 + 구 composite 한 행에 모두 있음 → 단일 쿼리 (M12 N+1 무관)
+    # PR 3a (2026-05-22): veto_reasons / warnings 도 읽어서 의도된 변경 distinguish
     sql = """
         SELECT
             ticker, stock_name, analysis_date,
             ai_rise_probability, sentiment_score, sentiment_news_count,
             tech_golden_cross, tech_rsi, tech_macd_buy_signal, tech_signals_count,
-            composite_score, composite_grade, is_recommended
+            composite_score, composite_grade, is_recommended,
+            veto_reasons, warnings
         FROM prediction_results
         WHERE analysis_date >= %s
           AND is_recommended = TRUE
@@ -141,9 +143,12 @@ def _run_regression(
     logger.info("총 %d 건 검증 대상 (since %s)", len(rows), cutoff_date)
 
     # 신 산식 재계산 및 비교
+    # PR 3a (2026-05-22): stored veto_reasons 가 있는 행은 의도된 변경 — drift 무시.
+    # 즉 "drift==0 기대" 는 veto/warning 비어있는 행에만 적용. 그 외는 정보 수집 목적.
     drifts: list[dict[str, Any]] = []
     grade_changes = 0
     label_changes = 0
+    intentional_changes = 0  # PR 3b+ 의 veto/warning 으로 인한 의도된 변경
     processed = 0
 
     for row in rows:
@@ -151,6 +156,8 @@ def _run_regression(
         date = row["analysis_date"]
         old_composite = float(row.get("composite_score") or 0)
         old_grade = row.get("composite_grade") or ""
+        stored_veto = row.get("veto_reasons") or []
+        stored_warnings = row.get("warnings") or []
 
         # 입력 신호 (PG 는 0~1 normalized 형태로 저장)
         rise_prob = row.get("ai_rise_probability")
@@ -193,6 +200,13 @@ def _run_regression(
         # label 비교를 위한 기준은 PG 에 없음 (recommendation_grade enum 은 별도) — skip
 
         if delta > threshold:
+            # PR 3a: stored veto_reasons 가 있으면 의도된 변경 — drift 무시.
+            # 향후 PR 3b+ 에서 prod 가 veto 발동 → composite 0 으로 떨어지는 변화 정상.
+            is_intentional = bool(stored_veto) or bool(stored_warnings)
+            if is_intentional:
+                intentional_changes += 1
+                continue
+
             drifts.append(
                 {
                     "ticker": ticker,
@@ -206,12 +220,15 @@ def _run_regression(
                     "new_label": new_score.recommendation_label,
                     "grade_changed": new_score.grade != old_grade and bool(old_grade),
                     "missing_axes": list(new_score.missing_axes),
+                    "stored_veto_reasons": list(stored_veto),
+                    "stored_warnings": list(stored_warnings),
                 }
             )
 
     logger.info(
-        "처리 완료: %d 건, drift > %.4f: %d 건, grade 변경: %d 건",
-        processed, threshold, len(drifts), grade_changes,
+        "처리 완료: %d 건, 의도 외 drift > %.4f: %d 건, "
+        "의도된 변경 (stored veto/warning): %d 건, grade 변경: %d 건",
+        processed, threshold, len(drifts), intentional_changes, grade_changes,
     )
 
     if drifts:

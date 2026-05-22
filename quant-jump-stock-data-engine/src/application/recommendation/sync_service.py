@@ -536,6 +536,7 @@ class RecommendationSyncService:
             is_recommended, recommendation_reason,
             current_price, target_price, upside_percent, price_recommendation,
             recommendation_label, effective_prediction_date,
+            veto_reasons, warnings,
             updated_at
         ) VALUES %s
         ON CONFLICT (ticker, analysis_date)
@@ -566,10 +567,12 @@ class RecommendationSyncService:
             price_recommendation = EXCLUDED.price_recommendation,
             recommendation_label = EXCLUDED.recommendation_label,
             effective_prediction_date = EXCLUDED.effective_prediction_date,
+            veto_reasons = EXCLUDED.veto_reasons,
+            warnings = EXCLUDED.warnings,
             updated_at = CURRENT_TIMESTAMP
         """
 
-        row_template = "(" + ",".join(["%s"] * 28) + ", CURRENT_TIMESTAMP)"
+        row_template = "(" + ",".join(["%s"] * 30) + ", CURRENT_TIMESTAMP)"
         rows = [
             (
                 data["ticker"], data["stock_name"], analysis_date,
@@ -583,6 +586,7 @@ class RecommendationSyncService:
                 data["is_recommended"], data["recommendation_reason"],
                 data["current_price"], data["target_price"], data["upside_percent"], data["price_recommendation"],
                 data.get("recommendation_label"), data.get("effective_prediction_date"),
+                data.get("veto_reasons"), data.get("warnings"),
             )
             for data in merged_data
         ]

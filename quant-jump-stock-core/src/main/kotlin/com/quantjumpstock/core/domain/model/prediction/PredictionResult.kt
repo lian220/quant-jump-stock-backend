@@ -52,7 +52,11 @@ data class PredictionResult(
 
     // PR 2 (2026-05-21): ScoringPolicy 라벨 SSoT + AI 예측 출처 추적
     val recommendationLabel: String? = null,    // STRONG/RECOMMEND/WATCH/NONE — ScoringPolicy 라벨
-    val effectivePredictionDate: LocalDate? = null  // AI 예측 데이터 실제 사용 날짜 (analysis_date 와 다르면 fallback)
+    val effectivePredictionDate: LocalDate? = null,  // AI 예측 데이터 실제 사용 날짜 (analysis_date 와 다르면 fallback)
+
+    // PR 3a (2026-05-22): 정책 차단 사유 + 비차단 경고 (PR 3b 부터 채워짐)
+    val vetoReasons: List<String> = emptyList(),   // 예: ["ai_negative", "ai_source_disagreement"]
+    val warnings: List<String> = emptyList()       // 예: ["vix_macro_caution"]
 ) {
     companion object {
         /**
