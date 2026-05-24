@@ -26,7 +26,7 @@ import java.util.Date
 @Service
 class JwtService(
     @Value("\${jwt.secret}") private val secret: String,
-    @Value("\${jwt.expiration-hours}") private val accessExpirationHours: Long,
+    @Value("\${jwt.access-expiration-minutes:15}") private val accessExpirationMinutes: Long,
     @Value("\${jwt.refresh-expiration-days:14}") private val refreshExpirationDays: Long,
     @Value("\${jwt.issuer}") private val issuer: String,
     environment: Environment,
@@ -52,7 +52,7 @@ class JwtService(
 
     override fun generateAccessToken(userId: String, email: String?, role: String, dbId: Long?): String {
         val now = Date()
-        val expiration = Date(now.time + accessExpirationHours * 3600 * 1000)
+        val expiration = Date(now.time + accessExpirationMinutes * 60 * 1000)
 
         val builder = JWTClaimsSet.Builder()
             .subject(userId)
