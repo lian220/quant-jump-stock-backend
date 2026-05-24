@@ -40,6 +40,13 @@ spring:
     mongodb:
       uri: ${MONGODB_URI}        # localhost dev default 폐기 (2026-05-22 사고)
 
+  # ── prod Flyway 정책: 명시적 OFF (운영 안전 우선) ──────────────
+  # base application.yml 의 default true 를 prod 에서 명시적으로 false 로 override.
+  # 운영 마이그레이션은 Supabase SQL Editor 수동 적용 + flyway_schema_history 등록
+  # 정책 (배포 절차로 통제). FLYWAY_ENABLED=true 환경변수 명시 시에만 자동 활성.
+  flyway:
+    enabled: ${FLYWAY_ENABLED:false}
+
 # JWT / 암호화 키 — 평문 dev default 폐기 (OWASP A05)
 auth:
   jwt:

@@ -56,7 +56,10 @@ spring:
   # Flyway Configuration
   # ============================================
   flyway:
-    enabled: ${FLYWAY_ENABLED:false}
+    # base default true — dev 에서 main pull 후 신규 마이그레이션 자동 적용 (개발자 편의).
+    # prod 는 application-prod.yml 에서 명시적으로 ${FLYWAY_ENABLED:false} override
+    # (수동 SQL Editor 적용 후 history 등록 정책 — 운영 안전 우선).
+    enabled: ${FLYWAY_ENABLED:true}
     locations: classpath:db/migration
     baseline-on-migrate: true  # 기존 DB에 Flyway 적용 시 필요
     baseline-version: 0
