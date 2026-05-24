@@ -28,7 +28,7 @@ class JwtServiceTest {
 
     private fun service(refreshDays: Long = 14) = JwtService(
         secret = secret,
-        accessExpirationHours = 1,
+        accessExpirationMinutes = 60,
         refreshExpirationDays = refreshDays,
         issuer = issuer,
         environment = devEnv,
@@ -182,7 +182,7 @@ class JwtServiceTest {
         val exception = runCatching {
             JwtService(
                 secret = "quant-jump-stock-dev-secret-minimum-32-characters",
-                accessExpirationHours = 1,
+                accessExpirationMinutes = 60,
                 refreshExpirationDays = 14,
                 issuer = issuer,
                 environment = prodEnv,
@@ -200,7 +200,7 @@ class JwtServiceTest {
         val exception = runCatching {
             JwtService(
                 secret = "too-short",
-                accessExpirationHours = 1,
+                accessExpirationMinutes = 60,
                 refreshExpirationDays = 14,
                 issuer = issuer,
                 environment = devEnv,
