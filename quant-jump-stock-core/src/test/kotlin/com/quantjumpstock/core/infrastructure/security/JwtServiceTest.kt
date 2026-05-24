@@ -50,9 +50,10 @@ class JwtServiceTest {
     }
 
     @Test
-    fun `refresh token 발급 후 validateRefreshToken 으로 정상 검증된다`() {
+    fun `refresh token 발급 후 validateRefreshToken 으로 정상 검증된다 + jti 보존`() {
         val sut = service()
-        val token = sut.generateRefreshToken("user-A", dbId = 7L)
+        val jti = java.util.UUID.randomUUID().toString()
+        val token = sut.generateRefreshToken("user-A", jti = jti, dbId = 7L)
 
         val claims = sut.validateRefreshToken(token)
 
@@ -60,12 +61,13 @@ class JwtServiceTest {
         assertThat(claims!!.userId).isEqualTo("user-A")
         assertThat(claims.dbId).isEqualTo(7L)
         assertThat(claims.type).isEqualTo(TokenType.REFRESH)
+        assertThat(claims.jti).isEqualTo(jti)
     }
 
     @Test
     fun `Token Confusion 방어 - refresh token 을 access 자리에서 사용하면 거부`() {
         val sut = service()
-        val refresh = sut.generateRefreshToken("user-A", dbId = 7L)
+        val refresh = sut.generateRefreshToken("user-A", jti = java.util.UUID.randomUUID().toString(), dbId = 7L)
 
         val asAccess = sut.validateAccessToken(refresh)
 

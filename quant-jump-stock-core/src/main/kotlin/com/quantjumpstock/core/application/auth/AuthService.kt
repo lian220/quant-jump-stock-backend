@@ -1,5 +1,6 @@
 package com.quantjumpstock.core.application.auth
 
+import com.fasterxml.jackson.annotation.JsonIgnore
 import com.quantjumpstock.core.domain.model.user.User
 import com.quantjumpstock.core.domain.model.user.UserRole
 import com.quantjumpstock.core.domain.model.user.UserStatus
@@ -20,7 +21,8 @@ class AuthService(
     private val userRepository: UserRepository,
     private val passwordEncoder: PasswordEncoder,
     private val tokenPort: TokenPort,
-    private val userTierRepository: UserTierRepository
+    private val userTierRepository: UserTierRepository,
+    private val refreshTokenService: RefreshTokenService,
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -43,11 +45,13 @@ class AuthService(
             throw AuthException("계정이 비활성화 상태입니다")
         }
 
-        val token = tokenPort.generateAccessToken(user.userId, user.email, user.role.name, user.id)
+        val userDbId = user.id ?: throw IllegalStateException("저장된 사용자에 id가 없습니다: userId=${user.userId}")
+        val accessToken = tokenPort.generateAccessToken(user.userId, user.email, user.role.name, userDbId)
+        val refreshToken = refreshTokenService.issue(user.userId, userDbId)
 
         return LoginResponse(
             success = true,
-            token = token,
+            token = accessToken,
             user = UserInfo(
                 userId = user.userId,
                 name = user.name,
@@ -55,7 +59,9 @@ class AuthService(
                 phone = user.phone,
                 role = user.role.name,
                 status = user.status.name
-            )
+            ),
+            refreshToken = refreshToken,
+            userDbId = userDbId,
         )
     }
 
@@ -103,11 +109,19 @@ class AuthService(
     }
 
     /**
-     * 로그아웃 (JWT는 stateless - 클라이언트에서 토큰 삭제)
+     * 로그아웃 — Bearer access token 으로 사용자를 식별해 모든 refresh token 을 revoke.
+     * Phase 1A 보안 PRE Task 12: RFC 9700 최소 구현.
+     *
+     * @return revoke 된 refresh token 수 (감지 가능한 사용자 정보 없으면 0)
      */
-    fun logout(token: String) {
-        // JWT는 stateless이므로 서버 측에서 할 작업 없음
-        // 필요시 블랙리스트 구현 가능
+    fun logout(authorization: String?): Int {
+        val token = authorization?.takeIf { it.startsWith("Bearer ") }?.removePrefix("Bearer ")
+            ?: return 0
+        // access token 이 만료됐어도 sub 만 추출하기 위해 graceful: validateAccessToken 사용
+        // 만료된 토큰은 null 이지만 그 경우 logout 요청자는 식별 불가 → 0 반환
+        val claims = tokenPort.validateAccessToken(token) ?: return 0
+        val userDbId = claims.dbId ?: return 0
+        return refreshTokenService.revokeAll(userDbId)
     }
 
     /**
@@ -163,12 +177,13 @@ class AuthService(
         // 회원가입 성공 시 JWT 발급 (자동 로그인)
         val savedUserId = savedUser.id
             ?: throw IllegalStateException("저장된 사용자에 id가 없습니다: userId=${savedUser.userId}")
-        val token = tokenPort.generateAccessToken(savedUser.userId, savedUser.email, savedUser.role.name, savedUserId)
+        val accessToken = tokenPort.generateAccessToken(savedUser.userId, savedUser.email, savedUser.role.name, savedUserId)
+        val refreshToken = refreshTokenService.issue(savedUser.userId, savedUserId)
 
         return SignupResponse(
             success = true,
             message = "회원가입이 완료되었습니다",
-            token = token,
+            token = accessToken,
             user = UserInfo(
                 userId = savedUser.userId,
                 name = savedUser.name,
@@ -176,7 +191,9 @@ class AuthService(
                 phone = savedUser.phone,
                 role = savedUser.role.name,
                 status = savedUser.status.name
-            )
+            ),
+            refreshToken = refreshToken,
+            userDbId = savedUserId,
         )
     }
 
@@ -198,13 +215,18 @@ data class LoginRequest(
 )
 
 /**
- * 로그인 응답
+ * 로그인 응답.
+ *
+ * refreshToken / userDbId 는 Controller 가 Set-Cookie 헤더로 변환하기 위한 내부 전달용이며
+ * JSON 응답에서는 제외된다 (@JsonIgnore).
  */
 data class LoginResponse(
     val success: Boolean,
     val token: String? = null,
     val user: UserInfo? = null,
-    val error: String? = null
+    val error: String? = null,
+    @field:JsonIgnore @get:JsonIgnore val refreshToken: String? = null,
+    @field:JsonIgnore @get:JsonIgnore val userDbId: Long? = null,
 )
 
 /**
@@ -231,14 +253,16 @@ data class SignupRequest(
 )
 
 /**
- * 회원가입 응답
+ * 회원가입 응답. refreshToken/userDbId 는 LoginResponse 와 동일 사유로 JSON 제외.
  */
 data class SignupResponse(
     val success: Boolean,
     val message: String? = null,
     val token: String? = null,
     val user: UserInfo? = null,
-    val error: String? = null
+    val error: String? = null,
+    @field:JsonIgnore @get:JsonIgnore val refreshToken: String? = null,
+    @field:JsonIgnore @get:JsonIgnore val userDbId: Long? = null,
 )
 
 /**
