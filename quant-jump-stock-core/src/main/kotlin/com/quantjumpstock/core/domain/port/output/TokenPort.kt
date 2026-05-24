@@ -1,0 +1,32 @@
+package com.quantjumpstock.core.domain.port.output
+
+/**
+ * 토큰 발급/검증 포트.
+ *
+ * Hexagonal Architecture: Application 레이어가 토큰 메커니즘(JWT, PASETO 등)에 직접 의존하지 않도록 추상화.
+ * 구현체는 infrastructure/security 레이어에 위치.
+ *
+ * 토큰 타입 분리 (RFC 9700, OWASP A07 2025):
+ * - ACCESS: 단기 (15분~24시간) — API 인증
+ * - REFRESH: 장기 (~14일) — access token 재발급용, httpOnly cookie로만 전송
+ *
+ * validateAccessToken은 REFRESH 타입을 거부하고, validateRefreshToken은 ACCESS 타입을 거부한다.
+ * 토큰 혼용(Token Confusion) 공격 방어 (CWE-287).
+ */
+interface TokenPort {
+    fun generateAccessToken(userId: String, email: String?, role: String, dbId: Long? = null): String
+    fun generateRefreshToken(userId: String, dbId: Long? = null): String
+
+    fun validateAccessToken(token: String): TokenClaims?
+    fun validateRefreshToken(token: String): TokenClaims?
+}
+
+data class TokenClaims(
+    val dbId: Long?,
+    val userId: String,
+    val email: String?,
+    val role: String,
+    val type: TokenType,
+)
+
+enum class TokenType { ACCESS, REFRESH }

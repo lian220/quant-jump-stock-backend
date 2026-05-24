@@ -1,0 +1,19 @@
+# ============================================
+# Production Profile Overrides
+# ============================================
+# 기본값은 application.yml 에 정의되어 있으며,
+# 운영 환경에서 보안/성능에 영향을 주는 항목만 본 파일에서 override 한다.
+#
+# Phase 1A 보안 PRE: refresh cookie 발급 환경별 분기.
+# - cookie.secure=true : HTTPS 전용 (Cloud Run + Cloudflare SSL termination)
+# - cookie.same-site=Lax : alphafoundry.app ↔ api.alphafoundry.app cross-subdomain 호환
+# - cookie.domain=.alphafoundry.app : 서브도메인 공유
+# 실제 환경변수(JWT_*)가 주입된 경우 그 값이 우선한다.
+
+jwt:
+  cookie:
+    secure: ${JWT_COOKIE_SECURE:true}
+    same-site: ${JWT_COOKIE_SAME_SITE:Lax}
+    domain: ${JWT_COOKIE_DOMAIN:.alphafoundry.app}
+    path: ${JWT_COOKIE_PATH:/}
+    max-age-days: ${JWT_COOKIE_MAX_AGE_DAYS:14}
