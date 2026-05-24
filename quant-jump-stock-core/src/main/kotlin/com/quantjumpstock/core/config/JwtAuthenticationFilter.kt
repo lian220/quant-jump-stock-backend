@@ -1,6 +1,6 @@
 package com.quantjumpstock.core.config
 
-import com.quantjumpstock.core.infrastructure.security.JwtService
+import com.quantjumpstock.core.domain.port.output.TokenPort
 import com.quantjumpstock.core.infrastructure.security.UserPrincipal
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
@@ -15,7 +15,7 @@ import org.springframework.web.filter.OncePerRequestFilter
 
 @Component
 class JwtAuthenticationFilter(
-    private val jwtService: JwtService
+    private val tokenPort: TokenPort
 ) : OncePerRequestFilter() {
 
     private val log = LoggerFactory.getLogger(JwtAuthenticationFilter::class.java)
@@ -28,7 +28,7 @@ class JwtAuthenticationFilter(
         try {
             val token = extractToken(request)
             if (token != null) {
-                val claims = jwtService.validateToken(token)
+                val claims = tokenPort.validateAccessToken(token)
                 if (claims != null) {
                     val principal = UserPrincipal(
                         id = claims.dbId ?: 0,

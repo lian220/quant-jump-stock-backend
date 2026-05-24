@@ -3,9 +3,9 @@ package com.quantjumpstock.core.application.auth
 import com.quantjumpstock.core.domain.model.user.User
 import com.quantjumpstock.core.domain.model.user.UserRole
 import com.quantjumpstock.core.domain.model.user.UserStatus
+import com.quantjumpstock.core.domain.port.output.TokenPort
 import com.quantjumpstock.core.domain.port.output.UserRepository
 import com.quantjumpstock.core.domain.port.output.UserTierRepository
-import com.quantjumpstock.core.infrastructure.security.JwtService
 import org.slf4j.LoggerFactory
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
@@ -19,7 +19,7 @@ import org.springframework.transaction.annotation.Transactional
 class AuthService(
     private val userRepository: UserRepository,
     private val passwordEncoder: PasswordEncoder,
-    private val jwtService: JwtService,
+    private val tokenPort: TokenPort,
     private val userTierRepository: UserTierRepository
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -43,7 +43,7 @@ class AuthService(
             throw AuthException("계정이 비활성화 상태입니다")
         }
 
-        val token = jwtService.generateToken(user.userId, user.email, user.role.name, user.id)
+        val token = tokenPort.generateAccessToken(user.userId, user.email, user.role.name, user.id)
 
         return LoginResponse(
             success = true,
@@ -63,7 +63,7 @@ class AuthService(
      * JWT 토큰 검증
      */
     fun validateToken(token: String): LoginResponse? {
-        val claims = jwtService.validateToken(token) ?: return null
+        val claims = tokenPort.validateAccessToken(token) ?: return null
 
         val user = userRepository.findByUserId(claims.userId) ?: return null
 
@@ -87,7 +87,7 @@ class AuthService(
     fun resolveUserPk(authorization: String): Long? {
         if (!authorization.startsWith("Bearer ")) return null
         val token = authorization.removePrefix("Bearer ")
-        val claims = jwtService.validateToken(token) ?: return null
+        val claims = tokenPort.validateAccessToken(token) ?: return null
         return claims.dbId
     }
 
@@ -97,7 +97,7 @@ class AuthService(
     fun resolveUser(authorization: String): ResolvedUser? {
         if (!authorization.startsWith("Bearer ")) return null
         val token = authorization.removePrefix("Bearer ")
-        val claims = jwtService.validateToken(token) ?: return null
+        val claims = tokenPort.validateAccessToken(token) ?: return null
         val dbId = claims.dbId ?: return null
         return ResolvedUser(userDbId = dbId, userId = claims.userId)
     }
@@ -163,7 +163,7 @@ class AuthService(
         // 회원가입 성공 시 JWT 발급 (자동 로그인)
         val savedUserId = savedUser.id
             ?: throw IllegalStateException("저장된 사용자에 id가 없습니다: userId=${savedUser.userId}")
-        val token = jwtService.generateToken(savedUser.userId, savedUser.email, savedUser.role.name, savedUserId)
+        val token = tokenPort.generateAccessToken(savedUser.userId, savedUser.email, savedUser.role.name, savedUserId)
 
         return SignupResponse(
             success = true,

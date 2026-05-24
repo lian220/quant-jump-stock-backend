@@ -5,9 +5,9 @@ import com.quantjumpstock.core.domain.port.output.OAuthPort
 import com.quantjumpstock.core.domain.model.user.User
 import com.quantjumpstock.core.domain.model.user.UserRole
 import com.quantjumpstock.core.domain.model.user.UserStatus
+import com.quantjumpstock.core.domain.port.output.TokenPort
 import com.quantjumpstock.core.domain.port.output.UserRepository
 import com.quantjumpstock.core.domain.port.output.UserTierRepository
-import com.quantjumpstock.core.infrastructure.security.JwtService
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
@@ -24,7 +24,7 @@ class OAuthCodeExchangeService(
     private val naverOAuthPort: OAuthPort,
     private val userRepository: UserRepository,
     private val userTierRepository: UserTierRepository,
-    private val jwtService: JwtService,
+    private val tokenPort: TokenPort,
     private val transactionTemplate: TransactionTemplate
 ) {
     private val logger = LoggerFactory.getLogger(OAuthCodeExchangeService::class.java)
@@ -67,7 +67,7 @@ class OAuthCodeExchangeService(
             )
         } ?: throw IllegalStateException("OAuth 사용자 생성/조회에 실패했습니다")
 
-        val jwt = jwtService.generateToken(user.userId, user.email, user.role.name, user.id)
+        val jwt = tokenPort.generateAccessToken(user.userId, user.email, user.role.name, user.id)
         return OAuthTokenResponse(token = jwt)
     }
 

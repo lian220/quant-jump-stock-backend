@@ -19,6 +19,12 @@
 #
 # 안전 toggle: 만약 활성 후 mismatch 로 부팅 차단되어 긴급 비활성 필요 시
 #   prod env 에 HIBERNATE_DDL_AUTO=none 추가하면 즉시 우회 가능.
+#
+# Phase 1A 보안 PRE (2026-05-24): refresh cookie 발급 환경별 분기 추가.
+#   - cookie.secure=true : HTTPS 전용 (Cloud Run + Cloudflare SSL termination)
+#   - cookie.same-site=Lax : alphafoundry.app ↔ api.alphafoundry.app cross-subdomain 호환
+#   - cookie.domain=.alphafoundry.app : 서브도메인 공유
+#   환경변수(JWT_COOKIE_*)가 주입된 경우 그 값이 우선.
 # ============================================
 
 spring:
@@ -41,6 +47,15 @@ auth:
 app:
   encryption-key: ${APP_ENCRYPTION_KEY}
   encryption-key-v2: ${APP_ENCRYPTION_KEY_V2}
+
+# Phase 1A 보안 PRE — refresh cookie 운영 분기
+jwt:
+  cookie:
+    secure: ${JWT_COOKIE_SECURE:true}
+    same-site: ${JWT_COOKIE_SAME_SITE:Lax}
+    domain: ${JWT_COOKIE_DOMAIN:.alphafoundry.app}
+    path: ${JWT_COOKIE_PATH:/}
+    max-age-days: ${JWT_COOKIE_MAX_AGE_DAYS:14}
 
 # Cloudflare Gateway secret — application.yml 의 빈 default 유지.
 # 이유: prod 에서 secret 미설정 가능 (filter 가 빈 값일 때 graceful disable).
