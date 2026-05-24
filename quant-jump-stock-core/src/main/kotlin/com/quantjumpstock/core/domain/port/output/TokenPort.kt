@@ -15,9 +15,19 @@ package com.quantjumpstock.core.domain.port.output
  */
 interface TokenPort {
     fun generateAccessToken(userId: String, email: String?, role: String, dbId: Long? = null): String
-    fun generateRefreshToken(userId: String, dbId: Long? = null): String
+
+    /**
+     * refresh token 발급. jti(JWT ID, UUID) 를 claim 에 포함시켜 서버 측 revocation 을 가능하게 한다.
+     * 호출자는 jti 를 함께 DB(refresh_tokens) 에 저장해야 한다.
+     */
+    fun generateRefreshToken(userId: String, jti: String, dbId: Long? = null): String
 
     fun validateAccessToken(token: String): TokenClaims?
+
+    /**
+     * refresh token 검증. type=refresh + 서명/만료 검증을 통과한 경우 TokenClaims 반환.
+     * 반환된 jti 로 호출자가 DB 의 revoke 상태를 확인해야 한다.
+     */
     fun validateRefreshToken(token: String): TokenClaims?
 }
 
@@ -27,6 +37,7 @@ data class TokenClaims(
     val email: String?,
     val role: String,
     val type: TokenType,
+    val jti: String? = null,
 )
 
 enum class TokenType { ACCESS, REFRESH }

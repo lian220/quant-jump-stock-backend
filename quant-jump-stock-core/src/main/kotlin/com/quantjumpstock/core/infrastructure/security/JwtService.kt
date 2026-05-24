@@ -70,13 +70,14 @@ class JwtService(
         return sign(builder.build())
     }
 
-    override fun generateRefreshToken(userId: String, dbId: Long?): String {
+    override fun generateRefreshToken(userId: String, jti: String, dbId: Long?): String {
         val now = Date()
         val expiration = Date(now.time + refreshExpirationDays * 24 * 3600 * 1000)
 
         val builder = JWTClaimsSet.Builder()
             .subject(userId)
             .issuer(issuer)
+            .jwtID(jti)
             .claim("type", TYPE_REFRESH)
             .issueTime(now)
             .expirationTime(expiration)
@@ -165,6 +166,7 @@ class JwtService(
             email = claims.getStringClaim("email"),
             role = claims.getStringClaim("role") ?: "USER",
             type = type,
+            jti = claims.jwtid,
         )
 
     companion object {
