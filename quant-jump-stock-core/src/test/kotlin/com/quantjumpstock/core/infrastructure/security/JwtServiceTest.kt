@@ -176,6 +176,43 @@ class JwtServiceTest {
     }
 
     @Test
+    fun `extractSubjectIgnoreExpiry - 만료된 토큰에서도 sub dbId 추출 (logout 전용)`() {
+        val sut = service()
+        val expired = SignedJWT(
+            JWSHeader(JWSAlgorithm.HS256),
+            JWTClaimsSet.Builder()
+                .subject("logged-out-user")
+                .issuer(issuer)
+                .claim("type", "access")
+                .claim("dbId", 42L)
+                .issueTime(Date(System.currentTimeMillis() - 7200_000))
+                .expirationTime(Date(System.currentTimeMillis() - 3600_000))
+                .build()
+        ).apply { sign(MACSigner(secret.toByteArray())) }.serialize()
+
+        val info = sut.extractSubjectIgnoreExpiry(expired)
+        assertThat(info).isNotNull
+        assertThat(info!!.userId).isEqualTo("logged-out-user")
+        assertThat(info.dbId).isEqualTo(42L)
+        // 인가 경로 안전성 회귀 가드: validateAccessToken 은 여전히 null (만료 거부)
+        assertThat(sut.validateAccessToken(expired)).isNull()
+    }
+
+    @Test
+    fun `extractSubjectIgnoreExpiry - 서명 불일치 토큰은 null`() {
+        val sut = service()
+        val foreign = SignedJWT(
+            JWSHeader(JWSAlgorithm.HS256),
+            JWTClaimsSet.Builder()
+                .subject("attacker")
+                .expirationTime(Date(System.currentTimeMillis() + 3600_000))
+                .build()
+        ).apply { sign(MACSigner("different-secret-also-needs-32-bytes-or-more!!".toByteArray())) }.serialize()
+
+        assertThat(sut.extractSubjectIgnoreExpiry(foreign)).isNull()
+    }
+
+    @Test
     fun `prod profile 에서 dev secret 사용 시 기동 차단`() {
         val prodEnv = MockEnvironment().apply { setActiveProfiles("prod") }
 

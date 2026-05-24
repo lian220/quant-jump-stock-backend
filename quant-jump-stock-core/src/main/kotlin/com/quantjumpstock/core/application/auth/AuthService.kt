@@ -112,15 +112,17 @@ class AuthService(
      * 로그아웃 — Bearer access token 으로 사용자를 식별해 모든 refresh token 을 revoke.
      * Phase 1A 보안 PRE Task 12: RFC 9700 최소 구현.
      *
+     * Phase 1A P0-fix C3: access token 이 만료되어도 사용자 의지로 세션을 정리해야 하므로
+     * tokenPort.extractSubjectIgnoreExpiry 로 sub/dbId 만 추출 (서명은 검증). 만료 진입 직후
+     * logout 시 revoke=0 으로 끝나던 보안 누락 보완.
+     *
      * @return revoke 된 refresh token 수 (감지 가능한 사용자 정보 없으면 0)
      */
     fun logout(authorization: String?): Int {
         val token = authorization?.takeIf { it.startsWith("Bearer ") }?.removePrefix("Bearer ")
             ?: return 0
-        // access token 이 만료됐어도 sub 만 추출하기 위해 graceful: validateAccessToken 사용
-        // 만료된 토큰은 null 이지만 그 경우 logout 요청자는 식별 불가 → 0 반환
-        val claims = tokenPort.validateAccessToken(token) ?: return 0
-        val userDbId = claims.dbId ?: return 0
+        val subject = tokenPort.extractSubjectIgnoreExpiry(token) ?: return 0
+        val userDbId = subject.dbId ?: return 0
         return refreshTokenService.revokeAll(userDbId)
     }
 

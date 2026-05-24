@@ -2,6 +2,7 @@ package com.quantjumpstock.core.application.auth
 
 import com.quantjumpstock.core.domain.port.output.RefreshTokenStorePort
 import com.quantjumpstock.core.domain.port.output.TokenPort
+import com.quantjumpstock.core.domain.port.output.UserRepository
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.stereotype.Service
@@ -20,6 +21,7 @@ import java.util.UUID
 class RefreshTokenService(
     private val tokenPort: TokenPort,
     private val store: RefreshTokenStorePort,
+    private val userRepository: UserRepository,
     @Value("\${jwt.refresh-expiration-days:14}") private val refreshExpirationDays: Long,
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -61,7 +63,20 @@ class RefreshTokenService(
             logger.warn("refresh token 에 dbId claim 부재 — 거부")
             return null
         }
-        return ValidatedRefresh(userId = claims.userId, userDbId = userDbId, jti = jti)
+
+        // role/email 은 refresh 시점의 최신 DB 값을 사용 (CWE-863 권한 변경 즉시 반영).
+        // refresh token 에 role/email 을 embed 하면 권한 강등/계정 비활성화가 14일간 미반영.
+        val user = userRepository.findByUserId(claims.userId) ?: run {
+            logger.warn("refresh token userId={} 해당 사용자 없음 — 거부", claims.userId)
+            return null
+        }
+        return ValidatedRefresh(
+            userId = claims.userId,
+            userDbId = userDbId,
+            jti = jti,
+            role = user.role.name,
+            email = user.email,
+        )
     }
 
     /**
@@ -74,5 +89,7 @@ class RefreshTokenService(
         val userId: String,
         val userDbId: Long,
         val jti: UUID,
+        val role: String,
+        val email: String?,
     )
 }

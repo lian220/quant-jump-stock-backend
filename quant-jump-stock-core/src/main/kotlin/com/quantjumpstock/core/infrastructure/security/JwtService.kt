@@ -5,6 +5,7 @@ import com.nimbusds.jose.crypto.MACSigner
 import com.nimbusds.jose.crypto.MACVerifier
 import com.nimbusds.jwt.JWTClaimsSet
 import com.nimbusds.jwt.SignedJWT
+import com.quantjumpstock.core.domain.port.output.SubjectInfo
 import com.quantjumpstock.core.domain.port.output.TokenClaims
 import com.quantjumpstock.core.domain.port.output.TokenPort
 import com.quantjumpstock.core.domain.port.output.TokenType
@@ -108,6 +109,26 @@ class JwtService(
             return null
         }
         return toClaims(claims, TokenType.REFRESH)
+    }
+
+    /**
+     * 만료를 무시하고 서명만 검증해 sub/dbId 추출. logout 전용 (만료 access 로도 자기 세션 정리).
+     * type 도 검증하지 않으므로 인가 경로에는 절대 사용 금지.
+     */
+    override fun extractSubjectIgnoreExpiry(token: String): SubjectInfo? {
+        return try {
+            val signedJWT = SignedJWT.parse(token)
+            if (!signedJWT.verify(verifier)) {
+                logger.warn("JWT 서명 검증 실패 (extractSubjectIgnoreExpiry)")
+                return null
+            }
+            val claims = signedJWT.jwtClaimsSet
+            val userId = claims.subject ?: return null
+            SubjectInfo(userId = userId, dbId = claims.getLongClaim("dbId"))
+        } catch (e: Exception) {
+            logger.warn("JWT 파싱 실패 (extractSubjectIgnoreExpiry): ${e.message}")
+            null
+        }
     }
 
     /**

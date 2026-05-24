@@ -119,12 +119,11 @@ class AuthController(
         val validated = refreshTokenService.validate(refreshToken)
             ?: return unauthorizedRefresh("refresh token 이 유효하지 않습니다")
 
-        // role/email 은 access token 재발급 시 db 조회 없이 기존 토큰 발급 흐름을 재사용하기 위해
-        // refresh 검증 결과 그대로 신뢰 — 추후 role 변경 즉시 반영이 필요하면 user 재조회 추가.
+        // role/email 은 RefreshTokenService.validate 가 DB 재조회한 최신값을 사용 (CWE-863 권한 변경 즉시 반영).
         val accessToken = tokenPort.generateAccessToken(
             userId = validated.userId,
-            email = null,
-            role = "USER",
+            email = validated.email,
+            role = validated.role,
             dbId = validated.userDbId,
         )
         return ResponseEntity.ok()
