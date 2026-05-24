@@ -13,14 +13,14 @@ Quantiq의 백엔드 시스템 설계 및 구조입니다.
 - **[이메일_전화_검증.md](./이메일_전화_검증.md)** - 이메일/전화번호 인증 계획
 
 ### 이벤트 & 트레이딩
-- **[메시징 아키텍처 (Kafka→Pub/Sub 마이그레이션)](../../../docs/infra/kafka-to-pubsub-migration.md)** - GCP Pub/Sub 마이그레이션 전략
+- **[메시징 아키텍처 (Kafka→Pub/Sub 마이그레이션)](../../../docs/archive/2026/plans/kafka-to-pubsub-migration.md)** - GCP Pub/Sub 마이그레이션 전략 (아카이브)
 - **[트레이딩_시스템_개선.md](./트레이딩_시스템_개선.md)** - 실전 트레이딩 시스템 보완
 
 ### 데이터 아키텍처
 - **[하이브리드_데이터베이스_전략.md](./하이브리드_데이터베이스_전략.md)** - PostgreSQL + MongoDB 하이브리드 전략
 
 ### 스케줄러 및 외부 연동
-- **[스케줄러_아키텍처.md](./스케줄러_아키텍처.md)** - Quartz 스케줄러 구조 및 설계
-  - 각 분석 Job의 상세 동작 → [분석 기능 문서](../features/ANALYSIS_아키텍처.md)
+- **[스케줄러_아키텍처.md](./스케줄러_아키텍처.md)** - Cloud Scheduler 기반 스케줄링 (Quartz는 2026-02-28 제거, 아카이브 이동됨)
+  - 각 분석 Job의 상세 동작 → [분석 기능 문서](../features/ANALYSIS_ARCHITECTURE.md)
   - 운영 가이드 → [스케줄러 운영 가이드](../setup/스케줄러_운영_가이드.md)
 - **[한국투자증권_토큰_관리.md](./한국투자증권_토큰_관리.md)** - 한국투자증권 API 토큰 관리
