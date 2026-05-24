@@ -1,18 +1,16 @@
-# Backend 기술 개선사항
+# Backend 기술 부채 TODO
 
-## 🔥 긴급 작업 (이번 주)
-
-### 추천 로직 개선 (부분 점수 시스템)
-- [ ] **Backend**: `RecommendationService.kt` — `.filter { it.isRecommended }` 제거
-  - Composite Score 기준으로만 필터링 (`compositeScore >= minCompositeScore`)
-- [ ] **Data Engine**: `sync_service.py` — `is_recommended` 재계산
-  - 새 메서드: `_determine_recommended(composite_score, grade)`
-  - BETA 임계값: 0.8점, 통합 후: 2.0점
-- [ ] **Frontend**: `recommendations/page.tsx` — Beta 배너 문구 업데이트
-  - "최소 0.8점 이상" 안내
-- [ ] **테스트**: 운영 데이터 마이그레이션 후 E2E 테스트
-  - 예상: 추천 종목 2~3개 → 10~15개
-  - 상세: [추천시스템.md](./docs/features/추천시스템.md)
+> **스코프 (Scope)**: Backend(Core + Data Engine) 단독 기술 부채 — 아키텍처/성능/보안/테스트
+> **문서 역할**: Backend 서비스 내부 리팩토링·개선 항목 관리
+>
+> **여기 없는 것 (다른 곳에서 관리)**:
+> - 제품 기능 우선순위 + 크로스 서비스 작업 → [../docs/할일.md](../docs/할일.md) (SSOT)
+> - 백로그/이슈 트래킹 → Jira (`SCRUM-*`)
+>
+> **관련 문서**:
+> - [백엔드_아키텍처.md](./docs/architecture/refactor/백엔드_아키텍처.md) — 14주 리팩토링 로드맵 (65/100 → 100/100)
+> - [어댑터_패턴.md](./docs/architecture/refactor/어댑터_패턴.md) — Persistence Adapter 가이드
+> - [테스트_가이드.md](./docs/architecture/refactor/테스트_가이드.md) — Kotest + Testcontainers
 
 ---
 
@@ -21,6 +19,7 @@
   - 상세: [백엔드_아키텍처.md](./docs/architecture/refactor/백엔드_아키텍처.md)
 - [ ] ArchUnit 위반 해소 (27건 → 0건)
 - [ ] Application → JPA 직접 의존성 제거 (11개 서비스)
+- [ ] 도메인 모델 MongoDB 어노테이션 오염 제거 (8개 파일)
 
 ## 데이터
 - [ ] Stock 데이터 PostgreSQL 마이그레이션 후속 (Adapter 패턴 적용)
@@ -31,20 +30,19 @@
   - [ ] 키별 실패율/429 응답 모니터링 및 자동 제외(일시) 로직 추가
   - [ ] 키 관리 문서 업데이트: [알파_밴티지_에이피아이_키.md](./docs/setup/알파_밴티지_에이피아이_키.md)
 
-## 기능
+## 기능 (Backend 단독)
 - [ ] Vertex AI CustomJob 파라미터 기능 추가
 - [ ] 이메일/전화번호 인증 구현
-- [ ] 뉴스 감정 분석 통합 (종목 추천 근거)
-  - [x] MongoDB `news_sentiment` 컬렉션 설계 (title, summary, url, sentiment, relevance_score)
-  - [ ] 인덱스 생성 (ticker+date, ticker+published_at, TTL 90일) → [docs/setup/몽고디비_인덱스.md](./docs/setup/몽고디비_인덱스.md)
+- [ ] 뉴스 감정 분석 Core API 연동 (제품 기능은 [../docs/할일.md](../docs/할일.md) 참조)
+  - [x] MongoDB `news_sentiment` 컬렉션 설계
   - [x] Data Engine: SentimentAnalysisService 수정 (원본 기사 저장 추가)
   - [x] 뉴스 API 통합 (Alpha Vantage NEWS_SENTIMENT)
   - [x] 감정 분석: Alpha Vantage 내장 감정 점수 사용
   - [x] 기존 스케줄러 통합 (SentimentAnalysisHandler 활용)
+  - [ ] 인덱스 생성 (ticker+date, ticker+published_at, TTL 90일) → [docs/setup/몽고디비_인덱스.md](./docs/setup/몽고디비_인덱스.md)
   - [ ] daily_stock_data에 sentiment_summary 필드 추가 (선택)
   - [ ] Core API: NewsSentimentMongoRepository 구현
   - [ ] RecommendationController: GET /recommendations/{ticker}/news-analysis 추가
-  - [ ] Frontend: 뉴스 분석 컴포넌트 (감정 뱃지, 상위 뉴스 5개 표시)
   - [ ] **테스트**: 스케줄러 실행 후 news_sentiment 컬렉션 확인
 
 ## 보안/안정성 (코드 리뷰 2026-02-19)
@@ -72,3 +70,4 @@
 
 ## 테스트
 - [ ] 단위 테스트 커버리지 (0% → 80%)
+- [ ] Data Engine 테스트 커버리지 (0% → 80%) — refactorplan/ARCHITECTURE.md 참조
