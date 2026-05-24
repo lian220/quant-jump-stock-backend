@@ -1,13 +1,14 @@
 package com.quantjumpstock.core.application.auth
 
+import com.fasterxml.jackson.annotation.JsonIgnore
 import com.quantjumpstock.core.domain.model.user.OAuthProvider
 import com.quantjumpstock.core.domain.port.output.OAuthPort
 import com.quantjumpstock.core.domain.model.user.User
 import com.quantjumpstock.core.domain.model.user.UserRole
 import com.quantjumpstock.core.domain.model.user.UserStatus
+import com.quantjumpstock.core.domain.port.output.TokenPort
 import com.quantjumpstock.core.domain.port.output.UserRepository
 import com.quantjumpstock.core.domain.port.output.UserTierRepository
-import com.quantjumpstock.core.infrastructure.security.JwtService
 import org.slf4j.LoggerFactory
 import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
@@ -24,7 +25,8 @@ class OAuthCodeExchangeService(
     private val naverOAuthPort: OAuthPort,
     private val userRepository: UserRepository,
     private val userTierRepository: UserTierRepository,
-    private val jwtService: JwtService,
+    private val tokenPort: TokenPort,
+    private val refreshTokenService: RefreshTokenService,
     private val transactionTemplate: TransactionTemplate
 ) {
     private val logger = LoggerFactory.getLogger(OAuthCodeExchangeService::class.java)
@@ -34,8 +36,13 @@ class OAuthCodeExchangeService(
         val redirectUri: String
     )
 
+    /**
+     * OAuth 교환 응답. refreshToken/userDbId 는 Controller 가 Set-Cookie 로 변환하기 위한 내부 전달용.
+     */
     data class OAuthTokenResponse(
-        val token: String
+        val token: String,
+        @field:JsonIgnore @get:JsonIgnore val refreshToken: String? = null,
+        @field:JsonIgnore @get:JsonIgnore val userDbId: Long? = null,
     )
 
     /**
@@ -67,8 +74,11 @@ class OAuthCodeExchangeService(
             )
         } ?: throw IllegalStateException("OAuth 사용자 생성/조회에 실패했습니다")
 
-        val jwt = jwtService.generateToken(user.userId, user.email, user.role.name, user.id)
-        return OAuthTokenResponse(token = jwt)
+        val userDbId = user.id
+            ?: throw IllegalStateException("OAuth 사용자에 id가 없습니다: userId=${user.userId}")
+        val accessToken = tokenPort.generateAccessToken(user.userId, user.email, user.role.name, userDbId)
+        val refreshToken = refreshTokenService.issue(user.userId, userDbId)
+        return OAuthTokenResponse(token = accessToken, refreshToken = refreshToken, userDbId = userDbId)
     }
 
     /**

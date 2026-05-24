@@ -219,8 +219,19 @@ spring.security.oauth2.client:
 # ============================================
 jwt:
   secret: ${JWT_SECRET:quant-jump-stock-dev-secret-minimum-32-characters}
-  expiration-hours: ${JWT_EXPIRATION_HOURS:24}
+  # Phase 1A 보안 PRE Task 12-B4: access 15분 (RFC 9700 권고). refresh 14일로 무중단 갱신.
+  # 운영에서는 JWT_ACCESS_EXPIRATION_MINUTES 환경변수로 override.
+  access-expiration-minutes: ${JWT_ACCESS_EXPIRATION_MINUTES:15}
+  refresh-expiration-days: ${JWT_REFRESH_EXPIRATION_DAYS:14}
   issuer: ${JWT_ISSUER:quant-jump-stock}
+  cookie:
+    # 운영 분기: application-prod.yml 에서 override (secure=true, sameSite=Lax, domain=.alphafoundry.app)
+    name: ${JWT_REFRESH_COOKIE_NAME:refresh_token}
+    secure: ${JWT_COOKIE_SECURE:false}
+    same-site: ${JWT_COOKIE_SAME_SITE:Lax}
+    domain: ${JWT_COOKIE_DOMAIN:}
+    path: ${JWT_COOKIE_PATH:/}
+    max-age-days: ${JWT_COOKIE_MAX_AGE_DAYS:14}
 
 # ============================================
 # OAuth2 Frontend Configuration
