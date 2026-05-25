@@ -22,7 +22,11 @@ import org.springframework.web.cors.CorsConfigurationSource
 @EnableWebSecurity
 @EnableMethodSecurity(prePostEnabled = true)
 class SecurityConfig(
-    private val cloudflareGatewayFilter: CloudflareGatewayFilter,
+    // CloudflareGatewayFilter 제거 (2026-05-26):
+    // - Cloudflare worker 가 host-header-rewrite 만 함 (X-Cloudflare-Secret 헤더 주입 없음)
+    // - Transform Rules / Origin Rules 빈 상태
+    // - 즉 prod 가 빈 secret 으로 graceful disable (filter 가 모든 요청 통과)
+    // - 실제 보호 효과 0 — dead code
     private val jwtAuthenticationFilter: JwtAuthenticationFilter,
     private val objectMapper: ObjectMapper,
     private val corsConfigurationSource: CorsConfigurationSource
@@ -86,10 +90,6 @@ class SecurityConfig(
                 .addFilterBefore(
                         jwtAuthenticationFilter,
                         UsernamePasswordAuthenticationFilter::class.java
-                )
-                .addFilterBefore(
-                        cloudflareGatewayFilter,
-                        JwtAuthenticationFilter::class.java
                 )
 
         return http.build()

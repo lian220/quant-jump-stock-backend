@@ -242,8 +242,6 @@ jwt:
 oauth2:
   frontend-redirect-url: ${OAUTH_FRONTEND_REDIRECT_URL:http://localhost:3000/auth/callback}
 
-# ============================================
-# Cloudflare Gateway Configuration
-# ============================================
-cloudflare:
-  gateway-secret: ${CLOUDFLARE_GATEWAY_SECRET:}
+# Cloudflare Gateway Configuration 제거 (2026-05-26):
+# CloudflareGatewayFilter 가 dead code 라 함께 삭제. Cloudflare 측 worker 가
+# host-header-rewrite 만 하고 X-Cloudflare-Secret 헤더 주입 안 함. 보호 효과 0.
