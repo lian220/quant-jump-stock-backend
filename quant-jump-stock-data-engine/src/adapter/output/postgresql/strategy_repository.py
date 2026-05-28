@@ -219,28 +219,12 @@ class PostgresStrategyRepository(StrategyRepositoryPort):
             return []
 
     async def save(self, strategy: StrategyDefinition) -> None:
-        """
-        전략 저장 - PostgreSQL에서는 지원하지 않음
-
-        Raises:
-            NotImplementedError: 시드 전략은 읽기 전용
-        """
-        raise NotImplementedError(
-            "PostgreSQL 시드 전략은 읽기 전용입니다. "
-            "동적 전략 저장은 MongoStrategyRepository를 사용하세요."
-        )
+        """전략 저장 — PostgreSQL 시드 전략은 읽기 전용."""
+        raise NotImplementedError("PostgreSQL 시드 전략은 읽기 전용입니다.")
 
     async def update(self, strategy: StrategyDefinition) -> None:
-        """
-        전략 업데이트 - PostgreSQL에서는 지원하지 않음
-
-        Raises:
-            NotImplementedError: 시드 전략은 읽기 전용
-        """
-        raise NotImplementedError(
-            "PostgreSQL 시드 전략은 읽기 전용입니다. "
-            "동적 전략 업데이트는 MongoStrategyRepository를 사용하세요."
-        )
+        """전략 업데이트 — PostgreSQL 시드 전략은 읽기 전용."""
+        raise NotImplementedError("PostgreSQL 시드 전략은 읽기 전용입니다.")
 
     def _to_domain(self, row: dict) -> Optional[StrategyDefinition]:
         """
