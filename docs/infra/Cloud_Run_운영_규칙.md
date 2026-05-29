@@ -123,6 +123,53 @@ file mount 대신 env 직접 주입:
 
 별도 마이그레이션 작업 (~몇 일) — 현재는 R1+R2 fail-fast 로 위험 회피.
 
+### 🔴 R8. CI/CD 일관성 — 모든 prod 컴포넌트 main push 자동 반영
+
+2026-05-20 ~ 5/28 Vertex AI v24 stale package 사고 후속 (`docs/incidents/2026-05-20-vertex-ai-stale-package.md`):
+
+main 머지 시점에 **Cloud Run + Vertex AI ML package + GCS asset 등 prod 영향 주는 모든 컴포넌트가 동일 commit 으로 갱신**되어야 함. 부분 자동화는 silent drift 위험 (사고 시 8일 미반영).
+
+검증:
+```bash
+# 각 컴포넌트의 deployed sha / mtime 확인 — 최신 main commit 과 일치하는지
+gcloud run services describe <svc> --format='value(metadata.labels.commit-sha)'
+gsutil ls -l gs://.../<latest>.tar.gz
+```
+
+본 시스템 적용:
+- ✅ `deploy-core.yml` (qjs-core)
+- ✅ `deploy-data-engine.yml` (qjs-data-engine)
+- ✅ `deploy-ml-package.yml` (Vertex AI ML package — PR #126 추가, 2026-05-29)
+
+새 prod 컴포넌트 추가 시 deploy workflow 도 함께 추가 필수.
+
+### 🔴 R9. PostgreSQL pool pre-ping 강제
+
+2026-05-27 사고 (`docs/incidents/2026-05-20-vertex-ai-stale-package.md` §4.2):
+
+`psycopg2.pool.ThreadedConnectionPool` 또는 동등 pool 사용 시 **getconn() 후 SELECT 1 ping 필수**. Supabase 측 idle timeout 으로 끊긴 connection 을 클라이언트가 인지 못해 첫 query 에서 `server closed the connection unexpectedly` 발생.
+
+공통 헬퍼: `adapter/output/postgresql/_pool_util.py` `get_validated_conn(pool)` 사용.
+
+추가로 **silent swallow except 금지**:
+```python
+# ❌ 금지
+except Exception:
+    return []
+
+# ✅ 권장
+except SpecificError:
+    logger.error(...)
+    raise  # 또는 명시적 sentinel
+```
+
+본 시스템 적용 (PR #125, 2026-05-29):
+- ✅ `adapter/output/postgresql/stock_repository.py`
+- ✅ `adapter/output/postgresql/collector_state_repository.py`
+- ✅ `adapter/output/postgresql/backtest_repository.py`
+- ✅ `adapter/output/postgresql/strategy_repository.py`
+- ✅ `core/database.py` (PostgreSQL.get_connection)
+
 ---
 
 ## 3. 사고 시 체크리스트
