@@ -98,21 +98,38 @@ class PostgreSQL:
     @classmethod
     @contextmanager
     def get_connection(cls):
-        """PostgreSQL 연결 컨텍스트 매니저 (풀에서 가져오고 반환)"""
+        """PostgreSQL 연결 컨텍스트 매니저 (풀에서 가져오고 반환).
+
+        2026-05-29 강화 (사고 후속): pool 의 idle connection 이 Supabase 측 timeout 으로
+        끊겼는데 클라이언트 측 ThreadedConnectionPool 은 모름. 첫 query 시 다음 에러:
+            psycopg2.DatabaseError: server closed the connection unexpectedly
+        2026-05-27 사고 (7일간 추천 마비) 직접 원인.
+
+        해결: getconn 후 SELECT 1 ping. 끊겼으면 dead connection 폐기 (putconn close=True)
+        + 한 번 더 시도. 정상 connection 이면 추가 비용 < 1ms.
+        """
+        # 공통 helper 사용 — adapter.output.postgresql._pool_util (lazy import 로 순환 회피)
+        from adapter.output.postgresql._pool_util import get_validated_conn
         pool = cls.get_pool()
         conn = None
         try:
-            conn = pool.getconn()
+            conn = get_validated_conn(pool)
             yield conn
             conn.commit()
         except Exception as e:
             if conn:
-                conn.rollback()
+                try:
+                    conn.rollback()
+                except Exception:
+                    pass
             logger.error(f"PostgreSQL error: {e}")
             raise
         finally:
             if conn:
                 pool.putconn(conn)
+
+    # _get_validated_conn 헬퍼는 adapter/output/postgresql/_pool_util.py 로 추출 (2026-05-29).
+    # 모든 repository 가 동일 로직 사용 — DRY.
 
     @classmethod
     def close_pool(cls):

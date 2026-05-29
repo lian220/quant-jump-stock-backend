@@ -8,6 +8,7 @@ import logging
 from datetime import datetime
 from typing import Optional
 from contextlib import contextmanager
+from adapter.output.postgresql._pool_util import get_validated_conn
 
 import psycopg2.extras
 
@@ -27,7 +28,7 @@ class PostgresCollectorStateRepository:
         conn = None
         success = False
         try:
-            conn = self._pool.getconn()
+            conn = get_validated_conn(self._pool)
             yield conn
             success = True
         except Exception as e:

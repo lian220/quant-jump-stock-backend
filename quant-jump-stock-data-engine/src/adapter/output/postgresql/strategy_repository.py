@@ -12,6 +12,7 @@ import logging
 from typing import List, Optional
 import psycopg2.extras
 from contextlib import contextmanager
+from adapter.output.postgresql._pool_util import get_validated_conn
 import json
 
 from application.ports.output_ports import StrategyRepositoryPort
@@ -40,7 +41,7 @@ class PostgresStrategyRepository(StrategyRepositoryPort):
         """PostgreSQL 연결 컨텍스트 매니저 (풀에서 가져오고 반환)"""
         conn = None
         try:
-            conn = self._pool.getconn()
+            conn = get_validated_conn(self._pool)
             yield conn
         except Exception as e:
             logger.error(f"PostgreSQL connection error: {e}")

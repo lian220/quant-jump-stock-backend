@@ -14,6 +14,7 @@ from decimal import Decimal
 import json
 import psycopg2.extras
 from contextlib import contextmanager
+from adapter.output.postgresql._pool_util import get_validated_conn
 
 from datetime import date, datetime, timezone, timedelta
 from dataclasses import dataclass, field
@@ -71,7 +72,7 @@ class PostgresBacktestRepository:
         """PostgreSQL 연결 컨텍스트 매니저 (풀에서 가져오고 반환)"""
         conn = None
         try:
-            conn = self._pool.getconn()
+            conn = get_validated_conn(self._pool)
             yield conn
         except Exception as e:
             if conn:
