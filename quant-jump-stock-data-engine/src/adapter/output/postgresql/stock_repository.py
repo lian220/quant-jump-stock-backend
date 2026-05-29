@@ -10,6 +10,7 @@ import psycopg2.extras
 from contextlib import contextmanager
 
 from application.analysis.ports import StockRepositoryPort, StockInfo
+from adapter.output.postgresql._pool_util import get_validated_conn
 
 logger = logging.getLogger(__name__)
 
@@ -26,10 +27,13 @@ class PostgresStockRepository(StockRepositoryPort):
 
     @contextmanager
     def _get_connection(self):
-        """PostgreSQL 연결 컨텍스트 매니저 (풀에서 가져오고 반환)"""
+        """PostgreSQL 연결 컨텍스트 매니저 (pre-ping 으로 dead conn 자동 회수).
+
+        2026-05-29 강화: 2026-05-27 사고 직접 원인 fix. get_validated_conn 가 SELECT 1 ping.
+        """
         conn = None
         try:
-            conn = self._pool.getconn()
+            conn = get_validated_conn(self._pool)
             yield conn
         except Exception as e:
             if conn:
