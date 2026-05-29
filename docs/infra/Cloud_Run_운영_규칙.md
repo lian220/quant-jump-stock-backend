@@ -214,7 +214,7 @@ prod 에러 alert 받으면 30초 내 확인:
 | R3 | liveness ≠ readiness 분리 | ⬜ |
 | R4 | deploy workflow 의 volume/mount drift 검증 | ⬜ |
 | R5 | Deploy 후 실 API smoke test | ⬜ |
-| R6 | Cloud Logging metric + Slack alert | ⬜ |
+| R6 | Cloud Logging metric + Slack alert | ✅ (2026-05-29 gcloud CLI: metric 2 + alert 4 + uptime 5, Terraform 비관리. 루트 repo docs/infra/모니터링_CLI관리.md) |
 | R7 | (선택) `--set-secrets` env-var 모드 | ⬜ |
 
 ---
