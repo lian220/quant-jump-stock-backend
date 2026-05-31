@@ -59,7 +59,11 @@ recommendation_labels:
   NONE:      { label: "추천 없음", emoji: "⚪" }
 
 recommendation_filter:
-  min_composite_score: 2.0          # 현행 유지 (PR 3d 에서 3.0 검토)
+  # ⚠️ 현재 _determine_recommended(sync_service.py:512)는 이 값을 안 읽고 3.0 하드코딩 중.
+  #    spec(2.0) ≠ 운영코드(3.0) 불일치 상태. 2.0 은 ADR 0002 가 "분포 본 후 PR 3d 에서 결정"으로
+  #    의도 보존한 값이므로 임의로 올리지 말 것. PR 3d(예정 2026-06-05~)에서 값 결정 + 코드 참조를
+  #    원자적으로 정합. 정합 방식 권고: grade_gate 필드(아래) 기반 판정. 상세: docs/할일.md §6.
+  min_composite_score: 2.0          # PR 3d 결정 대기 (현재 미사용 — 코드는 3.0 하드코딩)
   max_recommendations: 5
 
 # PR 5 (2026-05-22): 거시 시장 변동성 gate.
