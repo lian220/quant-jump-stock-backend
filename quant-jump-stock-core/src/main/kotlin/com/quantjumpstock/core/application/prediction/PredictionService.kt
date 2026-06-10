@@ -4,7 +4,6 @@ import com.quantjumpstock.core.domain.model.prediction.PredictionResult
 import com.quantjumpstock.core.domain.model.stock.StockPriceSnapshot
 import com.quantjumpstock.core.domain.port.output.StockPriceDataPort
 import com.quantjumpstock.core.domain.prediction.port.output.PredictionResultRepositoryPort
-import com.quantjumpstock.core.domain.recommendation.model.RecommendationCriteria
 import org.slf4j.LoggerFactory
 import org.springframework.cache.CacheManager
 import org.springframework.stereotype.Service
@@ -76,7 +75,7 @@ class PredictionService(
      * 매수 신호 조회
      *
      * @param date 분석 날짜 (null이면 최신 데이터가 있는 날짜 사용)
-     * @param minConfidence Composite Score 비율 (0.0~1.0), Score × 7.5로 변환
+     * @param minConfidence Composite Score 비율 (0.0~1.0), × 100으로 0~100 필터 변환 (ADR 0006)
      * @return 매수 신호 응답
      */
     fun getBuySignals(date: LocalDate? = null, minConfidence: Double = 0.0): BuySignalsResponse {
@@ -92,8 +91,8 @@ class PredictionService(
             ?: predictionResultRepository.findLatestAnalysisDate()
             ?: LocalDate.now().minusDays(1)
 
-        // Composite Score 기준으로 변환 (0~1 → 0~7.5)
-        val minCompositeScore = minConfidence * 7.5
+        // Composite Score 기준으로 변환 (0~1 → 0~100, ADR 0006 단일 스케일)
+        val minCompositeScore = minConfidence * 100
 
         logger.info("📊 매수 신호 조회 (캐시 미스): date=$targetDate, minCompositeScore=$minCompositeScore")
 
@@ -224,23 +223,11 @@ fun PredictionResult.toBuySignalDto(priceSnapshot: StockPriceSnapshot? = null): 
         upsidePercent
     }
 
-    fun normalize(score: BigDecimal, max: BigDecimal): Int =
-        score.divide(max, 4, RoundingMode.HALF_UP)
-            .multiply(BigDecimal(100))
-            .toInt()
-            .coerceIn(0, 100)
-
-    val hasAi = aiScore.compareTo(BigDecimal.ZERO) != 0
-    val hasSentiment = sentimentNormalizedScore.compareTo(BigDecimal.ZERO) != 0
-    val hasTech = techScore.compareTo(BigDecimal.ZERO) != 0
-    val weights = mutableListOf<Pair<BigDecimal, BigDecimal>>()
-    if (hasTech) weights.add(RecommendationCriteria.WEIGHT_TECH to RecommendationCriteria.MAX_TECH_SCORE)
-    if (hasAi) weights.add(RecommendationCriteria.WEIGHT_AI to RecommendationCriteria.MAX_AI_SCORE)
-    if (hasSentiment) weights.add(RecommendationCriteria.WEIGHT_SENTIMENT to RecommendationCriteria.MAX_SENTIMENT_SCORE)
-    val totalWeight = weights.sumOf { it.first }
-    val compositeMax = if (totalWeight > BigDecimal.ZERO)
-        weights.sumOf { (w, mx) -> w.divide(totalWeight, 4, RoundingMode.HALF_UP) * mx }
-    else RecommendationCriteria.MAX_SCORE
+    // ADR 0006 §2.8: Kotlin 은 점수를 재계산/재정규화하지 않는다.
+    // composite/grade/축별 기여(axis_contributions)는 Python(scoring_spec.yaml SSoT)이 산출해
+    // 0~100 으로 저장한 값을 그대로 통과(pass-through)시킨다.
+    // 축별 display 점수도 axis_contributions(0~100)에서 읽고, 동적 재정규화는 폐기.
+    val axisDisplay = axisContributions.mapValues { it.value.toDouble() }
 
     return mapOf(
         "ticker" to ticker,
@@ -251,11 +238,15 @@ fun PredictionResult.toBuySignalDto(priceSnapshot: StockPriceSnapshot? = null): 
         "aiScore" to aiScore.toDouble(),
         "techScore" to techScore.toDouble(),
         "sentimentScore" to sentimentNormalizedScore.toDouble(),
-        // 정규화 점수 (0-100)
-        "techScoreDisplay" to normalize(techScore, RecommendationCriteria.MAX_TECH_SCORE),
-        "aiScoreDisplay" to normalize(aiScore, RecommendationCriteria.MAX_AI_SCORE),
-        "sentimentScoreDisplay" to normalize(sentimentNormalizedScore, RecommendationCriteria.MAX_SENTIMENT_SCORE),
-        "compositeScoreDisplay" to normalize(compositeScore, compositeMax),
+        // 축별 기여 점수 (0-100): Python axis_contributions pass-through (XAI 막대 표시용)
+        "techScoreDisplay" to (axisDisplay["tech"] ?: 0.0),
+        "aiScoreDisplay" to (axisDisplay["ai"] ?: 0.0),
+        "sentimentScoreDisplay" to (axisDisplay["sentiment"] ?: 0.0),
+        // display = composite (0~100 단일 스케일, 하위호환 유지)
+        "compositeScoreDisplay" to compositeScore.toDouble(),
+        // XAI 데이터 브릿지: 축별 기여 dict + 커버리지 (Phase 3 Frontend 막대/사유 표시용)
+        "axisContributions" to axisDisplay,
+        "scoreCoverage" to scoreCoverage.toDouble(),
         "isRecommended" to isRecommended,
         "recommendationReason" to recommendationReason,
         "currentPrice" to enrichedCurrentPrice?.toDouble(),

@@ -15,10 +15,10 @@ def test_calculate_uses_policy_public_api_only():
         has_sentiment=True,
         has_tech=True,
     )
-    # 현행: composite = 0.3*10 + 0.4*3.5 + 0.3*5 = 5.9
-    assert out["composite_score"] == 5.9
-    assert out["max_possible"] == 7.4    # 현행 buy_criteria 2.85 → 7.4 통일
-    assert abs(out["confidence"] - 0.797) < 0.01
+    # ADR 0006: composite = (0.3*(10/10) + 0.5*(3.5/3.5) + 0.2*(5/10))*100 = 90
+    assert out["composite_score"] == 90.0
+    assert out["max_possible"] == 100.0
+    assert abs(out["confidence"] - 0.9) < 0.01
     assert out["missing_axes"] == []
 
 

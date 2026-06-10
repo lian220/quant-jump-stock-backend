@@ -1,0 +1,16 @@
+case_id,scenario,ai_score,tech_score,sentiment_score,has_ai,has_tech,has_sentiment,tech_signals,expected_composite,expected_grade,expected_label,expected_is_recommended
+1,all_max,10.0,3.5,10.0,True,True,True,3,100.00,S,STRONG,True
+2,all_zero,0,0,0,True,True,True,0,0.00,D,NONE,True
+3,ai_neutral_tech_full_sent_neutral,5.0,3.5,5.0,True,True,True,3,75.00,B,RECOMMEND,True
+4,mid_no_tech,5.0,0,5.0,True,True,True,0,25.00,D,NONE,True
+5,sent_missing,10.0,3.5,0,True,True,False,3,100.00,S,STRONG,True
+6,tech_only,0,3.5,0,False,True,False,3,100.00,S,NONE,False
+7,neutral_all_present,5.0,1.75,5.0,True,True,True,2,50.00,D,NONE,True
+8,boundary_S_82,10.0,2.24,10.0,True,True,True,3,82.00,S,STRONG,True
+9,boundary_A_77,10.0,1.89,10.0,True,True,True,3,77.00,A,STRONG,True
+10,boundary_B_68,10.0,1.26,10.0,True,True,True,3,68.00,B,RECOMMEND,True
+11,boundary_C_58,10.0,0.56,10.0,True,True,True,3,58.00,C,WATCH,True
+12,ai_missing_tech_sent,0,3.5,10.0,False,True,True,3,100.00,S,STRONG,True
+13,ai_only_not_recommended,10.0,0,0,True,False,False,0,100.00,S,NONE,False
+14,sent_only_not_recommended,0,0,10.0,False,False,True,0,100.00,S,NONE,False
+15,tech_full_ai_half_sent_zero,5.0,3.5,0.0,True,True,True,3,65.00,C,WATCH,True

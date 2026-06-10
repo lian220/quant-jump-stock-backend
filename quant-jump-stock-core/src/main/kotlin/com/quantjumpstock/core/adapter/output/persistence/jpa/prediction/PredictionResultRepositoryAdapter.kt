@@ -46,8 +46,8 @@ class PredictionResultRepositoryAdapter(
     /**
      * 특정 날짜, Composite Score 이상의 매수 신호 조회
      *
-     * ⚠️ minCompositeScore: Composite Score 기준 (0~7.5)
-     *    예: minCompositeScore=5.25 → 5.25점 이상
+     * ⚠️ minCompositeScore: Composite Score 기준 (0~100, ADR 0006)
+     *    예: minCompositeScore=60 → 60점 이상
      */
     override fun findHighConfidenceBuySignals(
         date: LocalDate,

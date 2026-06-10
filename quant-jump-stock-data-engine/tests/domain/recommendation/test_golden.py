@@ -1,14 +1,10 @@
 """Golden CSV — ScoringPolicy.compose_components 결과 검증.
 
-본 CSV 는 spec_version 1.0.0 (PR 1 SSoT) 의 frozen 동작.
+본 CSV 는 spec_version 2.0.0 (ADR 0006 0~100 재설계) 의 frozen 동작.
+손으로 검증한 anchor 케이스 + 등급 경계 케이스로 구성. expected 값은 직접 계산.
 Spec 변경 시 본 CSV 도 명시적 수정 필요 (silent drift 방지).
 
-케이스 분류:
-    A (1–10):  Sanity / Boundaries
-    B (11–20): Missing Axes
-    C (21–28): Tech signal count variations
-    D (29–40): Realistic production cases
-    E (41–50): Edge: negative/zero paths & rounding
+산식: composite = (Σ_present w_renorm_k * (score_k/max_k)) * 100, composite_max=100.
 """
 import csv
 from decimal import Decimal
@@ -19,7 +15,7 @@ import pytest
 from domain.recommendation.scoring_policy import ScoringPolicy
 
 
-GOLDEN_PATH = Path(__file__).parents[2] / "data" / "golden_v1_0_0.csv"
+GOLDEN_PATH = Path(__file__).parents[2] / "data" / "golden_v2_0_0.csv"
 
 
 def _b(v: str) -> bool:
@@ -63,4 +59,8 @@ def test_golden(case, policy):
     assert s.recommendation_label == case["expected_label"], (
         f"{case['case_id']}-{case['scenario']} label {s.recommendation_label} "
         f"!= {case['expected_label']}"
+    )
+    assert s.is_recommended == _b(case["expected_is_recommended"]), (
+        f"{case['case_id']}-{case['scenario']} is_recommended {s.is_recommended} "
+        f"!= {case['expected_is_recommended']}"
     )

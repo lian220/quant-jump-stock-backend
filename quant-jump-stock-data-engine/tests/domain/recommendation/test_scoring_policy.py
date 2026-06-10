@@ -10,13 +10,13 @@ from domain.recommendation.exceptions import SpecValidationError, SpecNotFoundEr
 # ── Spec load 경로 ──────────────────────────────────────
 
 def test_load_default_finds_backend_repo_root_spec(monkeypatch):
-    """본 plan default 경로 — backend repo 루트 scoring_spec.yaml."""
+    """본 plan default 경로 — backend repo 루트 scoring_spec.yaml (ADR 0006: 2.0.0)."""
     # SCORING_SPEC_PATH 환경변수가 외부에서 leak 되어 있으면 default 경로 검증이 무의미
     monkeypatch.delenv("SCORING_SPEC_PATH", raising=False)
     ScoringPolicy._cached_default.cache_clear()  # 환경 영향 차단
     p = ScoringPolicy.load_default()
-    assert p.formula_version == "1.1.0"
-    assert p.composite_max == Decimal("7.4")
+    assert p.formula_version == "2.0.0"
+    assert p.composite_max == Decimal("100.0")
 
 
 def test_load_via_env_path(tmp_path, monkeypatch):
@@ -30,7 +30,7 @@ def test_load_via_env_path(tmp_path, monkeypatch):
     monkeypatch.setenv("SCORING_SPEC_PATH", str(custom))
     ScoringPolicy._cached_default.cache_clear()
     p = ScoringPolicy.load_default()
-    assert p.formula_version == "1.1.0"
+    assert p.formula_version == "2.0.0"
 
 
 def test_load_missing_file_raises():
@@ -68,11 +68,11 @@ def test_invariant_grade_thresholds_monotonic(make_spec, tmp_path):
         ScoringPolicy.load(str(bad))
 
 
-# ── compose_components / score_from_raw_signals 현행 동작 검증 ──────────────
+# ── compose_components 동작 검증 (ADR 0006 0~100) ──────────────
 
 
-def test_score_all_signals_strong_matches_current():
-    """현행 sync_service 결과와 동일: AI=10, Tech=3.5, Sent=5 → composite 5.9 / grade A."""
+def test_score_all_signals_strong_0_to_100():
+    """AI=10, Tech=3.5, Sent=5 → norm 1.0/1.0/0.5 → composite 90 (ADR 0006)."""
     p = ScoringPolicy.load_default()
     s = p.compose_components(
         ai_score=Decimal("10"),
@@ -83,16 +83,22 @@ def test_score_all_signals_strong_matches_current():
         has_sentiment=True,
         tech_signal_count=3,
     )
-    assert s.composite_score == Decimal("5.90")
-    assert s.composite_max == Decimal("7.40")
-    assert s.confidence == Decimal("0.797")
-    assert s.grade == "A"
-    assert s.recommendation_label == "STRONG"  # confidence 0.797 >= 0.65, signals 3 >= 3
+    # (0.3*1.0 + 0.5*1.0 + 0.2*0.5)*100 = (0.3+0.5+0.1)*100 = 90
+    assert s.composite_score == Decimal("90.00")
+    assert s.composite_max == Decimal("100.00")
+    assert s.confidence == Decimal("0.900")
+    assert s.grade == "S"
+    assert s.recommendation_label == "STRONG"
     assert s.missing_axes == ()
+    assert s.score_coverage == Decimal("1.000")
+    assert s.is_recommended is True
+    # axis_contributions 합 ≈ composite
+    total = sum(s.axis_contributions.values())
+    assert abs(total - s.composite_score) <= Decimal("0.01")
 
 
-def test_score_sentiment_missing_zero_policy_preserved():
-    """본 PR: sentiment N/A → 0점 처리 보존 (PR 4 에서 재분배 적용)."""
+def test_score_sentiment_missing_redistributes():
+    """ADR 0006 §2.4: sentiment 결측 → 축 제외 + weight 재정규화 (0점 벌점 금지)."""
     p = ScoringPolicy.load_default()
     s = p.compose_components(
         ai_score=Decimal("10"),
@@ -103,51 +109,71 @@ def test_score_sentiment_missing_zero_policy_preserved():
         has_sentiment=False,         # 누락
         tech_signal_count=3,
     )
-    # 현행: 0.3*10 + 0.4*3.5 + 0.3*0 = 4.4. composite_max 는 7.4 유지 (재분배 없음)
-    assert s.composite_score == Decimal("4.40")
-    assert s.composite_max == Decimal("7.40")
+    # ai 1.0, tech 1.0, renorm w_ai=0.3/0.8=0.375, w_tech=0.5/0.8=0.625 → 100
+    assert s.composite_score == Decimal("100.00")
+    assert s.composite_max == Decimal("100.00")
     assert "sentiment" in s.missing_axes
+    assert s.score_coverage == Decimal("0.800")
+    assert s.is_recommended is True  # available_axes=2
 
 
-def test_score_raw_rise_pct_20_pct_full_score():
-    """raw +20% → AI score 10 (현행 cap 동작). compose_components 직접 호출 (cleanup PR 2026-05-22)."""
+def test_score_tech_only_not_recommended():
+    """ADR 0006 §2.4: tech 단일축 → composite 계산되나 추천 불가 (label NONE)."""
     p = ScoringPolicy.load_default()
-    ai_s = p.normalize_rise_pct_to_score(Decimal("20"))
-    tech_s = p.tech_score_from_indicators({"golden_cross": True, "rsi": 50, "macd_buy_signal": True})
-    sent_s = p.sentiment_score_from_raw(Decimal("0.5"))
-    score = p.compose_components(
-        ai_score=ai_s, tech_score=tech_s, sentiment_score=sent_s,
-        has_ai=True, has_tech=True, has_sentiment=True,
+    s = p.compose_components(
+        ai_score=Decimal("0"), tech_score=Decimal("3.5"), sentiment_score=Decimal("0"),
+        has_ai=False, has_tech=True, has_sentiment=False,
         tech_signal_count=3,
     )
-    # AI=10, Tech=3.5, Sent=5 → composite 5.9
-    assert score.composite_score == Decimal("5.90")
+    assert s.composite_score == Decimal("100.00")
+    assert s.is_recommended is False  # available 1, coverage 0.5 < 0.8
+    assert s.recommendation_label == "NONE"
+    assert s.score_coverage == Decimal("0.500")
 
 
-def test_score_negative_rise_pct_zero_policy_preserved():
-    """PR 3b (2026-05-22): -15% → veto 발동. composite=0, grade=D, label=NONE."""
+def test_score_no_tech_not_recommended():
+    """ADR 0006 §2.4: has_tech=False → 추천 불가."""
     p = ScoringPolicy.load_default()
-    ai_s = p.normalize_rise_pct_to_score(Decimal("-15"))
-    tech_s = p.tech_score_from_indicators({"golden_cross": True, "rsi": 50, "macd_buy_signal": True})
-    sent_s = p.sentiment_score_from_raw(Decimal("0.5"))
-    score = p.compose_components(
-        ai_score=ai_s, tech_score=tech_s, sentiment_score=sent_s,
-        has_ai=True, has_tech=True, has_sentiment=True, tech_signal_count=3,
-        veto_reasons=("ai_negative",),  # caller (sync_service / buy_criteria) 가 raw<0 검사 후 전달
+    s = p.compose_components(
+        ai_score=Decimal("10"), tech_score=Decimal("0"), sentiment_score=Decimal("10"),
+        has_ai=True, has_tech=False, has_sentiment=True,
+        tech_signal_count=0,
     )
-    # PR 3b: rise<0 → veto 발동 → composite=0, grade=D, label=NONE, veto_reasons=("ai_negative",)
-    assert score.composite_score == Decimal("0.00")
-    assert score.grade == "D"
-    assert score.recommendation_label == "NONE"
-    assert score.veto_reasons == ("ai_negative",)
+    assert s.is_recommended is False
+    assert s.recommendation_label == "NONE"
 
 
-def test_ai_score_from_normalized_matches_current_sync_service():
-    """sync_service 에서 normalized 1.0 → 10 (max)."""
+def test_score_raw_rise_pct_neutral_continuous():
+    """ADR 0006 §2.3: 컷오프 제거 — 중립/하락도 연속 점수."""
+    p = ScoringPolicy.load_default()
+    # rise 0% → normalized 0.5 → ai 5.0 (중립, 0점 아님)
+    assert p.normalize_rise_pct_to_score(Decimal("0")) == Decimal("5.00")
+    # rise +20% → normalized 1.0 → 10
+    assert p.normalize_rise_pct_to_score(Decimal("20")) == Decimal("10.00")
+    # rise -20% → normalized 0.0 → 0
+    assert p.normalize_rise_pct_to_score(Decimal("-20")) == Decimal("0.00")
+    # rise -10% → normalized 0.25 → 2.5 (하락도 0점 아닌 연속 저점수)
+    assert p.normalize_rise_pct_to_score(Decimal("-10")) == Decimal("2.50")
+
+
+def test_sentiment_score_from_raw_linear_mapping():
+    """ADR 0006 §2.3: sentiment 선형 매핑 — 중립 raw 0 → 5.0, ±0.35 → 10/0."""
+    p = ScoringPolicy.load_default()
+    assert p.sentiment_score_from_raw(Decimal("0")) == Decimal("5.00")
+    assert p.sentiment_score_from_raw(Decimal("0.35")) == Decimal("10.00")
+    assert p.sentiment_score_from_raw(Decimal("-0.35")) == Decimal("0.00")
+    # clip: 0.7 → clamp 0.35 → 10
+    assert p.sentiment_score_from_raw(Decimal("0.7")) == Decimal("10.00")
+    assert p.sentiment_score_from_raw(None) == Decimal("0")
+
+
+def test_ai_score_from_normalized_continuous():
+    """ADR 0006: 컷오프 제거 — normalized * max (연속)."""
     p = ScoringPolicy.load_default()
     assert p.ai_score_from_normalized(Decimal("1.0")) == Decimal("10.00")
-    assert p.ai_score_from_normalized(Decimal("0.5")) == Decimal("0")
-    assert p.ai_score_from_normalized(Decimal("0.75")) == Decimal("5.00")
+    assert p.ai_score_from_normalized(Decimal("0.5")) == Decimal("5.00")  # 중립 (0점 아님)
+    assert p.ai_score_from_normalized(Decimal("0.75")) == Decimal("7.50")
+    assert p.ai_score_from_normalized(Decimal("0.25")) == Decimal("2.50")  # 하락도 연속
     assert p.ai_score_from_normalized(None) == Decimal("0")
 
 

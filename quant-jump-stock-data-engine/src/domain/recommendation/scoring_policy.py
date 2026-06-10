@@ -44,15 +44,18 @@ class ScoringPolicy:
         return cls(spec)
 
     @classmethod
-    @lru_cache(maxsize=1)
-    def _cached_default(cls) -> "ScoringPolicy":
-        path = os.environ.get("SCORING_SPEC_PATH") or str(_FALLBACK_DEFAULT)
-        return cls.load(path)
+    @lru_cache(maxsize=4)
+    def _cached_default(cls, spec_path: str) -> "ScoringPolicy":
+        return cls.load(spec_path)
 
     @classmethod
     def load_default(cls) -> "ScoringPolicy":
-        """Cached default (SCORING_SPEC_PATH 우선 → fallback 경로)."""
-        return cls._cached_default()
+        """Cached default (SCORING_SPEC_PATH 우선 → fallback 경로).
+
+        경로를 캐시 키로 사용 — SCORING_SPEC_PATH 변경(테스트 격리/핫스왑)이 캐시에 반영된다.
+        """
+        path = os.environ.get("SCORING_SPEC_PATH") or str(_FALLBACK_DEFAULT)
+        return cls._cached_default(path)
 
     # ── invariant 검증 ─────────────────────────────────
     @staticmethod
@@ -67,9 +70,8 @@ class ScoringPolicy:
         if abs(w_sum - Decimal("1.0")) > Decimal("0.001"):
             raise SpecValidationError(f"axes weights sum must be 1.0; got {w_sum}")
 
-        derived = sum(
-            Decimal(str(axes[k]["weight"])) * Decimal(str(axes[k]["max"])) for k in axes
-        )
+        # ADR 0006: 각 축 0~1 정규화 후 가중합 → ×100. 따라서 composite_max = (Σ weight) * 100.
+        derived = w_sum * Decimal("100")
         declared = Decimal(str(spec.get("composite_max", 0)))
         if abs(derived - declared) > Decimal("0.001"):
             raise SpecValidationError(
@@ -90,6 +92,27 @@ class ScoringPolicy:
             raise SpecValidationError(
                 f"axes.ai.negative_policy must be 'zero' or 'veto'; got '{ai_negative_policy}'"
             )
+
+        # ADR 0006 §2.5: veto_threshold_pct 는 0 이하 (강한 하락 임계, raw rise %)
+        veto_threshold = (axes.get("ai") or {}).get("veto_threshold_pct")
+        if veto_threshold is not None:
+            try:
+                if Decimal(str(veto_threshold)) > 0:
+                    raise SpecValidationError(
+                        f"axes.ai.veto_threshold_pct must be <= 0; got {veto_threshold}"
+                    )
+            except (ValueError, TypeError) as e:
+                raise SpecValidationError(
+                    f"axes.ai.veto_threshold_pct must be numeric; got {veto_threshold!r}"
+                ) from e
+
+        # ADR 0006: missing_policy ∈ {zero, redistribute} (정의된 경우)
+        for k in axes:
+            mp = axes[k].get("missing_policy")
+            if mp is not None and mp not in {"zero", "redistribute"}:
+                raise SpecValidationError(
+                    f"axes.{k}.missing_policy must be 'zero' or 'redistribute'; got '{mp}'"
+                )
 
         # PR 5: macro_gates.vix (선택 — 미정의 시 gate 비활성)
         vix_gate = (spec.get("macro_gates") or {}).get("vix") or {}
@@ -147,6 +170,30 @@ class ScoringPolicy:
         """spec.axes.ai.negative_policy == 'veto' 여부. False (zero) 면 PR 1 동작 보존."""
         return (self.axes.get("ai") or {}).get("negative_policy") == "veto"
 
+    # ADR 0006 §2.5: veto 활성 시 "강한 하락"만 차단 (약한 하락은 ai 저점수로 흡수)
+    @property
+    def veto_threshold_pct(self) -> Decimal:
+        """veto 후보 임계 (raw rise %, 예: -10.0). 미정의 시 0 = 모든 하락 (PR 3b 동작)."""
+        t = (self.axes.get("ai") or {}).get("veto_threshold_pct")
+        return Decimal(str(t)) if t is not None else Decimal("0")
+
+    def should_veto_rise_pct(self, rise_pct: Decimal | None) -> bool:
+        """raw rise % 기준 veto 판정 — veto 활성 AND rise_pct < veto_threshold_pct."""
+        if rise_pct is None or not self.is_negative_veto_enabled():
+            return False
+        return rise_pct < self.veto_threshold_pct
+
+    def should_veto_normalized(self, normalized: Decimal | None) -> bool:
+        """0~1 normalized 상승확률 기준 veto 판정.
+
+        normalized = 0.5 + rise_pct/(2*cap) 이므로 동일 임계는
+        0.5 + veto_threshold_pct/(2*cap). (예: cap 20, 임계 -10% → 0.25 미만 veto)
+        """
+        if normalized is None or not self.is_negative_veto_enabled():
+            return False
+        threshold = Decimal("0.5") + self.veto_threshold_pct / (Decimal("2") * self.ai_cap_pct)
+        return normalized < threshold
+
     # PR 5: VIX 거시 gate
     @property
     def vix_gate(self) -> dict[str, Any] | None:
@@ -197,27 +244,39 @@ class ScoringPolicy:
     def _score_from_clipped_normalized(self, normalized: Decimal) -> Decimal:
         """0~1 normalized probability → AI score (0~max_ai).
 
-        공통 tail: 0.5 미만 → 0 (현행 보존, PR 3에서 veto). 이상 → (n-0.5)*2*max, quantize HALF_UP.
+        ADR 0006 §2.3: 0.5 컷오프 제거 — 선형 연속 매핑.
+        ai_score = clip(normalized, 0, 1) * ai_max.
+        (중립 0.5 → 5.0, rise_pct -20% → normalized 0 → 0점, 하락도 연속 저점수.)
         """
         clipped = max(Decimal("0"), min(Decimal("1"), normalized))
-        if clipped < Decimal("0.5"):
-            return Decimal("0")
         ai_max = Decimal(str(self.axes["ai"]["max"]))
-        return ((clipped - Decimal("0.5")) * Decimal("2") * ai_max).quantize(_QTZ_2, rounding=ROUND_HALF_UP)
+        return (clipped * ai_max).quantize(_QTZ_2, rounding=ROUND_HALF_UP)
+
+    # ── Public: raw % → 0~1 normalized 상승확률 ─────────
+    def normalized_from_rise_pct(self, rise_pct: Decimal | None) -> Decimal | None:
+        """raw rise percentage (%, 예: 16.25) → 0~1 normalized 상승확률.
+
+        normalized = clip(0.5 + rise_pct / (2 * cap), 0, 1)
+        (0% → 0.5 중립, +cap → 1.0 최대 강세, -cap → 0.0 최대 약세.)
+        sync_service 의 rise_probability 저장값도 이 산식 — /40 하드코딩 금지
+        (cap_threshold_pct 변경 시 본 메서드만 따라가면 됨).
+        """
+        if rise_pct is None:
+            return None
+        normalized = Decimal("0.5") + rise_pct / (Decimal("2") * self.ai_cap_pct)
+        return max(Decimal("0"), min(Decimal("1"), normalized))
 
     # ── Public: raw % → AI 점수 변환 (리뷰 C2) ──────────
     def normalize_rise_pct_to_score(self, rise_pct: Decimal | None) -> Decimal:
         """raw rise percentage (%, 예: 20.0) → AI score (0~max_ai).
 
-        현행 산식 100% 보존:
-          normalized = clip(0.5 + rise_pct / (2 * cap), 0, 1)
-          if normalized < 0.5 → 0  (음수 예측은 0점. PR 3 에서 veto 로 변경)
-          else → (normalized - 0.5) * 2 * max_ai
+        ADR 0006 §2.3 선형 연속 매핑 (0.5 컷오프 제거):
+          ai_score = normalized_from_rise_pct(rise_pct) * max_ai
+        (중립 0% → 5.0, +20% → 10, -20% → 0. 하락도 연속 저점수.)
         """
-        if rise_pct is None:
+        normalized = self.normalized_from_rise_pct(rise_pct)
+        if normalized is None:
             return Decimal("0")
-        cap = self.ai_cap_pct
-        normalized = Decimal("0.5") + rise_pct / (Decimal("2") * cap)
         return self._score_from_clipped_normalized(normalized)
 
     # ── Public: tech indicators → tech score ─────────────
@@ -260,15 +319,23 @@ class ScoringPolicy:
             return Decimal("0")
         return self._score_from_clipped_normalized(Decimal(str(normalized)))
 
-    # ── Public: sentiment (-1~+1) → sentiment score ─────
+    # ── Public: sentiment (raw) → sentiment score ─────
     def sentiment_score_from_raw(self, sentiment: Decimal | None) -> Decimal:
+        """raw sentiment (Alpha Vantage, 실범위 ±raw_clip) → sentiment score (0~max).
+
+        ADR 0006 §2.3: 선형 매핑 — 중립(raw 0)은 중간 점수.
+          score = (clip(raw, -clip, +clip) + clip) / (2*clip) * max
+        (raw 0 → max/2 = 5.0/중립, +0.35 → 10, -0.35 → 0.) v<=0 → 0 컷오프 제거.
+        """
         if sentiment is None:
             return Decimal("0")
+        cfg = self.axes["sentiment"]
+        raw_clip = Decimal(str(cfg.get("raw_clip", "0.35")))
+        sent_max = Decimal(str(cfg["max"]))
         v = Decimal(str(sentiment))
-        if v <= Decimal("0"):
-            return Decimal("0")
-        sent_max = Decimal(str(self.axes["sentiment"]["max"]))
-        return (v * sent_max).quantize(_QTZ_2, rounding=ROUND_HALF_UP)
+        clipped = max(-raw_clip, min(raw_clip, v))
+        normalized = (clipped + raw_clip) / (Decimal("2") * raw_clip)  # 0~1
+        return (normalized * sent_max).quantize(_QTZ_2, rounding=ROUND_HALF_UP)
 
     # ── Public: compose components → Score ──────────────
     def compose_components(
@@ -285,42 +352,62 @@ class ScoringPolicy:
     ) -> Score:
         """이미 normalized 된 component score 들로부터 Score 계산.
 
+        ADR 0006 (0~100 재설계):
+          - 각 축 0~1 정규화(score/max) 후 present 축만 weight 가중합.
+          - 결측 축 제외 후 남은 weight 를 합=1 로 재정규화 → ×100 (composite_max=100).
+          - axis_contributions: present 축별 기여 점수 보존 (XAI §2.9).
+          - score_coverage: present 축들의 원본 weight 합 (재정규화 전).
+          - coverage guard (§2.4): has_tech=False 거나 (available_axes<2 AND coverage<0.8) 면 추천 불가.
+
         PR 3b (2026-05-22): veto_reasons 비어있지 않고 spec.negative_policy=='veto' 면
         composite_score=0, grade='D', label='NONE' 강제. caller 가 raw 신호 부호 판단해서 전달.
-
-        missing 시 0점 처리 (재분배 없음, PR 4 에서 검토).
         """
         ax = self.axes
         w_ai = Decimal(str(ax["ai"]["weight"]))
         w_tech = Decimal(str(ax["technical"]["weight"]))
         w_sent = Decimal(str(ax["sentiment"]["weight"]))
+        max_ai = Decimal(str(ax["ai"]["max"]))
+        max_tech = Decimal(str(ax["technical"]["max"]))
+        max_sent = Decimal(str(ax["sentiment"]["max"]))
 
         effective_ai = ai_score if has_ai else Decimal("0")
         effective_tech = tech_score if has_tech else Decimal("0")
         effective_sent = sentiment_score if has_sentiment else Decimal("0")
 
-        composite = (
-            w_ai * effective_ai + w_tech * effective_tech + w_sent * effective_sent
-        )
+        # present 축: (원본 weight, 정규화값 0~1, 축 이름)
+        present_axes: list[tuple[str, Decimal, Decimal]] = []
+        if has_ai:
+            present_axes.append(("ai", w_ai, ai_score / max_ai if max_ai > 0 else Decimal("0")))
+        if has_tech:
+            present_axes.append(("tech", w_tech, tech_score / max_tech if max_tech > 0 else Decimal("0")))
+        if has_sentiment:
+            present_axes.append(("sentiment", w_sent, sentiment_score / max_sent if max_sent > 0 else Decimal("0")))
+
+        # 결측 재정규화: 남은 weight 합으로 나눠 합=1 보장.
+        weight_present = sum((w for _, w, _ in present_axes), Decimal("0"))
+        score_coverage = weight_present  # 원본 weight 합 (재정규화 전) = 커버리지
+
+        composite = Decimal("0")
+        axis_contributions: dict[str, Decimal] = {}
+        if weight_present > 0:
+            for name, w, norm in present_axes:
+                contrib = (w / weight_present) * norm * Decimal("100")
+                axis_contributions[name] = contrib.quantize(_QTZ_2, rounding=ROUND_HALF_UP)
+                composite += contrib
+
         composite_max = self.composite_max
 
         # PR 3b: veto 발동 시 composite 강제 0. spec 의 negative_policy 가 veto 인 경우만 실행 (rollback safety).
         veto_active = bool(veto_reasons) and self.is_negative_veto_enabled()
         if veto_active:
             composite = Decimal("0")
+            axis_contributions = {}
 
         confidence = (
             (composite / composite_max).quantize(Decimal("0.001"), rounding=ROUND_HALF_UP)
             if composite_max > 0
             else Decimal("0")
         )
-
-        if veto_active:
-            grade = "D"
-            label = "NONE"
-        else:
-            grade = self.grade_for_composite(composite)
-            label = self._label_from_confidence_and_signals(confidence, tech_signal_count)
 
         missing = tuple(
             name
@@ -331,6 +418,26 @@ class ScoringPolicy:
             ]
             if not present
         )
+
+        # coverage guard (ADR 0006 §2.4): tech 없으면 추천 불가.
+        # is_recommended = has_tech AND (available_axes >= 2 OR coverage >= 0.8)
+        available_axes = len(present_axes)
+        is_recommended = has_tech and (
+            available_axes >= 2 or score_coverage >= Decimal("0.8")
+        )
+        if veto_active:
+            is_recommended = False
+
+        if veto_active:
+            grade = "D"
+            label = "NONE"
+        else:
+            grade = self.grade_for_composite(composite)
+            if is_recommended:
+                label = self.label_from_confidence_and_signals(confidence, tech_signal_count)
+            else:
+                # 추천 불가 → label NONE 강제 (점수/grade 는 노출).
+                label = "NONE"
 
         # spec.negative_policy=='zero' 일 때는 caller 가 veto_reasons 전달해도 무시 (rollback safety).
         # 즉 zero 모드에선 항상 veto_reasons=() 반환.
@@ -348,6 +455,9 @@ class ScoringPolicy:
             missing_axes=missing,
             veto_reasons=final_veto,
             warnings=warnings,
+            axis_contributions=axis_contributions,
+            score_coverage=score_coverage.quantize(Decimal("0.001"), rounding=ROUND_HALF_UP),
+            is_recommended=is_recommended,
         )
 
     # score_from_raw_signals 헬퍼는 cleanup PR (2026-05-22) 에서 제거됨.
@@ -361,16 +471,21 @@ class ScoringPolicy:
                 return g
         return "D"
 
-    def _label_from_confidence_and_signals(
+    def label_from_confidence_and_signals(
         self, confidence: Decimal, tech_signals: int
     ) -> str:
-        """본 PR 은 현행 RecommendationGrade.from_scores() 매핑 100% 보존."""
+        """confidence(0~1) → 추천 라벨 key (STRONG/RECOMMEND/WATCH/NONE).
+
+        임계 SSoT = spec.recommendation_labels (ADR 0006 §2.8 — 하드코딩 금지).
+        RecommendationGrade.from_scores() 가 본 메서드에 위임한다.
+        tech_signals 는 게이트가 아니다(2026-06-10 재보정 — tech 는 composite 50% weight 로
+        이미 반영, 이중 반영 금지). 파라미터는 향후 확장 예약으로만 유지.
+        """
         labels = self._spec["recommendation_labels"]
         for key in ["STRONG", "RECOMMEND", "WATCH"]:
             cfg = labels.get(key) or {}
             min_c = Decimal(str(cfg.get("min_confidence", 0)))
-            min_s = cfg.get("min_tech_signals", 0)
-            if confidence >= min_c and tech_signals >= min_s:
+            if confidence >= min_c:
                 return key
         return "NONE"
 

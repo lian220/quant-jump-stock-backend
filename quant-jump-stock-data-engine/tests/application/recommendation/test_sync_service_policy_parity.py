@@ -3,18 +3,18 @@ from decimal import Decimal
 from domain.recommendation.scoring_policy import ScoringPolicy
 
 
-def test_compose_parity_with_legacy_sync_formula():
-    """현행 sync_service:
-       composite = 0.3*ai_score + 0.4*tech_score + 0.3*sentiment_score
-       (AI 10, Tech 3.5, Sent 10 scale)
+def test_compose_parity_with_adr0006_formula():
+    """ADR 0006 sync_service:
+       composite = (0.3*(ai/10) + 0.5*(tech/3.5) + 0.2*(sent/10)) * 100
+       (모든 축 present, 0~100 스케일).
     ScoringPolicy 가 동일한 결과를 내야 함."""
     p = ScoringPolicy.load_default()
     cases = [
         # (ai, tech, sent, expected_composite)
-        (Decimal("10"), Decimal("3.5"), Decimal("5"), Decimal("5.90")),
-        (Decimal("0"),  Decimal("3.5"), Decimal("0"), Decimal("1.40")),
-        (Decimal("5"),  Decimal("0"),   Decimal("3"), Decimal("2.40")),
-        (Decimal("10"), Decimal("3.5"), Decimal("10"), Decimal("7.40")),
+        (Decimal("10"), Decimal("3.5"), Decimal("5"), Decimal("90.00")),
+        (Decimal("0"),  Decimal("3.5"), Decimal("0"), Decimal("50.00")),
+        (Decimal("5"),  Decimal("0"),   Decimal("3"), Decimal("21.00")),
+        (Decimal("10"), Decimal("3.5"), Decimal("10"), Decimal("100.00")),
     ]
     for ai, tech, sent, expected in cases:
         s = p.compose_components(

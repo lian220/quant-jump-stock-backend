@@ -1,24 +1,19 @@
 """
 RecommendationGrade - Slack 리포트 표시용 추천 등급 (Domain Layer).
 
-PR 1+2 가 산식 SSoT 를 `ScoringPolicy` + `scoring_spec.yaml` 로 통합 후,
-sync_service 는 `Score.grade` (문자열 "S"/"A"/"B"/"C"/"D") 를 직접 PG 에 저장.
-별도 `CompositeGrade` Python enum 은 불필요 → cleanup PR 에서 제거 (2026-05-22).
+현재 enum 의 정적 책임은 priority(정렬 키)뿐이다 — label/emoji/판정 임계는 전부
+`ScoringPolicy`(scoring_spec.yaml SSoT) lazy 위임. 호출처는 slack_notifier(표시 순회)와
+buy_criteria(NONE 비교/정렬). 완전 제거는 두 호출처 정리와 함께 별도 cleanup 으로 수행.
 """
+from decimal import Decimal
 from enum import Enum
 from typing import Any, Dict
 
 
-def _spec_label(key: str) -> str:
-    """recommendation_labels[key].label — ScoringPolicy lazy 로드."""
-    # 순환 import 방지: 함수 내부 import
+def _policy():
+    """ScoringPolicy lazy 로드 — 순환 import 방지를 위한 단일 wrapper."""
     from domain.recommendation.scoring_policy import ScoringPolicy
-    return ScoringPolicy.load_default().label_metadata(key)["label"]
-
-
-def _spec_emoji(key: str) -> str:
-    from domain.recommendation.scoring_policy import ScoringPolicy
-    return ScoringPolicy.load_default().label_metadata(key)["emoji"]
+    return ScoringPolicy.load_default()
 
 
 class RecommendationGrade(Enum):
@@ -42,29 +37,23 @@ class RecommendationGrade(Enum):
 
     @property
     def label(self) -> str:
-        return _spec_label(self.name)
+        return _policy().label_metadata(self.name)["label"]
 
     @property
     def emoji(self) -> str:
-        return _spec_emoji(self.name)
+        return _policy().label_metadata(self.name)["emoji"]
 
     @staticmethod
     def from_scores(scores: Dict[str, Any]) -> "RecommendationGrade":
         """
-        confidence + tech_signals 기반 추천 등급 결정.
+        confidence 기반 추천 등급 결정.
 
-        강력 추천: confidence >= 65% AND tech_signals >= 3
-        추천:       confidence >= 45% AND tech_signals >= 2
-        관심 종목:  confidence >= 30% AND tech_signals >= 1
-        추천 없음:  그 외
+        임계 SSoT = scoring_spec.yaml.recommendation_labels — ScoringPolicy 위임
+        (ADR 0006 §2.8: 점수 기준 하드코딩 금지. 과거 0.65/0.45/0.30 하드코딩이
+        yaml 과 중복 정의되어 드리프트하던 결함 제거, 2026-06-10).
         """
-        confidence = scores.get("confidence", 0)
-        tech_signals = scores.get("tech_signals", 0)
-
-        if confidence >= 0.65 and tech_signals >= 3:
-            return RecommendationGrade.STRONG
-        if confidence >= 0.45 and tech_signals >= 2:
-            return RecommendationGrade.RECOMMEND
-        if confidence >= 0.30 and tech_signals >= 1:
-            return RecommendationGrade.WATCH
-        return RecommendationGrade.NONE
+        key = _policy().label_from_confidence_and_signals(
+            Decimal(str(scores.get("confidence", 0))),
+            scores.get("tech_signals", 0),
+        )
+        return RecommendationGrade[key]

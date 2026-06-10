@@ -167,8 +167,12 @@ def test_sync_pipeline_e2e_produces_valid_score(sync_service_with_mongo_fixture)
         f"composite mismatch: pipeline={score.composite_score} vs policy={expected.composite_score}"
     )
     assert score.grade == expected.grade
-    assert score.composite_max == expected.composite_max == Decimal("7.40")
+    assert score.composite_max == expected.composite_max == Decimal("100.00")
     assert score.recommendation_label == expected.recommendation_label
+    # ADR 0006: 새 필드 존재 검증
+    assert score.score_coverage == Decimal("1.000")  # 3축 모두 present
+    assert score.is_recommended is True
+    assert set(score.axis_contributions.keys()) == {"ai", "tech", "sentiment"}
 
     # 4. tech signal 3개 인식 (sma cross + rsi<threshold + macd buy)
     assert row["tech_signals_count"] == 3
@@ -197,6 +201,9 @@ def test_sync_pipeline_missing_sentiment_still_scores(sync_service_with_mongo_fi
 
     assert isinstance(score, Score)
     assert "sentiment" in score.missing_axes
-    # ai + tech 만 기여: 0.3*7.0 + 0.4*3.5 = 2.1 + 1.4 = 3.5
-    assert score.composite_score == Decimal("3.50")
-    assert score.grade == "B"
+    # ADR 0006 재정규화: ai norm 0.85, tech norm 1.0. w_ai=0.375, w_tech=0.625.
+    # composite = (0.375*0.85 + 0.625*1.0)*100 = (0.31875 + 0.625)*100 = 94.375 → 94.38
+    assert score.composite_score == Decimal("94.38")
+    assert score.grade == "S"
+    assert score.score_coverage == Decimal("0.800")
+    assert score.is_recommended is True  # available_axes=2
