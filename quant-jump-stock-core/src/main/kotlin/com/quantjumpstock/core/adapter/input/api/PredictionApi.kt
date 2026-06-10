@@ -40,7 +40,7 @@ interface PredictionApi {
         date: LocalDate?,
 
         @RequestParam(required = false)
-        @Parameter(description = "최소 Composite Score 비율 (0.0 ~ 1.0, 기본값 0.0). Score × 7.5로 변환됨")
+        @Parameter(description = "최소 Composite Score 비율 (0.0 ~ 1.0, 기본값 0.0). × 100으로 0~100 필터 변환 (ADR 0006)")
         minConfidence: Double?
     ): ResponseEntity<Map<String, Any>>
 

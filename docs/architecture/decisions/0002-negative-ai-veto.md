@@ -2,6 +2,7 @@
 
 > 작성: 2026-05-22 (PR 3a)
 > **Accepted: 2026-05-22 (PR 3b 머지)**
+> ⚠️ **Status: Superseded (negative veto 부분) by [ADR 0006](./0006-scoring-model-redesign.md) (2026-06-07)** — rise_pct<0 전량 veto → rise_pct<-10% 강한 하락만 veto로 완화. 새 0~100 점수 구조에서 ai축 선형 매핑이 coherence 게이트 역할을 대체.
 > 관련 PR: #111 (3a schema), #(3b negative veto), TBD (3c disagreement)
 > 관련 plan: `docs/plans/점수모델_중앙화_구현계획.md` §1 PR 분리
 

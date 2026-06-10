@@ -4,24 +4,26 @@ RecommendationSyncService - MongoDB → PostgreSQL 동기화
 MongoDB에 저장된 AI 예측, 감정 분석, 기술적 분석 결과를 통합하여
 PostgreSQL prediction_results 테이블에 저장한다.
 
-Composite Score = 0.3 × ai + 0.4 × tech + 0.3 × sentiment (동적 가중치 재분배, 최대 ~7.4)
-  - AI score:        0~10  (rise_probability_normalized × 10)
-    * rise_probability_normalized = 0.5 + rise_pct/40  (0%→0.5, +20%→1.0, -20%→0.0)
+ADR 0006 (0~100 재설계): 각 축 0~1 정규화 후 weight 가중합 → ×100.
+  composite = (Σ_present w_renorm_k × (score_k / max_k)) × 100   (composite_max=100)
+  - weight: tech 0.5 / ai 0.3 / sentiment 0.2 (합=1.0)
+  - 결측 축은 제외 + 남은 weight 재정규화 (0점 벌점 금지, §2.4)
+  - AI score:        0~10  (normalized × 10, 컷오프 제거 — 중립 0.5→5.0, 하락도 연속)
   - Tech score:      0~3.5 (골든크로스 1.5 + RSI<threshold 1.0 + MACD매수 1.0)
-    * RSI threshold: RecommendationCriteriaSettings.rsi_threshold (기본 70)
-  - Sentiment score: 0~10  ((sentiment + 1) / 2 × 10)
-  - 최대값: 0.3×10 + 0.4×3.5 + 0.3×10 = 3.0 + 1.4 + 3.0 = 7.4
+  - Sentiment score: 0~10  ((clip(raw,±0.35)+0.35)/0.7 × 10, 중립 raw 0→5.0)
 
-Grade 기준: S≥6.0, A≥4.5, B≥3.0, C≥1.5, D<1.5
-(banbu-stocktrading 원본 기준, rise_prob 25% 기준 composite ≈ 7.5)
+산식/등급/임계는 scoring_spec.yaml SSoT. grade·is_recommended 는 ScoringPolicy 가 판정
+(하드코딩 금지). is_recommended = coverage guard (has_tech + available_axes≥2 또는 coverage≥0.8).
 """
 
+import json
 import logging
 from typing import Dict, List, Optional, Any
 from decimal import Decimal
 from psycopg2.extras import execute_values
 
 from core.database import MongoDB, PostgreSQL
+from domain.recommendation.score import Score
 from domain.recommendation.scoring_policy import ScoringPolicy
 
 logger = logging.getLogger(__name__)
@@ -117,13 +119,11 @@ class RecommendationSyncService:
                 predictions = r.get("predictions", {})
                 rise_pct = predictions.get("rise_probability")  # 상승 예상 % (e.g. 16.25)
 
-                # rise_probability (%) → 0~1 정규화 (Decimal end-to-end, PR 1 일관성)
-                # 0% = 0.5 (중립), +20% = 1.0 (최대 강세), -20% = 0.0 (최대 약세)
+                # rise_probability (%) → 0~1 정규화 — 산식 SSoT = ScoringPolicy (하드코딩 /40 제거)
                 rise_prob_normalized = None
                 if rise_pct is not None:
-                    rise_pct_d = Decimal(str(rise_pct))
-                    normalized = Decimal("0.5") + rise_pct_d / Decimal("40")
-                    rise_prob_normalized = float(max(Decimal("0"), min(Decimal("1"), normalized)))
+                    normalized = self._policy.normalized_from_rise_pct(Decimal(str(rise_pct)))
+                    rise_prob_normalized = float(normalized)
 
                 output[r["ticker"]] = {
                     "predicted_price": predictions.get("predicted_future_price"),
@@ -201,10 +201,9 @@ class RecommendationSyncService:
                 actual = pred.get("actual_price")
                 rise = pred.get("rise_probability")
                 if rise is None and predicted is not None and actual is not None and actual != 0:
-                    ratio = (float(predicted) - float(actual)) / float(actual)
-                    # _fetch_stock_analysis_results와 동일 스케일: 0.5 + rise_pct/40.0
-                    # ratio는 소수 (e.g., 0.1 = 10%), rise_pct는 % 단위이므로 ratio*100/40 = ratio*2.5
-                    rise = max(0.0, min(1.0, 0.5 + ratio * 2.5))
+                    # ratio 는 소수(0.1 = 10%) → % 로 환산 후 산식 SSoT(ScoringPolicy) 위임
+                    ratio = (Decimal(str(predicted)) - Decimal(str(actual))) / Decimal(str(actual))
+                    rise = float(self._policy.normalized_from_rise_pct(ratio * Decimal("100")))
                 out[ticker] = {
                     "predicted_price": float(predicted) if predicted is not None else None,
                     "rise_probability": float(rise) if rise is not None else None,
@@ -362,9 +361,8 @@ class RecommendationSyncService:
                 predicted_d = Decimal(str(ai["predicted_price"]))
                 current_d = Decimal(str(current_price))
                 ratio = (predicted_d - current_d) / current_d
-                # _fetch_stock_analysis_results와 동일 스케일: 0.5 + rise_pct/40 (ratio×2.5 ≈ rise_pct/40)
-                normalized = Decimal("0.5") + ratio * Decimal("2.5")
-                rise_probability = float(max(Decimal("0"), min(Decimal("1"), normalized)))
+                # ratio(소수) → %(×100) — 산식 SSoT = ScoringPolicy (하드코딩 ×2.5 제거)
+                rise_probability = float(self._policy.normalized_from_rise_pct(ratio * Decimal("100")))
 
             # ScoringPolicy SSoT 위임 (PR 1)
             ai_score = self._policy.ai_score_from_normalized(
@@ -381,14 +379,12 @@ class RecommendationSyncService:
             has_sentiment = sent_raw is not None
             has_tech = bool(tech)
 
-            # PR 3b (2026-05-22): negative AI veto.
+            # PR 3b (2026-05-22) + ADR 0006 §2.5: negative AI veto.
             # rise_probability 는 0~1 normalized (raw <0 → normalized <0.5).
-            # spec.negative_policy=='veto' 면 compose_components 가 composite=0 강제.
+            # veto 활성 시 강한 하락(veto_threshold_pct, 기본 -10%)만 차단 — 약한 하락은 ai 저점수 흡수.
             veto_reasons: tuple[str, ...] = ()
-            if (
-                rise_probability is not None
-                and Decimal(str(rise_probability)) < Decimal("0.5")
-                and self._policy.is_negative_veto_enabled()
+            if self._policy.should_veto_normalized(
+                Decimal(str(rise_probability)) if rise_probability is not None else None
             ):
                 veto_reasons = ("ai_negative",)
 
@@ -442,7 +438,7 @@ class RecommendationSyncService:
                 "composite_score": float(composite_score),
                 "composite_grade": grade,
                 "is_recommended": self._determine_recommended(
-                    composite_score, grade, price_recommendation
+                    score_result, price_recommendation
                 ),
                 "recommendation_reason": reason,
                 # 🆕 Phase 6.5: 가격 메트릭
@@ -456,6 +452,11 @@ class RecommendationSyncService:
                 # 🆕 PR 3a (2026-05-22): 정책 차단 사유 + 비차단 경고 (PR 3b 부터 채워짐)
                 "veto_reasons": list(score_result.veto_reasons) or None,
                 "warnings": list(score_result.warnings) or None,
+                # 🆕 ADR 0006 Phase 2 (2026-06-07): XAI 데이터 브릿지
+                "axis_contributions": json.dumps(
+                    {k: float(v) for k, v in score_result.axis_contributions.items()}
+                ),
+                "score_coverage": float(score_result.score_coverage),
             })
 
         # Composite Score 내림차순 정렬
@@ -484,32 +485,32 @@ class RecommendationSyncService:
 
     def _determine_recommended(
         self,
-        composite_score: Decimal,
-        grade: str,
+        score: "Score",
         price_recommendation: Optional[str] = None,
     ) -> bool:
         """
-        추천 여부 판정 (ADR 0001 진정성 규칙 + verdict gate)
+        추천 여부 판정 (ADR 0006 coverage guard + verdict gate)
 
         두 게이트 통과해야 is_recommended=True:
-        1. composite ≥ 3.0 (grade B 이상)
+        1. score.is_recommended (ADR 0006 §2.4 coverage guard):
+           has_tech AND (available_axes >= 2 OR score_coverage >= 0.8) AND not veto.
+           (0~100 재설계 후 점수 임계 하드코딩 제거 — ScoringPolicy 가 판정.)
         2. price_recommendation ∉ {매도, 강력매도}
 
         verdict gate (#2)의 이유:
         - composite_score 산식과 price_recommendation 산식이 별도 결정
-        - 같은 입력에서 "강력매수 grade A" + "매도 priceRec" 동시 출력 가능
+        - 같은 입력에서 "강력매수 grade S" + "매도 priceRec" 동시 출력 가능
         - 모순 라벨 차단을 위해 매도 신호 시 추천 자동 제외 (Drucker/Doumont 지적)
 
         Args:
-            composite_score: 종합 점수 (0~7.4)
-            grade: 등급 (S, A, B, C, D)
+            score: ScoringPolicy 가 산출한 Score (is_recommended coverage guard 포함)
             price_recommendation: 가격 추천 (강력매수/매수/보유/매도)
 
         Returns:
             추천 여부 (True/False)
         """
-        # Gate 1: grade B 이상
-        if composite_score < Decimal("3.0"):
+        # Gate 1: coverage guard (ScoringPolicy SSoT — 하드코딩 임계 제거)
+        if not score.is_recommended:
             return False
         # Gate 2: 매도 신호면 추천 안 함 (모순 차단)
         if price_recommendation in ("매도", "강력매도", "SELL", "STRONG_SELL"):
@@ -552,6 +553,7 @@ class RecommendationSyncService:
             current_price, target_price, upside_percent, price_recommendation,
             recommendation_label, effective_prediction_date,
             veto_reasons, warnings,
+            axis_contributions, score_coverage, formula_version,
             updated_at
         ) VALUES %s
         ON CONFLICT (ticker, analysis_date)
@@ -584,10 +586,19 @@ class RecommendationSyncService:
             effective_prediction_date = EXCLUDED.effective_prediction_date,
             veto_reasons = EXCLUDED.veto_reasons,
             warnings = EXCLUDED.warnings,
+            axis_contributions = EXCLUDED.axis_contributions,
+            score_coverage = EXCLUDED.score_coverage,
+            formula_version = EXCLUDED.formula_version,
             updated_at = CURRENT_TIMESTAMP
         """
 
-        row_template = "(" + ",".join(["%s"] * 30) + ", CURRENT_TIMESTAMP)"
+        # 컬럼 순서: 원본 30개(...veto_reasons, warnings) + axis_contributions(JSON→JSONB)
+        #            + score_coverage + formula_version.
+        # axis_contributions(31번째)만 ::jsonb 캐스팅, score_coverage(32)/formula_version(33)은 일반 값.
+        row_template = (
+            "(" + ",".join(["%s"] * 30) + ", %s::jsonb, %s, %s, CURRENT_TIMESTAMP)"
+        )
+        _formula_version = self._policy.formula_version
         rows = [
             (
                 data["ticker"], data["stock_name"], analysis_date,
@@ -602,6 +613,8 @@ class RecommendationSyncService:
                 data["current_price"], data["target_price"], data["upside_percent"], data["price_recommendation"],
                 data.get("recommendation_label"), data.get("effective_prediction_date"),
                 data.get("veto_reasons"), data.get("warnings"),
+                data.get("axis_contributions", "{}"), data.get("score_coverage", 1.0),
+                _formula_version,
             )
             for data in merged_data
         ]

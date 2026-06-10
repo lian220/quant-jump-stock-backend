@@ -32,7 +32,7 @@ interface PredictionResultRepositoryPort {
      * 특정 날짜, Composite Score 이상의 매수 신호 조회
      *
      * @param date 조회 날짜
-     * @param minCompositeScore 최소 Composite Score (0~7.5)
+     * @param minCompositeScore 최소 Composite Score (0~100, ADR 0006)
      */
     fun findHighConfidenceBuySignals(date: LocalDate, minCompositeScore: Double): List<PredictionResult>
 

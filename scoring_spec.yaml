@@ -1,75 +1,87 @@
-# 점수 모델 SSoT — PR 1 (현행 행동 보존형 중앙화)
+# 점수 모델 SSoT — ADR 0006 0~100 재설계 (Phase 1)
 # 본 파일은 backend repo 루트. Data Engine 이미지 빌드 시 COPY 됨.
 # Python ScoringPolicy 가 SCORING_SPEC_PATH env 또는 default 경로로 로드.
-# 본 PR 에서는 현행 가중치/임계/cap 값과 100% 일치 (regression 0 변화 목표).
-# 행동 변경 (disagreement/veto/redistribute/VIX) 은 PR 3/4/5 에서 적용.
+# 산식: 각 축 0~1 정규화 → weight 가중합(합=1.0) → ×100. 결측 축은 제외 후 weight 재정규화.
 
-spec_version: "1.2.0"        # PR 5 (2026-05-22): macro_gates 섹션 추가 (산식 외부 gate)
-formula_version: "1.1.0"     # 산식 자체는 PR 3b 그대로 (PR 5 는 외부 gate 라 formula 미변경)
+spec_version: "2.1.0"        # ADR 0006 사후 검토 반영 (veto 임계·라벨/필터 재보정)
+formula_version: "2.0.0"     # 산식 자체 변경 (0~100, 선형매핑, 결측 재정규화)
 # 변경 이력:
 #   spec 1.0.0 / formula 1.0.0 — PR 1 SSoT 중앙화 (현행 보존, 2026-05-21)
 #   spec 1.1.0 / formula 1.1.0 — PR 3b negative AI veto: rise_pct<0 → composite=0 (2026-05-22)
 #   spec 1.2.0 / formula 1.1.0 — PR 5 VIX macro gate (산식 외부, formula 보존, 2026-05-22)
+#   spec 2.0.0 / formula 2.0.0 — ADR 0006 0~100 재설계 (선형매핑·결측 재정규화·veto 비활성, 2026-06-07)
+#   spec 2.1.0 / formula 2.0.0 — 검토 반영: veto_threshold_pct(-10%) 신설, 라벨 임계 등급 정렬
+#                                (0.77/0.68/0.58), min_composite_score 68 (B 경계 정합) (2026-06-10)
 description: |
-  AI 예측 + 뉴스 감정 + 기술 분석 가중 합산. 현행 산식 100% 일치 보존.
+  AI 예측 + 뉴스 감정 + 기술 분석. 각 축 0~1 정규화 후 weight 가중합 → 0~100.
+  결측 축은 제외하고 남은 weight 를 합=1 로 재정규화 (벌점 0점 금지).
   본 spec 변경 시 quant-jump-stock-data-engine 테스트 (golden + property +
   regression) 재실행 필수.
 
 consumers:
   - python_data_engine
-# PR 2 이후 kotlin_core_api 추가 — contract 변경 PR 강제
+  - kotlin_core_api   # ADR 0006 §2.8: 저장된 0~100 composite/grade 전달, 재계산 금지
 
 axes:
   ai:
     weight: 0.3
     max: 10.0
     cap_strategy: fixed_pct
-    cap_threshold_pct: 20.0       # 현행 유지 (vol_normalized 는 PR 후속)
-    missing_policy: zero           # 현행 유지
-    negative_policy: veto          # PR 3b (2026-05-22): rise_pct<0 → composite=0 + grade=D + label=NONE. rollback: zero
+    cap_threshold_pct: 20.0       # 현행 유지 (vol_normalized 는 후속)
+    missing_policy: redistribute   # ADR 0006 §2.4: 결측 축 제외 후 weight 재정규화
+    negative_policy: zero          # ADR 0006 §2.5: veto 기본 비활성 (1차). 하락은 ai 저점수로 흡수. rollback: veto
+    veto_threshold_pct: -10.0      # ADR 0006 §2.5: veto 활성 시 rise_pct < -10% 강한 하락만 차단.
+                                   # 현재 미활성(negative_policy=zero) — veto 전환 시 자동 적용되는 후보값 (hit rate >= 60% 검증 후 확정)
   technical:
-    weight: 0.4
+    weight: 0.5
     max: 3.5
     components:
       golden_cross: 1.5
       rsi_below_threshold: 1.0
       macd_buy_signal: 1.0
     rsi_threshold: 70
-    missing_policy: zero
+    missing_policy: redistribute
   sentiment:
-    weight: 0.3
+    weight: 0.2
     max: 10.0
-    missing_policy: zero           # 현행 유지 (PR 4 에서 redistribute 검토)
+    raw_clip: 0.35                 # ADR 0006 §2.3: 선형매핑 분모 0.7 = 2*raw_clip (Alpha Vantage 실범위 ±0.35)
+    missing_policy: redistribute
 
-composite_max: 7.4                 # derived: 0.3*10 + 0.4*3.5 + 0.3*10. load 시 검증
+composite_max: 100.0               # derived: (Σ weight) * 100 = 1.0 * 100. load 시 검증
 
+# ADR 0006 §2.6 percentile 기반 임계. 운영 분포로 재보정 (yaml SSoT, 하드코딩 금지).
+# 재보정 근거: 2026-05-12~06-04 11거래일 × 42종목 = 462표본, mean 66.0 / std 15.1.
+#   percentile: p90=82.1(S) / p75=76.6(A) / p50=67.8(B) / p25=57.6(C).
+#   결과 분포: S 11% / A 13% / B 25% / C 24% / D 27% ("상위 ~10%=S" 충족).
+#   표본 누적되면 재산출 권장.
 grades:
-  S: { min: 6.0, label: "매우 강한 매수", color: emerald }
-  A: { min: 4.5, label: "강한 매수",     color: cyan }
-  B: { min: 3.0, label: "보통 매수",     color: yellow }
-  C: { min: 1.5, label: "약한 매수",     color: orange }
-  D: { min: 0.0, label: "신호 없음",     color: red }
+  S: { min: 82.0, label: "매우 강한 매수", color: emerald }
+  A: { min: 77.0, label: "강한 매수",     color: cyan }
+  B: { min: 68.0, label: "보통 매수",     color: yellow }
+  C: { min: 58.0, label: "약한 매수",     color: orange }
+  D: { min: 0.0,  label: "신호 없음",     color: red }
 
-# Slack 표시 라벨 — 본 PR 은 현행 RecommendationGrade.from_scores() 매핑 100% 보존
-# 즉, confidence + tech_signals 기반 임계. PR 2 에서 grade 기반으로 변경 예정.
+# Slack 표시 라벨 — confidence(=composite/100) 기반 임계, 등급 경계와 1:1 정렬.
+# 재보정 (2026-06-10, 전문가 패널 검증):
+#   - 구 0.65/0.45/0.30 은 구 스케일(composite/7.4) confidence 기준이라
+#     신 0~100 스케일(mean 0.66)에선 평균 종목이 STRONG 후보가 되는 인플레이션 발생.
+#   - 등급 경계와 정렬: STRONG=A(77)/RECOMMEND=B(68)/WATCH=C(58) — "C등급인데 강력 추천" 해소.
+#   - min_tech_signals 게이트 제거: tech 신호는 이미 composite 의 50% weight 로 반영되므로
+#     라벨에서 또 요구하면 이중 반영 (패널 Critical — "B등급 통과인데 라벨 WATCH" 채널 불일치).
+#     라벨 = 등급의 채널별 표현 (Slack=라벨, 웹=등급, 채널당 단일 표현).
 recommendation_labels:
-  STRONG:    { min_confidence: 0.65, min_tech_signals: 3, label: "강력 추천", emoji: "🟢" }
-  RECOMMEND: { min_confidence: 0.45, min_tech_signals: 2, label: "추천",       emoji: "🟡" }
-  WATCH:     { min_confidence: 0.30, min_tech_signals: 1, label: "관심 종목",  emoji: "🟠" }
+  STRONG:    { min_confidence: 0.77, label: "강력 추천", emoji: "🟢" }
+  RECOMMEND: { min_confidence: 0.68, label: "추천",       emoji: "🟡" }
+  WATCH:     { min_confidence: 0.58, label: "관심 종목",  emoji: "🟠" }
   NONE:      { label: "추천 없음", emoji: "⚪" }
 
 recommendation_filter:
-  # ⚠️ 현재 _determine_recommended(sync_service.py:512)는 이 값을 안 읽고 3.0 하드코딩 중.
-  #    spec(2.0) ≠ 운영코드(3.0) 불일치 상태. 2.0 은 ADR 0002 가 "분포 본 후 PR 3d 에서 결정"으로
-  #    의도 보존한 값이므로 임의로 올리지 말 것. PR 3d(예정 2026-06-05~)에서 값 결정 + 코드 참조를
-  #    원자적으로 정합. 정합 방식 권고: grade_gate 필드(아래) 기반 판정. 상세: docs/할일.md §6.
-  min_composite_score: 2.0          # PR 3d 결정 대기 (현재 미사용 — 코드는 3.0 하드코딩)
+  # ADR 0006 §2.6 — 0~100 스케일. grade B 경계(68)와 정렬 (2026-06-10 재보정).
+  # 구 60.0 은 placeholder 가 grades 재보정(B 60→68)을 따라가지 못한 드리프트였음.
+  min_composite_score: 68.0         # grade B(보통 매수) 이상만 추천 대상
   max_recommendations: 5
 
-# PR 5 (2026-05-22): 거시 시장 변동성 gate.
-# 산식 외부 pre-flight gate — 산식 자체는 안 건드림. 추천 산출 후 송출 직전 검사.
-# 발동 시 사용자 채널 송출 차단 + 운영자 채널 알림. VIX 값 결손 시 gate skip (안전 default).
-# rollback: enabled: false 또는 threshold: 999 로 raise.
+# 거시 시장 변동성 gate (산식 외부 pre-flight gate).
 macro_gates:
   vix:
     enabled: true

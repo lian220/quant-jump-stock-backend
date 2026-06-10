@@ -163,7 +163,8 @@ class BuyCriteria:
              composite_score, max_possible, confidence, missing_axes}
         """
         policy = self.policy  # __post_init__ 보장
-        assert policy is not None  # mypy/runtime safety
+        if policy is None:  # -O 모드에서도 무음 실패하지 않도록 assert 대신 명시 예외
+            raise RuntimeError("ScoringPolicy가 초기화되지 않았습니다 (__post_init__ 미실행)")
 
         tech_score = policy.tech_score_from_indicators(indicators) if has_tech else Decimal("0")
         tech_signals = policy.count_tech_signals(indicators) if has_tech else 0
@@ -204,6 +205,43 @@ class BuyCriteria:
         """
         return RecommendationGrade.from_scores(scores)
 
+    # ── 공통: 종목 1개 점수+등급 산출 ──────────────────────
+
+    def _score_stock(
+        self,
+        stock: Dict[str, Any],
+        ai_scores: Dict[str, float],
+        sentiment_scores: Dict[str, float],
+        raw_rise_probabilities: Dict[str, float],
+    ) -> Dict[str, Any]:
+        """ticker 1개의 결측/veto 판정 → 점수 → 등급 공통 블록.
+
+        filter_candidates / get_near_miss_candidates 가 공유한다 — veto 조건이
+        진화(예: 상대 임계)해도 이 한 곳만 바뀌도록 단일화 (2026-06-10 리뷰 M1).
+        """
+        ticker = stock.get("ticker", "")
+        indicators = self._get_indicators(stock)
+
+        # 데이터 부재 여부 — dict/indicators 존재 기준 (신호 0과 다름)
+        has_ai = ticker in ai_scores
+        has_sentiment = ticker in sentiment_scores
+        has_tech = bool(indicators)  # 기술 분석이 수행됐는가 (신호 부재 ≠ 데이터 부재)
+
+        # PR 3b + ADR 0006 §2.5: veto 활성 시 강한 하락(veto_threshold_pct)만 차단
+        veto_reasons: tuple = ()
+        raw_rise = raw_rise_probabilities.get(ticker)
+        if raw_rise is not None and self.policy.should_veto_rise_pct(Decimal(str(raw_rise))):
+            veto_reasons = ("ai_negative",)
+
+        scores = self.calculate_composite_score(
+            indicators,
+            ai_score=ai_scores.get(ticker, 0.0),
+            sentiment_score=sentiment_scores.get(ticker, 0.0),
+            has_ai=has_ai, has_sentiment=has_sentiment, has_tech=has_tech,
+            veto_reasons=veto_reasons,
+        )
+        return {"indicators": indicators, "scores": scores, "grade": self.determine_grade(scores)}
+
     # ── 필터링 ──────────────────────────────────────
 
     def filter_candidates(
@@ -230,29 +268,8 @@ class BuyCriteria:
 
         candidates = []
         for stock in all_results:
-            ticker = stock.get("ticker", "")
-            indicators = self._get_indicators(stock)
-
-            # 데이터 부재 여부 — dict/indicators 존재 기준 (신호 0과 다름)
-            has_ai = ticker in ai_scores
-            has_sentiment = ticker in sentiment_scores
-            has_tech = bool(indicators)  # 기술 분석이 수행됐는가 (신호 부재 ≠ 데이터 부재)
-
-            # PR 3b: raw rise probability < 0 (raw %) 또는 < 0.5 (normalized) 시 veto
-            veto_reasons: tuple = ()
-            raw_rise = raw_rise_probabilities.get(ticker)
-            if raw_rise is not None and float(raw_rise) < 0 and self.policy.is_negative_veto_enabled():
-                veto_reasons = ("ai_negative",)
-
-            scores = self.calculate_composite_score(
-                indicators,
-                ai_score=ai_scores.get(ticker, 0.0),
-                sentiment_score=sentiment_scores.get(ticker, 0.0),
-                has_ai=has_ai, has_sentiment=has_sentiment, has_tech=has_tech,
-                veto_reasons=veto_reasons,
-            )
-
-            grade = self.determine_grade(scores)
+            scored = self._score_stock(stock, ai_scores, sentiment_scores, raw_rise_probabilities)
+            scores, grade = scored["scores"], scored["grade"]
             if grade == RecommendationGrade.NONE:
                 continue
 
@@ -313,41 +330,25 @@ class BuyCriteria:
             if ticker in excluded_tickers:
                 continue
 
-            indicators = self._get_indicators(stock)
-            has_ai = ticker in ai_scores
-            has_sentiment = ticker in sentiment_scores
-            has_tech = bool(indicators)
+            scored = self._score_stock(stock, ai_scores, sentiment_scores, raw_rise_probabilities)
+            indicators, scores, grade = scored["indicators"], scored["scores"], scored["grade"]
 
-            # PR 3b: negative AI veto
-            veto_reasons: tuple = ()
-            raw_rise = raw_rise_probabilities.get(ticker)
-            if raw_rise is not None and float(raw_rise) < 0 and self.policy.is_negative_veto_enabled():
-                veto_reasons = ("ai_negative",)
-
-            scores = self.calculate_composite_score(
-                indicators,
-                ai_score=ai_scores.get(ticker, 0.0),
-                sentiment_score=sentiment_scores.get(ticker, 0.0),
-                has_ai=has_ai, has_sentiment=has_sentiment, has_tech=has_tech,
-                veto_reasons=veto_reasons,
-            )
-            grade = self.determine_grade(scores)
-
-            # 미충족 조건 목록
+            # 미충족/충족 조건 목록 — 표시 기준도 점수 계산과 동일한 spec rsi_threshold 사용
+            # (리뷰 m6: BuyCriteria env 필드와 spec 값이 다르면 점수-문구 불일치 발생)
+            rsi_threshold = float(self.policy.rsi_threshold)
             rsi_val = indicators.get("rsi", 100)
             missing = []
             if not indicators.get("golden_cross"):
                 missing.append("골든크로스")
-            if rsi_val >= self.rsi_threshold:
-                missing.append(f"RSI({rsi_val:.0f}≥{self.rsi_threshold:.0f})")
+            if rsi_val >= rsi_threshold:
+                missing.append(f"RSI({rsi_val:.0f}≥{rsi_threshold:.0f})")
             if not indicators.get("macd_buy_signal"):
                 missing.append("MACD매수")
 
-            # 충족 조건 목록
             met = []
             if indicators.get("golden_cross"):
                 met.append("골든크로스✓")
-            if rsi_val < self.rsi_threshold:
+            if rsi_val < rsi_threshold:
                 met.append(f"RSI({rsi_val:.0f})✓")
             if indicators.get("macd_buy_signal"):
                 met.append("MACD매수✓")

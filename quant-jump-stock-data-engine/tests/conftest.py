@@ -27,23 +27,31 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 @pytest.fixture
 def make_score():
-    """Score 인스턴스 factory. Default = 5.90/A/STRONG. overrides 로 필드 교체."""
+    """Score 인스턴스 factory. ADR 0006 0~100 스케일. Default = 75/S/STRONG. overrides 로 필드 교체."""
     from decimal import Decimal
     from domain.recommendation.score import Score
 
     def _factory(**overrides):
+        # all present, ai5/tech3.5/sent5 → composite 75 (ADR 0006 anchor)
         defaults = dict(
-            ai_score=Decimal("3.00"),
+            ai_score=Decimal("5.00"),
             tech_score=Decimal("3.50"),
             sentiment_score=Decimal("5.00"),
-            composite_score=Decimal("5.90"),
-            composite_max=Decimal("7.40"),
-            confidence=Decimal("0.797"),
-            grade="A",
+            composite_score=Decimal("75.00"),
+            composite_max=Decimal("100.00"),
+            confidence=Decimal("0.750"),
+            grade="S",
             recommendation_label="STRONG",
             missing_axes=(),
             veto_reasons=(),
             warnings=(),
+            axis_contributions={
+                "ai": Decimal("15.00"),
+                "tech": Decimal("50.00"),
+                "sentiment": Decimal("10.00"),
+            },
+            score_coverage=Decimal("1.000"),
+            is_recommended=True,
         )
         defaults.update(overrides)
         return Score(**defaults)
@@ -56,47 +64,56 @@ def make_spec():
     import yaml
 
     def _default_spec():
+        # ADR 0006 (0~100 재설계) 기본 spec
         return {
-            "spec_version": "1.0.0",
-            "formula_version": "1.0.0",
+            "spec_version": "2.1.0",
+            "formula_version": "2.0.0",
             "axes": {
                 "ai": {
                     "weight": 0.3, "max": 10.0, "cap_strategy": "fixed_pct",
-                    "cap_threshold_pct": 20.0, "missing_policy": "zero", "negative_policy": "zero",
+                    "cap_threshold_pct": 20.0, "missing_policy": "redistribute", "negative_policy": "zero",
                 },
                 "technical": {
-                    "weight": 0.4, "max": 3.5,
+                    "weight": 0.5, "max": 3.5,
                     "components": {"golden_cross": 1.5, "rsi_below_threshold": 1.0, "macd_buy_signal": 1.0},
-                    "rsi_threshold": 70, "missing_policy": "zero",
+                    "rsi_threshold": 70, "missing_policy": "redistribute",
                 },
                 "sentiment": {
-                    "weight": 0.3, "max": 10.0, "missing_policy": "zero",
+                    "weight": 0.2, "max": 10.0, "raw_clip": 0.35, "missing_policy": "redistribute",
                 },
             },
-            "composite_max": 7.4,
+            "composite_max": 100.0,
             "grades": {
-                "S": {"min": 6.0, "label": "S"}, "A": {"min": 4.5, "label": "A"},
-                "B": {"min": 3.0, "label": "B"}, "C": {"min": 1.5, "label": "C"},
+                # prod scoring_spec.yaml 과 동일값 (462표본 재보정, ADR 0006 부록 B)
+                "S": {"min": 82.0, "label": "S"}, "A": {"min": 77.0, "label": "A"},
+                "B": {"min": 68.0, "label": "B"}, "C": {"min": 58.0, "label": "C"},
                 "D": {"min": 0.0, "label": "D"},
             },
             "recommendation_labels": {
-                "STRONG":    {"min_confidence": 0.65, "min_tech_signals": 3, "label": "강력 추천", "emoji": "🟢"},
-                "RECOMMEND": {"min_confidence": 0.45, "min_tech_signals": 2, "label": "추천", "emoji": "🟡"},
-                "WATCH":     {"min_confidence": 0.30, "min_tech_signals": 1, "label": "관심 종목", "emoji": "🟠"},
+                # 등급 경계 정렬 (2026-06-10 재보정): STRONG=A/RECOMMEND=B/WATCH=C.
+                # min_tech_signals 게이트 제거 — tech 는 composite 50% weight 로 이미 반영 (이중 반영 금지).
+                "STRONG":    {"min_confidence": 0.77, "label": "강력 추천", "emoji": "🟢"},
+                "RECOMMEND": {"min_confidence": 0.68, "label": "추천", "emoji": "🟡"},
+                "WATCH":     {"min_confidence": 0.58, "label": "관심 종목", "emoji": "🟠"},
                 "NONE":      {"label": "추천 없음", "emoji": "⚪"},
             },
             "recommendation_filter": {
-                "min_composite_score": 2.0, "max_recommendations": 5,
+                "min_composite_score": 68.0, "max_recommendations": 5,
             },
         }
 
-    def _factory(tmp_path, **overrides):
-        spec = _default_spec()
-        for k, v in (overrides or {}).items():
-            if isinstance(v, dict) and isinstance(spec.get(k), dict):
-                spec[k].update(v)
+    def _deep_merge(base: dict, overrides: dict) -> dict:
+        """중첩 dict 재귀 머지 — axes.ai 내부 키 1개만 override 가능 (리뷰 M4)."""
+        result = dict(base)
+        for k, v in overrides.items():
+            if isinstance(v, dict) and isinstance(result.get(k), dict):
+                result[k] = _deep_merge(result[k], v)
             else:
-                spec[k] = v
+                result[k] = v
+        return result
+
+    def _factory(tmp_path, **overrides):
+        spec = _deep_merge(_default_spec(), overrides or {})
         p = tmp_path / "test_spec.yaml"
         p.write_text(yaml.dump(spec), encoding="utf-8")
         return p

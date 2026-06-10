@@ -1,8 +1,12 @@
 package com.quantjumpstock.core.adapter.output.persistence.jpa.prediction
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import com.quantjumpstock.core.domain.model.prediction.CompositeGrade
 import com.quantjumpstock.core.domain.model.prediction.PredictionResult
 import jakarta.persistence.*
+import org.hibernate.annotations.JdbcTypeCode
+import org.hibernate.type.SqlTypes
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.time.LocalDateTime
@@ -129,6 +133,15 @@ class PredictionResultEntity(
     @Column(name = "warnings", columnDefinition = "text[]")
     val warnings: Array<String>? = null,
 
+    // ADR 0006 Phase 2 (2026-06-07): XAI 데이터 브릿지 — JSONB pass-through
+    // axisContributions: 축별 0~100 기여 dict (Python 산출). JSON 문자열로 보관(JSONB 매핑).
+    @JdbcTypeCode(SqlTypes.JSON)
+    @Column(name = "axis_contributions", columnDefinition = "jsonb")
+    val axisContributions: String = "{}",
+
+    @Column(name = "score_coverage", precision = 4, scale = 3)
+    val scoreCoverage: BigDecimal = BigDecimal.ONE,
+
     // 메타데이터
     @Column(name = "created_at", nullable = false, updatable = false)
     val createdAt: LocalDateTime = LocalDateTime.now(),
@@ -170,11 +183,33 @@ class PredictionResultEntity(
             recommendationLabel = recommendationLabel,
             effectivePredictionDate = effectivePredictionDate,
             vetoReasons = vetoReasons?.toList() ?: emptyList(),
-            warnings = warnings?.toList() ?: emptyList()
+            warnings = warnings?.toList() ?: emptyList(),
+            axisContributions = parseAxisContributions(axisContributions),
+            scoreCoverage = scoreCoverage
         )
     }
 
     companion object {
+        private val objectMapper: ObjectMapper = jacksonObjectMapper()
+
+        /** JSONB 문자열 → Map<String, BigDecimal>. 파싱 실패/빈 값이면 emptyMap. */
+        private fun parseAxisContributions(json: String?): Map<String, BigDecimal> {
+            if (json.isNullOrBlank() || json == "{}") return emptyMap()
+            return try {
+                @Suppress("UNCHECKED_CAST")
+                val raw = objectMapper.readValue(json, Map::class.java) as Map<String, Any>
+                raw.mapValues { (_, v) -> BigDecimal(v.toString()) }
+            } catch (e: Exception) {
+                emptyMap()
+            }
+        }
+
+        /** Map<String, BigDecimal> → JSONB 문자열. 빈 맵이면 "{}". */
+        private fun writeAxisContributions(map: Map<String, BigDecimal>): String {
+            if (map.isEmpty()) return "{}"
+            return objectMapper.writeValueAsString(map.mapValues { it.value.toDouble() })
+        }
+
         /**
          * Domain → Entity 변환
          */
@@ -209,7 +244,9 @@ class PredictionResultEntity(
                 recommendationLabel = domain.recommendationLabel,
                 effectivePredictionDate = domain.effectivePredictionDate,
                 vetoReasons = domain.vetoReasons.takeIf { it.isNotEmpty() }?.toTypedArray(),
-                warnings = domain.warnings.takeIf { it.isNotEmpty() }?.toTypedArray()
+                warnings = domain.warnings.takeIf { it.isNotEmpty() }?.toTypedArray(),
+                axisContributions = writeAxisContributions(domain.axisContributions),
+                scoreCoverage = domain.scoreCoverage
             )
         }
     }

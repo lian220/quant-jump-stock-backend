@@ -56,36 +56,28 @@ data class PredictionResult(
 
     // PR 3a (2026-05-22): 정책 차단 사유 + 비차단 경고 (PR 3b 부터 채워짐)
     val vetoReasons: List<String> = emptyList(),   // 예: ["ai_negative", "ai_source_disagreement"]
-    val warnings: List<String> = emptyList()       // 예: ["vix_macro_caution"]
+    val warnings: List<String> = emptyList(),      // 예: ["vix_macro_caution"]
+
+    // ADR 0006 Phase 2 (2026-06-07): XAI 데이터 브릿지 (Python 산출값 pass-through)
+    // axisContributions: 축별 0~100 기여 점수 (w·normalized·100), XAI 막대 표시용
+    val axisContributions: Map<String, BigDecimal> = emptyMap(),
+    // scoreCoverage: present 축 원본 weight 합 (0~1). 결측 재정규화 후 추천 신뢰도 설명용.
+    val scoreCoverage: BigDecimal = BigDecimal.ONE
 ) {
     companion object {
         /**
-         * Composite Score 계산
-         */
-        fun calculateCompositeScore(
-            aiScore: BigDecimal,
-            techScore: BigDecimal,
-            sentimentScore: BigDecimal
-        ): BigDecimal {
-            val weightAi = BigDecimal("0.3")
-            val weightTech = BigDecimal("0.4")
-            val weightSentiment = BigDecimal("0.3")
-
-            return (aiScore * weightAi)
-                .add(techScore * weightTech)
-                .add(sentimentScore * weightSentiment)
-                .setScale(2, java.math.RoundingMode.HALF_UP)
-        }
-
-        /**
-         * 등급 판정
+         * 등급 판정 — **fallback only**.
+         *
+         * ⚠️ SSoT = scoring_spec.yaml.grades (S82/A77/B68/C58/D0, 운영 분포 재보정값). 정상 경로는
+         * Python 이 산출해 저장한 composite_grade 를 그대로 사용한다(재계산 금지, ADR 0006 §2.6/§2.8).
+         * 이 함수는 grade 가 누락된 레거시/예외 row 용 fallback 일 뿐이다.
          */
         fun determineGrade(compositeScore: BigDecimal): CompositeGrade {
             return when {
-                compositeScore >= BigDecimal("6.0") -> CompositeGrade.S
-                compositeScore >= BigDecimal("4.5") -> CompositeGrade.A
-                compositeScore >= BigDecimal("3.0") -> CompositeGrade.B
-                compositeScore >= BigDecimal("1.5") -> CompositeGrade.C
+                compositeScore >= BigDecimal("82") -> CompositeGrade.S
+                compositeScore >= BigDecimal("77") -> CompositeGrade.A
+                compositeScore >= BigDecimal("68") -> CompositeGrade.B
+                compositeScore >= BigDecimal("58") -> CompositeGrade.C
                 else -> CompositeGrade.D
             }
         }
@@ -93,18 +85,21 @@ data class PredictionResult(
 }
 
 /**
- * Composite Score 등급
+ * Composite Score 등급 (0~100 단일 스케일).
+ *
+ * ⚠️ 임계값 SSoT = scoring_spec.yaml.grades. range 문자열은 표시용 참고이며,
+ * 점수→등급 판정은 Python 책임이다(Kotlin 재계산 금지, ADR 0006 §2.6).
  */
 enum class CompositeGrade(
     val range: String,
     val description: String,
     val color: String
 ) {
-    S("6.0 ~ 7.5", "매우 강한 매수 신호", "emerald"),
-    A("4.5 ~ 5.9", "강한 매수 신호", "cyan"),
-    B("3.0 ~ 4.4", "보통 매수 신호", "yellow"),
-    C("1.5 ~ 2.9", "약한 매수 신호", "orange"),
-    D("0.0 ~ 1.4", "매수 신호 없음", "red");
+    S("82 ~ 100", "매우 강한 매수 신호", "emerald"),
+    A("77 ~ 81", "강한 매수 신호", "cyan"),
+    B("68 ~ 76", "보통 매수 신호", "yellow"),
+    C("58 ~ 67", "약한 매수 신호", "orange"),
+    D("0 ~ 57", "매수 신호 없음", "red");
 
     companion object {
         fun fromString(value: String): CompositeGrade {

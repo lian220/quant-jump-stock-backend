@@ -5,105 +5,53 @@ import java.math.BigDecimal
 /**
  * 종목 추천 기준 상수
  *
- * ⭐ 모든 추천 관련 수치를 한 곳에 모아 관리 ⭐
+ * ⭐ 추천 관련 임계값을 한 곳에 모아 관리 ⭐
  *
- * ## 점수 체계 개요
+ * ## SSoT 경고 (ADR 0006 §2.8)
+ * 점수 산식·정규화·grade 임계값의 단일 원천(SSoT)은 Python `scoring_spec.yaml` 이다.
+ * Kotlin Core 는 **점수를 재계산/재정규화하지 않는다.** PostgreSQL `prediction_results` 에
+ * 저장된 0~100 composite, grade, axis_contributions, is_recommended 를 그대로 통과(pass-through)
+ * 시킨다. 아래 값들은 필터링·하위호환을 위한 **잠정값**이며, 점수 계산에 쓰지 않는다.
+ *
+ * ## 점수 체계 개요 (ADR 0006 — 0~100 단일 스케일)
  * ```
- * Composite Score (0~7.4) = AI(30%) + 기술적분석(40%) + 감정분석(30%)
- *                         = (0.3 × AI) + (0.4 × Tech) + (0.3 × Sentiment)
- * 최대값: 0.3×10 + 0.4×3.5 + 0.3×10 = 3.0 + 1.4 + 3.0 = 7.4
+ * composite_100 = (w_tech·(tech/3.5) + w_ai·(ai/10) + w_sent·(sent/10)) × 100
+ * weight: tech 0.5 / ai 0.3 / sentiment 0.2 (합=1.0)
  * ```
- *
- * ## 개별 점수 계산 방법
- *
- * ### 1. 기술적 분석 점수 (Tech Score, 최대 3.5점)
- * - Golden Cross (SMA20 > SMA50): **1.5점**
- * - RSI < 50 (과매도): **1.0점**
- * - MACD 매수 신호: **1.0점**
- *
- * ### 2. AI 예측 점수 (AI Score, 최대 10점)
- * - rise_probability_normalized × 10 (0~10)
- * - rise_probability_normalized = 0.5 + rise_pct/40 (0%→5.0, +20%→10.0, -20%→0.0)
- *
- * ### 3. 감정 분석 점수 (Sentiment Score, 최대 10점)
- * - (sentiment + 1) / 2 × 10 (sentiment: -1~1 → 0~10)
+ * 위 산식은 Python 책임. Kotlin 은 결과만 표시한다.
  */
 object RecommendationCriteria {
 
     // ═════════════════════════════════════════════════
-    // 1. 점수 계산 가중치
+    // 1. 점수 계산 가중치 (참고용 — Kotlin 은 점수 계산 안 함)
+    //    SSoT = scoring_spec.yaml. ADR 0006 §2.2 기준값.
     // ═════════════════════════════════════════════════
 
-    /** AI 예측 가중치 (30%) */
+    /** AI 예측 가중치 (30%) — 참고용. 실제 계산은 Python. */
     val WEIGHT_AI = BigDecimal("0.3")
 
-    /** 기술적 분석 가중치 (40%) */
-    val WEIGHT_TECH = BigDecimal("0.4")
+    /** 기술적 분석 가중치 (50%) — 참고용. 실제 계산은 Python. */
+    val WEIGHT_TECH = BigDecimal("0.5")
 
-    /** 감정 분석 가중치 (30%) */
-    val WEIGHT_SENTIMENT = BigDecimal("0.3")
-
-    // ═════════════════════════════════════════════════
-    // 2. 등급 임계값 (Composite Score 기준)
-    // ═════════════════════════════════════════════════
-
-    /** S등급 (최고) - 매우 강한 매수 신호 */
-    val GRADE_S_THRESHOLD = BigDecimal("6.0")
-
-    /** A등급 - 강한 매수 신호 */
-    val GRADE_A_THRESHOLD = BigDecimal("4.5")
-
-    /** B등급 - 보통 매수 신호 */
-    val GRADE_B_THRESHOLD = BigDecimal("3.0")
-
-    /** C등급 - 약한 매수 신호 */
-    val GRADE_C_THRESHOLD = BigDecimal("1.5")
-
-    // D등급: 1.5 미만
+    /** 감정 분석 가중치 (20%) — 참고용. 실제 계산은 Python. */
+    val WEIGHT_SENTIMENT = BigDecimal("0.2")
 
     // ═════════════════════════════════════════════════
-    // 3. 추천 기준
+    // 2. 추천 기준 (0~100, 잠정값 — scoring_spec.yaml SSoT)
     // ═════════════════════════════════════════════════
 
-    /** 최소 추천 점수 (기본값: 0.7 × 7.4 ≈ 5.18) */
-    val MIN_RECOMMEND_SCORE = BigDecimal("5.18")
+    /**
+     * 최소 추천 점수 (0~100).
+     * scoring_spec.yaml `recommendation_filter.min_composite_score` 의 복사본 — grade B(68) 경계 정합
+     * (2026-06-10 재보정). yaml 변경 시 함께 갱신해야 하며, ScoringSpecParityTest 가 드리프트를 차단한다.
+     */
+    val MIN_RECOMMEND_SCORE = BigDecimal("68.0")
 
-    /** 최대 점수 (0.3×10 + 0.4×3.5 + 0.3×10 = 7.4) */
-    val MAX_SCORE = BigDecimal("7.4")
+    /** 최대 점수 (0~100 단일 스케일). */
+    val MAX_SCORE = BigDecimal("100")
 
-    // ═════════════════════════════════════════════════
-    // 개별 점수 최대값
-    // ═════════════════════════════════════════════════
-
-    /** 기술적 분석 최대 점수 (골든크로스 1.5 + RSI 1.0 + MACD 1.0) */
-    val MAX_TECH_SCORE = BigDecimal("3.5")
-
-    /** AI 예측 최대 점수 (rise_probability_normalized × 10) */
-    val MAX_AI_SCORE = BigDecimal("10")
-
-    /** 감정 분석 최대 점수 ((sentiment+1)/2 × 10) */
-    val MAX_SENTIMENT_SCORE = BigDecimal("10")
-
-    /** 기본 최소 신뢰도 (0~1) */
-    const val DEFAULT_MIN_CONFIDENCE = 0.7  // → 5.18점
-
-    // ═════════════════════════════════════════════════
-    // 4. 가격 추천 기준
-    // ═════════════════════════════════════════════════
-
-    /** 강력매수 임계값 */
-    val STRONG_BUY_THRESHOLD = BigDecimal("6.5")
-
-    /** 매수 임계값 */
-    val BUY_THRESHOLD = BigDecimal("5.5")
-
-    /** 보유 임계값 */
-    val HOLD_THRESHOLD = BigDecimal("4.0")
-
-    /** 매도 임계값 */
-    val SELL_THRESHOLD = BigDecimal("2.5")
-
-    // 강력매도: 2.5 미만
+    /** 기본 최소 신뢰도 (0~1). minConfidence × 100 으로 0~100 필터 변환. */
+    const val DEFAULT_MIN_CONFIDENCE = 0.68  // → 68점 (grade B 경계, MIN_RECOMMEND_SCORE 와 정합)
 
     // ═════════════════════════════════════════════════
     // 유틸리티 메서드
@@ -118,14 +66,14 @@ object RecommendationCriteria {
     }
 
     /**
-     * 신뢰도 → Composite Score 변환
+     * 신뢰도(0~1) → Composite Score(0~100) 변환
      */
     fun confidenceToScore(confidence: Double): BigDecimal {
         return BigDecimal(confidence) * MAX_SCORE
     }
 
     /**
-     * Composite Score → 신뢰도 변환
+     * Composite Score(0~100) → 신뢰도(0~1) 변환
      */
     fun scoreToConfidence(score: BigDecimal): Double {
         return (score / MAX_SCORE).toDouble()

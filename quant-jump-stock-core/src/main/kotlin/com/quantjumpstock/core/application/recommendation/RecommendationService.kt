@@ -36,10 +36,9 @@ class RecommendationService(
      *         전날 날짜로 조회해야 함. (당일 조회 시 데이터 없음)
      *
      * @param date 조회 날짜 (Controller에서 기본값 전날 날짜로 해소)
-     * @param minConfidence 최소 신뢰도 (기본값 0.7)
-     *                     Composite Score 기준으로 변환: minConfidence × MAX_SCORE(7.4)
-     *                     Composite Score 최대값 = 0.3×AI(10) + 0.4×Tech(3.5) + 0.3×Sentiment(10) = 7.4
-     *                     예: 0.7 → 5.18점 (A등급 이상)
+     * @param minConfidence 최소 신뢰도 (기본값 RecommendationCriteria.DEFAULT_MIN_CONFIDENCE = 0.68)
+     *                     Composite Score(0~100, ADR 0006) 기준으로 변환: minConfidence × 100
+     *                     예: 0.68 → 68점 (grade B 경계 — scoring_spec.yaml SSoT)
      * @return 매수 신호 응답
      */
     @Cacheable(
@@ -47,9 +46,11 @@ class RecommendationService(
         key = "#date.toString() + '_' + #minConfidence",
         unless = "#result.count == 0"
     )
-    fun getBuySignals(date: LocalDate, minConfidence: Double = 0.7): BuySignalsResponse {
-        // Composite Score 기준으로 조회
-        // 최대값: 0.3×10 + 0.4×3.5 + 0.3×10 = 7.4 (RecommendationCriteria.MAX_SCORE)
+    fun getBuySignals(
+        date: LocalDate,
+        minConfidence: Double = RecommendationCriteria.DEFAULT_MIN_CONFIDENCE,
+    ): BuySignalsResponse {
+        // Composite Score(0~100) 기준으로 조회 (ADR 0006 단일 스케일)
         val minCompositeScore = minConfidence * RecommendationCriteria.MAX_SCORE.toDouble()
 
         logger.info("Fetching buy signals for date={}, minCompositeScore={}", date, minCompositeScore)
@@ -150,16 +151,10 @@ private fun PredictionResult.toBuySignalDto(priceSnapshot: StockPriceSnapshot? =
         upsidePercent
     }
 
-    fun normalize(score: BigDecimal, max: BigDecimal): Int =
-        score.divide(max, 4, RoundingMode.HALF_UP)
-            .multiply(BigDecimal(100))
-            .toInt()
-            .coerceIn(0, 100)
-
-    // ADR 0001 진정성 규칙: compositeMax 는 정적 7.4 고정.
-    // 옛 동적 가중치 재분배(부재 축의 가중치를 다른 축에 비례 분배)는 폐기.
-    // 부재 축은 0으로 처리되어 composite가 자연 낮아짐 → display 도 정직하게 낮음.
-    val compositeMax = RecommendationCriteria.MAX_SCORE
+    // ADR 0006 §2.8: Kotlin 은 점수를 재계산/재정규화하지 않는다.
+    // composite/grade/축별 기여(axis_contributions)는 Python(scoring_spec.yaml SSoT)이 0~100 으로
+    // 산출·저장한 값을 그대로 통과(pass-through)시킨다. 동적 정규화·재분배는 폐기.
+    val axisDisplay = axisContributions.mapValues { it.value.toDouble() }
 
     return BuySignalDto(
         ticker = ticker,
@@ -170,10 +165,14 @@ private fun PredictionResult.toBuySignalDto(priceSnapshot: StockPriceSnapshot? =
         aiScore = aiScore,
         techScore = techScore,
         sentimentScore = sentimentNormalizedScore,
-        techScoreDisplay = normalize(techScore, RecommendationCriteria.MAX_TECH_SCORE),
-        aiScoreDisplay = normalize(aiScore, RecommendationCriteria.MAX_AI_SCORE),
-        sentimentScoreDisplay = normalize(sentimentNormalizedScore, RecommendationCriteria.MAX_SENTIMENT_SCORE),
-        compositeScoreDisplay = normalize(compositeScore, compositeMax),
+        // 축별 기여 점수 (0-100): Python axis_contributions pass-through (XAI 막대 표시용)
+        techScoreDisplay = axisDisplay["tech"] ?: 0.0,
+        aiScoreDisplay = axisDisplay["ai"] ?: 0.0,
+        sentimentScoreDisplay = axisDisplay["sentiment"] ?: 0.0,
+        // display = composite (0~100 단일 스케일, 하위호환 유지)
+        compositeScoreDisplay = compositeScore.toDouble(),
+        axisContributions = axisDisplay,
+        scoreCoverage = scoreCoverage.toDouble(),
         isRecommended = isRecommended,
         recommendationReason = recommendationReason,
         currentPrice = enrichedCurrentPrice,
@@ -206,11 +205,15 @@ data class BuySignalDto(
     val aiScore: java.math.BigDecimal,
     val techScore: java.math.BigDecimal,
     val sentimentScore: java.math.BigDecimal,
-    // 정규화 점수 (0-100): 프론트엔드에서 바로 사용
-    val techScoreDisplay: Int = 0,
-    val aiScoreDisplay: Int = 0,
-    val sentimentScoreDisplay: Int = 0,
-    val compositeScoreDisplay: Int = 0,
+    // 축별 기여 점수 (0-100): Python axis_contributions pass-through (XAI 막대 표시용)
+    val techScoreDisplay: Double = 0.0,
+    val aiScoreDisplay: Double = 0.0,
+    val sentimentScoreDisplay: Double = 0.0,
+    // composite display = composite (0~100 단일 스케일)
+    val compositeScoreDisplay: Double = 0.0,
+    // XAI 데이터 브릿지 (ADR 0006 Phase 2)
+    val axisContributions: Map<String, Double> = emptyMap(),
+    val scoreCoverage: Double = 1.0,
     val isRecommended: Boolean,
     val recommendationReason: String?,
     val currentPrice: java.math.BigDecimal?,
