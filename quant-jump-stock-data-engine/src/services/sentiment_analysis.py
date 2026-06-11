@@ -9,11 +9,36 @@ from core.timezone import latest_complete_bar_date_str
 
 logger = logging.getLogger(__name__)
 
+# Alpha Vantage 한도/스로틀 응답 식별 문구 (HTTP 200 본문으로 옴).
+# - 일일한도(25/day): {"Information": "...standard API rate limit is 25 requests per day..."}
+# - 분당한도(레거시): {"Note": "...standard API call frequency is 5 calls per minute..."}
+_RATE_LIMIT_HINTS = (
+    "rate limit",
+    "requests per day",
+    "calls per minute",
+    "call frequency",
+    "premium plan",
+)
+
 class SentimentAnalysisService:
     def __init__(self):
         # 🆕 API 키 로테이터 사용
         self.key_rotator = AlphaVantageKeyRotator()
         self.base_url = "https://www.alphavantage.co/query"
+
+    @staticmethod
+    def _is_rate_limited_payload(data: dict) -> bool:
+        """HTTP 200 응답 본문이 AV 한도/스로틀 메시지인지 판정.
+
+        AV 는 키 소진 시 429 가 아니라 200 + {"Information"|"Note": "..."} 를 준다.
+        'feed' 가 없어 기존 코드는 "No feed data"로 조용히 드롭했는데, 실제로는
+        키를 회피(rotate)하고 재시도해야 하는 케이스다.
+        """
+        for key in ("Information", "Note"):
+            msg = data.get(key)
+            if msg and any(hint in str(msg).lower() for hint in _RATE_LIMIT_HINTS):
+                return True
+        return False
 
     def fetch_and_store_sentiment(self, start_date=None, end_date=None):
         logger.info(f"Starting sentiment analysis... ({start_date} ~ {end_date})")
@@ -51,6 +76,19 @@ class SentimentAnalysisService:
 
         for ticker in tickers:
             logger.debug(f"Fetching sentiment for {ticker}...")
+
+            # 멱등성: 당일 이미 수집된 티커(article_count>0)는 AV 재호출 안 함.
+            # 파이프라인이 하루 여러 번 트리거돼도 done 티커는 건너뛰어 콜 낭비를 막고,
+            # 재실행은 결측 티커만 재시도(키 로테이션과 결합해 빈칸을 채움).
+            already = db.sentiment_analysis.find_one(
+                {"ticker": ticker, "date": start_date, "article_count": {"$gt": 0}}
+            )
+            if already:
+                logger.debug(
+                    f"{ticker}: {start_date} 감정 이미 수집됨 "
+                    f"(article_count={already.get('article_count')}) → 스킵"
+                )
+                continue
 
             # 🆕 최대 3번 재시도 (키 로테이션)
             max_retries = min(3, len(self.key_rotator.keys))
@@ -97,6 +135,30 @@ class SentimentAnalysisService:
                     if response.status_code != 200:
                         logger.warning(f"API error for {ticker}: {response.status_code}")
                         self.key_rotator.mark_failure(current_key)
+                        continue
+
+                    # HTTP 200 이어도 본문이 한도 메시지(Information/Note)면 성공 아님.
+                    # AV 는 키 소진 시 429 가 아니라 200 + Information 을 주므로 여기서 잡아
+                    # 소진 키를 회피(rotate)하고 다음 키로 재시도한다. (silent drop 방지)
+                    try:
+                        payload = response.json()
+                    except ValueError:
+                        payload = {}
+                    if self._is_rate_limited_payload(payload):
+                        logger.warning(
+                            f"한도 본문 감지 for {ticker} "
+                            f"(attempt {attempt + 1}/{max_retries}) → 키 회피 후 재시도"
+                        )
+                        self.key_rotator.mark_rate_limited(current_key)
+                        if self.key_rotator.should_backoff():
+                            all_keys_rate_limited_count += 1
+                            if all_keys_rate_limited_count >= MAX_ALL_KEYS_RATE_LIMITED:
+                                logger.error(
+                                    f"⛔ {ticker}: 모든 API 키 일일한도 소진 "
+                                    f"({MAX_ALL_KEYS_RATE_LIMITED}회) - 스킵"
+                                )
+                                break
+                            time.sleep(self.key_rotator.BACKOFF_DELAY)
                         continue
 
                     # 성공
