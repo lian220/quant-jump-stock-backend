@@ -235,29 +235,32 @@ def freshness_check(date: Optional[str] = None, threshold: int = 30):
       다음날 23:20 KST 자연 발화 시 "추천 0개" 사용자 노출.
       본 endpoint 가 자연 발화 전 데이터 부재 감지 → 운영자 사전 통지.
 
+    2026-06-11 버그 수정:
+      (1) date 를 datetime(BSON Date) 범위로 쿼리했으나 실제 저장은 문자열 → 항상 0건
+          (데이터 정상인 날도 0 보고하는 오탐). 문자열 정확매칭으로 변경.
+      (2) 기본값을 'KST 오늘' → latest_complete_bar_date_str() 로 변경. US 장 마감 전
+          KST 야간에 당일 데이터를 찾으면 아직 미생산이라 오탐.
+
     Args:
-      date: YYYY-MM-DD (default: KST 오늘 — latest_complete_bar_date 미사용,
-            단순 KST today 기준. cron 발화 시각이 23:00 KST 이므로 당일 데이터 체크 적절)
-      threshold: 컬렉션별 최소 문서 수 (default: 30 — 36개 종목 중 일부 누락 허용)
+      date: YYYY-MM-DD (default: 최근 완성된 미국 거래일 바 = latest_complete_bar_date_str())
+      threshold: 컬렉션별 최소 문서 수 (default: 30 — 약 42개 종목 중 일부 누락 허용)
 
     Returns:
       JSON: {status, check_date, stock_predictions_count, stock_recommendations_count,
              alert_sent}
     """
     from core.database import MongoDB
+    from core.timezone import latest_complete_bar_date_str
 
-    check_date = date or datetime.now(KST).strftime("%Y-%m-%d")
-    dt = datetime.strptime(check_date, "%Y-%m-%d")
-    start_utc = datetime(dt.year, dt.month, dt.day, 0, 0, 0)
-    end_utc = datetime(dt.year, dt.month, dt.day, 23, 59, 59, 999000)
+    # 기본값: 최근 '완성된' 미국 거래일 바 (마감 버퍼 + 주말 롤백 처리).
+    # 단순 KST today 를 쓰면 US 장 마감 전이라 당일 데이터가 아직 미생산 → 오탐.
+    check_date = date or latest_complete_bar_date_str()
 
     db = MongoDB.get_db()
-    sp_count = db.stock_predictions.count_documents({
-        "date": {"$gte": start_utc, "$lte": end_utc}
-    })
-    sr_count = db.stock_recommendations.count_documents({
-        "date": {"$gte": start_utc, "$lte": end_utc}
-    })
+    # date 는 전 컬렉션에서 문자열 "YYYY-MM-DD" 로 저장됨 (2026-05-20 통일).
+    # BSON 정렬상 String < Date 라 datetime 범위 쿼리는 항상 0건 매칭 → 문자열 정확매칭 사용.
+    sp_count = db.stock_predictions.count_documents({"date": check_date})
+    sr_count = db.stock_recommendations.count_documents({"date": check_date})
 
     alert_sent = False
     if sp_count < threshold or sr_count < threshold:
