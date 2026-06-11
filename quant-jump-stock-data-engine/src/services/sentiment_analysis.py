@@ -9,11 +9,36 @@ from core.timezone import latest_complete_bar_date_str
 
 logger = logging.getLogger(__name__)
 
+# Alpha Vantage 한도/스로틀 응답 식별 문구 (HTTP 200 본문으로 옴).
+# - 일일한도(25/day): {"Information": "...standard API rate limit is 25 requests per day..."}
+# - 분당한도(레거시): {"Note": "...standard API call frequency is 5 calls per minute..."}
+_RATE_LIMIT_HINTS = (
+    "rate limit",
+    "requests per day",
+    "calls per minute",
+    "call frequency",
+    "premium plan",
+)
+
 class SentimentAnalysisService:
     def __init__(self):
         # 🆕 API 키 로테이터 사용
         self.key_rotator = AlphaVantageKeyRotator()
         self.base_url = "https://www.alphavantage.co/query"
+
+    @staticmethod
+    def _is_rate_limited_payload(data: dict) -> bool:
+        """HTTP 200 응답 본문이 AV 한도/스로틀 메시지인지 판정.
+
+        AV 는 키 소진 시 429 가 아니라 200 + {"Information"|"Note": "..."} 를 준다.
+        'feed' 가 없어 기존 코드는 "No feed data"로 조용히 드롭했는데, 실제로는
+        키를 회피(rotate)하고 재시도해야 하는 케이스다.
+        """
+        for key in ("Information", "Note"):
+            msg = data.get(key)
+            if msg and any(hint in str(msg).lower() for hint in _RATE_LIMIT_HINTS):
+                return True
+        return False
 
     def fetch_and_store_sentiment(self, start_date=None, end_date=None):
         logger.info(f"Starting sentiment analysis... ({start_date} ~ {end_date})")
@@ -97,6 +122,30 @@ class SentimentAnalysisService:
                     if response.status_code != 200:
                         logger.warning(f"API error for {ticker}: {response.status_code}")
                         self.key_rotator.mark_failure(current_key)
+                        continue
+
+                    # HTTP 200 이어도 본문이 한도 메시지(Information/Note)면 성공 아님.
+                    # AV 는 키 소진 시 429 가 아니라 200 + Information 을 주므로 여기서 잡아
+                    # 소진 키를 회피(rotate)하고 다음 키로 재시도한다. (silent drop 방지)
+                    try:
+                        payload = response.json()
+                    except ValueError:
+                        payload = {}
+                    if self._is_rate_limited_payload(payload):
+                        logger.warning(
+                            f"한도 본문 감지 for {ticker} "
+                            f"(attempt {attempt + 1}/{max_retries}) → 키 회피 후 재시도"
+                        )
+                        self.key_rotator.mark_rate_limited(current_key)
+                        if self.key_rotator.should_backoff():
+                            all_keys_rate_limited_count += 1
+                            if all_keys_rate_limited_count >= MAX_ALL_KEYS_RATE_LIMITED:
+                                logger.error(
+                                    f"⛔ {ticker}: 모든 API 키 일일한도 소진 "
+                                    f"({MAX_ALL_KEYS_RATE_LIMITED}회) - 스킵"
+                                )
+                                break
+                            time.sleep(self.key_rotator.BACKOFF_DELAY)
                         continue
 
                     # 성공
