@@ -82,6 +82,7 @@ def test_information_200_marks_rate_limited_not_success_and_skips_save():
     }
 
     db = MagicMock()
+    db.sentiment_analysis.find_one.return_value = None  # 미수집 상태 (멱등성 가드 통과)
     with patch("services.sentiment_analysis.PostgreSQL.execute_query",
                return_value=[{"ticker": "NVDA"}]), \
          patch("services.sentiment_analysis.MongoDB.get_db", return_value=db), \
@@ -92,3 +93,41 @@ def test_information_200_marks_rate_limited_not_success_and_skips_save():
     assert not rot.mark_success.called, "한도 응답을 success 로 오집계하면 안 됨"
     assert results == [], "feed 없으므로 저장 결과 없어야 함"
     assert not db.sentiment_analysis.update_one.called, "한도 응답으로 저장하면 안 됨"
+
+
+def test_already_collected_ticker_skipped_no_api_call():
+    """당일 이미 수집된 티커는 AV 호출을 건너뛴다 (멱등성 — 다중 트리거 콜 낭비 방지).
+
+    AAA: 당일 데이터 이미 있음 → API 호출 X
+    BBB: 없음 → API 호출 O (결측만 재시도)
+    """
+    svc, rot = _make_service_with_mock_rotator(num_keys=1)
+
+    db = MagicMock()
+    # AAA 만 당일 수집 완료(article_count>0), BBB 는 없음
+    def _find_one(query):
+        return {"article_count": 50} if query.get("ticker") == "AAA" else None
+    db.sentiment_analysis.find_one.side_effect = _find_one
+
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {
+        "feed": [{
+            "title": "BBB news",
+            "time_published": "20260609T120000",
+            "ticker_sentiment": [{
+                "ticker": "BBB", "ticker_sentiment_score": "0.3",
+                "ticker_sentiment_label": "Bullish", "relevance_score": "0.5",
+            }],
+        }]
+    }
+
+    with patch("services.sentiment_analysis.PostgreSQL.execute_query",
+               return_value=[{"ticker": "AAA"}, {"ticker": "BBB"}]), \
+         patch("services.sentiment_analysis.MongoDB.get_db", return_value=db), \
+         patch("services.sentiment_analysis.requests.get", return_value=resp) as mock_get:
+        svc.fetch_and_store_sentiment(start_date="2026-06-09")
+
+    assert mock_get.call_count == 1, "이미 수집된 AAA 는 호출 안 하고 BBB 만 호출해야 함"
+    called_ticker = mock_get.call_args.kwargs["params"]["tickers"]
+    assert called_ticker == "BBB", f"호출된 티커는 결측인 BBB 여야 함 (got {called_ticker})"

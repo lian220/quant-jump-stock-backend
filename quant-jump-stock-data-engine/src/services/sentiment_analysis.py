@@ -77,6 +77,19 @@ class SentimentAnalysisService:
         for ticker in tickers:
             logger.debug(f"Fetching sentiment for {ticker}...")
 
+            # 멱등성: 당일 이미 수집된 티커(article_count>0)는 AV 재호출 안 함.
+            # 파이프라인이 하루 여러 번 트리거돼도 done 티커는 건너뛰어 콜 낭비를 막고,
+            # 재실행은 결측 티커만 재시도(키 로테이션과 결합해 빈칸을 채움).
+            already = db.sentiment_analysis.find_one(
+                {"ticker": ticker, "date": start_date, "article_count": {"$gt": 0}}
+            )
+            if already:
+                logger.debug(
+                    f"{ticker}: {start_date} 감정 이미 수집됨 "
+                    f"(article_count={already.get('article_count')}) → 스킵"
+                )
+                continue
+
             # 🆕 최대 3번 재시도 (키 로테이션)
             max_retries = min(3, len(self.key_rotator.keys))
             success = False
