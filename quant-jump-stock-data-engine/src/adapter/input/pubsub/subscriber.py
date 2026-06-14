@@ -125,11 +125,14 @@ class PubSubSubscriberAdapter:
                     handler(parsed)
                 message.ack()
             except NonRetryableError as e:
-                logger.error(f"Non-retryable error for {topic} (ACK처리, 재시도 안함): {e}")
+                # 재시도해도 실패 → ACK (영구 폐기). 데이터/설정 오류 등.
+                logger.error(f"Non-retryable error for {topic} (ACK, 재시도 안함): {e}")
                 message.ack()
             except Exception as e:
-                logger.exception(f"Handler error for {topic} (ACK처리, 재시도 안함): {e}")
-                message.ack()
+                # 재시도성 에러(일시적 DB/네트워크/외부 API) → NACK → Pub/Sub 재전송.
+                # (Pull 모드는 로컬/VM 전용. prod Push 경로의 멱등 dedup 은 push_handler 에 있음)
+                logger.exception(f"Retryable error for {topic} (NACK, 재시도): {e}")
+                message.nack()
 
         return callback
 

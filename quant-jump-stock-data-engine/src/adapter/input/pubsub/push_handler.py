@@ -119,15 +119,18 @@ async def handle_push_message(topic_name: str, request: Request) -> Response:
         return Response(status_code=200, content="OK")
 
     except Exception as e:
-        # NonRetryableError 포함 모든 예외를 구분
+        # 재시도 가능 여부로 ACK/NACK 분기:
+        #   - NonRetryableError(데이터/설정 오류 등) → 200 ACK (재시도해도 실패 → 영구 폐기)
+        #   - 그 외 재시도성 에러(일시적 DB/네트워크/외부 API) → 500 NACK → Pub/Sub 재전송
+        # 포이즌 메시지는 토픽 retention(24h) + backoff(10~600s)로 자연 종료, Slack 5분 dedup 으로 알림 스팸 방지.
         from .subscriber import NonRetryableError
         is_non_retryable = isinstance(e, NonRetryableError)
         request_id = parsed.request_id if parsed is not None else None
 
         if is_non_retryable:
-            logger.error(f"Non-retryable error for {dot_topic} (ACK): {e}")
+            logger.error(f"Non-retryable error for {dot_topic} (ACK, 재시도 안함): {e}")
         else:
-            logger.exception(f"Handler error for {dot_topic} (ACK처리, 재시도 안함): {e}")
+            logger.exception(f"Retryable error for {dot_topic} (NACK, 재시도): {e}")
 
         # Slack 에러 채널 알림 (실패해도 응답에 영향 X)
         try:
@@ -137,11 +140,11 @@ async def handle_push_message(topic_name: str, request: Request) -> Response:
                 error=str(e),
                 error_type=type(e).__name__,
                 request_id=request_id,
-                retryable=False,  # 두 경우 모두 ACK 처리되어 재시도 안 됨
+                retryable=not is_non_retryable,
             )
         except Exception as notify_err:
             logger.warning(f"Slack 에러 알림 실패: {notify_err}")
 
         if is_non_retryable:
             return Response(status_code=200, content="Non-retryable error (ACK)")
-        return Response(status_code=200, content="Handler error (ACK, no retry)")
+        return Response(status_code=500, content="Retryable error (NACK, will retry)")
