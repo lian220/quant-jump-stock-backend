@@ -344,6 +344,7 @@ class EconomicDataService:
             성공적으로 수집한 종목 개수
         """
         success_count = 0
+        skipped = []
 
         # PostgreSQL에서 활성 종목 조회
         active_stocks = self.repository.find_active_stocks_from_postgres()
@@ -386,11 +387,25 @@ class EconomicDataService:
 
                     success_count += 1
                     logger.debug(f"종목 데이터 수집 완료: {ticker} ({len(df)}일, info={'있음' if info_data else '없음'})")
+                else:
+                    # yfinance throttle 시 예외 없이 빈 df 를 반환 → 기존엔 무로그 silent skip.
+                    # per-key 병합 upsert 가 기존 데이터를 보존하므로 손실은 없지만, 부분 수집을
+                    # 추적할 수 있도록 명시 로깅.
+                    skipped.append(ticker)
+                    logger.warning(f"⚠️ 빈 데이터로 수집 스킵 (yfinance throttle 추정): {ticker}")
 
             except Exception as e:
+                skipped.append(ticker)
                 logger.error(f"❌ 종목 데이터 수집 실패: {ticker} - {e}")
 
-        logger.info(f"📊 개별 종목 데이터 수집 완료: {success_count}/{len(tickers)}개")
+        if success_count < len(tickers):
+            logger.warning(
+                f"⚠️ 개별 종목 부분 수집: {success_count}/{len(tickers)}개 성공 "
+                f"(스킵 {len(skipped)}개: {skipped}). "
+                f"per-key 병합 upsert 로 기존 데이터는 보존됨."
+            )
+        else:
+            logger.info(f"📊 개별 종목 데이터 수집 완료: {success_count}/{len(tickers)}개")
         return success_count
 
     # 퀀트 분석에 필요한 펀더멘탈 필드 (~40개)
