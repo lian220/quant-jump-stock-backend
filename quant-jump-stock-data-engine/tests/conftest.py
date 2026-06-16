@@ -13,6 +13,27 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# Slack 실송신 전역 차단 (autouse)
+#
+# 배경: push_handler 에러 경로 테스트(test_push_handler_retry.py) 등이
+# SlackNotifier.notify_* 를 실제로 호출한다. SLACK_WEBHOOK_URL_ERROR 가 설정된
+# 환경(개발자 .env / 잘못 구성된 CI)에서 pytest 를 돌리면 운영 에러 채널로 가짜
+# 알람이 발송된다(2026-06-14 'itest.nonretry / bad data' 알람과 동일 클래스의 부수효과).
+#
+# 네트워크 송신 primitive 2개(_post_to_webhook / _post_message)만 no-op 으로 막아,
+# notify 로직(포맷/마스킹/dedup)은 그대로 실행되되 실제 전송만 차단한다. 특정 테스트가
+# Slack 호출을 검증해야 하면 자체 monkeypatch 로 덮어쓰면 된다(픽스처보다 나중 적용).
+# ─────────────────────────────────────────────────────────────────────────────
+
+@pytest.fixture(autouse=True)
+def _block_real_slack(monkeypatch):
+    from services.slack_notifier import SlackNotifier
+
+    monkeypatch.setattr(SlackNotifier, "_post_to_webhook", lambda *a, **k: None)
+    monkeypatch.setattr(SlackNotifier, "_post_message", lambda *a, **k: None)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Score / spec 빌더 (PR 1 점수 모델 SSoT, 2026-05-21)
 #
 # 사용 예:
