@@ -95,17 +95,29 @@ class EconomicDataRepository:
 
             collection = self.db["daily_stock_data"]
 
-            # 해당 날짜의 문서를 upsert
-            update_data = {
-                "$set": {
-                    **data,
-                    "updated_at": datetime.now()
-                }
-            }
+            # per-key 병합 upsert (clobber 방지)
+            #
+            # 배경 (2026-06-15 사고): fred_indicators/yfinance_indicators/stocks 를
+            # 통째로 $set 하면, 같은 거래일을 재수집하는 후속 런이 부분 실패(예: yfinance
+            # throttle 로 42→18 종목)했을 때 이미 완전했던 stocks 맵을 통째 덮어써 데이터가
+            # 영구 손실된다. 하위 키(티커/지표코드)만 dot-path 로 개별 set 하여, 이번 런이
+            # 가져온 것만 갱신하고 나머지 기존 값은 보존한다.
+            MERGE_KEYS = ("fred_indicators", "yfinance_indicators", "stocks")
+            set_fields: Dict[str, Any] = {"updated_at": datetime.now()}
+            for top_key, value in data.items():
+                if top_key in MERGE_KEYS and isinstance(value, dict):
+                    # dot/$ 포함 키는 dot-path 가 의도치 않은 중첩을 만들므로 그 맵만 통째 set
+                    if any("." in str(k) or str(k).startswith("$") for k in value):
+                        set_fields[top_key] = value
+                    else:
+                        for sub_key, sub_val in value.items():
+                            set_fields[f"{top_key}.{sub_key}"] = sub_val
+                else:
+                    set_fields[top_key] = value
 
             result = collection.update_one(
                 {"date": date},
-                update_data,
+                {"$set": set_fields},
                 upsert=True
             )
 
