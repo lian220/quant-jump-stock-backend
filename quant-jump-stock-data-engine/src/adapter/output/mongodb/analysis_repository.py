@@ -19,6 +19,10 @@ from application.analysis.ports import (
 logger = logging.getLogger(__name__)
 
 
+def _to_float(v):
+    return None if v is None else float(v)
+
+
 class MongoPriceRepository(PriceRepositoryPort):
     """MongoDB 가격 데이터 저장소"""
 
@@ -64,6 +68,37 @@ class MongoPriceRepository(PriceRepositoryPort):
                 ))
 
         return result
+
+    def get_ohlcv_series(
+        self,
+        ticker: str,
+        start_date: str,
+        end_date: str,
+    ) -> List[dict]:
+        """단일 티커의 OHLCV 시계열 조회 (date ASC). 거래일만 반환."""
+        cursor = self.collection.find(
+            {"date": {"$gte": start_date, "$lte": end_date}},
+            {"date": 1, "stocks": 1, "_id": 0},
+        ).sort("date", 1)
+
+        rows: List[dict] = []
+        for doc in cursor:
+            stocks = doc.get("stocks", {})
+            val = stocks.get(ticker)
+            if not isinstance(val, dict):
+                continue
+            close = val.get("close", val.get("close_price"))
+            if close is None:
+                continue
+            rows.append({
+                "date": doc["date"],
+                "open": _to_float(val.get("open")),
+                "high": _to_float(val.get("high")),
+                "low": _to_float(val.get("low")),
+                "close": float(close),
+                "volume": val.get("volume"),
+            })
+        return rows
 
 
 class MongoAnalysisResultRepository(AnalysisResultRepositoryPort):
