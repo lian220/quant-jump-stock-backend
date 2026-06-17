@@ -1,7 +1,7 @@
 package com.quantjumpstock.core.application.stock
 
-import com.quantjumpstock.core.adapter.output.external.DataEngineClient
 import com.quantjumpstock.core.domain.model.stock.Market
+import com.quantjumpstock.core.domain.model.stock.PriceHistoryPeriod
 import com.quantjumpstock.core.domain.model.stock.Stock
 import com.quantjumpstock.core.domain.port.output.StockPriceDataPort
 import com.quantjumpstock.core.domain.port.output.StockRepository
@@ -19,24 +19,24 @@ import org.mockito.kotlin.whenever
 class StockPriceHistoryServiceTest {
     private val stockRepository = mock<StockRepository>()
     private val priceDataPort = mock<StockPriceDataPort>()
-    private val dataEngineClient = mock<DataEngineClient>()
-    private val service = StockService(stockRepository, priceDataPort, dataEngineClient)
+    private val priceHistoryPort = mock<PriceHistoryPort>()
+    private val service = StockService(stockRepository, priceDataPort, priceHistoryPort)
 
     @Test
     fun `없는 종목이면 StockException`() {
         whenever(stockRepository.findById(99L)).thenReturn(null)
 
-        assertThrows<StockException> { service.getPriceHistory(99L, "1m") }
+        assertThrows<StockException> { service.getPriceHistory(99L, PriceHistoryPeriod.ONE_MONTH) }
     }
 
     @Test
     fun `존재하는 종목은 data-engine 응답을 전달`() {
         val stock = Stock(id = 1L, ticker = "AAPL", stockName = "Apple Inc.", market = Market.US)
         whenever(stockRepository.findById(1L)).thenReturn(stock)
-        whenever(dataEngineClient.getPriceHistory("AAPL", "1m"))
+        whenever(priceHistoryPort.getPriceHistory("AAPL", PriceHistoryPeriod.ONE_MONTH))
             .thenReturn(PriceHistoryResponse(ticker = "AAPL", period = "1m", candles = emptyList()))
 
-        val result = service.getPriceHistory(1L, "1m")
+        val result = service.getPriceHistory(1L, PriceHistoryPeriod.ONE_MONTH)
 
         assertEquals("AAPL", result.ticker)
         assertEquals("1m", result.period)

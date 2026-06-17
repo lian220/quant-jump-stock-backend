@@ -63,7 +63,7 @@ class StockController(
         @Parameter(description = "기간") @RequestParam(defaultValue = "6m") period: PriceHistoryPeriod
     ): ResponseEntity<PriceHistoryResponse> {
         return try {
-            ResponseEntity.ok(stockService.getPriceHistory(id, period.token))
+            ResponseEntity.ok(stockService.getPriceHistory(id, period))
         } catch (e: StockException) {
             ResponseEntity.status(HttpStatus.NOT_FOUND).build()
         }

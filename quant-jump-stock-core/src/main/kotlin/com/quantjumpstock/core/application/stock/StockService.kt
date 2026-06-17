@@ -1,6 +1,7 @@
 package com.quantjumpstock.core.application.stock
 
 import com.quantjumpstock.core.domain.model.stock.Market
+import com.quantjumpstock.core.domain.model.stock.PriceHistoryPeriod
 import com.quantjumpstock.core.domain.model.stock.Stock
 import com.quantjumpstock.core.domain.model.stock.StockDesignationHistory
 import com.quantjumpstock.core.domain.model.stock.StockPriceSnapshot
@@ -58,7 +59,7 @@ class StockService(
     /**
      * 종목 가격 이력 조회 (data-engine thin proxy)
      */
-    fun getPriceHistory(stockId: Long, period: String): PriceHistoryResponse {
+    fun getPriceHistory(stockId: Long, period: PriceHistoryPeriod): PriceHistoryResponse {
         val stock = stockRepository.findById(stockId)
             ?: throw StockException("종목을 찾을 수 없습니다: $stockId")
         return priceHistoryPort.getPriceHistory(stock.ticker, period)

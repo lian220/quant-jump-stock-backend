@@ -1,5 +1,7 @@
 package com.quantjumpstock.core.application.stock
 
+import com.quantjumpstock.core.domain.model.stock.PriceHistoryPeriod
+
 /**
  * 종목 가격 이력 조회 포트 (Output Port)
  *
@@ -9,5 +11,5 @@ package com.quantjumpstock.core.application.stock
  * 응답 계약(PriceHistoryResponse)이 application DTO 이므로 포트도 application 레이어에 둔다.
  */
 interface PriceHistoryPort {
-    fun getPriceHistory(ticker: String, period: String): PriceHistoryResponse
+    fun getPriceHistory(ticker: String, period: PriceHistoryPeriod): PriceHistoryResponse
 }
