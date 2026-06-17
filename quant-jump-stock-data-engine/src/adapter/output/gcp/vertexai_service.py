@@ -5,10 +5,30 @@ Vertex AI Custom Job을 관리하는 어댑터.
 """
 
 import logging
+import re
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
+
+# ── 중복 GPU 잡 제출 방지(멱등성) ──────────────────────────────
+# 같은 분석 기준일(target_date)에 대해 이미 실행 중인 잡이 있으면 새로 제출하지 않는다.
+# Pub/Sub 재배달(at-least-once)로 동일 메시지가 여러 번 도착해도 GPU 잡은 1개만 생성됨.
+_LABEL_JOB_KIND = "job_kind"
+_LABEL_TARGET_DATE = "target_date"
+_JOB_KIND_STOCK_PREDICTION = "stock_prediction"
+# Vertex AI 잡 비종료(활성) 상태 — 이 상태의 동일 키 잡이 있으면 중복으로 간주
+_ACTIVE_JOB_STATES = (
+    "JOB_STATE_QUEUED",
+    "JOB_STATE_PENDING",
+    "JOB_STATE_RUNNING",
+)
+
+
+def _sanitize_label_value(value: str) -> str:
+    """GCP 라벨 값 규칙([a-z0-9_-], 소문자, 최대 63자)에 맞게 정규화"""
+    v = re.sub(r"[^a-z0-9_-]", "-", value.lower())
+    return v[:63]
 
 # Lazy import: google-cloud-aiplatform (~8초 import 시간)
 # 실제 사용 시점에만 import하여 Cold Start 최적화
@@ -108,6 +128,25 @@ class VertexAIService:
 
         logger.debug(f"Vertex AI Job 시작: request={request_id}, package={package_uri}")
 
+        # ── 멱등성: target_date 기준 중복 잡 차단 ──
+        # TARGET_DATE 미지정(스크립트가 오늘로 자체 판단) 시에도 dedup 키가 필요하므로 UTC 오늘로 대체.
+        target_date = env_vars.get("TARGET_DATE") or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        target_date_label = _sanitize_label_value(target_date)
+
+        existing = self._find_active_duplicate_job(target_date_label)
+        if existing is not None:
+            logger.warning(
+                f"중복 제출 차단: target_date={target_date} 활성 잡 이미 존재 "
+                f"({existing}) — 새 GPU 잡 제출 스킵 (request={request_id})"
+            )
+            return JobResult(
+                success=True,  # 정상 흡수 → 호출자/Pub/Sub은 ACK 처리
+                message=f"이미 실행 중인 잡 존재 — 중복 제출 스킵 (target_date={target_date})",
+                job_name=existing,
+                job_state="DUPLICATE_SKIPPED",
+                request_id=request_id,
+            )
+
         try:
             # 환경 변수에 request_id 추가
             job_env_vars = {
@@ -120,9 +159,13 @@ class VertexAIService:
             # 민감 정보 마스킹 로깅
             self._log_env_vars_safely(job_env_vars)
 
-            # CustomJob 생성
+            # CustomJob 생성 (멱등성 dedup 키를 라벨로 부착)
             job = CustomJob(
                 display_name=self.job_config.job_name,
+                labels={
+                    _LABEL_JOB_KIND: _JOB_KIND_STOCK_PREDICTION,
+                    _LABEL_TARGET_DATE: target_date_label,
+                },
                 worker_pool_specs=[{
                     "machine_spec": {
                         "machine_type": self.job_config.machine_type,
@@ -159,6 +202,30 @@ class VertexAIService:
                 message=f"Vertex AI Job 실행 실패: {str(e)}",
                 request_id=request_id
             )
+
+    def _find_active_duplicate_job(self, target_date_label: str) -> Optional[str]:
+        """동일 target_date의 활성(비종료) 잡 resource_name을 반환, 없으면 None.
+
+        멱등성 1차 방어 — Pub/Sub 재배달로 같은 메시지가 다시 와도 중복 GPU 잡을 막는다.
+        주의: Vertex list는 eventual consistency라 거의 동시 제출 시 race로 둘 다 통과할 수 있다.
+        이 잔여 위험은 dead-letter(max=5) + 즉시 ACK 로 상한이 묶이며, 조회 자체 실패 시에는
+        예측 누락을 피하기 위해 fail-open(제출 진행)한다.
+        """
+        state_filter = " OR ".join(f'state="{s}"' for s in _ACTIVE_JOB_STATES)
+        list_filter = (
+            f'labels.{_LABEL_JOB_KIND}="{_JOB_KIND_STOCK_PREDICTION}" '
+            f'AND labels.{_LABEL_TARGET_DATE}="{target_date_label}" '
+            f'AND ({state_filter})'
+        )
+        try:
+            jobs = CustomJob.list(filter=list_filter)
+            for job in jobs:
+                return job.resource_name
+            return None
+        except Exception as e:
+            # 조회 실패 → fail-open: 중복 위험보다 예측 누락 방지를 우선
+            logger.warning(f"중복 잡 조회 실패(fail-open, 제출 진행): {e}")
+            return None
 
     def get_job_state(self, job_name: str) -> Dict[str, Any]:
         """Job 상태 조회"""
