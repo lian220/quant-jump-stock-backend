@@ -1,5 +1,6 @@
 package com.quantjumpstock.core.adapter.output.external
 
+import com.quantjumpstock.core.application.stock.PriceHistoryResponse
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.client.SimpleClientHttpRequestFactory
@@ -130,6 +131,26 @@ class DataEngineClient(
                 latest_package = LatestPackage(gcs_uri = "data-engine 상태 조회 실패: ${e.message}"),
                 timestamp = java.time.LocalDateTime.now().toString()
             )
+        }
+    }
+
+    /**
+     * 종목 가격 이력 조회
+     * data-engine의 /api/v1/stocks/{ticker}/price-history 엔드포인트 호출
+     */
+    fun getPriceHistory(ticker: String, period: String): PriceHistoryResponse {
+        val url = "/api/v1/stocks/$ticker/price-history?period=$period"
+        logger.info("📈 data-engine price-history 호출: $baseUrl$url")
+
+        return try {
+            restClient.get()
+                .uri(url)
+                .retrieve()
+                .body(PriceHistoryResponse::class.java)
+                ?: PriceHistoryResponse(ticker = ticker, period = period, candles = emptyList())
+        } catch (e: Exception) {
+            logger.error("❌ data-engine price-history 실패: ${e.message}", e)
+            PriceHistoryResponse(ticker = ticker, period = period, candles = emptyList())
         }
     }
 }
