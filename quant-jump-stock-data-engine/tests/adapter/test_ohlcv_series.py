@@ -16,8 +16,9 @@ class _FakeCursor:
     def __init__(self, rows):
         self._rows = rows
 
-    def sort(self, *_args, **_kw):
-        self._rows = sorted(self._rows, key=lambda d: d["date"])
+    def sort(self, field, direction=1):
+        assert field == "date" and direction == 1, f"Unexpected sort: {field}, {direction}"
+        self._rows = sorted(self._rows, key=lambda d: d[field])
         return self
 
     def __iter__(self):
@@ -42,7 +43,7 @@ def test_get_ohlcv_series_returns_sorted_ohlcv_for_ticker():
 
     assert [r["date"] for r in rows] == ["2026-01-01", "2026-01-02"]
     assert rows[0] == {"date": "2026-01-01", "open": 9.0, "high": 11.0, "low": 8.0, "close": 10.0, "volume": 90}
-    assert rows[1]["close"] == 11.0
+    assert rows[1] == {"date": "2026-01-02", "open": 10.0, "high": 12.0, "low": 9.0, "close": 11.0, "volume": 100}
 
 
 def test_get_ohlcv_series_skips_days_missing_ticker_or_close():
@@ -57,3 +58,10 @@ def test_get_ohlcv_series_skips_days_missing_ticker_or_close():
 
     assert [r["date"] for r in rows] == ["2026-01-03"]
     assert rows[0]["close"] == 11.0
+
+
+def test_get_ohlcv_series_volume_missing_is_none():
+    docs = [{"date": "2026-02-01", "stocks": {"AAPL": {"open": 1, "high": 2, "low": 0.5, "close": 1.5}}}]
+    repo = _repo_with(docs)
+    rows = repo.get_ohlcv_series("AAPL", "2026-02-01", "2026-02-01")
+    assert rows[0]["volume"] is None

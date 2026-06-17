@@ -19,7 +19,7 @@ from application.analysis.ports import (
 logger = logging.getLogger(__name__)
 
 
-def _to_float(v):
+def _to_float(v) -> Optional[float]:
     return None if v is None else float(v)
 
 
@@ -87,7 +87,9 @@ class MongoPriceRepository(PriceRepositoryPort):
             val = stocks.get(ticker)
             if not isinstance(val, dict):
                 continue
-            close = val.get("close", val.get("close_price"))
+            close = val.get("close_price")
+            if close is None:
+                close = val.get("close")
             if close is None:
                 continue
             rows.append({
@@ -96,7 +98,7 @@ class MongoPriceRepository(PriceRepositoryPort):
                 "high": _to_float(val.get("high")),
                 "low": _to_float(val.get("low")),
                 "close": float(close),
-                "volume": val.get("volume"),
+                "volume": int(val["volume"]) if val.get("volume") is not None else None,
             })
         return rows
 
