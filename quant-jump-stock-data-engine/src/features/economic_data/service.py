@@ -288,7 +288,7 @@ class EconomicDataService:
             logger.error(f"FRED 데이터 가져오기 실패: {series_id} - {e}")
             return None
 
-    def _fetch_yahoo_data(self, ticker: str, start_date: str, end_date: str, stock_obj: yf.Ticker = None) -> pd.DataFrame:
+    def _fetch_yahoo_data(self, ticker: str, start_date: str, end_date: str, stock_obj: yf.Ticker = None, max_retries: int = 2) -> pd.DataFrame:
         """Yahoo Finance에서 데이터를 가져옵니다.
 
         Args:
@@ -296,35 +296,51 @@ class EconomicDataService:
             start_date: 시작 날짜
             end_date: 종료 날짜
             stock_obj: 재사용할 yf.Ticker 인스턴스 (없으면 새로 생성)
+            max_retries: throttle 추정 시 재시도 횟수 (기본 2)
 
         Note:
             당일 데이터는 장중 partial bar일 수 있으므로 제외합니다.
             기술적 분석은 완성된 종가(close) 기준으로 계산해야 합니다.
+
+            yfinance throttle 대응 (2026-06-15 사고 후속): throttle 시 예외 없이 빈 df 를
+            반환하는 경우가 많으므로, 빈 응답/예외 모두 지수 백오프로 재시도한다. cutoff 적용
+            후 빈 것(해당 범위에 완성봉 없음)은 throttle 이 아니므로 재시도하지 않는다.
         """
-        try:
-            stock = stock_obj or yf.Ticker(ticker)
-            # yfinance history()의 end는 exclusive이므로 +1일 해야 해당 날짜 포함
-            end_dt = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
-            end_date_exclusive = end_dt.strftime("%Y-%m-%d")
-            df = stock.history(start=start_date, end=end_date_exclusive, interval="1d")
+        # yfinance history()의 end는 exclusive이므로 +1일 해야 해당 날짜 포함
+        end_dt = datetime.strptime(end_date, "%Y-%m-%d") + timedelta(days=1)
+        end_date_exclusive = end_dt.strftime("%Y-%m-%d")
+        cutoff_str = latest_complete_bar_date_str()
 
-            if df is None or df.empty:
-                return None
+        last_error = None
+        for attempt in range(max_retries + 1):
+            try:
+                stock = stock_obj or yf.Ticker(ticker)
+                df = stock.history(start=start_date, end=end_date_exclusive, interval="1d")
 
-            # 당일 partial bar 제거: 장중에 수집하면 미완성 일봉이 포함될 수 있음
-            # 완성된 종가만 기술적 분석에 사용해야 하므로 cutoff 이후 날짜 제외
-            cutoff_str = latest_complete_bar_date_str()
-            df.index = pd.to_datetime(df.index)
-            df = df[df.index.strftime("%Y-%m-%d") <= cutoff_str]
+                if df is not None and not df.empty:
+                    # 당일 partial bar 제거: 완성된 종가만 기술적 분석에 사용
+                    df.index = pd.to_datetime(df.index)
+                    df = df[df.index.strftime("%Y-%m-%d") <= cutoff_str]
+                    if not df.empty:
+                        return df
+                    # cutoff 후 빈 것은 정상(완성봉 없음) → 재시도 무의미
+                    return None
 
-            if df.empty:
-                return None
+                # 빈 응답 = throttle 추정 → 재시도 대상
+                last_error = "empty response (throttle 추정)"
+            except Exception as e:
+                last_error = e
 
-            return df
+            if attempt < max_retries:
+                backoff = 1.5 * (2 ** attempt)  # 1.5s → 3.0s
+                logger.warning(
+                    f"⏳ yfinance 재시도 {attempt + 1}/{max_retries}: {ticker} "
+                    f"({last_error}) → {backoff:.1f}s 대기"
+                )
+                time.sleep(backoff)
 
-        except Exception as e:
-            logger.error(f"Yahoo Finance 데이터 가져오기 실패: {ticker} - {e}")
-            return None
+        logger.error(f"Yahoo Finance 데이터 가져오기 실패 ({max_retries + 1}회 시도): {ticker} - {last_error}")
+        return None
 
     def _collect_individual_stocks(
         self,
