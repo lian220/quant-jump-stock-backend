@@ -1,5 +1,7 @@
 from datetime import datetime, timedelta
 
+import pytest
+
 from application.analysis.price_history_service import (
     PriceHistoryService,
     period_to_dates,
@@ -13,11 +15,8 @@ def test_period_to_dates_maps_tokens():
 
 
 def test_period_to_dates_rejects_unknown():
-    try:
+    with pytest.raises(ValueError):
         period_to_dates("2w", "2026-06-17")
-        assert False, "expected ValueError"
-    except ValueError:
-        pass
 
 
 class _FakeRepo:
@@ -48,6 +47,9 @@ def test_build_returns_window_with_indicator_keys():
     assert c["ma20"] is not None
     assert c["rsi"] is not None
     assert c["macd"] is not None
+    assert len(result["candles"]) == 30
+    # 120일 룩백 버퍼가 워밍업을 채우므로 윈도 첫 캔들도 ma60 보유
+    assert result["candles"][0]["ma60"] is not None
 
 
 def test_build_empty_when_no_data():

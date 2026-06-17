@@ -1,13 +1,16 @@
 from datetime import datetime, timedelta
-from typing import List
+from typing import List, Optional
 
 import pandas as pd
 
+from domain.common.exceptions import InsufficientDataError, IndicatorError
 from domain.strategy.indicators import (
     calculate_sma,
     calculate_rsi,
     calculate_macd,
 )
+
+from .ports import PriceRepositoryPort
 
 _PERIOD_DAYS = {"1m": 30, "3m": 90, "6m": 180, "1y": 365}
 _LOOKBACK_DAYS = 120  # 지표 워밍업 버퍼(MACD 26+9, MA60 커버)
@@ -21,12 +24,12 @@ def period_to_dates(period: str, end_date: str) -> tuple[str, str]:
     return start_dt.strftime("%Y-%m-%d"), end_date
 
 
-def _series_or_none(values: pd.Series) -> List:
+def _series_or_none(values: pd.Series) -> List[Optional[float]]:
     return [None if pd.isna(v) else float(v) for v in values]
 
 
 class PriceHistoryService:
-    def __init__(self, repo):
+    def __init__(self, repo: PriceRepositoryPort) -> None:
         self.repo = repo
 
     def build(self, ticker: str, period: str, today: str) -> dict:
@@ -40,6 +43,7 @@ class PriceHistoryService:
             return {"ticker": ticker, "period": period, "candles": []}
 
         df = pd.DataFrame(rows)
+        df["date"] = df["date"].astype(str)
         close = df["close"]
 
         df["ma20"] = self._safe(lambda: calculate_sma(close, 20), len(close))
@@ -66,7 +70,7 @@ class PriceHistoryService:
     def _safe(fn, n):
         try:
             return fn().tolist()
-        except Exception:
+        except (InsufficientDataError, IndicatorError):
             return [None] * n
 
     @staticmethod
@@ -74,7 +78,7 @@ class PriceHistoryService:
         try:
             m, s, h = calculate_macd(close, 12, 26, 9)
             return _series_or_none(m), _series_or_none(s), _series_or_none(h)
-        except Exception:
+        except (InsufficientDataError, IndicatorError):
             n = len(close)
             return [None] * n, [None] * n, [None] * n
 
