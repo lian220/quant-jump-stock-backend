@@ -58,16 +58,18 @@ jobs:
           service: ${{ env.CLOUD_RUN_SERVICE }}
           image: ${{ env.AR_REPO }}/qjs-data-engine:latest
           region: ${{ env.REGION }}
-          # 2026-05-15 사고 후속 — Pub/Sub publish background thread CPU starvation 차단
-          # --no-cpu-throttling: 인스턴스 살아있는 동안 항상 CPU 할당 (SDK background thread 보장)
-          # --min-instances=1: cold start cascade 방지 (cron 발화 시 publish stall 차단)
-          # 비용 영향: idle 1 vCPU ≈ $5/월 (수용 가능)
+          # 2026-06-17 — scale-to-zero 복귀 (필요할 때만 기동, idle 비용 0)
+          #   * min=1 + --no-cpu-throttling 은 5/15 gRPC SDK background-thread publish stall 우회용이었으나,
+          #     5/18 에 publisher 가 동기 REST(publisher.py: session.post + raise_for_status, 백그라운드 스레드 없음)로
+          #     재작성되어 보호 대상 자체가 사라짐 → 상시 가동 불필요.
+          #   * publish 는 요청 수명 안에서 동기 완료되므로 cpu-throttling 기본값으로도 flush 보장.
+          #   * Push 구독이 메시지 도착 시 인스턴스를 깨움(cold start) + timeout=600 + push 재시도로 유실 없음.
+          #   * 직전(상시 1 vCPU 상시할당)은 idle ≈ $60~70/월. min=0 전환 시 idle ≈ $0.
           flags: >-
             --no-allow-unauthenticated
             --memory=1Gi --cpu=1
-            --min-instances=1 --max-instances=3
+            --min-instances=0 --max-instances=3
             --port=8080 --timeout=600
-            --no-cpu-throttling
             --service-account=qjs-data-engine@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
           env_vars: |
             PUBSUB_MODE=push
