@@ -1,5 +1,6 @@
 package com.quantjumpstock.core.adapter.output.external
 
+import com.quantjumpstock.core.application.stock.PriceHistoryPort
 import com.quantjumpstock.core.application.stock.PriceHistoryResponse
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
@@ -19,7 +20,7 @@ import java.time.Duration
 class DataEngineClient(
     @Value("\${data-engine.base-url:http://localhost:10020}")
     private val baseUrl: String
-) {
+) : PriceHistoryPort {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
     private val restClient: RestClient = RestClient.builder()
@@ -138,7 +139,7 @@ class DataEngineClient(
      * 종목 가격 이력 조회
      * data-engine의 /api/v1/stocks/{ticker}/price-history 엔드포인트 호출
      */
-    fun getPriceHistory(ticker: String, period: String): PriceHistoryResponse {
+    override fun getPriceHistory(ticker: String, period: String): PriceHistoryResponse {
         val url = "/api/v1/stocks/$ticker/price-history?period=$period"
         logger.info("📈 data-engine price-history 호출: $baseUrl$url")
 

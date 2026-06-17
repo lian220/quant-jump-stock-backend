@@ -15,7 +15,8 @@ import org.springframework.transaction.annotation.Transactional
 @Transactional(readOnly = true)
 class StockService(
     private val stockRepository: StockRepository,
-    private val stockPriceDataPort: StockPriceDataPort
+    private val stockPriceDataPort: StockPriceDataPort,
+    private val priceHistoryPort: PriceHistoryPort
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -52,6 +53,15 @@ class StockService(
 
         val price = loadPriceSafely(stock.ticker)
         return stock.toDetailResponse(price)
+    }
+
+    /**
+     * 종목 가격 이력 조회 (data-engine thin proxy)
+     */
+    fun getPriceHistory(stockId: Long, period: String): PriceHistoryResponse {
+        val stock = stockRepository.findById(stockId)
+            ?: throw StockException("종목을 찾을 수 없습니다: $stockId")
+        return priceHistoryPort.getPriceHistory(stock.ticker, period)
     }
 
     /**

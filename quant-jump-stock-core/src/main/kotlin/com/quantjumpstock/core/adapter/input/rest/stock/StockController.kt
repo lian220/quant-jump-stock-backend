@@ -3,6 +3,7 @@ package com.quantjumpstock.core.adapter.input.rest.stock
 import com.quantjumpstock.core.application.auth.AuthService
 import com.quantjumpstock.core.application.stock.*
 import com.quantjumpstock.core.domain.model.stock.Market
+import com.quantjumpstock.core.domain.model.stock.PriceHistoryPeriod
 import com.quantjumpstock.core.domain.port.output.UserRepository
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
@@ -50,6 +51,19 @@ class StockController(
         return try {
             val response = stockService.getStock(id)
             ResponseEntity.ok(response)
+        } catch (e: StockException) {
+            ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        }
+    }
+
+    @GetMapping("/api/v1/stocks/{id}/price-history")
+    @Operation(summary = "종목 가격 이력", description = "캔들 + MA/RSI/MACD 시계열을 조회합니다.")
+    fun getPriceHistory(
+        @Parameter(description = "종목 ID") @PathVariable id: Long,
+        @Parameter(description = "기간") @RequestParam(defaultValue = "6m") period: PriceHistoryPeriod
+    ): ResponseEntity<PriceHistoryResponse> {
+        return try {
+            ResponseEntity.ok(stockService.getPriceHistory(id, period.token))
         } catch (e: StockException) {
             ResponseEntity.status(HttpStatus.NOT_FOUND).build()
         }
