@@ -58,6 +58,7 @@ from adapter.input.pubsub.handlers import (
 )
 from adapter.input.rest import ml_router
 from adapter.input.rest import analysis_router
+from adapter.input.rest import price_history_router
 from adapter.output.pubsub.publisher import PubSubPublisherAdapter
 from adapter.output.postgresql.stock_repository import PostgresStockRepository
 from adapter.output.postgresql.strategy_repository import PostgresStrategyRepository
@@ -157,6 +158,7 @@ app = FastAPI(
 app.include_router(economic_router)
 app.include_router(ml_router.router)
 app.include_router(analysis_router.router)
+app.include_router(price_history_router.router)
 
 
 # ============================================================
