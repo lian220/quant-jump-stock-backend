@@ -429,6 +429,12 @@ def _init_services():
     technical_service = NewTechnicalAnalysisAdapter(technical_app_service)
     analysis_router.set_technical_service(technical_service)
 
+    # 가격 시계열(OHLCV + 지표) 조회 서비스 — composition root 에서 output adapter 주입
+    from application.analysis.price_history_service import PriceHistoryService
+    price_history_router.set_price_history_service(
+        PriceHistoryService(price_repository)
+    )
+
     recommendation_service = RecommendationService()
     sentiment_service = LegacySentimentAnalysisAdapter(recommendation_service)
 
