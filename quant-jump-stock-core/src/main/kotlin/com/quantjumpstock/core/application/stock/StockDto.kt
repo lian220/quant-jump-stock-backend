@@ -284,4 +284,53 @@ data class DesignationHistoryResponse(
     val changedAt: LocalDateTime
 )
 
+data class PriceCandleResponse(
+    @Schema(description = "기준일 (YYYY-MM-DD)")
+    val date: String,
+
+    @Schema(description = "시가")
+    val open: Double?,
+
+    @Schema(description = "고가")
+    val high: Double?,
+
+    @Schema(description = "저가")
+    val low: Double?,
+
+    @Schema(description = "종가")
+    val close: Double,
+
+    @Schema(description = "거래량")
+    val volume: Long?,
+
+    @Schema(description = "20일 이동평균")
+    val ma20: Double?,
+
+    @Schema(description = "60일 이동평균")
+    val ma60: Double?,
+
+    @Schema(description = "RSI")
+    val rsi: Double?,
+
+    @Schema(description = "MACD")
+    val macd: Double?,
+
+    @Schema(description = "MACD 시그널")
+    val signal: Double?,
+
+    @Schema(description = "MACD 히스토그램")
+    val histogram: Double?
+)
+
+data class PriceHistoryResponse(
+    @Schema(description = "종목 코드")
+    val ticker: String,
+
+    @Schema(description = "조회 기간")
+    val period: String,
+
+    @Schema(description = "캔들 목록")
+    val candles: List<PriceCandleResponse>
+)
+
 class StockException(message: String) : RuntimeException(message)

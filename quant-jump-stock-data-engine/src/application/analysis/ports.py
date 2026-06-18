@@ -77,6 +77,16 @@ class PriceRepositoryPort(ABC):
         """
         pass
 
+    @abstractmethod
+    def get_ohlcv_series(
+        self,
+        ticker: str,
+        start_date: str,
+        end_date: str,
+    ) -> List[dict]:
+        """단일 티커의 OHLCV 시계열 조회 (date ASC). 거래일만 반환."""
+        ...
+
 
 class AnalysisResultRepositoryPort(ABC):
     """분석 결과 저장소 포트"""

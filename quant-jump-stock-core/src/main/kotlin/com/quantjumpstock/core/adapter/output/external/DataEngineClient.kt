@@ -1,5 +1,8 @@
 package com.quantjumpstock.core.adapter.output.external
 
+import com.quantjumpstock.core.application.stock.PriceHistoryPort
+import com.quantjumpstock.core.application.stock.PriceHistoryResponse
+import com.quantjumpstock.core.domain.model.stock.PriceHistoryPeriod
 import org.slf4j.LoggerFactory
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.client.SimpleClientHttpRequestFactory
@@ -18,7 +21,7 @@ import java.time.Duration
 class DataEngineClient(
     @Value("\${data-engine.base-url:http://localhost:10020}")
     private val baseUrl: String
-) {
+) : PriceHistoryPort {
     private val logger = LoggerFactory.getLogger(this::class.java)
 
     private val restClient: RestClient = RestClient.builder()
@@ -130,6 +133,25 @@ class DataEngineClient(
                 latest_package = LatestPackage(gcs_uri = "data-engine 상태 조회 실패: ${e.message}"),
                 timestamp = java.time.LocalDateTime.now().toString()
             )
+        }
+    }
+
+    /**
+     * 종목 가격 이력 조회
+     * data-engine의 /api/v1/stocks/{ticker}/price-history 엔드포인트 호출
+     */
+    override fun getPriceHistory(ticker: String, period: PriceHistoryPeriod): PriceHistoryResponse {
+        logger.info("📈 data-engine price-history 호출: $baseUrl/api/v1/stocks/$ticker/price-history?period=${period.token}")
+
+        return try {
+            restClient.get()
+                .uri("/api/v1/stocks/{ticker}/price-history?period={period}", ticker, period.token)
+                .retrieve()
+                .body(PriceHistoryResponse::class.java)
+                ?: PriceHistoryResponse(ticker = ticker, period = period.token, candles = emptyList())
+        } catch (e: Exception) {
+            logger.error("❌ data-engine price-history 실패: ${e.message}", e)
+            PriceHistoryResponse(ticker = ticker, period = period.token, candles = emptyList())
         }
     }
 }
