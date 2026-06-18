@@ -1,6 +1,5 @@
 import logging
 import requests
-import time
 from datetime import datetime, timedelta
 from core.database import MongoDB, PostgreSQL
 from core.config import settings
@@ -73,8 +72,11 @@ class SentimentAnalysisService:
         time_from = (start_date_dt - timedelta(days=3)).strftime("%Y%m%dT0000")
 
         results = []
+        keys_exhausted = False  # 전 키 소진(should_backoff) 1회 확인 시 배치 조기 종료
 
         for ticker in tickers:
+            if keys_exhausted:
+                break
             logger.debug(f"Fetching sentiment for {ticker}...")
 
             # 멱등성: 당일 이미 수집된 티커(article_count>0)는 AV 재호출 안 함.
@@ -90,11 +92,10 @@ class SentimentAnalysisService:
                 )
                 continue
 
-            # 🆕 최대 3번 재시도 (키 로테이션)
+            # 🆕 최대 3번 재시도 (키 로테이션). 단, 전 키 소진이 확인되면
+            #    이 종목에서 즉시 멈추고(아래 keys_exhausted) 배치 전체를 종료한다.
             max_retries = min(3, len(self.key_rotator.keys))
             success = False
-            all_keys_rate_limited_count = 0  # 모든 키 Rate Limit 카운터
-            MAX_ALL_KEYS_RATE_LIMITED = 3  # 모든 키 Rate Limit 시 최대 재시도
 
             for attempt in range(max_retries):
                 # 다음 API 키 가져오기
@@ -116,20 +117,14 @@ class SentimentAnalysisService:
                         logger.warning(f"Rate Limit (429) for {ticker}, attempt {attempt + 1}/{max_retries}")
                         self.key_rotator.mark_rate_limited(current_key)
 
-                        # 모든 키가 Rate Limit 걸렸는지 확인
+                        # 전 키 소진이면 더 시도해도 무의미 → 배치 조기 종료(다음 job/스케줄로).
                         if self.key_rotator.should_backoff():
-                            all_keys_rate_limited_count += 1
-                            if all_keys_rate_limited_count >= MAX_ALL_KEYS_RATE_LIMITED:
-                                logger.error(
-                                    f"⛔ {ticker}: 모든 API 키 Rate Limit, "
-                                    f"{MAX_ALL_KEYS_RATE_LIMITED}회 재시도 실패 - 스킵"
-                                )
-                                break
-                            logger.warning(
-                                f"⏳ 모든 키 Rate Limit ({all_keys_rate_limited_count}/{MAX_ALL_KEYS_RATE_LIMITED}), "
-                                f"{self.key_rotator.BACKOFF_DELAY}초 대기..."
+                            logger.error(
+                                "⛔ 모든 API 키 Rate Limit 소진 — 감정 분석 배치 조기 종료 "
+                                f"(남은 종목 스킵, 마지막 티커={ticker})"
                             )
-                            time.sleep(self.key_rotator.BACKOFF_DELAY)
+                            keys_exhausted = True
+                            break
                         continue
 
                     if response.status_code != 200:
@@ -150,15 +145,15 @@ class SentimentAnalysisService:
                             f"(attempt {attempt + 1}/{max_retries}) → 키 회피 후 재시도"
                         )
                         self.key_rotator.mark_rate_limited(current_key)
+                        # 일일한도(25/day)는 대기/로테이션으로 안 풀린다. 전 키 소진이면
+                        # 남은 종목을 갈아넣지 말고 배치 조기 종료(다음 job/스케줄로).
                         if self.key_rotator.should_backoff():
-                            all_keys_rate_limited_count += 1
-                            if all_keys_rate_limited_count >= MAX_ALL_KEYS_RATE_LIMITED:
-                                logger.error(
-                                    f"⛔ {ticker}: 모든 API 키 일일한도 소진 "
-                                    f"({MAX_ALL_KEYS_RATE_LIMITED}회) - 스킵"
-                                )
-                                break
-                            time.sleep(self.key_rotator.BACKOFF_DELAY)
+                            logger.error(
+                                "⛔ 모든 API 키 일일한도 소진 — 감정 분석 배치 조기 종료 "
+                                f"(남은 종목 스킵, 마지막 티커={ticker})"
+                            )
+                            keys_exhausted = True
+                            break
                         continue
 
                     # 성공
@@ -174,6 +169,9 @@ class SentimentAnalysisService:
                     logger.error(f"Request error for {ticker}: {e}")
                     self.key_rotator.mark_failure(current_key)
                     continue
+
+            if keys_exhausted:
+                break
 
             if not success:
                 logger.error(f"Failed to fetch sentiment for {ticker} after {max_retries} attempts")

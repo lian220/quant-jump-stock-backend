@@ -131,3 +131,43 @@ def test_already_collected_ticker_skipped_no_api_call():
     assert mock_get.call_count == 1, "이미 수집된 AAA 는 호출 안 하고 BBB 만 호출해야 함"
     called_ticker = mock_get.call_args.kwargs["params"]["tickers"]
     assert called_ticker == "BBB", f"호출된 티커는 결측인 BBB 여야 함 (got {called_ticker})"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 전역 fail-fast: 모든 키가 일일한도 소진(should_backoff=True)되면, 남은 종목을
+# 갈아넣지 않고 배치를 즉시 종료한다. + 일일한도엔 무의미한 60초 백오프를 자지 않는다.
+#
+# 배경(2026-06-17 비용 사고): 소진 감지가 '종목 단위'라 배치가 안 멈췄다.
+# 42종목을 종목마다 60초 백오프로 갈아넣어 처리시간이 600초(Pub/Sub ack deadline)를
+# 넘김 → ack 실패 → 메시지 재전송 → 파이프라인 5회 재실행(Vertex AI 5회, Slack 45개).
+# ─────────────────────────────────────────────────────────────────────────────
+def test_all_keys_exhausted_aborts_batch_without_backoff_sleep():
+    """전 키 소진(should_backoff=True) 시 첫 감지에서 배치 종료, 60초 백오프 안 잠."""
+    svc, rot = _make_service_with_mock_rotator(num_keys=3)
+    rot.should_backoff.return_value = True  # 모든 키가 일일한도 소진 상태
+    rot.BACKOFF_DELAY = 60
+
+    resp = MagicMock()
+    resp.status_code = 200
+    resp.json.return_value = {
+        "Information": "standard API rate limit is 25 requests per day. premium plans ..."
+    }
+
+    db = MagicMock()
+    db.sentiment_analysis.find_one.return_value = None  # 3종목 모두 미수집
+
+    with patch("services.sentiment_analysis.PostgreSQL.execute_query",
+               return_value=[{"ticker": "AAA"}, {"ticker": "BBB"}, {"ticker": "CCC"}]), \
+         patch("services.sentiment_analysis.MongoDB.get_db", return_value=db), \
+         patch("services.sentiment_analysis.requests.get", return_value=resp) as mock_get, \
+         patch("time.sleep") as mock_sleep:
+        results = svc.fetch_and_store_sentiment(start_date="2026-06-09")
+
+    # 전량 소진을 처음 확인한 직후 배치 종료 → 남은 BBB/CCC 는 갈아넣지 않음
+    assert mock_get.call_count == 1, (
+        f"전 키 소진 시 첫 감지에서 배치 종료해야 함 (got {mock_get.call_count} calls)")
+    # 일일한도(25/day)는 60초 기다려도 안 풀림 → 백오프 sleep 금지
+    assert not any(
+        (c.args and c.args[0] == 60) for c in mock_sleep.call_args_list
+    ), "일일한도 소진 시 60초 백오프를 자면 안 됨"
+    assert results == []
