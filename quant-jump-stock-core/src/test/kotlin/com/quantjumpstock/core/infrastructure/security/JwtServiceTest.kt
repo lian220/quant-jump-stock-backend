@@ -233,6 +233,35 @@ class JwtServiceTest {
     }
 
     @Test
+    fun `extractSubjectIgnoreExpiry - refresh token 은 거부된다 (type 검증, 강제 로그아웃 방어)`() {
+        // 탈취한 refresh token 을 logout(extractSubjectIgnoreExpiry) 에 넣어
+        // 피해자 세션을 정리/강제 로그아웃시키는 것을 막아야 한다. access 전용.
+        val sut = service()
+        val refresh = sut.generateRefreshToken("victim", jti = java.util.UUID.randomUUID().toString(), dbId = 7L)
+
+        assertThat(sut.extractSubjectIgnoreExpiry(refresh)).isNull()
+    }
+
+    @Test
+    fun `다른 issuer 로 서명된 토큰은 거부된다 (issuer 검증, 키 공유 혼용 방어)`() {
+        // 동일 HMAC 키를 공유하는 다른 서비스/유출 키로 발급된, iss 만 다른 토큰을 거부한다.
+        val sut = service()
+        val foreignIssuer = SignedJWT(
+            JWSHeader(JWSAlgorithm.HS256),
+            JWTClaimsSet.Builder()
+                .subject("attacker")
+                .issuer("some-other-service")
+                .claim("type", "access")
+                .claim("role", "USER")
+                .issueTime(Date())
+                .expirationTime(Date(System.currentTimeMillis() + 3600_000))
+                .build()
+        ).apply { sign(MACSigner(secret.toByteArray())) }.serialize()
+
+        assertThat(sut.validateAccessToken(foreignIssuer)).isNull()
+    }
+
+    @Test
     fun `32바이트 미만 secret 은 거부된다`() {
         val exception = runCatching {
             JwtService(
