@@ -113,7 +113,8 @@ class JwtService(
 
     /**
      * 만료를 무시하고 서명만 검증해 sub/dbId 추출. logout 전용 (만료 access 로도 자기 세션 정리).
-     * type 도 검증하지 않으므로 인가 경로에는 절대 사용 금지.
+     * access 전용: refresh token 으로 호출 시 거부(탈취 refresh 로 피해자 강제 로그아웃 방어).
+     * 인가 경로에는 절대 사용 금지.
      */
     override fun extractSubjectIgnoreExpiry(token: String): SubjectInfo? {
         return try {
@@ -123,6 +124,12 @@ class JwtService(
                 return null
             }
             val claims = signedJWT.jwtClaimsSet
+            // type 검증: access 전용. (graceful migration: type 없는 레거시 토큰은 access 로 간주)
+            val type = claims.getStringClaim("type")
+            if (type != null && type != TYPE_ACCESS) {
+                logger.warn("extractSubjectIgnoreExpiry: type={} 토큰 거부 (access 전용)", type)
+                return null
+            }
             val userId = claims.subject ?: return null
             SubjectInfo(userId = userId, dbId = claims.getLongClaim("dbId"))
         } catch (e: Exception) {
@@ -171,6 +178,11 @@ class JwtService(
             val expirationTime = claims.expirationTime
             if (expirationTime == null || expirationTime.before(Date())) {
                 logger.debug("JWT 만료됨")
+                return null
+            }
+            // issuer 검증: 동일 HMAC 키를 공유하는 다른 서비스/유출 키로 발급된 토큰 거부 (RFC 7519)
+            if (claims.issuer != issuer) {
+                logger.warn("JWT issuer 불일치 - expected={}, got={}", issuer, claims.issuer)
                 return null
             }
             claims
