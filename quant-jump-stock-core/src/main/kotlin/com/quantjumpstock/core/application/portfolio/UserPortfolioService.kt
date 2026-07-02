@@ -96,7 +96,7 @@ class UserPortfolioService(
         validatePortfolioOwnership(portfolioId, userId)
 
         val existing = portfolioStockRepository.findByPortfolioIdAndStockId(portfolioId, stockId)
-            ?: throw PortfolioException("포트폴리오 종목을 찾을 수 없습니다: portfolioId=$portfolioId, stockId=$stockId")
+            ?: throw PortfolioNotFoundException("포트폴리오 종목을 찾을 수 없습니다: portfolioId=$portfolioId, stockId=$stockId")
 
         val updated = existing.copy(
             targetWeight = request.targetWeight ?: existing.targetWeight,
@@ -118,7 +118,7 @@ class UserPortfolioService(
         validatePortfolioOwnership(portfolioId, userId)
 
         val existing = portfolioStockRepository.findByPortfolioIdAndStockId(portfolioId, stockId)
-            ?: throw PortfolioException("포트폴리오 종목을 찾을 수 없습니다: portfolioId=$portfolioId, stockId=$stockId")
+            ?: throw PortfolioNotFoundException("포트폴리오 종목을 찾을 수 없습니다: portfolioId=$portfolioId, stockId=$stockId")
 
         val existingId = existing.id ?: throw IllegalStateException("삭제할 포트폴리오 종목에 ID가 없습니다: portfolioId=$portfolioId, stockId=$stockId")
         portfolioStockRepository.deleteById(existingId)
@@ -171,7 +171,7 @@ class UserPortfolioService(
 
     private fun validatePortfolioExists(portfolioId: Long) {
         if (!userPortfolioRepository.existsById(portfolioId)) {
-            throw PortfolioException("포트폴리오를 찾을 수 없습니다: $portfolioId")
+            throw PortfolioNotFoundException("포트폴리오를 찾을 수 없습니다: $portfolioId")
         }
     }
 

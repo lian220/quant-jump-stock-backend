@@ -1,8 +1,18 @@
 package com.quantjumpstock.core.adapter.input
 
 import com.quantjumpstock.core.application.auth.AuthException
-import com.quantjumpstock.core.application.marketplace.StrategyNotFoundException
+import com.quantjumpstock.core.application.backtest.BacktestException
+import com.quantjumpstock.core.application.backtest.BacktestNotFoundException
+import com.quantjumpstock.core.application.portfolio.PortfolioAccessDeniedException
+import com.quantjumpstock.core.application.portfolio.PortfolioException
+import com.quantjumpstock.core.application.portfolio.PortfolioNotFoundException
+import com.quantjumpstock.core.application.stock.StockException
+import com.quantjumpstock.core.application.stock.StockNotFoundException
+import com.quantjumpstock.core.application.strategy.StrategyException
+import com.quantjumpstock.core.application.strategy.StrategyNotFoundException
+import com.quantjumpstock.core.application.subscription.SubscriptionException
 import com.quantjumpstock.core.domain.port.output.ErrorNotifier
+import com.quantjumpstock.core.application.marketplace.StrategyNotFoundException as MarketplaceStrategyNotFoundException
 import com.quantjumpstock.core.infrastructure.security.AccessDeniedException
 import com.quantjumpstock.core.infrastructure.security.UnauthorizedException
 import jakarta.servlet.http.HttpServletRequest
@@ -148,10 +158,10 @@ class GlobalExceptionHandler(
     }
 
     /**
-     * 전략 없음 예외 처리
+     * 전략 없음 예외 처리 (marketplace / strategy 도메인 공통)
      */
-    @ExceptionHandler(StrategyNotFoundException::class)
-    fun handleStrategyNotFoundException(ex: StrategyNotFoundException): ResponseEntity<ErrorResponse> {
+    @ExceptionHandler(MarketplaceStrategyNotFoundException::class, StrategyNotFoundException::class)
+    fun handleStrategyNotFoundException(ex: RuntimeException): ResponseEntity<ErrorResponse> {
         logger.warn("📊 Strategy not found: {}", ex.message)
 
         return ResponseEntity
@@ -161,6 +171,152 @@ class GlobalExceptionHandler(
                 message = ex.message ?: "Strategy not found",
                 status = HttpStatus.NOT_FOUND.value()
             ))
+    }
+
+    /**
+     * 전략 도메인 예외 처리 (검증 실패, 권한 없음 등)
+     */
+    @ExceptionHandler(StrategyException::class)
+    fun handleStrategyException(ex: StrategyException): ResponseEntity<ErrorResponse> {
+        logger.warn("📊 Strategy error: {}", ex.message)
+
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(
+                error = "Bad Request",
+                message = ex.message ?: "Strategy error",
+                status = HttpStatus.BAD_REQUEST.value()
+            ))
+    }
+
+    /**
+     * 종목 없음 예외 처리
+     */
+    @ExceptionHandler(StockNotFoundException::class)
+    fun handleStockNotFoundException(ex: StockNotFoundException): ResponseEntity<ErrorResponse> {
+        logger.warn("📈 Stock not found: {}", ex.message)
+
+        return ResponseEntity
+            .status(HttpStatus.NOT_FOUND)
+            .body(ErrorResponse(
+                error = "Not Found",
+                message = ex.message ?: "Stock not found",
+                status = HttpStatus.NOT_FOUND.value()
+            ))
+    }
+
+    /**
+     * 종목 도메인 예외 처리 (중복 등록 등)
+     */
+    @ExceptionHandler(StockException::class)
+    fun handleStockException(ex: StockException): ResponseEntity<ErrorResponse> {
+        logger.warn("📈 Stock error: {}", ex.message)
+
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(
+                error = "Bad Request",
+                message = ex.message ?: "Stock error",
+                status = HttpStatus.BAD_REQUEST.value()
+            ))
+    }
+
+    /**
+     * 포트폴리오 없음 예외 처리
+     */
+    @ExceptionHandler(PortfolioNotFoundException::class)
+    fun handlePortfolioNotFoundException(ex: PortfolioNotFoundException): ResponseEntity<ErrorResponse> {
+        logger.warn("💼 Portfolio resource not found: {}", ex.message)
+
+        return ResponseEntity
+            .status(HttpStatus.NOT_FOUND)
+            .body(ErrorResponse(
+                error = "Not Found",
+                message = ex.message ?: "Portfolio resource not found",
+                status = HttpStatus.NOT_FOUND.value()
+            ))
+    }
+
+    /**
+     * 포트폴리오 접근 권한 없음 예외 처리
+     */
+    @ExceptionHandler(PortfolioAccessDeniedException::class)
+    fun handlePortfolioAccessDeniedException(ex: PortfolioAccessDeniedException): ResponseEntity<ErrorResponse> {
+        logger.warn("💼 Portfolio access denied: {}", ex.message)
+
+        return ResponseEntity
+            .status(HttpStatus.FORBIDDEN)
+            .body(ErrorResponse(
+                error = "Forbidden",
+                message = ex.message ?: "Portfolio access denied",
+                status = HttpStatus.FORBIDDEN.value()
+            ))
+    }
+
+    /**
+     * 포트폴리오 도메인 예외 처리 (비중 초과, 중복 종목 등)
+     */
+    @ExceptionHandler(PortfolioException::class)
+    fun handlePortfolioException(ex: PortfolioException): ResponseEntity<ErrorResponse> {
+        logger.warn("💼 Portfolio error: {}", ex.message)
+
+        return ResponseEntity
+            .status(HttpStatus.BAD_REQUEST)
+            .body(ErrorResponse(
+                error = "Bad Request",
+                message = ex.message ?: "Portfolio error",
+                status = HttpStatus.BAD_REQUEST.value()
+            ))
+    }
+
+    /**
+     * 백테스트 결과 없음 예외 처리
+     */
+    @ExceptionHandler(BacktestNotFoundException::class)
+    fun handleBacktestNotFoundException(ex: BacktestNotFoundException): ResponseEntity<ErrorResponse> {
+        logger.warn("🔬 Backtest not found: {}", ex.message)
+
+        return ResponseEntity
+            .status(HttpStatus.NOT_FOUND)
+            .body(ErrorResponse(
+                error = "Not Found",
+                message = ex.message ?: "Backtest result not found",
+                status = HttpStatus.NOT_FOUND.value()
+            ))
+    }
+
+    /**
+     * 백테스트 처리 실패 예외 처리 (Pub/Sub 발행 실패 등)
+     */
+    @ExceptionHandler(BacktestException::class)
+    fun handleBacktestException(ex: BacktestException): ResponseEntity<ErrorResponse> {
+        logger.error("🔬 Backtest error: {}", ex.message, ex)
+
+        return ResponseEntity
+            .status(HttpStatus.INTERNAL_SERVER_ERROR)
+            .body(ErrorResponse(
+                error = "Internal Server Error",
+                message = ex.message ?: "Backtest processing failed",
+                status = HttpStatus.INTERNAL_SERVER_ERROR.value()
+            ))
+    }
+
+    /**
+     * 구독 도메인 예외 처리.
+     * 예외에 담긴 동적 httpStatus 와 errorCode/extra 필드를 그대로 보존한다
+     * (FE 가 message 문구와 errorCode 로 분기하는 계약이 있어 형식 변경 금지).
+     */
+    @ExceptionHandler(SubscriptionException::class)
+    fun handleSubscriptionException(ex: SubscriptionException): ResponseEntity<Map<String, Any>> {
+        logger.warn("🔔 Subscription error [{}]: {}", ex.errorCode, ex.message)
+
+        val body = mutableMapOf<String, Any>(
+            "error" to ex.errorCode,
+            "message" to (ex.message ?: "오류가 발생했습니다.")
+        )
+        body.putAll(ex.extra)
+
+        return ResponseEntity.status(ex.httpStatus).body(body)
     }
 
     /**

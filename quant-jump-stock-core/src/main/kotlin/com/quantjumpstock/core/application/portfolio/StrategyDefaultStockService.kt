@@ -83,7 +83,7 @@ class StrategyDefaultStockService(
         logger.info("기본 종목 수정: strategyId=$strategyId, stockId=$stockId")
 
         val existing = defaultStockRepository.findByStrategyIdAndStockId(strategyId, stockId)
-            ?: throw PortfolioException("기본 종목을 찾을 수 없습니다: strategyId=$strategyId, stockId=$stockId")
+            ?: throw PortfolioNotFoundException("기본 종목을 찾을 수 없습니다: strategyId=$strategyId, stockId=$stockId")
 
         val newWeight = request.targetWeight ?: existing.targetWeight
         validateTargetWeight(newWeight)
@@ -116,7 +116,7 @@ class StrategyDefaultStockService(
         logger.info("기본 종목 삭제: strategyId=$strategyId, stockId=$stockId")
 
         val existing = defaultStockRepository.findByStrategyIdAndStockId(strategyId, stockId)
-            ?: throw PortfolioException("기본 종목을 찾을 수 없습니다: strategyId=$strategyId, stockId=$stockId")
+            ?: throw PortfolioNotFoundException("기본 종목을 찾을 수 없습니다: strategyId=$strategyId, stockId=$stockId")
 
         val existingId = existing.id ?: throw IllegalStateException("삭제할 기본 종목에 ID가 없습니다: strategyId=$strategyId, stockId=$stockId")
         defaultStockRepository.deleteById(existingId)
@@ -173,7 +173,7 @@ class StrategyDefaultStockService(
 
     private fun validateStrategyExists(strategyId: Long) {
         if (!strategyRepository.existsById(strategyId)) {
-            throw PortfolioException("전략을 찾을 수 없습니다: $strategyId")
+            throw PortfolioNotFoundException("전략을 찾을 수 없습니다: $strategyId")
         }
     }
 

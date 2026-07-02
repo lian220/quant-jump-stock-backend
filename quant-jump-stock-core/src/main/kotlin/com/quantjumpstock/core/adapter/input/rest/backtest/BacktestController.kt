@@ -1,16 +1,17 @@
 package com.quantjumpstock.core.adapter.input.rest.backtest
 
-import com.quantjumpstock.core.application.auth.AuthService
 import com.quantjumpstock.core.application.backtest.*
 import com.quantjumpstock.core.application.tier.TierConfigurationService
 import com.quantjumpstock.core.application.portfolio.StrategyDefaultStockService
 import com.quantjumpstock.core.domain.model.backtest.BacktestStatus
 import com.quantjumpstock.core.domain.model.backtest.UniverseType
 import com.quantjumpstock.core.domain.port.output.BacktestResultRepository
-import com.quantjumpstock.core.domain.port.output.UserRepository
 import com.quantjumpstock.core.domain.port.output.Benchmark
 import com.quantjumpstock.core.domain.port.output.StockRepository
 import com.quantjumpstock.core.domain.port.output.StrategyRepository
+import com.quantjumpstock.core.infrastructure.security.CurrentUser
+import com.quantjumpstock.core.infrastructure.security.UnauthorizedException
+import com.quantjumpstock.core.infrastructure.security.UserPrincipal
 import org.slf4j.LoggerFactory
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
@@ -37,10 +38,8 @@ import java.time.temporal.ChronoUnit
 @ImportRuntimeHints(BacktestRuntimeHints::class)
 class BacktestController(
     private val backtestService: BacktestService,
-    private val authService: AuthService,
     private val userTierService: UserTierService,
     private val tierConfigService: TierConfigurationService,
-    private val userRepository: UserRepository,
     private val defaultStockService: StrategyDefaultStockService,
     private val stockRepository: StockRepository,
     private val strategyRepository: StrategyRepository,
@@ -66,11 +65,11 @@ class BacktestController(
         ApiResponse(responseCode = "429", description = "Rate Limit 초과")
     )
     fun runBacktest(
-        @RequestHeader("Authorization", required = false) authorization: String?,
+        @CurrentUser user: UserPrincipal?,
         @RequestBody request: BacktestRunRequest
     ): ResponseEntity<Any> {
-        val userLoginId = authorization?.let { extractUserId(it) }
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
+        if (user == null) throw UnauthorizedException("인증이 필요합니다")
+        val userLoginId = user.userId
 
         // 백테스트 기간 검증 (최대 1년)
         val periodValidation = validateBacktestPeriod(request.startDate, request.endDate)
@@ -86,8 +85,8 @@ class BacktestController(
                     "message" to "전략을 찾을 수 없습니다: ${request.strategyId}"
                 ))
 
-        // 문자열 userId → DB PK(Long) 변환하여 Pub/Sub에 숫자 ID로 전달
-        val userDbId = userRepository.findByUserId(userLoginId)?.id
+        // Pub/Sub에는 숫자 DB PK 를 전달 — 액세스 토큰의 dbId claim 사용 (모든 발급 경로에서 필수)
+        val userDbId = user.id.takeIf { it > 0 }
             ?: return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(mapOf("error" to "USER_NOT_FOUND", "message" to "사용자를 찾을 수 없습니다."))
         val userId = userDbId.toString()
@@ -232,16 +231,9 @@ class BacktestController(
                 .body(rateLimitResponse)
         }
 
-        return try {
-            val response = backtestService.runBacktest(effectiveRequest, userId)
-            ResponseEntity.status(HttpStatus.ACCEPTED).body(response)
-        } catch (e: Exception) {
-            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(mapOf(
-                    "error" to "BACKTEST_SUBMISSION_FAILED",
-                    "message" to "백테스트 요청 처리 중 오류가 발생했습니다."
-                ))
-        }
+        // 실패(BacktestException 등)는 GlobalExceptionHandler 가 500 으로 매핑
+        val response = backtestService.runBacktest(effectiveRequest, userId)
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(response)
     }
 
     /**
@@ -282,35 +274,31 @@ class BacktestController(
     fun getEnhancedBacktestResult(
         @Parameter(description = "백테스트 ID (DB ID 또는 requestId)") @PathVariable id: String
     ): ResponseEntity<Any> {
-        return try {
-            val resolvedId = backtestService.resolveBacktestId(id)
-            val status = backtestService.getBacktestStatus(resolvedId)
+        // BacktestNotFoundException 은 GlobalExceptionHandler 가 404 로 매핑
+        val resolvedId = backtestService.resolveBacktestId(id)
+        val status = backtestService.getBacktestStatus(resolvedId)
 
-            when (status) {
-                "RUNNING" -> {
-                    val pendingResponse = BacktestPendingResponse(
-                        id = resolvedId,
-                        status = "RUNNING",
-                        message = "백테스트가 아직 처리 중입니다.",
-                        estimatedRemainingTime = 30
-                    )
-                    ResponseEntity.status(HttpStatus.ACCEPTED)
-                        .header("Retry-After", "10")
-                        .body(pendingResponse)
-                }
-                "FAILED" -> {
-                    val result = backtestService.getBacktestResult(resolvedId)
-                    ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                        .body(result)
-                }
-                else -> {
-                    val enhanced = backtestService.getEnhancedBacktestResult(resolvedId)
-                    ResponseEntity.ok(enhanced)
-                }
+        return when (status) {
+            "RUNNING" -> {
+                val pendingResponse = BacktestPendingResponse(
+                    id = resolvedId,
+                    status = "RUNNING",
+                    message = "백테스트가 아직 처리 중입니다.",
+                    estimatedRemainingTime = 30
+                )
+                ResponseEntity.status(HttpStatus.ACCEPTED)
+                    .header("Retry-After", "10")
+                    .body(pendingResponse)
             }
-        } catch (e: BacktestNotFoundException) {
-            ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(mapOf("error" to e.message))
+            "FAILED" -> {
+                val result = backtestService.getBacktestResult(resolvedId)
+                ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(result)
+            }
+            else -> {
+                val enhanced = backtestService.getEnhancedBacktestResult(resolvedId)
+                ResponseEntity.ok(enhanced)
+            }
         }
     }
 
@@ -331,36 +319,32 @@ class BacktestController(
     fun getBacktestResult(
         @Parameter(description = "백테스트 ID (DB ID 또는 requestId)") @PathVariable id: String
     ): ResponseEntity<Any> {
-        return try {
-            // DB ID (Long) 또는 requestId (UUID) 모두 지원
-            val resolvedId = backtestService.resolveBacktestId(id)
-            val status = backtestService.getBacktestStatus(resolvedId)
+        // DB ID (Long) 또는 requestId (UUID) 모두 지원
+        // BacktestNotFoundException 은 GlobalExceptionHandler 가 404 로 매핑
+        val resolvedId = backtestService.resolveBacktestId(id)
+        val status = backtestService.getBacktestStatus(resolvedId)
 
-            when (status) {
-                "RUNNING" -> {
-                    val pendingResponse = BacktestPendingResponse(
-                        id = resolvedId,
-                        status = "RUNNING",
-                        message = "백테스트가 아직 처리 중입니다.",
-                        estimatedRemainingTime = 30
-                    )
-                    ResponseEntity.status(HttpStatus.ACCEPTED)
-                        .header("Retry-After", "10")
-                        .body(pendingResponse)
-                }
-                "FAILED" -> {
-                    val result = backtestService.getBacktestResult(resolvedId)
-                    ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                        .body(result)
-                }
-                else -> {
-                    val result = backtestService.getBacktestResult(resolvedId)
-                    ResponseEntity.ok(result)
-                }
+        return when (status) {
+            "RUNNING" -> {
+                val pendingResponse = BacktestPendingResponse(
+                    id = resolvedId,
+                    status = "RUNNING",
+                    message = "백테스트가 아직 처리 중입니다.",
+                    estimatedRemainingTime = 30
+                )
+                ResponseEntity.status(HttpStatus.ACCEPTED)
+                    .header("Retry-After", "10")
+                    .body(pendingResponse)
             }
-        } catch (e: BacktestNotFoundException) {
-            ResponseEntity.status(HttpStatus.NOT_FOUND)
-                .body(mapOf("error" to e.message))
+            "FAILED" -> {
+                val result = backtestService.getBacktestResult(resolvedId)
+                ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(result)
+            }
+            else -> {
+                val result = backtestService.getBacktestResult(resolvedId)
+                ResponseEntity.ok(result)
+            }
         }
     }
 
@@ -378,11 +362,10 @@ class BacktestController(
         @Parameter(description = "전략 ID (선택)") @RequestParam(required = false) strategyId: Long?,
         @Parameter(description = "페이지 번호 (0부터 시작)") @RequestParam(defaultValue = "0") page: Int,
         @Parameter(description = "페이지 크기 (최대 100)") @RequestParam(defaultValue = "20") size: Int,
-        @RequestHeader("Authorization", required = false) authorization: String?
+        @CurrentUser user: UserPrincipal?
     ): ResponseEntity<PagedResponse<BacktestListItemResponse>> {
-        // 문자열 loginId → DB PK(Long) 변환하여 유저 격리 필터링
-        val userLoginId = authorization?.let { extractUserId(it) }
-        val userId = userLoginId?.let { userRepository.findByUserId(it)?.id }
+        // 유저 격리 필터링 — 액세스 토큰의 dbId claim 사용
+        val userId = user?.id?.takeIf { it > 0 }
         val safePage = page.coerceAtLeast(0)
         val safeSize = size.coerceIn(1, 100)
 
@@ -394,27 +377,6 @@ class BacktestController(
     // ============================================================================
     // Private Methods
     // ============================================================================
-
-    /**
-     * Authorization 헤더에서 userId 추출 (String)
-     */
-    private fun extractUserId(authorization: String): String? {
-        if (!authorization.startsWith("Bearer ")) {
-            return null
-        }
-
-        val token = authorization.removePrefix("Bearer ")
-        val loginResponse = authService.validateToken(token) ?: return null
-
-        return loginResponse.user?.userId
-    }
-
-    /**
-     * Authorization 헤더에서 userId 추출 (Long)
-     */
-    private fun extractUserIdAsLong(authorization: String): Long? {
-        return extractUserId(authorization)?.toLongOrNull()
-    }
 
     /**
      * 백테스트 기간 검증 (최대 365일)

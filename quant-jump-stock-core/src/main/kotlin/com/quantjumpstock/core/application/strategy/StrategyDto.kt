@@ -345,4 +345,7 @@ data class StrategyResponse(
 /**
  * 전략 서비스 예외
  */
-class StrategyException(message: String) : RuntimeException(message)
+open class StrategyException(message: String) : RuntimeException(message)
+
+/** URL 경로로 지정한 전략 리소스가 존재하지 않을 때 (404 매핑) */
+class StrategyNotFoundException(message: String) : StrategyException(message)

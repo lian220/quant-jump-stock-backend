@@ -333,4 +333,7 @@ data class PriceHistoryResponse(
     val candles: List<PriceCandleResponse>
 )
 
-class StockException(message: String) : RuntimeException(message)
+open class StockException(message: String) : RuntimeException(message)
+
+/** URL 경로로 지정한 종목 리소스가 존재하지 않을 때 (404 매핑) */
+class StockNotFoundException(message: String) : StockException(message)

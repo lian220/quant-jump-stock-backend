@@ -1,13 +1,14 @@
 package com.quantjumpstock.core.adapter.input.rest.strategy
 
-import com.quantjumpstock.core.application.auth.AuthService
 import com.quantjumpstock.core.application.strategy.CreateStrategyRequest
 import com.quantjumpstock.core.application.strategy.MyStrategiesResponse
 import com.quantjumpstock.core.application.strategy.StrategyDetailResponse
-import com.quantjumpstock.core.application.strategy.StrategyException
 import com.quantjumpstock.core.application.strategy.StrategyResponse
 import com.quantjumpstock.core.application.strategy.StrategyService
 import com.quantjumpstock.core.application.strategy.UpdateStrategyRequest
+import com.quantjumpstock.core.infrastructure.security.CurrentUser
+import com.quantjumpstock.core.infrastructure.security.UnauthorizedException
+import com.quantjumpstock.core.infrastructure.security.UserPrincipal
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
@@ -18,13 +19,15 @@ import org.springframework.web.bind.annotation.*
 /**
  * Strategy Controller
  * 전략 CRUD API
+ *
+ * 인증은 JwtAuthenticationFilter 가 채운 principal(@CurrentUser)을 사용하고,
+ * 도메인 예외 → HTTP 매핑은 GlobalExceptionHandler 가 담당한다.
  */
 @RestController
 @RequestMapping("/api/v1/strategies")
 @Tag(name = "Strategy", description = "전략 관리 API")
 class StrategyController(
-    private val strategyService: StrategyService,
-    private val authService: AuthService
+    private val strategyService: StrategyService
 ) {
 
     /**
@@ -37,21 +40,12 @@ class StrategyController(
         description = "새로운 투자 전략을 생성합니다. 인증이 필요합니다."
     )
     fun createStrategy(
-        @RequestHeader("Authorization") authorization: String,
+        @CurrentUser user: UserPrincipal?,
         @RequestBody request: CreateStrategyRequest
     ): ResponseEntity<StrategyResponse> {
-        val userId = extractUserId(authorization)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(StrategyResponse(success = false, message = "인증이 필요합니다"))
-
-        return try {
-            val response = strategyService.createStrategy(userId, request)
-            ResponseEntity.status(HttpStatus.CREATED).body(response)
-        } catch (e: StrategyException) {
-            ResponseEntity.badRequest().body(
-                StrategyResponse(success = false, message = e.message)
-            )
-        }
+        val userId = requireUserId(user)
+        val response = strategyService.createStrategy(userId, request)
+        return ResponseEntity.status(HttpStatus.CREATED).body(response)
     }
 
     /**
@@ -66,16 +60,10 @@ class StrategyController(
     fun getStrategy(
         @Parameter(description = "전략 ID")
         @PathVariable id: Long,
-        @RequestHeader("Authorization", required = false) authorization: String?
+        @CurrentUser user: UserPrincipal?
     ): ResponseEntity<StrategyDetailResponse> {
-        val userId = authorization?.let { extractUserId(it) }
-
-        return try {
-            val response = strategyService.getStrategy(id, userId)
-            ResponseEntity.ok(response)
-        } catch (e: StrategyException) {
-            ResponseEntity.status(HttpStatus.NOT_FOUND).build()
-        }
+        val response = strategyService.getStrategy(id, user?.userId)
+        return ResponseEntity.ok(response)
     }
 
     /**
@@ -90,21 +78,12 @@ class StrategyController(
     fun updateStrategy(
         @Parameter(description = "전략 ID")
         @PathVariable id: Long,
-        @RequestHeader("Authorization") authorization: String,
+        @CurrentUser user: UserPrincipal?,
         @RequestBody request: UpdateStrategyRequest
     ): ResponseEntity<StrategyResponse> {
-        val userId = extractUserId(authorization)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(StrategyResponse(success = false, message = "인증이 필요합니다"))
-
-        return try {
-            val response = strategyService.updateStrategy(id, userId, request)
-            ResponseEntity.ok(response)
-        } catch (e: StrategyException) {
-            ResponseEntity.badRequest().body(
-                StrategyResponse(success = false, message = e.message)
-            )
-        }
+        val userId = requireUserId(user)
+        val response = strategyService.updateStrategy(id, userId, request)
+        return ResponseEntity.ok(response)
     }
 
     /**
@@ -119,20 +98,11 @@ class StrategyController(
     fun deleteStrategy(
         @Parameter(description = "전략 ID")
         @PathVariable id: Long,
-        @RequestHeader("Authorization") authorization: String
+        @CurrentUser user: UserPrincipal?
     ): ResponseEntity<StrategyResponse> {
-        val userId = extractUserId(authorization)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(StrategyResponse(success = false, message = "인증이 필요합니다"))
-
-        return try {
-            val response = strategyService.deleteStrategy(id, userId)
-            ResponseEntity.ok(response)
-        } catch (e: StrategyException) {
-            ResponseEntity.badRequest().body(
-                StrategyResponse(success = false, message = e.message)
-            )
-        }
+        val userId = requireUserId(user)
+        val response = strategyService.deleteStrategy(id, userId)
+        return ResponseEntity.ok(response)
     }
 
     /**
@@ -145,30 +115,13 @@ class StrategyController(
         description = "로그인한 사용자의 전략 목록을 조회합니다."
     )
     fun getMyStrategies(
-        @RequestHeader("Authorization") authorization: String
+        @CurrentUser user: UserPrincipal?
     ): ResponseEntity<MyStrategiesResponse> {
-        val userId = extractUserId(authorization)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build()
-
-        return try {
-            val response = strategyService.getMyStrategies(userId)
-            ResponseEntity.ok(response)
-        } catch (e: StrategyException) {
-            ResponseEntity.badRequest().build()
-        }
+        val userId = requireUserId(user)
+        val response = strategyService.getMyStrategies(userId)
+        return ResponseEntity.ok(response)
     }
 
-    /**
-     * Authorization 헤더에서 userId 추출
-     */
-    private fun extractUserId(authorization: String): String? {
-        if (!authorization.startsWith("Bearer ")) {
-            return null
-        }
-
-        val token = authorization.removePrefix("Bearer ")
-        val loginResponse = authService.validateToken(token) ?: return null
-
-        return loginResponse.user?.userId
-    }
+    private fun requireUserId(user: UserPrincipal?): String =
+        user?.userId ?: throw UnauthorizedException("인증이 필요합니다")
 }

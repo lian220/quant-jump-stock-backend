@@ -84,13 +84,13 @@ class StrategyService(
         logger.info("전략 조회: strategyId=$strategyId, userId=$userId")
 
         val strategy = strategyRepository.findByIdWithBacktestResults(strategyId)
-            ?: throw StrategyException("전략을 찾을 수 없습니다: $strategyId")
+            ?: throw StrategyNotFoundException("전략을 찾을 수 없습니다: $strategyId")
 
-        // 비공개 전략은 소유자만 조회 가능
+        // 비공개 전략은 소유자만 조회 가능 — 존재 자체를 숨기기 위해 404 로 응답 (기존 계약 유지)
         var resolvedUser = userId?.let { userRepository.findByUserId(it) }
         if (!strategy.isPublic) {
             if (resolvedUser == null || strategy.ownerId != resolvedUser.id) {
-                throw StrategyException("이 전략에 접근할 권한이 없습니다")
+                throw StrategyNotFoundException("전략을 찾을 수 없습니다: $strategyId")
             }
         }
 
@@ -114,7 +114,7 @@ class StrategyService(
         logger.info("전략 수정 시작: strategyId=$strategyId, userId=$userId")
 
         val strategy = strategyRepository.findById(strategyId)
-            ?: throw StrategyException("전략을 찾을 수 없습니다: $strategyId")
+            ?: throw StrategyNotFoundException("전략을 찾을 수 없습니다: $strategyId")
 
         // 소유자 확인
         val user = userRepository.findByUserId(userId)
@@ -166,7 +166,7 @@ class StrategyService(
         logger.info("전략 삭제 시작: strategyId=$strategyId, userId=$userId")
 
         val strategy = strategyRepository.findById(strategyId)
-            ?: throw StrategyException("전략을 찾을 수 없습니다: $strategyId")
+            ?: throw StrategyNotFoundException("전략을 찾을 수 없습니다: $strategyId")
 
         // 소유자 확인
         val user = userRepository.findByUserId(userId)

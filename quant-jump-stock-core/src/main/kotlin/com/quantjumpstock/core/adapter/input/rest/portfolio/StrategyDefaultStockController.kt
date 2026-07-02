@@ -1,7 +1,9 @@
 package com.quantjumpstock.core.adapter.input.rest.portfolio
 
-import com.quantjumpstock.core.application.auth.AuthService
 import com.quantjumpstock.core.application.portfolio.*
+import com.quantjumpstock.core.infrastructure.security.CurrentUser
+import com.quantjumpstock.core.infrastructure.security.UnauthorizedException
+import com.quantjumpstock.core.infrastructure.security.UserPrincipal
 import io.swagger.v3.oas.annotations.Operation
 import io.swagger.v3.oas.annotations.Parameter
 import io.swagger.v3.oas.annotations.tags.Tag
@@ -13,8 +15,7 @@ import org.springframework.web.bind.annotation.*
 @RequestMapping("/api/v1/strategies/{strategyId}/default-stocks")
 @Tag(name = "Strategy Default Stock", description = "전략 기본 종목 관리 API")
 class StrategyDefaultStockController(
-    private val defaultStockService: StrategyDefaultStockService,
-    private val authService: AuthService
+    private val defaultStockService: StrategyDefaultStockService
 ) {
 
     @GetMapping
@@ -22,33 +23,20 @@ class StrategyDefaultStockController(
     fun getDefaultStocks(
         @Parameter(description = "전략 ID") @PathVariable strategyId: Long
     ): ResponseEntity<DefaultStockListResponse> {
-        return try {
-            val response = defaultStockService.getDefaultStocks(strategyId)
-            ResponseEntity.ok(response)
-        } catch (e: PortfolioException) {
-            ResponseEntity.status(HttpStatus.NOT_FOUND).build()
-        }
+        val response = defaultStockService.getDefaultStocks(strategyId)
+        return ResponseEntity.ok(response)
     }
 
     @PostMapping
     @Operation(summary = "기본 종목 추가", description = "전략에 기본 종목을 추가합니다.")
     fun addDefaultStock(
         @Parameter(description = "전략 ID") @PathVariable strategyId: Long,
-        @RequestHeader("Authorization") authorization: String,
+        @CurrentUser user: UserPrincipal?,
         @RequestBody request: AddDefaultStockRequest
     ): ResponseEntity<Any> {
-        extractUserId(authorization)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(PortfolioResponse(success = false, message = "인증이 필요합니다"))
-
-        return try {
-            val response = defaultStockService.addDefaultStock(strategyId, request)
-            ResponseEntity.status(HttpStatus.CREATED).body(response)
-        } catch (e: PortfolioException) {
-            ResponseEntity.badRequest().body(
-                PortfolioResponse(success = false, message = e.message)
-            )
-        }
+        requireAuthenticated(user)
+        val response = defaultStockService.addDefaultStock(strategyId, request)
+        return ResponseEntity.status(HttpStatus.CREATED).body(response)
     }
 
     @PutMapping("/{stockId}")
@@ -56,21 +44,12 @@ class StrategyDefaultStockController(
     fun updateDefaultStock(
         @Parameter(description = "전략 ID") @PathVariable strategyId: Long,
         @Parameter(description = "종목 ID") @PathVariable stockId: Long,
-        @RequestHeader("Authorization") authorization: String,
+        @CurrentUser user: UserPrincipal?,
         @RequestBody request: UpdateDefaultStockRequest
     ): ResponseEntity<Any> {
-        extractUserId(authorization)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(PortfolioResponse(success = false, message = "인증이 필요합니다"))
-
-        return try {
-            val response = defaultStockService.updateDefaultStock(strategyId, stockId, request)
-            ResponseEntity.ok(response)
-        } catch (e: PortfolioException) {
-            ResponseEntity.badRequest().body(
-                PortfolioResponse(success = false, message = e.message)
-            )
-        }
+        requireAuthenticated(user)
+        val response = defaultStockService.updateDefaultStock(strategyId, stockId, request)
+        return ResponseEntity.ok(response)
     }
 
     @DeleteMapping("/{stockId}")
@@ -78,47 +57,26 @@ class StrategyDefaultStockController(
     fun removeDefaultStock(
         @Parameter(description = "전략 ID") @PathVariable strategyId: Long,
         @Parameter(description = "종목 ID") @PathVariable stockId: Long,
-        @RequestHeader("Authorization") authorization: String
+        @CurrentUser user: UserPrincipal?
     ): ResponseEntity<PortfolioResponse> {
-        extractUserId(authorization)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(PortfolioResponse(success = false, message = "인증이 필요합니다"))
-
-        return try {
-            val response = defaultStockService.removeDefaultStock(strategyId, stockId)
-            ResponseEntity.ok(response)
-        } catch (e: PortfolioException) {
-            ResponseEntity.badRequest().body(
-                PortfolioResponse(success = false, message = e.message)
-            )
-        }
+        requireAuthenticated(user)
+        val response = defaultStockService.removeDefaultStock(strategyId, stockId)
+        return ResponseEntity.ok(response)
     }
 
     @PutMapping
     @Operation(summary = "기본 종목 전체 교체", description = "전략의 기본 종목을 전체 교체합니다. 비중 합 100% 이내 검증.")
     fun replaceDefaultStocks(
         @Parameter(description = "전략 ID") @PathVariable strategyId: Long,
-        @RequestHeader("Authorization") authorization: String,
+        @CurrentUser user: UserPrincipal?,
         @RequestBody request: ReplaceDefaultStocksRequest
     ): ResponseEntity<Any> {
-        extractUserId(authorization)
-            ?: return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
-                .body(PortfolioResponse(success = false, message = "인증이 필요합니다"))
-
-        return try {
-            val response = defaultStockService.replaceDefaultStocks(strategyId, request)
-            ResponseEntity.ok(response)
-        } catch (e: PortfolioException) {
-            ResponseEntity.badRequest().body(
-                PortfolioResponse(success = false, message = e.message)
-            )
-        }
+        requireAuthenticated(user)
+        val response = defaultStockService.replaceDefaultStocks(strategyId, request)
+        return ResponseEntity.ok(response)
     }
 
-    private fun extractUserId(authorization: String): String? {
-        if (!authorization.startsWith("Bearer ")) return null
-        val token = authorization.removePrefix("Bearer ")
-        val loginResponse = authService.validateToken(token) ?: return null
-        return loginResponse.user?.userId
+    private fun requireAuthenticated(user: UserPrincipal?) {
+        if (user == null) throw UnauthorizedException("인증이 필요합니다")
     }
 }

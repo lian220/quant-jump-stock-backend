@@ -50,7 +50,7 @@ class StockService(
      */
     fun getStock(stockId: Long): StockDetailResponse {
         val stock = stockRepository.findById(stockId)
-            ?: throw StockException("종목을 찾을 수 없습니다: $stockId")
+            ?: throw StockNotFoundException("종목을 찾을 수 없습니다: $stockId")
 
         val price = loadPriceSafely(stock.ticker)
         return stock.toDetailResponse(price)
@@ -61,7 +61,7 @@ class StockService(
      */
     fun getPriceHistory(stockId: Long, period: PriceHistoryPeriod): PriceHistoryResponse {
         val stock = stockRepository.findById(stockId)
-            ?: throw StockException("종목을 찾을 수 없습니다: $stockId")
+            ?: throw StockNotFoundException("종목을 찾을 수 없습니다: $stockId")
         return priceHistoryPort.getPriceHistory(stock.ticker, period)
     }
 
@@ -107,7 +107,7 @@ class StockService(
         logger.info("종목 수정: stockId=$stockId")
 
         val stock = stockRepository.findById(stockId)
-            ?: throw StockException("종목을 찾을 수 없습니다: $stockId")
+            ?: throw StockNotFoundException("종목을 찾을 수 없습니다: $stockId")
 
         val updated = stock.copy(
             stockName = request.stockName ?: stock.stockName,
@@ -139,7 +139,7 @@ class StockService(
         logger.info("종목 삭제: stockId=$stockId")
 
         if (!stockRepository.existsById(stockId)) {
-            throw StockException("종목을 찾을 수 없습니다: $stockId")
+            throw StockNotFoundException("종목을 찾을 수 없습니다: $stockId")
         }
 
         stockRepository.deleteById(stockId)
@@ -160,7 +160,7 @@ class StockService(
         logger.info("종목 지정상태 변경: stockId=$stockId, newStatus=${request.designationStatus}")
 
         val stock = stockRepository.findById(stockId)
-            ?: throw StockException("종목을 찾을 수 없습니다: $stockId")
+            ?: throw StockNotFoundException("종목을 찾을 수 없습니다: $stockId")
 
         // 도메인 모델에서 비즈니스 검증 + 상태 변경
         val updated = stock.changeDesignation(request.designationStatus, request.reason)
@@ -190,7 +190,7 @@ class StockService(
      */
     fun getDesignationHistory(stockId: Long): List<DesignationHistoryResponse> {
         if (!stockRepository.existsById(stockId)) {
-            throw StockException("종목을 찾을 수 없습니다: $stockId")
+            throw StockNotFoundException("종목을 찾을 수 없습니다: $stockId")
         }
 
         return stockRepository.findDesignationHistoryByStockId(stockId).map {
