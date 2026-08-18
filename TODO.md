@@ -14,6 +14,26 @@
 
 ---
 
+## MongoDB Atlas 용량 사고 후속 (2026-08-13)
+
+> 전체 액션 목록과 우선순위는 SSOT에서 관리 → [`docs/할일.md` §MongoDB Atlas 용량 사고 후속](../docs/할일.md)
+> 회고: [2026-08-13-mongodb-atlas-quota.md](./docs/incidents/2026-08-13-mongodb-atlas-quota.md)
+> 아래는 그중 **Backend 코드 안에서 끝나는 항목**만 옮겨 적은 것이다.
+
+- [ ] `collect_economic_data()` 저장 0건 fail-fast — `features/economic_data/service.py:114-131`
+  - `dates_saved == 0` 인데 `success: True` 반환 → 5일간 사고 미발견의 직접 원인
+- [ ] `daily_stock_data.predictions`·`analysis` 이중 쓰기 제거 — `ml/predict_optimized.py:1708`, `:2257`
+  - 읽는 코드 0건 + 별도 컬렉션에 사본 존재. 손실 없이 제거 가능한 유일한 대상(~26MB)
+- [ ] `sentiment_analysis.articles` 쓰기 정리 — `services/sentiment_analysis.py:243`
+  - 방침(전량 삭제 / 상위 N건 보존)은 SSOT에서 결정 후 착수. 102.6MB, 유일본이므로 단독 판단 금지
+- [ ] Vertex AI 체인에 `targetDate` 전달 — `adapter/input/pubsub/handlers.py:306-310`
+  - 핸들러(`:844`)·`application/ml/prediction_service.py:156`은 이미 지원. 체인 payload에만 누락되어 과거 날짜 재생성 경로가 없음
+- [ ] `sync_latest_recommendations()` 중복 호출 정리 — `handlers.py:279`(기술적 분석 직후) / `:510`(추천 잡)
+  - 1차는 AI 값 없이 PG 기록 후 2차가 덮어씀
+- [ ] `_fetch_sentiment_analysis()` projection 추가 — `application/recommendation/sync_service.py:219`
+  - 44KB 문서를 통째로 로드한 뒤 `:226-227`에서 필드 2개만 사용
+- [ ] dead code 제거 — `features/economic_data/repository.py:62 find_active_stocks()`(존재하지 않는 Mongo `stocks` 참조, 호출자 0), Core `StockPredictionMongoRepository`(주입 0)
+
 ## 아키텍처 개선
 - [ ] 헥사고날 아키텍처 마이그레이션 (현재 65/100 → 목표 100/100)
   - 상세: [백엔드_아키텍처.md](./docs/architecture/refactor/백엔드_아키텍처.md)
