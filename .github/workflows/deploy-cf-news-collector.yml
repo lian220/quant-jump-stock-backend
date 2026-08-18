@@ -1,6 +1,7 @@
 name: Deploy News Collector Cloud Function
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -25,6 +26,10 @@ env:
 jobs:
   build-and-deploy:
     runs-on: ubuntu-latest
+    # WIF(keyless) 인증 — OIDC 토큰 발급에 id-token: write 필요
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -46,10 +51,13 @@ jobs:
           pip install -q -r requirements.txt
           python -c "from main import collect_news; print('Import OK')"
 
+      # GCP 이관(2026-08): SA JSON 키 → WIF keyless 전환.
+      # GCP_WIF_PROVIDER = `terraform output wif_provider` 값 (GitHub Secrets 등록 필요)
       - name: Authenticate to GCP
         uses: google-github-actions/auth@v3
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: qjs-github-actions@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v3
