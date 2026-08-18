@@ -123,7 +123,11 @@ jobs:
             --format 'value(status.url)')
           echo "Cloud Run URL: $SERVICE_URL"
 
-          TOKEN=$(gcloud auth print-identity-token)
+          # WIF(external_account) 자격증명은 identity token 직접 발급 불가 →
+          # SA self-impersonation으로 발급 (SA에 roles/iam.serviceAccountTokenCreator self 바인딩 필요)
+          TOKEN=$(gcloud auth print-identity-token \
+            --impersonate-service-account="qjs-github-actions@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
+            --audiences="$SERVICE_URL")
 
           echo "Waiting for Data Engine startup..."
           for i in $(seq 1 10); do

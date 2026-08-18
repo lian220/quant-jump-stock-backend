@@ -75,7 +75,11 @@ jobs:
           SERVICE_URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
             --region=${{ env.REGION }} \
             --format='value(status.url)')
-          TOKEN=$(gcloud auth print-identity-token)
+          # WIF(external_account) 자격증명은 identity token 직접 발급 불가 →
+          # SA self-impersonation으로 발급 (SA에 roles/iam.serviceAccountTokenCreator self 바인딩 필요)
+          TOKEN=$(gcloud auth print-identity-token \
+            --impersonate-service-account="qjs-github-actions@${{ secrets.GCP_PROJECT_ID }}.iam.gserviceaccount.com" \
+            --audiences="$SERVICE_URL")
           echo "Calling POST $SERVICE_URL/api/v1/ml/upload"
           RESPONSE=$(curl -sS -m 120 -X POST \
             -H "Authorization: Bearer $TOKEN" \
