@@ -6,12 +6,14 @@ Backend 배포를 위해 필요한 GitHub Secrets 설정 가이드입니다.
 
 > **설정 위치**: GitHub Repository → Settings → Secrets and variables → Actions
 
-### 1. GCP 인증
+### 1. GCP 인증 (WIF keyless — 2026-08 GCP 이관으로 SA JSON 키 폐기)
 
 | Secret 이름 | 설명 | 확인 방법 |
 |-------------|------|-----------|
 | **GCP_PROJECT_ID** | GCP 프로젝트 ID | 루트 프로젝트의 `terraform` 디렉토리에서:<br>`terraform output -raw github_actions_sa_email \| cut -d'@' -f2 \| cut -d'.' -f1` |
-| **GCP_SA_KEY** | Service Account JSON 키 | `terraform output -raw github_actions_sa_key \| base64 -d` |
+| **GCP_WIF_PROVIDER** | Workload Identity Federation 프로바이더 리소스 경로 | `terraform output -raw wif_provider` |
+
+> ~~GCP_SA_KEY~~ 는 WIF 전환으로 **삭제 대상** — 워크플로우가 더 이상 참조하지 않는다.
 
 ### 2. VM 접속 정보
 
