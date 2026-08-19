@@ -37,12 +37,9 @@ class MongoDB:
         이미 존재하는 인덱스는 무시(idempotent)합니다.
         """
         try:
-            # daily_stock_data: date 범위 조회
-            db["daily_stock_data"].create_index(
-                [("date", ASCENDING)],
-                name="idx_date",
-                background=True
-            )
+            # daily_stock_data 의 idx_date 는 생성하지 않는다:
+            # date_unique 와 완전 중복이라 2026-08-18 Atlas 용량 사고 대응에서 드롭했고,
+            # 여기서 재생성하면 콜드스타트마다 원복된다 (MongoDB_용량정리_점검.md §2 1단계).
 
             # stock_recommendations: ticker + date upsert 및 조회
             # Spring @CompoundIndex와 동일한 이름 사용 (ticker_date_unique) — 중복 생성 방지

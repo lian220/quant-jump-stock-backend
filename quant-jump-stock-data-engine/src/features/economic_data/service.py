@@ -112,23 +112,47 @@ class EconomicDataService:
             )
 
             # daily_stock_data에 날짜별로 저장
+            attempted_dates = len(daily_data)
             saved_dates = 0
             for date_str, data in daily_data.items():
                 if self.repository.upsert_daily_data(date_str, data):
                     saved_dates += 1
                     logger.debug(f"daily_stock_data 저장: {date_str} (FRED: {len(data['fred_indicators'])}, Yahoo: {len(data['yfinance_indicators'])}, Stocks: {len(data['stocks'])})")
 
-            logger.info(f"경제 데이터 수집 완료: FRED={fred_count}개 지표, Yahoo={yahoo_count}개 지표, Stocks={stocks_count}개 종목, {saved_dates}일치 저장")
+            logger.info(f"경제 데이터 수집 완료: FRED={fred_count}개 지표, Yahoo={yahoo_count}개 지표, Stocks={stocks_count}개 종목, {saved_dates}/{attempted_dates}일치 저장")
 
-            return {
+            result = {
                 "success": True,
                 "start_date": start_date_str,
                 "end_date": end_date_str,
                 "fred_collected": fred_count,
                 "yahoo_collected": yahoo_count,
                 "stocks_collected": stocks_count,
-                "dates_saved": saved_dates
+                "dates_attempted": attempted_dates,
+                "dates_saved": saved_dates,
+                "partial_failure": False,
             }
+
+            # 저장 전건 실패 = 실패로 보고한다.
+            # 2026-08-13 Atlas M0 용량 초과 때 여기서 success: True 를 반환하는 바람에
+            # 쓰기가 5일간 전면 차단된 것을 아무도 알아채지 못했다.
+            if attempted_dates > 0 and saved_dates == 0:
+                error_msg = (
+                    f"수집한 {attempted_dates}일치를 한 건도 저장하지 못했습니다 "
+                    f"(DB 쓰기 차단 의심 — 용량 한도/권한 확인 필요)"
+                )
+                logger.error(f"❌ 경제 데이터 저장 전건 실패: {error_msg}")
+                result["success"] = False
+                result["error"] = error_msg
+                return result
+
+            if saved_dates < attempted_dates:
+                result["partial_failure"] = True
+                logger.warning(
+                    f"⚠️ 경제 데이터 부분 저장: {saved_dates}/{attempted_dates}일치만 저장됨"
+                )
+
+            return result
 
         except Exception as e:
             logger.error(f"경제 데이터 수집 실패: {e}")
