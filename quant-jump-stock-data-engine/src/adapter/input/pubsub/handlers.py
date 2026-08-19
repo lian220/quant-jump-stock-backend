@@ -162,6 +162,24 @@ class EconomicDataHandler(MessageHandler):
             )
             elapsed = time.time() - start_time
 
+            # 저장 실패는 성공으로 보고하지 않는다 (2026-08-13 Atlas 용량 초과 사고 재발 방지).
+            # 용량 한도/권한 문제는 재시도로 풀리지 않으므로 NonRetryableError — 재전송 폭주 방지.
+            if not result.get("success", False):
+                error_msg = result.get("error", "경제 데이터 저장 실패 (원인 미상)")
+                self._log_error("경제 데이터 수집 (저장 실패)", Exception(error_msg))
+
+                if self.notifier:
+                    self.notifier.notify_error(message.request_id, error_msg, thread_ts)
+
+                if self.publisher:
+                    self.publisher.publish("ECONOMIC_DATA_UPDATE_FAILED", {
+                        "status": "failed",
+                        "timestamp": datetime.now(KST).isoformat(),
+                        "requestId": message.request_id,
+                        "error": error_msg
+                    })
+                raise NonRetryableError(f"경제 데이터 저장 실패: {error_msg}")
+
             self._log_success("경제 데이터 수집", start_time)
 
             # 성공 알림
@@ -201,6 +219,10 @@ class EconomicDataHandler(MessageHandler):
                         self.publisher.publish("TRIGGER_SENTIMENT_ANALYSIS", chain_payload)
                     except Exception as chain_err:
                         logger.error(f"❌ [Pipeline] 분석 트리거 발행 실패: {chain_err}")
+
+        except NonRetryableError:
+            # 위 저장 실패 분기에서 이미 알림·이벤트 발행 완료 — 중복 처리 없이 전파만
+            raise
 
         except (ValueError, KeyError, TypeError) as e:
             self._log_error("경제 데이터 수집 (재시도 불가 - 데이터 오류)", e)
